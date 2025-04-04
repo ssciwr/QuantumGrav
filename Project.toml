@@ -4,8 +4,14 @@ authors = ["Harald Mack <harald.mack@protonmail.com>"]
 version = "0.1.0"
 
 [deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CausalSets = "2cd3ca5d-4cd6-4e37-88b9-1a897f702e70"
+Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
 [compat]
+CUDA = "5.7.1"
 CausalSets = "1.0"
+Flux = "0.16.3"
+ProgressMeter = "1.10.3"

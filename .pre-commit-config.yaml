@@ -1,0 +1,18 @@
+repos: 
+- repo: https://github.com/qiaojunfeng/pre-commit-julia-format
+  rev: v0.2.0                # use the most recent version
+  hooks:
+  - id: julia-format         # formatter for Julia code
+- repo: https://github.com/kynan/nbstripout
+  rev: 0.8.1
+  hooks:
+    - id: nbstripout
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+    - id: mixed-line-ending
+    - id: check-yaml
+    - id: check-added-large-files
+      args: ['--maxkb=100']
+    - id: check-merge-conflict
+    - id: check-toml
