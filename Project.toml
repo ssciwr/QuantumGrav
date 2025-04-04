@@ -2,3 +2,9 @@ name = "QuantumGrav"
 uuid = "9a60f3b1-9ddb-4130-b9b5-26b59e6498fa"
 authors = ["Harald Mack <harald.mack@protonmail.com>"]
 version = "0.1.0"
+
+[deps]
+CausalSets = "2cd3ca5d-4cd6-4e37-88b9-1a897f702e70"
+
+[compat]
+CausalSets = "1.0.0"
