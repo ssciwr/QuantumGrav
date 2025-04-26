@@ -1,5 +1,5 @@
 module QuantumGrav
-export foo
-foo(x) = x
+
+include("datageneration.jl")
 
 end # module QuantumGrav
