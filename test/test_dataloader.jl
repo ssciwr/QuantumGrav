@@ -21,7 +21,7 @@ using TestItems
     dir = makeMockData(3, 50)
 end
 
-@testitem "DataLoader.QuantumGravDataset" tags=[:dataloader] setup=[MakeData] begin
+@testitem "DataLoader.constructQuantumGravDataset" tags=[:dataloader] setup=[MakeData] begin
 
     # Initialize the QuantumGravDataset
     dataset=QuantumGrav.DataLoader.QuantumGravDataset(
@@ -35,17 +35,19 @@ end
     @test dataset.file_length == 50
     @test length(dataset.indices) == 3 * 50
     @test dataset.max_buffer_size == 2
-    @test dataset.columns == [:linkMatrix]
 end
 
 @testitem "DataLoader.loadData" tags=[:dataloader] setup=[MakeData] begin
+    import Tables
     dataset=QuantumGrav.DataLoader.QuantumGravDataset(
         dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
 
     # Test loading data from the first file
-    data=QuantumGrav.DataLoader.loadData(dataset, 1, :linkMatrix)
-    @test size(data) == (50,)
-    @test length(data[1]) == 100
+    data=QuantumGrav.DataLoader.loadData(dataset, 1)
+    @test length(data) == 50
+    @test length(data[1]) == 2
+    @test collect(keys(data[1])) == [:linkMatrix, :otherColumn]
+    @test keys(data) == 1:50
 end
 
 @testitem "DataLoader.getindex" tags=[:dataloader] setup=[MakeData] begin
@@ -54,13 +56,14 @@ end
 
     # Test getting an index from the dataset
     first=dataset[1]
-    @test size(first) == (100,)
+    @test collect(keys(first)) == [:linkMatrix, :otherColumn]
     @test length(dataset.buffer) == 1
 
     # Test getting a batch of data at once
     multiple=dataset[[1, 45, 75, 142]]
     @test length(multiple) == 4
-    @test length(multiple[1]) == 100
+    @test length(multiple[1].linkMatrix) == 100
+    @test length(multiple[1].otherColumn) == 1
     @test length(dataset.buffer) == 2
 end
 

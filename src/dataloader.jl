@@ -2,9 +2,9 @@ module DataLoader
 
 export QuantumGravDataset, loadData, collateMatrices, encodeMatrix
 
-using Arrow
-using Tables
-using Flux
+import Arrow
+import Tables
+import Flux
 
 """
     QuantumGravDataset
@@ -19,7 +19,6 @@ A mutable struct for efficiently loading and caching simulated causal set data f
 - `file_length::Int`: Number of rows in each file (assumed to be consistent across files)
 - `buffer::Dict{Int, Array{Matrix{Float32}}}`: Cache for loaded data to minimize file I/O
 - `max_buffer_size::Int64`: Maximum number of files to keep in memory
-- `columns::Vector{Symbol}`: Column names to load from the Arrow files
 
 # Constructor
     QuantumGravDataset(base_path::String, file_paths::Vector{String}; 
@@ -36,7 +35,6 @@ Creates a new `QuantumGravDataset` with the specified parameters.
 # Keywords
 - `batch_size::Int = 1`: Number of samples to load at once
 - `cache_size::Int = 5`: Maximum number of files to keep in memory
-- `columns::Vector{Symbol} = [:linkMatrix]`: Column names to load from the Arrow files
 """
 mutable struct QuantumGravDataset
     base_path::String
@@ -46,11 +44,10 @@ mutable struct QuantumGravDataset
     file_length::Int
     buffer::Dict{Int, Any}
     max_buffer_size::Int64
-    columns::Vector{Symbol}
 end
 
 """
-    QuantumGravDataset(base_path::String, file_paths::Vector{String}; batch_size::Int=1, cache_size::Int=5, columns::Vector{Symbol}=[:linkMatrix])
+    QuantumGravDataset(base_path::String, file_paths::Vector{String}; batch_size::Int=1, cache_size::Int=5)
 
 Construct a `QuantumGravDataset` object from Arrow files for quantum gravity simulations.
 
@@ -61,14 +58,13 @@ Construct a `QuantumGravDataset` object from Arrow files for quantum gravity sim
 # Keywords
 - `batch_size::Int=1`: Number of samples per batch.
 - `cache_size::Int=5`: Maximum number of files to keep in memory cache.
-- `columns::Vector{Symbol}=[:linkMatrix]`: Column names to load from Arrow files.
 
 # Returns
 - `QuantumGravDataset`: A dataset object for accessing quantum gravity simulation data.
 """
 function QuantumGravDataset(
         base_path::String, file_paths::Vector{String}; batch_size::Int = 1,
-        cache_size::Int = 5, columns::Vector{Symbol} = [:linkMatrix])
+        cache_size::Int = 5)
     file_length = length(Tables.getcolumn(
         Arrow.Table(base_path*"/"*file_paths[1]), :linkMatrix))
 
@@ -84,24 +80,23 @@ function QuantumGravDataset(
     end
 
     return QuantumGravDataset(base_path, file_paths, batch_size, indices, file_length,
-        Dict{Int, Array{Matrix{Float32}}}(), cache_size, columns)
+        Dict{Int, Array{Matrix{Float32}}}(), cache_size)
 end
 
 """
-    loadData(d::QuantumGravDataset, i::Int, col::Symbol = :linkMatrix)
+    loadData(d::QuantumGravDataset, i::Int)
 
 Load data from simulated causal set data from an Arrow file the path of which is stored in the passed `QuantumGravDataset` object.
 
 # Arguments
 - `d::QuantumGravDataset`: Dataset to load from
 - `i::Int`: Index of the file to load
-- `col::Symbol = :linkMatrix`: Column name to retrieve from the file
 
 # Returns
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
-function loadData(d::QuantumGravDataset, i::Int, col::Symbol = :linkMatrix)
-    return Tables.getcolumn(Arrow.Table(d.base_path*"/"*d.file_paths[i]), col)
+function loadData(d::QuantumGravDataset, i::Int)
+    return Tables.rowtable(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
 end
 
 """
