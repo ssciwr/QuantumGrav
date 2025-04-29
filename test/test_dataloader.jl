@@ -25,13 +25,12 @@ end
 
     # Initialize the Dataset
     Dataset=QuantumGrav.DataLoader.Dataset(
-        dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
+        dir, collect(readdir(dir)); cache_size = 2)
 
     # Test the constructor
     @test Dataset.base_path == dir
     @test Dataset.file_paths ==
           ["test_data_1.arrow", "test_data_2.arrow", "test_data_3.arrow"]
-    @test Dataset.batch_size == 5
     @test Dataset.file_length == 50
     @test length(Dataset.indices) == 3 * 50
     @test Dataset.max_buffer_size == 2
@@ -40,7 +39,7 @@ end
 @testitem "DataLoader.loadData" tags=[:dataloader] setup=[MakeData] begin
     import Tables
     Dataset=QuantumGrav.DataLoader.Dataset(
-        dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
+        dir, collect(readdir(dir)); cache_size = 2)
 
     # Test loading data from the first file
     data=QuantumGrav.DataLoader.loadData(Dataset, 1)
@@ -55,7 +54,7 @@ end
 
 @testitem "DataLoader.getindex" tags=[:dataloader] setup=[MakeData] begin
     Dataset=QuantumGrav.DataLoader.Dataset(
-        dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
+        dir, collect(readdir(dir)); cache_size = 2)
 
     # Test getting an index from the Dataset
     first=Dataset[1]
