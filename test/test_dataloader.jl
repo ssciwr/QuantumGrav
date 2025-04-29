@@ -45,7 +45,10 @@ end
     # Test loading data from the first file
     data=QuantumGrav.DataLoader.loadData(dataset, 1)
     @test length(data) == 50
+    @test length(data.linkMatrix) == 50
+    @test length(data.otherColumn) == 50
     @test length(data[1]) == 2
+    @test length(data[1].linkMatrix) == 100
     @test collect(keys(data[1])) == [:linkMatrix, :otherColumn]
     @test keys(data) == 1:50
 end

@@ -5,6 +5,7 @@ export QuantumGravDataset, loadData, collateMatrices, encodeMatrix
 import Arrow
 import Tables
 import Flux
+import StructArrays
 
 """
     QuantumGravDataset
@@ -96,7 +97,7 @@ Load data from simulated causal set data from an Arrow file the path of which is
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
 function loadData(d::QuantumGravDataset, i::Int)
-    return Tables.rowtable(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
+    return StructArrays.StructArray(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
 end
 
 """
