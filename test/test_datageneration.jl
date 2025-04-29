@@ -1,17 +1,12 @@
 using TestItems
-@testitem "get_manifolds_for_dim" tags=[:datageneration] begin
+
+@testsnippet importModules begin
     import QuantumGrav
-
-    manifolds = QuantumGrav.DataGeneration.get_manifolds_of_dim(2)
-    expected_manifolds = ["minkowski", "hypercylinder", "deSitter", "antiDeSitter", "torus"]
-    @test Set(keys(manifolds)) == Set(expected_manifolds)
-
-    manifolds = QuantumGrav.DataGeneration.get_manifolds_of_dim(21)
-    @test Set(keys(manifolds)) == Set(expected_manifolds)
+    import CausalSets
+    import SparseArrays
 end
 
-# Test makeLinkMatrix
-@testitem "makeLinkMatrix" tags=[:datageneration] begin
+@testsnippet makeData begin
     import CausalSets
     import QuantumGrav
     import SparseArrays
@@ -27,14 +22,24 @@ end
 
     cset_empty = MockData(0)
 
-    # Test case 1: Empty causal set
-    link_matrix_empty = QuantumGrav.DataGeneration.makeLinkMatrix(cset_empty)
+    cset_links = MockData(100)
+end
+
+@testitem "get_manifolds_for_dim" tags=[:datageneration] setup=[importModules] begin
+    manifolds=QuantumGrav.DataGeneration.get_manifolds_of_dim(2)
+    expected_manifolds=["minkowski", "hypercylinder", "deSitter", "antiDeSitter", "torus"]
+    @test Set(keys(manifolds)) == Set(expected_manifolds)
+
+    manifolds=QuantumGrav.DataGeneration.get_manifolds_of_dim(21)
+    @test Set(keys(manifolds)) == Set(expected_manifolds)
+end
+
+# Test makeLinkMatrix
+@testitem "makeLinkMatrix" tags=[:datageneration] setup=[makeData] begin
+    link_matrix_empty=QuantumGrav.DataGeneration.makeLinkMatrix(cset_empty)
     @test link_matrix_empty == SparseArrays.spzeros(Float32, 0, 0)
 
-    cset_links = MockData(100)
-
-    # Test case 2: Causal set with some links
-    link_matrix = QuantumGrav.DataGeneration.makeLinkMatrix(cset_links)
+    link_matrix=QuantumGrav.DataGeneration.makeLinkMatrix(cset_links)
     @test all(link_matrix .== 0.0) == false
     @test all(link_matrix .== 1.0) == false
     @test size(link_matrix) == (100, 100)
@@ -50,23 +55,11 @@ end
     end
 end
 
-@testitem "makeBdMatrix" tags=[:datageneration] begin
-    import CausalSets
-    import QuantumGrav
-    import SparseArrays
-
-    function MockData(n)
-        manifold = CausalSets.MinkowskiManifold{2}()
-        boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
-        sprinkling = CausalSets.generate_sprinkling(
-            manifold, boundary, Int(n))
-        cset = CausalSets.BitArrayCauset(manifold, sprinkling)
-        return cset
-    end
+@testitem "makeBdMatrix" tags=[:datageneration] setup=[makeData] begin
 
     # test that it works
-    ds_multiple = [3, 4, 5]
-    mat_multiple = QuantumGrav.DataGeneration.makeBdMatrix(ds_multiple, 4)
+    ds_multiple=[3, 4, 5]
+    mat_multiple=QuantumGrav.DataGeneration.makeBdMatrix(ds_multiple, 4)
     @test size(mat_multiple) == (4, 3)
     @test 0 < SparseArrays.nnz(mat_multiple) <= 3*4
 
@@ -76,29 +69,13 @@ end
         [1, 2], 0)
 end
 
-@testitem "makeCardinalityMatrix" tags=[:datageneration] begin
-    import CausalSets
-    import QuantumGrav
-    import SparseArrays
-
-    function MockData(n)
-        manifold = CausalSets.MinkowskiManifold{2}()
-        boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
-        sprinkling = CausalSets.generate_sprinkling(
-            manifold, boundary, Int(n))
-        cset = CausalSets.BitArrayCauset(manifold, sprinkling)
-        return cset
-    end
-
-    # Test case 1: Empty causal set
-    cset_empty = MockData(0)
+@testitem "makeCardinalityMatrix" tags=[:datageneration] setup=[makeData] begin
     @test_throws "The causal set must not be empty." QuantumGrav.DataGeneration.makeCardinalityMatrix(cset_empty)
 
     # Test case 2: Causal set with some cardinalities
-    cset_links = MockData(5,)
-    cardinality_matrix_links = QuantumGrav.DataGeneration.makeCardinalityMatrix(cset_links)
-    expected_matrix = SparseArrays.spzeros(Float32, 5, 5)
-    @test 0 < SparseArrays.nnz(cardinality_matrix_links) <= 5*5
+    cardinality_matrix_links=QuantumGrav.DataGeneration.makeCardinalityMatrix(cset_links)
+    expected_matrix=SparseArrays.spzeros(Float32, 100, 100)
+    @test 0 < SparseArrays.nnz(cardinality_matrix_links) <= 100*100
 end
 
 @testitem "generateDataForManifold" tags=[:datageneration] begin
