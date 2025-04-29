@@ -1,6 +1,6 @@
 module DataLoader
 
-export QuantumGravDataset, loadData, collateMatrices, encodeMatrix
+export Dataset, loadData, collateMatrices, encodeMatrix
 
 import Arrow
 import Tables
@@ -8,39 +8,22 @@ import Flux
 import StructArrays
 
 """
-    QuantumGravDataset
+    Dataset
 
 A mutable struct for efficiently loading and caching simulated causal set data from Arrow files, based on MLUtils.DataLoader. This loader assumes that each file contains multiple rows of data, and each row is a matrix of Float32 values. The data is loaded in batches, and the loader caches the loaded data to minimize file I/O operations. The amount of caching is configurable.
 
 # Fields
 - `base_path::String`: The base directory path where the data files are located
 - `file_paths::Vector{String}`: Relative paths to the Arrow files containing the data
-- `batch_size::Int`: Number of samples to load at once
 - `indices::Dict{Int, Tuple{Int, Int}}`: Mapping from global indices to (file_index, row_index) tuples
 - `file_length::Int`: Number of rows in each file (assumed to be consistent across files)
 - `buffer::Dict{Int, Array{Matrix{Float32}}}`: Cache for loaded data to minimize file I/O
 - `max_buffer_size::Int64`: Maximum number of files to keep in memory
 
-# Constructor
-    QuantumGravDataset(base_path::String, file_paths::Vector{String}; 
-                       batch_size::Int = 1, 
-                       cache_size::Int = 5, 
-                       columns::Vector{Symbol} = [:linkMatrix])
-
-Creates a new `QuantumGravDataset` with the specified parameters.
-
-# Arguments
-- `base_path::String`: The base directory path where the data files are located
-- `file_paths::Vector{String}`: Relative paths to the Arrow files containing the data
-
-# Keywords
-- `batch_size::Int = 1`: Number of samples to load at once
-- `cache_size::Int = 5`: Maximum number of files to keep in memory
 """
-mutable struct QuantumGravDataset
+mutable struct Dataset
     base_path::String
     file_paths::Vector{String}
-    batch_size::Int
     indices::Dict{Int, Tuple{Int, Int}}
     file_length::Int
     buffer::Dict{Int, Any}
@@ -48,23 +31,22 @@ mutable struct QuantumGravDataset
 end
 
 """
-    QuantumGravDataset(base_path::String, file_paths::Vector{String}; batch_size::Int=1, cache_size::Int=5)
+    Dataset(base_path::String, file_paths::Vector{String}; cache_size::Int=5)
 
-Construct a `QuantumGravDataset` object from Arrow files for quantum gravity simulations.
+Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 
 # Arguments
 - `base_path::String`: Base directory containing Arrow data files.
 - `file_paths::Vector{String}`: Paths to Arrow files relative to `base_path`.
 
 # Keywords
-- `batch_size::Int=1`: Number of samples per batch.
 - `cache_size::Int=5`: Maximum number of files to keep in memory cache.
 
 # Returns
-- `QuantumGravDataset`: A dataset object for accessing quantum gravity simulation data.
+- `Dataset`: A Dataset object for accessing quantum gravity simulation data.
 """
-function QuantumGravDataset(
-        base_path::String, file_paths::Vector{String}; batch_size::Int = 1,
+function Dataset(
+        base_path::String, file_paths::Vector{String};
         cache_size::Int = 5)
     file_length = length(Tables.getcolumn(
         Arrow.Table(base_path*"/"*file_paths[1]), :linkMatrix))
@@ -80,36 +62,36 @@ function QuantumGravDataset(
         end
     end
 
-    return QuantumGravDataset(base_path, file_paths, batch_size, indices, file_length,
+    return Dataset(base_path, file_paths, indices, file_length,
         Dict{Int, Array{Matrix{Float32}}}(), cache_size)
 end
 
 """
-    loadData(d::QuantumGravDataset, i::Int)
+    loadData(d::Dataset, i::Int)
 
-Load data from simulated causal set data from an Arrow file the path of which is stored in the passed `QuantumGravDataset` object.
+Load data from simulated causal set data from an Arrow file the path of which is stored in the passed `Dataset` object.
 
 # Arguments
-- `d::QuantumGravDataset`: Dataset to load from
+- `d::Dataset`: Dataset to load from
 - `i::Int`: Index of the file to load
 
 # Returns
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
-function loadData(d::QuantumGravDataset, i::Int)
+function loadData(d::Dataset, i::Int)
     return StructArrays.StructArray(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
 end
 
 """
-    length(d::QuantumGravDataset)
-Get the number of files in the dataset.
+    length(d::Dataset)
+Get the number of files in the Dataset.
 """
-Base.length(d::QuantumGravDataset) = length(d.indices)
+Base.length(d::Dataset) = length(d.indices)
 
 """
-    getindex(data::QuantumGravDataset, i::Int) -> Any
+    getindex(data::Dataset, i::Int) -> Any
 
-Retrieve a specific element from a `QuantumGravDataset`, which is a particular entry in a file.
+Retrieve a specific element from a `Dataset`, which is a particular entry in a file.
 
 This method implements a buffer mechanism to efficiently load and retrieve data:
 1. Converts the linear index `i` to file and member indices (`f_idx`, `m_idx`)
@@ -120,13 +102,13 @@ This method implements a buffer mechanism to efficiently load and retrieve data:
 6. Returns the requested member from the newly loaded file
 
 # Arguments
-- `data::QuantumGravDataset`: The dataset to access
+- `data::Dataset`: The Dataset to access
 - `i::Int`: The linear index of the element to retrieve
 
 # Returns
 - The data element at the specified index
 """
-function Base.getindex(data::QuantumGravDataset, i::Int)
+function Base.getindex(data::Dataset, i::Int)
     f_idx, m_idx = data.indices[i]
 
     if f_idx in keys(data.buffer)
@@ -142,19 +124,19 @@ function Base.getindex(data::QuantumGravDataset, i::Int)
 end
 
 """
-    getindex(d::QuantumGravDataset, is::Vector{Int}) -> Vector
+    getindex(d::Dataset, is::Vector{Int}) -> Vector
 
-Return a vector of data points from the dataset `d` at the indices specified in `is`.
+Return a vector of data points from the Dataset `d` at the indices specified in `is`.
 
 # Arguments
-- `d::QuantumGravDataset`: The dataset to index into.
+- `d::Dataset`: The Dataset to index into.
 - `is::Vector{Int}`: A vector of indices.
 
 # Returns
 - `Vector`: A vector containing the data points at the specified indices.
 
 """
-function Base.getindex(d::QuantumGravDataset, is::Vector{Int})
+function Base.getindex(d::Dataset, is::Vector{Int})
     return [d[i] for i in is]
 end
 

@@ -21,29 +21,29 @@ using TestItems
     dir = makeMockData(3, 50)
 end
 
-@testitem "DataLoader.constructQuantumGravDataset" tags=[:dataloader] setup=[MakeData] begin
+@testitem "DataLoader.constructDataset" tags=[:dataloader] setup=[MakeData] begin
 
-    # Initialize the QuantumGravDataset
-    dataset=QuantumGrav.DataLoader.QuantumGravDataset(
+    # Initialize the Dataset
+    Dataset=QuantumGrav.DataLoader.Dataset(
         dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
 
     # Test the constructor
-    @test dataset.base_path == dir
-    @test dataset.file_paths ==
+    @test Dataset.base_path == dir
+    @test Dataset.file_paths ==
           ["test_data_1.arrow", "test_data_2.arrow", "test_data_3.arrow"]
-    @test dataset.batch_size == 5
-    @test dataset.file_length == 50
-    @test length(dataset.indices) == 3 * 50
-    @test dataset.max_buffer_size == 2
+    @test Dataset.batch_size == 5
+    @test Dataset.file_length == 50
+    @test length(Dataset.indices) == 3 * 50
+    @test Dataset.max_buffer_size == 2
 end
 
 @testitem "DataLoader.loadData" tags=[:dataloader] setup=[MakeData] begin
     import Tables
-    dataset=QuantumGrav.DataLoader.QuantumGravDataset(
+    Dataset=QuantumGrav.DataLoader.Dataset(
         dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
 
     # Test loading data from the first file
-    data=QuantumGrav.DataLoader.loadData(dataset, 1)
+    data=QuantumGrav.DataLoader.loadData(Dataset, 1)
     @test length(data) == 50
     @test length(data.linkMatrix) == 50
     @test length(data.otherColumn) == 50
@@ -54,20 +54,20 @@ end
 end
 
 @testitem "DataLoader.getindex" tags=[:dataloader] setup=[MakeData] begin
-    dataset=QuantumGrav.DataLoader.QuantumGravDataset(
+    Dataset=QuantumGrav.DataLoader.Dataset(
         dir, collect(readdir(dir)); batch_size = 5, cache_size = 2)
 
-    # Test getting an index from the dataset
-    first=dataset[1]
+    # Test getting an index from the Dataset
+    first=Dataset[1]
     @test collect(keys(first)) == [:linkMatrix, :otherColumn]
-    @test length(dataset.buffer) == 1
+    @test length(Dataset.buffer) == 1
 
     # Test getting a batch of data at once
-    multiple=dataset[[1, 45, 75, 142]]
+    multiple=Dataset[[1, 45, 75, 142]]
     @test length(multiple) == 4
     @test length(multiple[1].linkMatrix) == 100
     @test length(multiple[1].otherColumn) == 1
-    @test length(dataset.buffer) == 2
+    @test length(Dataset.buffer) == 2
 end
 
 @testitem "DataLoader.collateMatrices" tags=[:dataloader] setup=[MakeData] begin
