@@ -68,24 +68,3 @@ end
     @test length(multiple[1].otherColumn) == 1
     @test length(Dataset.buffer) == 2
 end
-
-@testitem "DataLoader.collateMatrices" tags=[:dataloader] setup=[MakeData] begin
-
-    # Test collating matrices
-    rows=[8, 9, 12, 10, 7]
-
-    columns=[12, 9, 11, 12, 10]
-
-    data=[rand(Float32, rows[i], columns[i]) for i in 1:5]
-
-    collated_data=QuantumGrav.DataLoader.collateMatrices(data)
-
-    @test size(collated_data) == (12, 12, 5)
-
-    # Test collating matrices with equal sizes --> only put together 
-    data=[rand(Float32, 10, 10) for i in 1:5]
-
-    collated_data=QuantumGrav.DataLoader.collateMatrices(data)
-
-    @test size(collated_data) == (10, 10, 5)
-end

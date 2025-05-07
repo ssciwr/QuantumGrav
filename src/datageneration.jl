@@ -30,8 +30,7 @@ a function `is_link(cset, i, j)` that determines if there is a causal link
 between elements `i` and `j`.
 
 # Returns
-- A sparse matrix (`SparseMatrixCSC{Float32}`) representing the link structure
-of the causal set.
+- A sparse matrix (`SparseMatrixCSC{Float32}`) representing the link structure of the causal set.
 
 # Notes
 - The function uses a nested loop to iterate over all pairs of elements in the
@@ -147,6 +146,7 @@ Generates a cset and a variet of data for a given manifold and dimension.
 - `seed::Int` (default: `329478`): The random seed for reproducibility.
 - `num_datapoints::Int` (default: `1500`): The number of data points to generate.
 - `equal_size::Bool` (default: `false`): If `true`, all sprinklings will have the same size; otherwise, sizes are sampled from `size_distr`.
+- `size_func::Function` (default: `d -> 10^(d + 1)`): A function that defines the size of the caussets, i.e., the number of events.
 - `size_distr::Function` (default: `d -> Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1))`): A function that defines the size distribution of the sprinklings.
 - `make_diamond::Function` (default: `d -> CausalDiamondBoundary{d}(1.0)`): A function to create a causal diamond boundary for the manifold.
 - `make_box::Function` (default: `d -> BoxBoundary{d}((([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,))))`): A function to create a box boundary for the manifold.
@@ -181,6 +181,7 @@ function generateDataForManifold(
         seed = 329478,
         num_datapoints = 1500,
         equal_size = false,
+        size_func = d -> 10^(d + 1),
         size_distr = d -> Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)),
         make_diamond = d->CausalDiamondBoundary{d}(1.0),
         make_box = d->BoxBoundary{d}((
@@ -189,6 +190,7 @@ function generateDataForManifold(
     data = Dict(
         "idx" => Int64[],
         "n" => Float32[],
+        "nmax" => Float32[],
         "dimension" => Float32[],
         "manifold" => String[],
         "coords" => Vector{Vector{Float32}}[],
@@ -207,6 +209,7 @@ function generateDataForManifold(
 
     # make nested vectors for thread safe writing which later will be concatenated
     idxs = [Int64[] for i in 1:Threads.nthreads()]
+    nmaxs = [Float32[] for i in 1:Threads.nthreads()]
     ns = [Float32[] for i in 1:Threads.nthreads()]
     dimensions = [Float32[] for i in 1:Threads.nthreads()]
     manifolds = [String[] for i in 1:Threads.nthreads()]
@@ -233,15 +236,19 @@ function generateDataForManifold(
     # Use Threads.@threads to parallelize the loop, put everything into 
     # arrays indexed with threadid 
     Threads.@threads for p in 1:num_datapoints
-        n = 10^(dimension + 1)
+        n = size_func(dimension)
+        nmax = n
         if equal_size == false
             n = Int64(floor(rand(rng, distr)))
+            nmax = distr.b
         end
 
         sprinkling = generate_sprinkling(
             manifold, boundary, Int(n), rng = rng)
 
         c = BitArrayCauset(manifold, sprinkling)
+
+        push!(nmaxs[Threads.threadid()], nmax)
 
         push!(idxs[Threads.threadid()], idx)
 
@@ -268,8 +275,12 @@ function generateDataForManifold(
 
         push!(chains_10s[Threads.threadid()], count_chains(c, 10))
 
+        cp = cardinality_abundances(c)
+        if isnothing(cp)
+            cp = Float32(0)
+        end
         push!(cardinality_abundancess[Threads.threadid()],
-            convert.(Float32, cardinality_abundances(c)))
+            convert.(Float32, cp))
 
         push!(relation_dimensions[Threads.threadid()], estimate_relation_dimension(c))
 
@@ -283,6 +294,7 @@ function generateDataForManifold(
     # Concatenate the results from all threads into the main data dictionary
     data["idx"] = vcat(idxs...)
     data["n"] = vcat(ns...)
+    data["nmax"] = vcat(nmaxs...)
     data["dimension"] = vcat(dimensions...)
     data["manifold"] = vcat(manifolds...)
     data["coords"] = vcat(coordss...)

@@ -26,6 +26,7 @@ mutable struct Dataset
     file_paths::Vector{String}
     indices::Dict{Int, Tuple{Int, Int}}
     file_length::Int
+    columns::Vector{Symbol}
     buffer::Dict{Int, Any}
     max_buffer_size::Int64
 end
@@ -47,7 +48,7 @@ Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 """
 function Dataset(
         base_path::String, file_paths::Vector{String};
-        cache_size::Int = 5)
+        cache_size::Int = 5, columns::Union{Vector{Symbol}, Symbol} = :all)
     file_length = length(Tables.getcolumn(
         Arrow.Table(base_path*"/"*file_paths[1]), :linkMatrix))
 
@@ -62,7 +63,7 @@ function Dataset(
         end
     end
 
-    return Dataset(base_path, file_paths, indices, file_length,
+    return Dataset(base_path, file_paths, indices, file_length, columns,
         Dict{Int, Array{Matrix{Float32}}}(), cache_size)
 end
 
@@ -79,7 +80,16 @@ Load data from simulated causal set data from an Arrow file the path of which is
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
 function loadData(d::Dataset, i::Int)
-    return StructArrays.StructArray(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
+    if d.columns == :all
+        return StructArrays.StructArray(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
+    else
+        # FIXME: this is an absolutely terrible way to do this
+        # but it works for now
+        table = Arrow.Table(d.base_path*"/"*d.file_paths[i])
+        return StructArrays.StructArray(Tables.columntable(Dict(
+            col => Tables.getcolumn(table, col) for col in d.columns
+        )))
+    end
 end
 
 """
@@ -138,44 +148,6 @@ Return a vector of data points from the Dataset `d` at the indices specified in 
 """
 function Base.getindex(d::Dataset, is::Vector{Int})
     return [d[i] for i in is]
-end
-
-"""
-    collateMatrices(batch)
-
-Pads a batch of matrices to have uniform dimensions based on the largest matrix in the batch.
-
-# Arguments
-- `batch`: An array of matrices with potentially different dimensions.
-
-# Returns
-- A 3D tensor of size `(batch_size, max_rows, max_cols)` where:
-  - `batch_size` is the number of matrices in `batch`
-  - `max_rows` is the maximum number of rows among all matrices in `batch`
-  - `max_cols` is the maximum number of columns among all matrices in `batch`
-
-All matrices are padded with zeros to match the maximum dimensions.
-"""
-function collateMatrices(batch)
-
-    # Find maximum dimensions
-    max_rows = maximum(size(mat, 1) for mat in batch)
-    max_cols = maximum(size(mat, 2) for mat in batch)
-
-    if max_rows == 0 || max_cols == 0
-        return cat(batch..., dims = 3)
-    end
-
-    # Create padded batch tensor
-    padded_batch = zeros(Float32, max_rows, max_cols, length(batch))
-
-    # Fill in the values
-    for (i, mat) in enumerate(batch)
-        rows, cols = size(mat)
-        padded_batch[1:rows, 1:cols, i] = mat
-    end
-
-    return padded_batch
 end
 
 end
