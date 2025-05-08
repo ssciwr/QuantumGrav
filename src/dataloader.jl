@@ -7,6 +7,16 @@ import Tables
 import Flux
 import StructArrays
 
+abstract type AbstractDataset end
+
+function collate_matrix(x::Matrix{T}, n::Int64, m::Int64)::Matrix{T} where {T}
+    mat = zeros(T, n, m);
+
+    n_, m_ = size(x);
+    mat[1:n_, 1:m_] = x;
+    return mat;
+end
+
 """
     Dataset
 
@@ -21,7 +31,7 @@ A mutable struct for efficiently loading and caching simulated causal set data f
 - `max_buffer_size::Int64`: Maximum number of files to keep in memory
 
 """
-mutable struct Dataset
+mutable struct Dataset <: AbstractDataset
     base_path::String
     file_paths::Vector{String}
     indices::Dict{Int, Tuple{Int, Int}}
@@ -83,12 +93,20 @@ function loadData(d::Dataset, i::Int)
     if d.columns == :all
         return StructArrays.StructArray(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
     else
-        # FIXME: this is an absolutely terrible way to do this
-        # but it works for now
         table = Arrow.Table(d.base_path*"/"*d.file_paths[i])
-        return StructArrays.StructArray(Tables.columntable(Dict(
-            col => Tables.getcolumn(table, col) for col in d.columns
+
+        m = Tables.getcolumn(table, :linkMatrix)
+        n = Tables.getcolumn(table, :n)
+        nmax = Tables.getcolumn(table, :nmax)
+        link_matrix = [collate_matrix(reshape(collect(m[i]), Int(n[i]), Int(n[i])),
+                           Int(nmax[i]), Int(nmax[i])) for i in 1:length(m)]
+
+        s = StructArrays.StructArray(Tables.columntable(Dict(
+            col => col == :linkMatrix ? link_matrix : Tables.getcolumn(table, col)
+        for col in d.columns
         )))
+
+        return s
     end
 end
 
