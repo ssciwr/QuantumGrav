@@ -1,6 +1,6 @@
 module DataLoader
 
-export Dataset, loadData, collateMatrices, encodeMatrix
+export Dataset, loadData, collate_matrix
 
 import Arrow
 import Tables

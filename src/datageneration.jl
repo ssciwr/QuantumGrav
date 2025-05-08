@@ -6,6 +6,13 @@ using Random
 
 export generateDataForManifold
 
+valid_manifolds = [
+    "minkowski",
+    "hypercylinder",
+    "deSitter",
+    "antiDeSitter",
+    "torus"]
+
 function get_manifolds_of_dim(d::Int64)
     Dict(
         "minkowski" => MinkowskiManifold{d}(),
@@ -132,7 +139,7 @@ function makeBdMatrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
 end
 
 """
-    generateDataForManifold(; dimension=2, manifoldname="minkowski", seed=329478, 
+    generateDataForManifold(; dimension=2, seed=329478, 
                             num_datapoints=1500, equal_size=false, 
                             size_distr=d -> Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)), 
                             make_diamond=d -> CausalDiamondBoundary{d}(1.0), 
@@ -142,7 +149,6 @@ Generates a cset and a variet of data for a given manifold and dimension.
 
 # Keyword Arguments
 - `dimension::Int` (default: `2`): The dimension of the manifold.
-- `manifoldname::String` (default: `"minkowski"`): The name of the manifold to generate data for.
 - `seed::Int` (default: `329478`): The random seed for reproducibility.
 - `num_datapoints::Int` (default: `1500`): The number of data points to generate.
 - `equal_size::Bool` (default: `false`): If `true`, all sprinklings will have the same size; otherwise, sizes are sampled from `size_distr`.
@@ -177,7 +183,6 @@ Generates a cset and a variet of data for a given manifold and dimension.
 """
 function generateDataForManifold(
         ; dimension = 2,
-        manifoldname = "minkowski",
         seed = 329478,
         num_datapoints = 1500,
         equal_size = false,
@@ -227,9 +232,10 @@ function generateDataForManifold(
     chain_dimension_4s = [Float32[] for i in 1:Threads.nthreads()]
 
     # build helper stuff 
-    manifold = get_manifolds_of_dim(dimension)[manifoldname]
-    boundary = manifoldname == "torus" ? make_box(dimension) : make_diamond(dimension)
     rng = Random.MersenneTwister(seed)
+    manifoldname = valid_manifolds[rand(rng, 1:length(valid_manifolds))]
+    manifold = get_manifolds_of_dim(dimension)[manifoldname]
+    boundary = (manifoldname == "torus") ? make_box(dimension) : make_diamond(dimension)
     distr = size_distr(dimension)
     idx = 1
 
@@ -279,6 +285,7 @@ function generateDataForManifold(
         if isnothing(cp)
             cp = Float32(0)
         end
+
         push!(cardinality_abundancess[Threads.threadid()],
             convert.(Float32, cp))
 
