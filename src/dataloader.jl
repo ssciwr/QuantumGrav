@@ -1,11 +1,12 @@
 module DataLoader
 
-export Dataset, loadData, collateMatrices, encodeMatrix
+export Dataset, loadData
 
 import Arrow
 import Tables
 import Flux
-import StructArrays
+import JLD2
+
 
 """
     Dataset
@@ -19,15 +20,16 @@ A mutable struct for efficiently loading and caching simulated causal set data f
 - `file_length::Int`: Number of rows in each file (assumed to be consistent across files)
 - `buffer::Dict{Int, Array{Matrix{Float32}}}`: Cache for loaded data to minimize file I/O
 - `max_buffer_size::Int64`: Maximum number of files to keep in memory
-
+- `mode::String`: The mode of data loading, either "jld2" or "arrow"
 """
 mutable struct Dataset
     base_path::String
-    file_paths::Vector{String}
+    file_paths::Union{Vector{String}, String}
     indices::Dict{Int, Tuple{Int, Int}}
     file_length::Int
     buffer::Dict{Int, Any}
     max_buffer_size::Int64
+    mode::String  # jld2 or arrow
 end
 
 """
@@ -46,25 +48,50 @@ Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 - `Dataset`: A Dataset object for accessing quantum gravity simulation data.
 """
 function Dataset(
-        base_path::String, file_paths::Vector{String};
+        base_path::String, file_paths::Union{Vector{String}, String};
+        mode::String = "arrow",
         cache_size::Int = 5)
-    file_length = length(Tables.getcolumn(
-        Arrow.Table(base_path*"/"*file_paths[1]), :linkMatrix))
 
+    chunk_size = 0
+    
     indices = Dict{Int, Tuple{Int, Int}}()
+    
+    idx = 1
 
-    g_idx = 1
+    if mode == "arrow"
+        chunk_size = length(Tables.getcolumn(
+            Arrow.Table(base_path*"/"*file_paths[1]), :linkMatrix))
 
-    for f in 1:length(file_paths)
-        for i in 1:file_length
-            indices[g_idx] = (f, i)
-            g_idx += 1
+        for f in 1:length(file_paths)
+            for i in 1:chunk_size
+                indices[idx] = (f, i)
+                idx += 1
+            end
         end
+
+    elseif mode == "jld2"
+
+        # in jld2 everything is stored in a single file with 
+        chunks, chunk_size = JLD2.jldopen(
+            base_path*"/"*file_paths, "r") do file
+
+            length(file), length(file["chunk1"]["linkMatrix"])
+        end
+
+        for f in 1:chunks
+            for i in 1:chunk_size
+                indices[idx] = (f, i)
+                idx += 1
+            end
+        end
+    else 
+        throw(ArgumentError("Unsupported mode: $mode"))
     end
 
-    return Dataset(base_path, file_paths, indices, file_length,
-        Dict{Int, Array{Matrix{Float32}}}(), cache_size)
+    return Dataset(base_path, file_paths, indices, chunk_size,
+        Dict{Int, Array{Matrix{Float32}}}(), cache_size, mode)
 end
+
 
 """
     loadData(d::Dataset, i::Int)
@@ -79,7 +106,15 @@ Load data from simulated causal set data from an Arrow file the path of which is
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
 function loadData(d::Dataset, i::Int)
-    return StructArrays.StructArray(Arrow.Table(d.base_path*"/"*d.file_paths[i]))
+    if d.mode == "arrow"
+        Arrow.Table(d.base_path*"/"*d.file_paths[i])
+    else 
+        JLD2.jldopen(
+            d.base_path*"/"*d.file_paths, "r") do file
+                group = file["chunk$i"]
+                Dict(Symbol(k): group[k] for k in keys(group))
+        end
+    end
 end
 
 """
@@ -136,46 +171,9 @@ Return a vector of data points from the Dataset `d` at the indices specified in 
 - `Vector`: A vector containing the data points at the specified indices.
 
 """
-function Base.getindex(d::Dataset, is::Vector{Int})
+function Base.getindex(d::Dataset, is::Union{Vector{Integer}, AbstractRange{Integer}})
     return [d[i] for i in is]
 end
 
-"""
-    collateMatrices(batch)
-
-Pads a batch of matrices to have uniform dimensions based on the largest matrix in the batch.
-
-# Arguments
-- `batch`: An array of matrices with potentially different dimensions.
-
-# Returns
-- A 3D tensor of size `(batch_size, max_rows, max_cols)` where:
-  - `batch_size` is the number of matrices in `batch`
-  - `max_rows` is the maximum number of rows among all matrices in `batch`
-  - `max_cols` is the maximum number of columns among all matrices in `batch`
-
-All matrices are padded with zeros to match the maximum dimensions.
-"""
-function collateMatrices(batch)
-
-    # Find maximum dimensions
-    max_rows = maximum(size(mat, 1) for mat in batch)
-    max_cols = maximum(size(mat, 2) for mat in batch)
-
-    if max_rows == 0 || max_cols == 0
-        return cat(batch..., dims = 3)
-    end
-
-    # Create padded batch tensor
-    padded_batch = zeros(Float32, max_rows, max_cols, length(batch))
-
-    # Fill in the values
-    for (i, mat) in enumerate(batch)
-        rows, cols = size(mat)
-        padded_batch[1:rows, 1:cols, i] = mat
-    end
-
-    return padded_batch
-end
 
 end

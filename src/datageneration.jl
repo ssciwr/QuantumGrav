@@ -198,14 +198,14 @@ function generateDataForManifold(
         "relation_count" => Float32[],
         "chains_3" => Float32[],
         "chains_4" => Float32[],
-        "chains_10" => [],
+        "chains_10" => Float32[],
         "cardinality_abundances" => Vector{Float32}[],
         "relation_dimension" => Float32[],
         "chain_dimension_3" => Float32[],
         "chain_dimension_4" => Float32[]
     )
 
-    # make nested vectors for thread safe writing which later will be concatenated
+    # make nested vectors for thread safe writing which later will be concatenated. This is kinda shitty, but works for now and is thread safe
     idxs = [Int64[] for i in 1:Threads.nthreads()]
     ns = [Float32[] for i in 1:Threads.nthreads()]
     dimensions = [Float32[] for i in 1:Threads.nthreads()]
