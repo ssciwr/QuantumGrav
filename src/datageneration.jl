@@ -6,6 +6,14 @@ using Random
 
 export generateDataForManifold
 
+valid_manifolds = [
+    "minkowski",
+    "hypercylinder",
+    "deSitter",
+    "antiDeSitter",
+    "torus"
+]
+
 function get_manifolds_of_dim(d::Int64)
     Dict(
         "minkowski" => MinkowskiManifold{d}(),
@@ -17,7 +25,7 @@ function get_manifolds_of_dim(d::Int64)
 end
 
 """
-    makeLinkMatrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32}
+    make_link_matrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32}
 
 Generates a sparse link matrix for the given causal set (`cset`). The link matrix
 is a square matrix where each entry `(i, j)` is `1` if there is a causal link
@@ -39,7 +47,7 @@ causal set, so its complexity is quadratic in the number of elements.
 - The sparse matrix representation is used to save memory, as most entries
 are expected to be zero in typical causal sets.
 """
-function makeLinkMatrix(cset::AbstractCauset)
+function make_link_matrix(cset::AbstractCauset)
     link_matrix = spzeros(Float32, cset.atom_count, cset.atom_count)
     for i in 1:(cset.atom_count)
         for j in 1:(cset.atom_count)
@@ -133,7 +141,7 @@ function makeBdMatrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
 end
 
 """
-    generateDataForManifold(; dimension=2, manifoldname="minkowski", seed=329478, 
+    generateDataForManifold(; dimension=2, seed=329478, 
                             num_datapoints=1500, equal_size=false, 
                             size_distr=d -> Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)), 
                             make_diamond=d -> CausalDiamondBoundary{d}(1.0), 
@@ -143,10 +151,10 @@ Generates a cset and a variet of data for a given manifold and dimension.
 
 # Keyword Arguments
 - `dimension::Int` (default: `2`): The dimension of the manifold.
-- `manifoldname::String` (default: `"minkowski"`): The name of the manifold to generate data for.
 - `seed::Int` (default: `329478`): The random seed for reproducibility.
 - `num_datapoints::Int` (default: `1500`): The number of data points to generate.
 - `equal_size::Bool` (default: `false`): If `true`, all sprinklings will have the same size; otherwise, sizes are sampled from `size_distr`.
+- `size_func::Function` (default: `d -> 10^(d + 1)`): A function that defines the size of the caussets, i.e., the number of events.
 - `size_distr::Function` (default: `d -> Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1))`): A function that defines the size distribution of the sprinklings.
 - `make_diamond::Function` (default: `d -> CausalDiamondBoundary{d}(1.0)`): A function to create a causal diamond boundary for the manifold.
 - `make_box::Function` (default: `d -> BoxBoundary{d}((([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,))))`): A function to create a box boundary for the manifold.
@@ -177,65 +185,61 @@ Generates a cset and a variet of data for a given manifold and dimension.
 """
 function generateDataForManifold(
         ; dimension = 2,
-        manifoldname = "minkowski",
         seed = 329478,
         num_datapoints = 1500,
         equal_size = false,
+        size_func = d -> 10^(d + 1),
         size_distr = d -> Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)),
         make_diamond = d->CausalDiamondBoundary{d}(1.0),
         make_box = d->BoxBoundary{d}((
             ([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,)))
 )
-    data = Dict(
-        "idx" => Int64[],
-        "n" => Float32[],
-        "dimension" => Float32[],
-        "manifold" => String[],
-        "coords" => Vector{Vector{Float32}}[],
-        "future_relations" => Vector{Vector{Int8}}[],
-        "past_relations" => Vector{Vector{Int8}}[],
-        "linkMatrix" => SparseMatrixCSC{Float32, Int32}[],
-        "relation_count" => Float32[],
-        "chains_3" => Float32[],
-        "chains_4" => Float32[],
-        "chains_10" => Float32[],
-        "cardinality_abundances" => Vector{Float32}[],
-        "relation_dimension" => Float32[],
-        "chain_dimension_3" => Float32[],
-        "chain_dimension_4" => Float32[]
+    field_types = Dict(
+        "idx" => Int64,
+        "n" => Float32,
+        "nmax" => Float32,
+        "dimension" => Float32,
+        "manifold" => String,
+        "coords" => Vector{Vector{Float32}},
+        "future_relations" => Vector{Vector{Int8}},
+        "past_relations" => Vector{Vector{Int8}},
+        "linkMatrix" => SparseMatrixCSC{Float32, Int32},
+        "relation_count" => Float32,
+        "chains_3" => Float32,
+        "chains_4" => Float32,
+        "chains_10" => Float32,
+        "cardinality_abundances" => Vector{Float32},
+        "relation_dimension" => Float32,
+        "chain_dimension_3" => Float32,
+        "chain_dimension_4" => Float32
     )
 
-    # make nested vectors for thread safe writing which later will be concatenated. This is kinda shitty, but works for now and is thread safe
-    idxs = [Int64[] for i in 1:Threads.nthreads()]
-    ns = [Float32[] for i in 1:Threads.nthreads()]
-    dimensions = [Float32[] for i in 1:Threads.nthreads()]
-    manifolds = [String[] for i in 1:Threads.nthreads()]
-    coordss = [Vector{Vector{Float32}}[] for i in 1:Threads.nthreads()]
-    past_relations = [Vector{Vector{Int8}}[] for i in 1:Threads.nthreads()]
-    future_relations = [Vector{Vector{Int8}}[] for i in 1:Threads.nthreads()]
-    linkMatrixs = [SparseMatrixCSC{Float32, Int32}[] for i in 1:Threads.nthreads()]
-    relation_counts = [Float32[] for i in 1:Threads.nthreads()]
-    chains_3s = [Float32[] for i in 1:Threads.nthreads()]
-    chains_4s = [Float32[] for i in 1:Threads.nthreads()]
-    chains_10s = [Float32[] for i in 1:Threads.nthreads()]
-    cardinality_abundancess = [Vector{Float32}[] for i in 1:Threads.nthreads()]
-    relation_dimensions = [Float32[] for i in 1:Threads.nthreads()]
-    chain_dimension_3s = [Float32[] for i in 1:Threads.nthreads()]
-    chain_dimension_4s = [Float32[] for i in 1:Threads.nthreads()]
+    thread_data = Dict(k => [Vector{T}() for _ in 1:Threads.nthreads()] for (k, T) in field_types)
 
     # build helper stuff 
-    manifold = get_manifolds_of_dim(dimension)[manifoldname]
-    boundary = manifoldname == "torus" ? make_box(dimension) : make_diamond(dimension)
     rng = Random.MersenneTwister(seed)
+    
+    manifoldname = valid_manifolds[rand(rng, 1:length(valid_manifolds))]
+    
+    manifold = get_manifolds_of_dim(dimension)[manifoldname]
+    
+    boundary = (manifoldname == "torus") ? make_box(dimension) : make_diamond(dimension)
+    
     distr = size_distr(dimension)
+
     idx = 1
 
     # Use Threads.@threads to parallelize the loop, put everything into 
     # arrays indexed with threadid 
     Threads.@threads for p in 1:num_datapoints
-        n = 10^(dimension + 1)
+
+        n = size_func(dimension)
+
+        nmax = n
+
         if equal_size == false
             n = Int64(floor(rand(rng, distr)))
+            nmax = distr.b
         end
 
         sprinkling = generate_sprinkling(
@@ -243,62 +247,53 @@ function generateDataForManifold(
 
         c = BitArrayCauset(manifold, sprinkling)
 
-        push!(idxs[Threads.threadid()], idx)
+        push!(thread_data["nmax"][Threads.threadid()], nmax)
 
-        push!(ns[Threads.threadid()], n)
+        push!(thread_data["idx"][Threads.threadid()], idx)
 
-        push!(dimensions[Threads.threadid()], dimension)
+        push!(thread_data["n"][Threads.threadid()], n)
 
-        push!(manifolds[Threads.threadid()], manifoldname)
+        push!(thread_data["dimension"][Threads.threadid()], dimension)
 
-        push!(coordss[Threads.threadid()], map(x -> [x...], sprinkling))
+        push!(thread_data["manifold"][Threads.threadid()], manifoldname)
 
-        push!(past_relations[Threads.threadid()], convert.(Vector{Int8}, c.past_relations))
+        push!(thread_data["coords"][Threads.threadid()], map(x -> [x...], sprinkling))
 
-        push!(future_relations[Threads.threadid()],
+        push!(thread_data["past_relation"][Threads.threadid()], convert.(Vector{Int8}, c.past_relations))
+
+        push!(thread_data["future_relation"][Threads.threadid()],
             convert.(Vector{Int8}, c.future_relations))
 
-        push!(linkMatrixs[Threads.threadid()], makeLinkMatrix(c))
+        push!(thread_data["linkMatrix"][Threads.threadid()], make_link_matrix(c))
 
-        push!(relation_counts[Threads.threadid()], count_relations(c))
+        push!(thread_data["relation_count"][Threads.threadid()], count_relations(c))
 
-        push!(chains_3s[Threads.threadid()], count_chains(c, 3))
+        push!(thread_data["chains_3"][Threads.threadid()], count_chains(c, 3))
 
-        push!(chains_4s[Threads.threadid()], count_chains(c, 4))
+        push!(thread_data["chains_4"][Threads.threadid()], count_chains(c, 4))
 
-        push!(chains_10s[Threads.threadid()], count_chains(c, 10))
+        push!(thread_data["chains_10"][Threads.threadid()], count_chains(c, 10))
 
-        push!(cardinality_abundancess[Threads.threadid()],
-            convert.(Float32, cardinality_abundances(c)))
+        cp = cardinality_abundances(c)
+        if isnothing(cp)
+            cp = Float32(0)
+        end
 
-        push!(relation_dimensions[Threads.threadid()], estimate_relation_dimension(c))
+        push!(thread_data["cardinality_abundances"][Threads.threadid()],
+            convert.(eltype(field_types["cardinality_abundances"]), cp))
 
-        push!(chain_dimension_3s[Threads.threadid()], estimate_chain_dimension(c, 3))
+        push!(thread_data["relation_dimension"][Threads.threadid()], estimate_relation_dimension(c))
 
-        push!(chain_dimension_4s[Threads.threadid()], estimate_chain_dimension(c, 4))
+        push!(thread_data["chain_dimension_3"][Threads.threadid()], estimate_chain_dimension(c, 3))
+
+        push!(thread_data["chain_dimension_4"][Threads.threadid()], estimate_chain_dimension(c, 4))
 
         idx += 1
     end
 
     # Concatenate the results from all threads into the main data dictionary
-    data["idx"] = vcat(idxs...)
-    data["n"] = vcat(ns...)
-    data["dimension"] = vcat(dimensions...)
-    data["manifold"] = vcat(manifolds...)
-    data["coords"] = vcat(coordss...)
-    data["past_relations"] = vcat(past_relations...)
-    data["future_relations"] = vcat(future_relations...)
-    data["linkMatrix"] = vcat(linkMatrixs...)
-    data["relation_count"] = vcat(relation_counts...)
-    data["chains_3"] = vcat(chains_3s...)
-    data["chains_4"] = vcat(chains_4s...)
-    data["chains_10"] = vcat(chains_10s...)
-    data["cardinality_abundances"] = vcat(cardinality_abundancess...)
-    data["relation_dimension"] = vcat(relation_dimensions...)
-    data["chain_dimension_3"] = vcat(chain_dimension_3s...)
-    data["chain_dimension_4"] = vcat(chain_dimension_4s...)
-
-    return data
+    return Dict(k => vcat(thread_data[k]...) for (k, v) in field_types)
 end
+
 
 end
