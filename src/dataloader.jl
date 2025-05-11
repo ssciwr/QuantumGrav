@@ -1,6 +1,6 @@
 module DataLoader
 
-export Dataset, loadData
+export Dataset, load_data
 
 import Arrow
 import Tables
@@ -48,9 +48,9 @@ Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 - `Dataset`: A Dataset object for accessing quantum gravity simulation data.
 """
 function Dataset(
-        base_path::String, file_paths::Union{Vector{String}, String};
+        base_path::String;
         mode::String = "arrow",
-        cache_size::Int = 5)
+        cache_size::Int = 5,)
 
     chunk_size = 0
     
@@ -59,8 +59,10 @@ function Dataset(
     idx = 1
 
     if mode == "arrow"
+        file_paths = filter(x -> occursin("arrow", x), collect(readdir(base_path)))
+
         chunk_size = length(Tables.getcolumn(
-            Arrow.Table(base_path*"/"*file_paths[1]), :linkMatrix))
+            Arrow.Table(joinpath(base_path,file_paths[1])), :link_matrix))
 
         for f in 1:length(file_paths)
             for i in 1:chunk_size
@@ -71,11 +73,13 @@ function Dataset(
 
     elseif mode == "jld2"
 
-        # in jld2 everything is stored in a single file with 
-        chunks, chunk_size = JLD2.jldopen(
-            base_path*"/"*file_paths, "r") do file
+        file_paths = filter(x -> occursin("jld", x), collect(readdir(base_path)))[end]
 
-            length(file), length(file["chunk1"]["linkMatrix"])
+        # in jld2 everything is stored in a single file with 
+        # multiple, equally sized chunks
+        chunks, chunk_size = JLD2.jldopen(
+            joinpath(base_path, file_paths), "r") do file
+            length(file), length(file["chunk1"]["link_matrix"])
         end
 
         for f in 1:chunks
@@ -94,7 +98,7 @@ end
 
 
 """
-    loadData(d::Dataset, i::Int)
+    load_data(d::Dataset, i::Int)
 
 Load data from simulated causal set data from an Arrow file the path of which is stored in the passed `Dataset` object.
 
@@ -105,14 +109,14 @@ Load data from simulated causal set data from an Arrow file the path of which is
 # Returns
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
-function loadData(d::Dataset, i::Int)
+function load_data(d::Dataset, i::Int)
     if d.mode == "arrow"
-        Arrow.Table(d.base_path*"/"*d.file_paths[i])
+        return Arrow.Table(d.base_path*"/"*d.file_paths[i])
     else 
-        JLD2.jldopen(
-            d.base_path*"/"*d.file_paths, "r") do file
+        return JLD2.jldopen(
+            joinpath(d.base_path, d.file_paths), "r") do file
                 group = file["chunk$i"]
-                Dict(Symbol(k): group[k] for k in keys(group))
+                return Dict(Symbol(k) => group[k] for k in keys(group))
         end
     end
 end
@@ -146,16 +150,15 @@ This method implements a buffer mechanism to efficiently load and retrieve data:
 function Base.getindex(data::Dataset, i::Int)
     f_idx, m_idx = data.indices[i]
 
-    if f_idx in keys(data.buffer)
-        return data.buffer[f_idx][m_idx]
-    else
+    if !(f_idx in keys(data.buffer))
         if length(data.buffer) == data.max_buffer_size
             delete!(data.buffer, first(keys(data.buffer)))
         end
-        data.buffer[f_idx] = loadData(data, f_idx)
+        data.buffer[f_idx] = load_data(data, f_idx)
     end
 
-    return data.buffer[f_idx][m_idx]
+    # get out named tuple
+    return NamedTuple(k => data.buffer[f_idx][k][m_idx] for k in keys(data.buffer[f_idx]))
 end
 
 """
@@ -171,7 +174,7 @@ Return a vector of data points from the Dataset `d` at the indices specified in 
 - `Vector`: A vector containing the data points at the specified indices.
 
 """
-function Base.getindex(d::Dataset, is::Union{Vector{Integer}, AbstractRange{Integer}})
+function Base.getindex(d::Dataset, is::Union{Vector{Int}, AbstractRange{Int}})
     return [d[i] for i in is]
 end
 

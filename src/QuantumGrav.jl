@@ -4,6 +4,6 @@ include("datageneration.jl")
 include("dataloader.jl")
 
 export Dataset, collateMatrices, encodeMatrix
-export generateDataForManifold
+export generate_data_for_manifold
 
 end # module QuantumGrav

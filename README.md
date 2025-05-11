@@ -11,7 +11,7 @@ Quantum gravity project experimental repo.
 - To add the dependency for data generation: 
 ```julia 
 using Pkg 
-Pkg.add(url = "https://codeberg.org/cyclopentane/CausalSets.jl")
+Pkg.add("CausalSets")
 ```
 
 - To run tests:
@@ -19,10 +19,14 @@ Pkg.add(url = "https://codeberg.org/cyclopentane/CausalSets.jl")
   - open julia, then run: 
     - hit `]` 
     - type `activate .` 
-    - hit ctrl+c to leave the package manager 
+    - hit ctrl+c or backspace to leave the package manager 
     - run: 
     ```julia 
     using TestItemRunner
     @run_package_tests
     ``` 
     - `exit()` to leave julia
+- this will give you more detailed output. 
+- Alternatively, you can also type `test` in the package manager environment 
+to run the tests
+you can also use vscode to run the t
