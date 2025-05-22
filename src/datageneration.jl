@@ -145,11 +145,15 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
 end
 
 """
-    generate_data_for_manifold(; dimension=2, seed=329478, 
-                            num_datapoints=1500, equal_size=false, 
-                            choose_num_datapoints=d -> Distributions.Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)), 
-                            make_diamond=d -> CausalSets.CausalDiamondBoundary{d}(1.0), 
-                            make_box=d -> CausalSets.BoxBoundary{d}((([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,))))
+    generate_data_for_manifold(
+            ; dimension = 2,
+            seed = 329478,
+            num_datapoints = 1500,
+            choose_num_events = d -> Distributions.Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)),
+            make_diamond = d -> CS.CausalDiamondBoundary{d}(1.0),
+            make_box = d -> CS.BoxBoundary{d}((
+                ([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,)))
+    )
 
 Generates a cset and a variet of data for a given manifold and dimension.
 
@@ -219,7 +223,6 @@ function generate_data_for_manifold(
     # build helper stuff 
     rng = Random.MersenneTwister(seed)
     
-    idx = 1
 
     nmax = Int(ceil(maximum(choose_num_events(dimension))))
 
@@ -241,7 +244,7 @@ function generate_data_for_manifold(
 
         push!(thread_data["nmax"][Threads.threadid()], nmax)
 
-        push!(thread_data["idx"][Threads.threadid()], idx)
+        push!(thread_data["idx"][Threads.threadid()], p)
 
         push!(thread_data["n"][Threads.threadid()], n)
 
@@ -280,7 +283,6 @@ function generate_data_for_manifold(
 
         push!(thread_data["chain_dimension_4"][Threads.threadid()], CS.estimate_chain_dimension(c, 4))
 
-        idx += 1
     end
 
 
