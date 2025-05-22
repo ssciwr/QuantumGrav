@@ -189,8 +189,7 @@ function generate_data_for_manifold(
         ; dimension = 2,
         seed = 329478,
         num_datapoints = 1500,
-        max_num_events =  1.1 * 10^(d + 1),
-        choose_num_events = (d, rng) -> rand(rng, Distributions.Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1))),
+        choose_num_events = d -> Distributions.Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)),
         make_diamond = d -> CS.CausalDiamondBoundary{d}(1.0),
         make_box = d -> CS.BoxBoundary{d}((
             ([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,)))
@@ -221,10 +220,13 @@ function generate_data_for_manifold(
     rng = Random.MersenneTwister(seed)
     
     idx = 1
-    choose_n = choose_num_events(dimension)
+
+    nmax = Int(ceil(maximum(choose_num_events(dimension))))
+
     # Use Threads.@threads to parallelize the loop, put everything into 
     # arrays indexed with threadid 
     Threads.@threads for p in 1:num_datapoints
+        n = Int(ceil(rand(rng, choose_num_events(dimension))))
 
         manifoldname = valid_manifolds[rand(rng, 1:length(valid_manifolds))]
     
@@ -232,12 +234,8 @@ function generate_data_for_manifold(
 
         manifold = get_manifolds_of_dim(dimension)[manifoldname]
 
-        n = Int(ceil(rand(rng, choose_n)))
-
-        nmax = extrema(choose_n)[end]
-
         sprinkling = CS.generate_sprinkling(
-            manifold, boundary, n, rng = rng)
+            manifold, boundary, n; rng = rng)
 
         c = CS.BitArrayCauset(manifold, sprinkling)
 
@@ -287,7 +285,7 @@ function generate_data_for_manifold(
 
 
     # Concatenate the results from all threads into the main data dictionary
-    d =  Dict(k => vcat(thread_data[k]...) for (k, v) in field_types)
+    d =  Dict(Symbol(k) => vcat(thread_data[k]...) for (k, v) in field_types)
 
     return d
 end

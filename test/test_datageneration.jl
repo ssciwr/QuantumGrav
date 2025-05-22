@@ -87,7 +87,6 @@ end
     data = QuantumGrav.DataGeneration.generate_data_for_manifold(
         dimension = 2,
         num_datapoints = 100,
-        max_num_events = 130,
         seed = 12345,
         choose_num_events = fne,
     )
