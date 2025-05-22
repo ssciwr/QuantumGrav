@@ -52,7 +52,7 @@ function make_link_matrix(cset::CS.AbstractCauset)
     for i in 1:(cset.atom_count)
         for j in 1:(cset.atom_count)
             if CS.is_link(cset, i, j)
-                link_matrix[i, j] = 1
+                @inbounds link_matrix[i, j] = 1
             end
         end
     end
@@ -95,7 +95,7 @@ function make_cardinality_matrix(cset::CS.AbstractCauset)::SparseArrays.SparseMa
         for j in 1:(cset.atom_count)
             ca = CS.cardinality_of(cset, i, j)
             if isnothing(ca) == false
-                cardinality_matrix[i, j] = ca
+                @inbounds cardinality_matrix[i, j] = ca
             end
         end
     end
@@ -136,7 +136,7 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
         for d in 1:length(ds)
             bd = CS.bd_coef(c, ds[d], CS.Discrete()) #does this work?
             if bd != 0
-                mat[c, d] = bd
+                @inbounds mat[c, d] = bd
             end
         end
     end
@@ -218,73 +218,80 @@ function generate_data_for_manifold(
         "chain_dimension_4" => Float32
     )
 
-    thread_data = Dict(k => [Vector{T}() for _ in 1:Threads.nthreads()] for (k, T) in field_types)
+    thread_data = Dict(k => [
+        begin 
+            x = T[]
+            sizehint!(x, Int(ceil(num_datapoints / Threads.nthreads())))
+            x
+        end 
+        for _ in 1:Threads.nthreads()] for (k, T) in field_types)
 
-    # build helper stuff 
-    rng = Random.MersenneTwister(seed)
-    
+    # build helper stuff
+    thread_rngs = [Random.MersenneTwister(seed + 2*i) for i in 1:Threads.nthreads()]
 
     nmax = Int(ceil(maximum(choose_num_events(dimension))))
 
     # Use Threads.@threads to parallelize the loop, put everything into 
     # arrays indexed with threadid 
     Threads.@threads for p in 1:num_datapoints
-        n = Int(ceil(rand(rng, choose_num_events(dimension))))
 
-        manifoldname = valid_manifolds[rand(rng, 1:length(valid_manifolds))]
+        tid = Threads.threadid()
+
+        n = Int(ceil(rand(thread_rngs[tid], choose_num_events(dimension))))
+
+        manifoldname = valid_manifolds[rand(thread_rngs[tid], 1:length(valid_manifolds))]
     
         boundary = (manifoldname == "torus") ? make_box(dimension) : make_diamond(dimension)
 
         manifold = get_manifolds_of_dim(dimension)[manifoldname]
 
         sprinkling = CS.generate_sprinkling(
-            manifold, boundary, n; rng = rng)
+            manifold, boundary, n; rng = thread_rngs[tid])
 
         c = CS.BitArrayCauset(manifold, sprinkling)
 
-        push!(thread_data["nmax"][Threads.threadid()], nmax)
+        @inbounds push!(thread_data["nmax"][Threads.threadid()], nmax)
 
-        push!(thread_data["idx"][Threads.threadid()], p)
+        @inbounds push!(thread_data["idx"][Threads.threadid()], p)
 
-        push!(thread_data["n"][Threads.threadid()], n)
+        @inbounds push!(thread_data["n"][Threads.threadid()], n)
 
-        push!(thread_data["dimension"][Threads.threadid()], dimension)
+        @inbounds push!(thread_data["dimension"][Threads.threadid()], dimension)
 
-        push!(thread_data["manifold"][Threads.threadid()], manifoldname)
+        @inbounds push!(thread_data["manifold"][Threads.threadid()], manifoldname)
 
-        push!(thread_data["coords"][Threads.threadid()], map(x -> [x...], sprinkling))
+        @inbounds push!(thread_data["coords"][Threads.threadid()], map(x -> [x...], sprinkling))
 
-        push!(thread_data["past_relations"][Threads.threadid()], convert.(Vector{Int8}, c.past_relations))
+        @inbounds push!(thread_data["past_relations"][Threads.threadid()], convert.(Vector{Int8}, c.past_relations))
 
-        push!(thread_data["future_relations"][Threads.threadid()],
+        @inbounds push!(thread_data["future_relations"][Threads.threadid()],
             convert.(Vector{Int8}, c.future_relations))
 
-        push!(thread_data["link_matrix"][Threads.threadid()], make_link_matrix(c))
+        @inbounds push!(thread_data["link_matrix"][Threads.threadid()], make_link_matrix(c))
 
-        push!(thread_data["relation_count"][Threads.threadid()], CS.count_relations(c))
+        @inbounds push!(thread_data["relation_count"][Threads.threadid()], CS.count_relations(c))
 
-        push!(thread_data["chains_3"][Threads.threadid()], CS.count_chains(c, 3))
+        @inbounds push!(thread_data["chains_3"][Threads.threadid()], CS.count_chains(c, 3))
 
-        push!(thread_data["chains_4"][Threads.threadid()], CS.count_chains(c, 4))
+        @inbounds push!(thread_data["chains_4"][Threads.threadid()], CS.count_chains(c, 4))
 
-        push!(thread_data["chains_10"][Threads.threadid()], CS.count_chains(c, 10))
+        @inbounds push!(thread_data["chains_10"][Threads.threadid()], CS.count_chains(c, 10))
 
         cp = CS.cardinality_abundances(c)
         if isnothing(cp)
             cp = Float32(0)
         end
 
-        push!(thread_data["cardinality_abundances"][Threads.threadid()],
+        @inbounds push!(thread_data["cardinality_abundances"][Threads.threadid()],
             convert.(eltype(field_types["cardinality_abundances"]), cp))
 
-        push!(thread_data["relation_dimension"][Threads.threadid()], CS.estimate_relation_dimension(c))
+        @inbounds push!(thread_data["relation_dimension"][Threads.threadid()], CS.estimate_relation_dimension(c))
 
-        push!(thread_data["chain_dimension_3"][Threads.threadid()], CS.estimate_chain_dimension(c, 3))
+        @inbounds push!(thread_data["chain_dimension_3"][Threads.threadid()], CS.estimate_chain_dimension(c, 3))
 
-        push!(thread_data["chain_dimension_4"][Threads.threadid()], CS.estimate_chain_dimension(c, 4))
+        @inbounds push!(thread_data["chain_dimension_4"][Threads.threadid()], CS.estimate_chain_dimension(c, 4))
 
     end
-
 
     # Concatenate the results from all threads into the main data dictionary
     d =  Dict(Symbol(k) => vcat(thread_data[k]...) for (k, v) in field_types)
