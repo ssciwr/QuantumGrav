@@ -7,7 +7,6 @@ import Tables
 import Flux
 import JLD2
 
-
 """
     Dataset
 
@@ -50,19 +49,18 @@ Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 function Dataset(
         base_path::String;
         mode::String = "arrow",
-        cache_size::Int = 5,)
-
+        cache_size::Int = 5)
     chunk_size = 0
-    
+
     indices = Dict{Int, Tuple{Int, Int}}()
-    
+
     idx = 1
 
     if mode == "arrow"
         file_paths = filter(x -> occursin("arrow", x), collect(readdir(base_path)))
 
         chunk_size = length(Tables.getcolumn(
-            Arrow.Table(joinpath(base_path,file_paths[1])), :link_matrix))
+            Arrow.Table(joinpath(base_path, file_paths[1])), 1))
 
         for f in 1:length(file_paths)
             for i in 1:chunk_size
@@ -70,16 +68,15 @@ function Dataset(
                 idx += 1
             end
         end
-
     elseif mode == "jld2"
-
         file_paths = filter(x -> occursin("jld", x), collect(readdir(base_path)))[end]
 
         # in jld2 everything is stored in a single file with 
         # multiple, equally sized chunks
         chunks, chunk_size = JLD2.jldopen(
             joinpath(base_path, file_paths), "r") do file
-            length(file), length(file["chunk1"]["link_matrix"])
+            dset = first(keys(file["chunk1"]))
+            length(file), length(file["chunk1"][dset])
         end
 
         for f in 1:chunks
@@ -88,14 +85,13 @@ function Dataset(
                 idx += 1
             end
         end
-    else 
+    else
         throw(ArgumentError("Unsupported mode: $mode"))
     end
 
     return Dataset(base_path, file_paths, indices, chunk_size,
         Dict{Int, Array{Matrix{Float32}}}(), cache_size, mode)
 end
-
 
 """
     load_data(d::Dataset, i::Int)
@@ -112,11 +108,11 @@ Array of matrices of Float32 values from the specified column in the Arrow file.
 function load_data(d::Dataset, i::Int)
     if d.mode == "arrow"
         return Arrow.Table(d.base_path*"/"*d.file_paths[i])
-    else 
+    else
         return JLD2.jldopen(
             joinpath(d.base_path, d.file_paths), "r") do file
-                group = file["chunk$i"]
-                return Dict(Symbol(k) => group[k] for k in keys(group))
+            group = file["chunk$i"]
+            return Dict(Symbol(k) => group[k] for k in keys(group))
         end
     end
 end
@@ -177,6 +173,5 @@ Return a vector of data points from the Dataset `d` at the indices specified in 
 function Base.getindex(d::Dataset, is::Union{Vector{Int}, AbstractRange{Int}})
     return [d[i] for i in is]
 end
-
 
 end
