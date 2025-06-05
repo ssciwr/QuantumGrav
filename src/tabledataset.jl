@@ -1,15 +1,15 @@
-module DataLoader
+module TableDataset
 
-export Dataset, load_data
+export TDataset, load_data
 
 import Arrow
 import Tables
 import JLD2
 
 """
-    Dataset
+    TDataset
 
-A mutable struct for efficiently loading and caching simulated causal set data from Arrow files, based on MLUtils.DataLoader. This loader assumes that each file contains multiple rows of data, and each row is a matrix of Float32 values. The data is loaded in batches, and the loader caches the loaded data to minimize file I/O operations. The amount of caching is configurable.
+A mutable struct for efficiently loading and caching simulated causal set data from Arrow files, based on MLUtils.TDataset. This loader assumes that each file contains multiple rows of data, and each row is a matrix of Float32 values. The data is loaded in batches, and the loader caches the loaded data to minimize file I/O operations. The amount of caching is configurable.
 
 # Fields
 - `base_path::String`: The base directory path where the data files are located
@@ -20,7 +20,7 @@ A mutable struct for efficiently loading and caching simulated causal set data f
 - `max_buffer_size::Int64`: Maximum number of files to keep in memory
 - `mode::String`: The mode of data loading, either "jld2" or "arrow"
 """
-mutable struct Dataset
+mutable struct TDataset
     base_path::String
     file_paths::Union{Vector{String}, String}
     indices::Dict{Int, Tuple{Int, Int}}
@@ -31,9 +31,9 @@ mutable struct Dataset
 end
 
 """
-    Dataset(base_path::String, file_paths::Vector{String}; cache_size::Int=5)
+    TDataset(base_path::String, file_paths::Vector{String}; cache_size::Int=5)
 
-Construct a `Dataset` object from Arrow files for quantum gravity simulations.
+Construct a `TDataset` object from Arrow files for quantum gravity simulations.
 
 # Arguments
 - `base_path::String`: Base directory containing Arrow data files.
@@ -43,9 +43,9 @@ Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 - `cache_size::Int=5`: Maximum number of files to keep in memory cache.
 
 # Returns
-- `Dataset`: A Dataset object for accessing quantum gravity simulation data.
+- `TDataset`: A TDataset object for accessing quantum gravity simulation data.
 """
-function Dataset(
+function TDataset(
         base_path::String;
         mode::String = "arrow",
         cache_size::Int = 5)
@@ -88,23 +88,23 @@ function Dataset(
         throw(ArgumentError("Unsupported mode: $mode"))
     end
 
-    return Dataset(base_path, file_paths, indices, chunk_size,
+    return TDataset(base_path, file_paths, indices, chunk_size,
         Dict{Int, Array{Matrix{Float32}}}(), cache_size, mode)
 end
 
 """
-    load_data(d::Dataset, i::Int)
+    load_data(d::TDataset, i::Int)
 
-Load data from simulated causal set data from an Arrow file the path of which is stored in the passed `Dataset` object.
+Load data from simulated causal set data from an Arrow file the path of which is stored in the passed `TDataset` object.
 
 # Arguments
-- `d::Dataset`: Dataset to load from
+- `d::TDataset`: TDataset to load from
 - `i::Int`: Index of the file to load
 
 # Returns
 Array of matrices of Float32 values from the specified column in the Arrow file.
 """
-function load_data(d::Dataset, i::Int)
+function load_data(d::TDataset, i::Int)
     if d.mode == "arrow"
         return Arrow.Table(d.base_path*"/"*d.file_paths[i])
     else
@@ -117,15 +117,15 @@ function load_data(d::Dataset, i::Int)
 end
 
 """
-    length(d::Dataset)
-Get the number of files in the Dataset.
+    length(d::TDataset)
+Get the number of files in the TDataset.
 """
-Base.length(d::Dataset) = length(d.indices)
+Base.length(d::TDataset) = length(d.indices)
 
 """
-    getindex(data::Dataset, i::Int) -> Any
+    getindex(data::TDataset, i::Int) -> Any
 
-Retrieve a specific element from a `Dataset`, which is a particular entry in a file.
+Retrieve a specific element from a `TDataset`, which is a particular entry in a file.
 
 This method implements a buffer mechanism to efficiently load and retrieve data:
 1. Converts the linear index `i` to file and member indices (`f_idx`, `m_idx`)
@@ -136,13 +136,13 @@ This method implements a buffer mechanism to efficiently load and retrieve data:
 6. Returns the requested member from the newly loaded file
 
 # Arguments
-- `data::Dataset`: The Dataset to access
+- `data::TDataset`: The TDataset to access
 - `i::Int`: The linear index of the element to retrieve
 
 # Returns
 - The data element at the specified index
 """
-function Base.getindex(data::Dataset, i::Int)
+function Base.getindex(data::TDataset, i::Int)
     f_idx, m_idx = data.indices[i]
 
     if !(f_idx in keys(data.buffer))
@@ -157,19 +157,19 @@ function Base.getindex(data::Dataset, i::Int)
 end
 
 """
-    getindex(d::Dataset, is::Vector{Int}) -> Vector
+    getindex(d::TDataset, is::Vector{Int}) -> Vector
 
-Return a vector of data points from the Dataset `d` at the indices specified in `is`.
+Return a vector of data points from the TDataset `d` at the indices specified in `is`.
 
 # Arguments
-- `d::Dataset`: The Dataset to index into.
+- `d::TDataset`: The TDataset to index into.
 - `is::Vector{Int}`: A vector of indices.
 
 # Returns
 - `Vector`: A vector containing the data points at the specified indices.
 
 """
-function Base.getindex(d::Dataset, is::Union{Vector{Int}, AbstractRange{Int}})
+function Base.getindex(d::TDataset, is::Union{Vector{Int}, AbstractRange{Int}})
     return [d[i] for i in is]
 end
 
