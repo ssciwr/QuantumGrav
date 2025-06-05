@@ -4,7 +4,6 @@ export Dataset, load_data
 
 import Arrow
 import Tables
-import Flux
 import JLD2
 
 """
