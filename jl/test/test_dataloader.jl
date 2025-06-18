@@ -19,9 +19,8 @@ using TestItems
 
         file_path = joinpath(temp_dir, "test_data.jld2")
         JLD2.jldopen(file_path, "w") do file
-
             for i in 1:nf
-                link_matrix = [rand(Float32, 10, 10) for _ in 1:nd] 
+                link_matrix = [rand(Float32, 10, 10) for _ in 1:nd]
                 otherColumn = [rand(Float32) for _ in 1:nd]
                 file["chunk$(i)/link_matrix"] = link_matrix
                 file["chunk$(i)/otherColumn"] = otherColumn
@@ -52,7 +51,7 @@ end
 
     # Initialize the Dataset
     Dataset=QuantumGrav.DataLoader.Dataset(
-        dir; cache_size = 2, mode="jld2")
+        dir; cache_size = 2, mode = "jld2")
 
     # Test the constructor
     @test Dataset.base_path == dir
@@ -110,7 +109,7 @@ end
 
 @testitem "DataLoader.getindex jld" tags=[:dataloader] setup=[MakeData] begin
     Dataset=QuantumGrav.DataLoader.Dataset(
-        dir; cache_size = 2, mode="jld2")
+        dir; cache_size = 2, mode = "jld2")
 
     # Test getting an index from the Dataset
     first=Dataset[1]

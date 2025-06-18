@@ -270,6 +270,9 @@ function generate_data_for_manifold(
 
         @inbounds push!(thread_data["link_matrix"][Threads.threadid()], make_link_matrix(c))
 
+        # TODO: add full matrix here 
+
+        # TODO: add neighborhood structure here per node 
         @inbounds push!(
             thread_data["relation_count"][Threads.threadid()], CS.count_relations(c))
 
