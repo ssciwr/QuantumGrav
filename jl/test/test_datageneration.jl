@@ -5,6 +5,7 @@ using TestItems
     import CausalSets
     import SparseArrays
     import Distributions
+    @info "these tests are obsolete now, but kept for reference"
 end
 
 @testsnippet makeData begin
@@ -12,6 +13,7 @@ end
     import QuantumGrav
     import SparseArrays
     import Distributions
+    @info "these tests are obsolete now, but kept for reference"
 
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()
@@ -85,7 +87,6 @@ end
 end
 
 @testitem "generate_data_for_manifold" tags=[:datageneration] setup=[importModules] begin
-
     # Test with small parameters for quick testing
     fne=d->Distributions.Uniform(0.7*10^d, 1.3*10^d)
 

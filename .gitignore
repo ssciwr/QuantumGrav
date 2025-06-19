@@ -27,3 +27,8 @@ Manifest.toml
 *.pyc
 py/__pycache__/
 py/.venv/
+
+*.zip
+*.tar.gz
+*.csv
+
