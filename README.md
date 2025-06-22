@@ -13,17 +13,7 @@ python3 -m venv .venv
 source ./.venv/bin/activate  
 ```
 
-- install the dependencies. Because these differ based on hardware, there are 
-`requirements.txt` files for installation. 
-```bash 
-python3 -m pip install -r requirements_torch_cu128.txt
-```
-for torch itself and 
-```bash 
-python3 -m pip install -r requirements_torchgeo_cu128.txt
-```
-for pytorch-geometric for example. These will install the versions for cuda 12.8. 
-This can also be done by hand: 
+- install the dependencies. Because these differ based on hardware, please refer to the [pytorch-geometric documentation](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) for further details.
 
 ```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
@@ -45,11 +35,6 @@ python3 -m pip install .
 ```bash 
 python3 -m pip install -e .[dev]
 ```
-
-
-
-
-
 
 ## Julia
 - To work on the software, clone the repo, and in the base directory in the terminal run: 
