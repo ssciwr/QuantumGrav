@@ -26,7 +26,7 @@ Manifest.toml
 # python things 
 *.pyc
 py/__pycache__/
-py/.venv/
+.venv/
 
 *.zip
 *.tar.gz
