@@ -31,4 +31,6 @@ py/__pycache__/
 *.zip
 *.tar.gz
 *.csv
-
+*.pickle 
+*.pt 
+*.index
