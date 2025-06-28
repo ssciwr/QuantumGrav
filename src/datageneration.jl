@@ -1,29 +1,3 @@
-module DataGeneration
-import CausalSets as CS
-import SparseArrays
-import Distributions
-import Random
-
-export generate_data_for_manifold
-
-valid_manifolds = [
-    "minkowski",
-    "hypercylinder",
-    "deSitter",
-    "antiDeSitter",
-    "torus"
-]
-
-function get_manifolds_of_dim(d::Int64)
-    Dict(
-        "minkowski" => CS.MinkowskiManifold{d}(),
-        "hypercylinder" => CS.HypercylinderManifold{d}(1.0),
-        "deSitter" => CS.DeSitterManifold{d}(1.0),
-        "antiDeSitter" => CS.AntiDeSitterManifold{d}(1.0),
-        "torus" => CS.TorusManifold{d}(1.0)
-    )
-end
-
 """
     make_link_matrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32}
 
@@ -47,17 +21,111 @@ causal set, so its complexity is quadratic in the number of elements.
 - The sparse matrix representation is used to save memory, as most entries
 are expected to be zero in typical causal sets.
 """
-function make_link_matrix(cset::CS.AbstractCauset)
+function make_link_matrix(cset::CSet.AbstractCauset)
     link_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
     for i in 1:(cset.atom_count)
         for j in 1:(cset.atom_count)
-            if CS.is_link(cset, i, j)
+            if CSet.is_link(cset, i, j)
                 @inbounds link_matrix[i, j] = 1
             end
         end
     end
     return link_matrix
 end
+
+"""
+    make_cset(manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int, rng::Random.AbstractRNG, type::Type{T})
+
+DOCSTRING
+
+# Arguments:
+- `manifold`: DESCRIPTION
+- `boundary`: DESCRIPTION
+- `n`: DESCRIPTION
+- `d`: DESCRIPTION
+- `rng`: DESCRIPTION
+- `type`: DESCRIPTION
+"""
+function make_cset(manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int, rng::Random.AbstractRNG, type::Type{T}) where T <: Number 
+    if manifold isa PseudoManifold
+        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng), stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
+    else 
+        sprinkling = CSets.generate_sprinkling(manifold, boundary, n; rng = rng)
+        cset = CSets.BitArrayCauset(manifold, sprinkling)
+        return cset, stack(collect.(sprinkling), dims=1)
+    end
+end
+
+"""
+    resize(m::AbstractArray{T}, new_size::Tuple)
+
+DOCSTRING
+"""
+function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T <: Number}
+    if any(size(m) .< new_size)
+        resized_m = m isa SparseArrays.AbstractSparseArray ? SparseArrays.spzeros(T, new_size...) : zeros(T, new_size...)
+        @inbounds resized_m[tuple([1:n for n in size(m)]...)...] .= m
+        return resized_m
+    else
+        return @inbounds m[tuple([1:n for n in new_size]...)...]
+    end
+end
+
+"""
+    calculate_angles(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T})
+
+DOCSTRING
+
+# Arguments:
+- `sprinkling`: DESCRIPTION
+- `node_idx`: DESCRIPTION
+- `neighbors`: DESCRIPTION
+- `num_nodes`: DESCRIPTION
+- `type`: DESCRIPTION
+"""
+function calculate_angles(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T}) where T <: Number
+    angles = SparseArrays.spzeros(T, num_nodes, num_nodes)
+    if isempty(neighbors)
+        return angles
+    end
+
+    for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
+        if neighbor_i != neighbor_j
+            v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
+            v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
+            angles[i, j] = acos(clamp(LinearAlgebra.dot(v_i / LinearAlgebra.norm(v_i), v_j / LinearAlgebra.norm(v_j)), -1.0, 1.0))
+        end
+    end
+    return angles
+end
+
+"""
+    calculate_distances(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T})
+
+DOCSTRING
+
+# Arguments:
+- `sprinkling`: DESCRIPTION
+- `node_idx`: DESCRIPTION
+- `neighbors`: DESCRIPTION
+- `num_nodes`: DESCRIPTION
+- `type`: DESCRIPTION
+"""
+function calculate_distances(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T}) where T <: Number
+    distances = SparseArrays.spzeros(T, num_nodes)
+
+    if isempty(neighbors)
+        return distances
+    end
+
+    for (i, neighbor_i) in enumerate(neighbors)
+        if neighbor_i != node_idx
+            distances[i] = LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+        end
+    end
+    return distances
+end
+
 
 """
     make_cardinality_matrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32, Int}
@@ -83,7 +151,7 @@ in the causal set.
 - The `cardinality_of` function is expected to return `nothing` if no 
   cardinality value exists for a given pair `(i, j)`.
 """
-function make_cardinality_matrix(cset::CS.AbstractCauset)::SparseArrays.SparseMatrixCSC{
+function make_cardinality_matrix(cset::CSet.AbstractCauset)::SparseArrays.SparseMatrixCSC{
         Float32, Int}
     if cset.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
@@ -93,7 +161,7 @@ function make_cardinality_matrix(cset::CS.AbstractCauset)::SparseArrays.SparseMa
 
     for i in 1:(cset.atom_count)
         for j in 1:(cset.atom_count)
-            ca = CS.cardinality_of(cset, i, j)
+            ca = CSet.cardinality_of(cset, i, j)
             if isnothing(ca) == false
                 @inbounds cardinality_matrix[i, j] = ca
             end
@@ -134,7 +202,7 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
 
     for c in 1:maxCardinality
         for d in 1:length(ds)
-            bd = CS.bd_coef(c, ds[d], CS.Discrete()) #does this work?
+            bd = CSet.bd_coef(c, ds[d], CSet.Discrete()) #does this work?
             if bd != 0
                 @inbounds mat[c, d] = bd
             end
@@ -145,163 +213,101 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
 end
 
 """
-    generate_data_for_manifold(
-            ; dimension = 2,
-            seed = 329478,
-            num_datapoints = 1500,
-            choose_num_events = d -> Distributions.Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)),
-            make_diamond = d -> CS.CausalDiamondBoundary{d}(1.0),
-            make_box = d -> CS.BoxBoundary{d}((
-                ([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,)))
-    )
+    make_pseudosprinkling(n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T}; rng = Random.MersenneTwister(1234))
 
-Generates a cset and a variet of data for a given manifold and dimension.
+DOCSTRING
 
-# Keyword Arguments
-- `dimension::Int` (default: `2`): The dimension of the manifold.
-- `seed::Int` (default: `329478`): The random seed for reproducibility.
-- `num_datapoints::Int` (default: `1500`): The number of data points to generate.
-- `choose_num_events::Function` (default: `d -> 10^(d + 1)`): A function that defines the size of the caussets, i.e., the number of events.
-- `make_diamond::Function` (default: `d -> CausalDiamondBoundary{d}(1.0)`): A function to create a causal diamond boundary for the manifold.
-- `make_box::Function` (default: `d -> BoxBoundary{d}((([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,))))`): A function to create a box boundary for the manifold.
+# Arguments:
+- `n`: DESCRIPTION
+- `d`: DESCRIPTION
+- `box_min`: DESCRIPTION
+- `box_max`: DESCRIPTION
+- `type`: DESCRIPTION
+- `rng`: DESCRIPTION
+"""
+function make_pseudosprinkling(n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T}; rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where T<:Number
+    distr = Distributions.Uniform(box_min, box_max)
 
-# Returns
-- `data::Dict`: A dictionary containing the generated data with the following keys:
-  - `"idx"`: Indices of the data points.
-  - `"n"`: Sizes of the sprinklings.
-  - `"dimension"`: Dimensions of the manifold.
-  - `"manifold"`: Names of the manifolds.
-  - `"coords"`: Coordinates of the sprinklings.
-  - `"future_relations"`: Future relations of the causet.
-  - `"past_relations"`: Past relations of the causet.
-  - `"link_matrix"`: Link matrices of the causet.
-  - `"relation_count"`: Counts of relations in the causet.
-  - `"chains_3"`: Counts of 3-element chains in the causet.
-  - `"chains_4"`: Counts of 4-element chains in the causet.
-  - `"chains_10"`: Counts of 10-element chains in the causet.
-  - `"cardinality_abundances"`: Cardinality abundances of the causet.
-  - `"relation_dimension"`: Estimated relation dimensions of the causet.
-  - `"chain_dimension_3"`: Estimated chain dimensions for 3-element chains.
-  - `"chain_dimension_4"`: Estimated chain dimensions for 4-element chains.
-
-# Notes
-- The function uses multithreading (`Threads.@threads`) to parallelize the generation of data points.
-- The results from all threads are concatenated into the final `data` dictionary.
+    return [[rand(distr) for i in 1:d] for _ in 1:n]
+end
 
 """
-function generate_data_for_manifold(
-        ; dimension = 2,
-        seed = 329478,
-        num_datapoints = 1500,
-        choose_num_events = d -> Distributions.Uniform(0.7 * 10^(d + 1), 1.1 * 10^(d + 1)),
-        make_diamond = d -> CS.CausalDiamondBoundary{d}(1.0),
-        make_box = d -> CS.BoxBoundary{d}((
-            ([-0.49 for i in 1:d]...,), ([0.49 for i in 1:d]...,)))
-)
-    field_types = Dict(
-        "idx" => Int64,
-        "n" => Float32,
-        "nmax" => Float32,
-        "dimension" => Float32,
-        "manifold" => String,
-        "coords" => Vector{Vector{Float32}},
-        "future_relations" => Vector{Vector{Int64}},
-        "past_relations" => Vector{Vector{Int64}},
-        "link_matrix" => SparseArrays.SparseMatrixCSC{Float32, Int32},
-        "relation_count" => Float32,
-        "chains_3" => Float32,
-        "chains_4" => Float32,
-        "chains_10" => Float32,
-        "cardinality_abundances" => Vector{Float32},
-        "relation_dimension" => Float32,
-        "chain_dimension_3" => Float32,
-        "chain_dimension_4" => Float32
-    )
+    topsort(adj_matrix, in_degree::AbstractVector{T})
 
-    thread_data = Dict(k => [begin
-                                 x = T[]
-                                 sizehint!(
-                                     x, Int(ceil(num_datapoints / Threads.nthreads())))
-                                 x
-                             end
-                             for _ in 1:Threads.nthreads()] for (k, T) in field_types)
+DOCSTRING
+"""
+function topsort(adj_matrix, in_degree::AbstractVector{T})::Vector{Int} where T <: Number
+    n = size(adj_matrix, 1)
 
-    # build helper stuff
-    thread_rngs = [Random.MersenneTwister(seed + 2*i) for i in 1:Threads.nthreads()]
-
-    nmax = Int(ceil(maximum(choose_num_events(dimension))))
-
-    # Use Threads.@threads to parallelize the loop, put everything into 
-    # arrays indexed with threadid 
-    Threads.@threads for p in 1:num_datapoints
-        tid = Threads.threadid()
-
-        n = Int(ceil(rand(thread_rngs[tid], choose_num_events(dimension))))
-
-        manifoldname = valid_manifolds[rand(thread_rngs[tid], 1:length(valid_manifolds))]
-
-        boundary = (manifoldname == "torus") ? make_box(dimension) : make_diamond(dimension)
-
-        manifold = get_manifolds_of_dim(dimension)[manifoldname]
-
-        sprinkling = CS.generate_sprinkling(
-            manifold, boundary, n; rng = thread_rngs[tid])
-
-        c = CS.BitArrayCauset(manifold, sprinkling)
-
-        @inbounds push!(thread_data["nmax"][Threads.threadid()], nmax)
-
-        @inbounds push!(thread_data["idx"][Threads.threadid()], p)
-
-        @inbounds push!(thread_data["n"][Threads.threadid()], n)
-
-        @inbounds push!(thread_data["dimension"][Threads.threadid()], dimension)
-
-        @inbounds push!(thread_data["manifold"][Threads.threadid()], manifoldname)
-
-        @inbounds push!(
-            thread_data["coords"][Threads.threadid()], map(x -> [x...], sprinkling))
-
-        @inbounds push!(thread_data["past_relations"][Threads.threadid()],
-            convert.(Vector{Int64}, c.past_relations))
-
-        @inbounds push!(thread_data["future_relations"][Threads.threadid()],
-            convert.(Vector{Int64}, c.future_relations))
-
-        @inbounds push!(thread_data["link_matrix"][Threads.threadid()], make_link_matrix(c))
-
-        @inbounds push!(
-            thread_data["relation_count"][Threads.threadid()], CS.count_relations(c))
-
-        @inbounds push!(thread_data["chains_3"][Threads.threadid()], CS.count_chains(c, 3))
-
-        @inbounds push!(thread_data["chains_4"][Threads.threadid()], CS.count_chains(c, 4))
-
-        @inbounds push!(
-            thread_data["chains_10"][Threads.threadid()], CS.count_chains(c, 10))
-
-        cp = CS.cardinality_abundances(c)
-        if isnothing(cp)
-            cp = Float32(0)
+    # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the csets
+    queue = Vector{Int64}()
+    sizehint!(queue, n)
+    for i in 1:n
+        if isapprox(in_degree[i], zero(T))
+            @inbounds push!(queue, i)
         end
-
-        @inbounds push!(thread_data["cardinality_abundances"][Threads.threadid()],
-            convert.(eltype(field_types["cardinality_abundances"]), cp))
-
-        @inbounds push!(thread_data["relation_dimension"][Threads.threadid()],
-            CS.estimate_relation_dimension(c))
-
-        @inbounds push!(thread_data["chain_dimension_3"][Threads.threadid()],
-            CS.estimate_chain_dimension(c, 3))
-
-        @inbounds push!(thread_data["chain_dimension_4"][Threads.threadid()],
-            CS.estimate_chain_dimension(c, 4))
     end
 
-    # Concatenate the results from all threads into the main data dictionary
-    d = Dict(Symbol(k) => vcat(thread_data[k]...) for (k, v) in field_types)
+    topo_order = Vector{Int64}()
+    sizehint!(topo_order, n)
+    while !isempty(queue)
+        @inbounds u = popfirst!(queue)
+        @inbounds push!(topo_order, u)
 
-    return d
+        # For each neighbor v of u
+        @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
+            @inbounds in_degree[v] -= 1
+            if in_degree[v] == 0
+                @inbounds push!(queue, v)
+            end
+        end
+    end
+
+    return topo_order
 end
 
+"""
+    make_adj(c::CSets.AbstractCauset, type::Type{T})
+
+DOCSTRING
+"""
+make_adj(c::CSets.AbstractCauset, type::Type{T}) where T <: Number =  c.future_relations |> x -> hcat(x...) |> transpose |> SparseArrays.SparseMatrixCSC{type}
+
+"""
+    graph_make_adj(c::CSets.AbstractCauset, type::Type)
+
+DOCSTRING
+"""
+graph_make_adj(c::CSets.AbstractCauset, type::Type) = c |> make_link_matrix |> Graphs.SimpleDiGraph |> Graphs.transitiveclosure |> Graphs.adjacency_matrix |> SparseArrays.SparseMatrixCSC{type} # for consistency testing
+
+"""
+    maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
+
+DOCSTRING
+
+# Arguments:
+- `adj_matrix`: DESCRIPTION
+- `topo_order`: DESCRIPTION
+- `source`: DESCRIPTION
+"""
+function maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
+    n = size(adj_matrix, 1)
+
+    # Dynamic programming for longest paths
+    dist = fill(-Inf, n)
+    dist[source] = 0
+
+    # Process vertices in topological order
+    @inbounds for u in topo_order
+        if @inbounds dist[u] != -Inf
+            @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
+                @inbounds dist[v] = max(dist[v], dist[u] + 1)
+            end
+        end
+    end
+
+    # Return max finite distance
+    @inbounds finite_dists = filter(d -> d != -Inf, dist)
+    return @inbounds isempty(finite_dists) ? 0 : Int32(maximum(finite_dists))
 end
+
