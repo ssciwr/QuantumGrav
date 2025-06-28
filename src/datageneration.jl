@@ -46,28 +46,16 @@ DOCSTRING
 - `rng`: DESCRIPTION
 - `type`: DESCRIPTION
 """
-function make_cset(manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int, rng::Random.AbstractRNG, type::Type{T}) where T <: Number 
+function make_cset(
+        manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64,
+        d::Int, rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
     if manifold isa PseudoManifold
-        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng), stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
-    else 
+        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng),
+        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
+    else
         sprinkling = CSets.generate_sprinkling(manifold, boundary, n; rng = rng)
         cset = CSets.BitArrayCauset(manifold, sprinkling)
-        return cset, stack(collect.(sprinkling), dims=1)
-    end
-end
-
-"""
-    resize(m::AbstractArray{T}, new_size::Tuple)
-
-DOCSTRING
-"""
-function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T <: Number}
-    if any(size(m) .< new_size)
-        resized_m = m isa SparseArrays.AbstractSparseArray ? SparseArrays.spzeros(T, new_size...) : zeros(T, new_size...)
-        @inbounds resized_m[tuple([1:n for n in size(m)]...)...] .= m
-        return resized_m
-    else
-        return @inbounds m[tuple([1:n for n in new_size]...)...]
+        return cset, stack(collect.(sprinkling), dims = 1)
     end
 end
 
@@ -83,7 +71,9 @@ DOCSTRING
 - `num_nodes`: DESCRIPTION
 - `type`: DESCRIPTION
 """
-function calculate_angles(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T}) where T <: Number
+function calculate_angles(
+        sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
+        num_nodes::Int, type::Type{T}) where {T <: Number}
     angles = SparseArrays.spzeros(T, num_nodes, num_nodes)
     if isempty(neighbors)
         return angles
@@ -93,7 +83,11 @@ function calculate_angles(sprinkling::AbstractMatrix, node_idx::Int, neighbors::
         if neighbor_i != neighbor_j
             v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
             v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
-            angles[i, j] = acos(clamp(LinearAlgebra.dot(v_i / LinearAlgebra.norm(v_i), v_j / LinearAlgebra.norm(v_j)), -1.0, 1.0))
+            angles[i, j] = acos(clamp(
+                LinearAlgebra.dot(
+                    v_i / LinearAlgebra.norm(v_i), v_j / LinearAlgebra.norm(v_j)),
+                -1.0,
+                1.0))
         end
     end
     return angles
@@ -111,7 +105,9 @@ DOCSTRING
 - `num_nodes`: DESCRIPTION
 - `type`: DESCRIPTION
 """
-function calculate_distances(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T}) where T <: Number
+function calculate_distances(
+        sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
+        num_nodes::Int, type::Type{T}) where {T <: Number}
     distances = SparseArrays.spzeros(T, num_nodes)
 
     if isempty(neighbors)
@@ -120,12 +116,12 @@ function calculate_distances(sprinkling::AbstractMatrix, node_idx::Int, neighbor
 
     for (i, neighbor_i) in enumerate(neighbors)
         if neighbor_i != node_idx
-            distances[i] = LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+            distances[i] = LinearAlgebra.norm(sprinkling[neighbor_i, :] -
+                                              sprinkling[node_idx, :])
         end
     end
     return distances
 end
-
 
 """
     make_cardinality_matrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32, Int}
@@ -188,7 +184,7 @@ Generates a matrix of size `(maxCardinality, ds[end])` filled with coefficients 
 - The `CausalSets.Discrete()` object is passed to `bd_coef` as a parameter, which may influence the computation of the coefficients.
 
 """
-# TODO: check again if this is correct, lookup in paper
+# TODO: check again if this is correct, lookup in paper!
 function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
     if length(ds) == 0
         throw(ArgumentError("The dimensions must not be empty."))
@@ -225,45 +221,12 @@ DOCSTRING
 - `type`: DESCRIPTION
 - `rng`: DESCRIPTION
 """
-function make_pseudosprinkling(n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T}; rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where T<:Number
+function make_pseudosprinkling(
+        n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T};
+        rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where {T <: Number}
     distr = Distributions.Uniform(box_min, box_max)
 
     return [[rand(distr) for i in 1:d] for _ in 1:n]
-end
-
-"""
-    topsort(adj_matrix, in_degree::AbstractVector{T})
-
-DOCSTRING
-"""
-function topsort(adj_matrix, in_degree::AbstractVector{T})::Vector{Int} where T <: Number
-    n = size(adj_matrix, 1)
-
-    # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the csets
-    queue = Vector{Int64}()
-    sizehint!(queue, n)
-    for i in 1:n
-        if isapprox(in_degree[i], zero(T))
-            @inbounds push!(queue, i)
-        end
-    end
-
-    topo_order = Vector{Int64}()
-    sizehint!(topo_order, n)
-    while !isempty(queue)
-        @inbounds u = popfirst!(queue)
-        @inbounds push!(topo_order, u)
-
-        # For each neighbor v of u
-        @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
-            @inbounds in_degree[v] -= 1
-            if in_degree[v] == 0
-                @inbounds push!(queue, v)
-            end
-        end
-    end
-
-    return topo_order
 end
 
 """
@@ -271,14 +234,10 @@ end
 
 DOCSTRING
 """
-make_adj(c::CSets.AbstractCauset, type::Type{T}) where T <: Number =  c.future_relations |> x -> hcat(x...) |> transpose |> SparseArrays.SparseMatrixCSC{type}
-
-"""
-    graph_make_adj(c::CSets.AbstractCauset, type::Type)
-
-DOCSTRING
-"""
-graph_make_adj(c::CSets.AbstractCauset, type::Type) = c |> make_link_matrix |> Graphs.SimpleDiGraph |> Graphs.transitiveclosure |> Graphs.adjacency_matrix |> SparseArrays.SparseMatrixCSC{type} # for consistency testing
+make_adj(c::CSets.AbstractCauset, type::Type{T}) where {T <: Number} = c.future_relations |>
+                                                                       x -> hcat(x...) |>
+                                                                            transpose |>
+                                                                            SparseArrays.SparseMatrixCSC{type}
 
 """
     maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
@@ -310,4 +269,3 @@ function maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     @inbounds finite_dists = filter(d -> d != -Inf, dist)
     return @inbounds isempty(finite_dists) ? 0 : Int32(maximum(finite_dists))
 end
-

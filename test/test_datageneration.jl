@@ -5,6 +5,15 @@ using TestItems
     import CausalSets
     import SparseArrays
     import Distributions
+
+    function graph_make_adj(c::CSets.AbstractCauset, type::Type)
+        c |> make_link_matrix |>
+        Graphs.SimpleDiGraph |>
+        Graphs.transitiveclosure |>
+        Graphs.adjacency_matrix |>
+        SparseArrays.SparseMatrixCSC{type} # for consistency testing
+    end # for consistency testing
+
 end
 
 @testsnippet makeData begin
@@ -25,6 +34,15 @@ end
     cset_empty = MockData(0)
 
     cset_links = MockData(100)
+
+    function graph_make_adj(c::CSets.AbstractCauset, type::Type)
+        c |> make_link_matrix |>
+        Graphs.SimpleDiGraph |>
+        Graphs.transitiveclosure |>
+        Graphs.adjacency_matrix |>
+        SparseArrays.SparseMatrixCSC{type} # for consistency testing
+    end # for consistency testing
+
 end
 
 @testitem "get_manifolds_for_dim" tags=[:datageneration] setup=[importModules] begin

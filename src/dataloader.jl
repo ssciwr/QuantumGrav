@@ -10,7 +10,7 @@ A mutable struct for efficiently loading and caching simulated causal set data f
 - `file_length::Int`: Number of rows in each file (assumed to be consistent across files)
 - `buffer::Dict{Int, Array{Matrix{Float32}}}`: Cache for loaded data to minimize file I/O
 - `max_buffer_size::Int64`: Maximum number of files to keep in memory
-- `mode::String`: The mode of data loading, either "jld2" or "arrow"
+- `mode::String`: The mode of data loading, either "jld2", "hdf5
 """
 mutable struct Dataset
     base_path::String
