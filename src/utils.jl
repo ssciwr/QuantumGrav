@@ -2,8 +2,12 @@
 """
     PseudoManifold{N}
 
-DOCSTRING
+A pseudo-manifold structure representing a random manifold in N dimensions.
+This is used as an alternative to the geometric manifolds provided by CSets
+when working with randomly generated causets.
 
+# Type Parameters
+- `N`: The dimension of the manifold
 """
 struct PseudoManifold{N} <: CSets.AbstractManifold{N} end
 
@@ -11,7 +15,14 @@ struct PseudoManifold{N} <: CSets.AbstractManifold{N} end
 """
     get_manifold_name(type::Type, d)
 
-DOCSTRING
+Returns the string name of a manifold type for a given dimension.
+
+# Arguments
+- `type`: The manifold type (e.g., CSets.MinkowskiManifold{d})
+- `d`: The dimension of the manifold
+
+# Returns
+- `String`: The name of the manifold ("Minkowski", "DeSitter", etc.)
 """
 function get_manifold_name(type::Type, d)
     Dict(
@@ -26,6 +37,17 @@ end
 """
     get_manifold_encoding
 
+A dictionary mapping manifold names to their integer encodings.
+Used for converting between string representations and numeric codes
+for different spacetime manifolds.
+
+# Mappings
+- "Minkowski" => 1
+- "HyperCylinder" => 2  
+- "DeSitter" => 3
+- "AntiDeSitter" => 4
+- "Torus" => 5
+- "Random" => 6
 """
 get_manifold_encoding = Dict(
     "Minkowski" => 1,
@@ -37,9 +59,27 @@ get_manifold_encoding = Dict(
 )
 
 """
-    make_manifold(i::Int, d::Int)
+    make_manifold(i::Int, d::Int) -> CSets.AbstractManifold
 
-DOCSTRING
+Creates a manifold object based on an integer encoding and dimension.
+
+# Arguments
+- `i`: Integer encoding of the manifold type (1-6)
+- `d`: Dimension of the manifold
+
+# Returns
+- `CSets.AbstractManifold`: The constructed manifold object
+
+# Manifold Encodings
+- 1: Minkowski manifold
+- 2: Hypercylinder manifold  
+- 3: De Sitter manifold
+- 4: Anti-de Sitter manifold
+- 5: Torus manifold
+- 6: Pseudo manifold (random)
+
+# Throws
+- `ErrorException`: If manifold encoding `i` is not supported (not 1-6)
 """
 function make_manifold(i::Int, d::Int)::CSets.AbstractManifold
     if i == 1
@@ -60,17 +100,24 @@ function make_manifold(i::Int, d::Int)::CSets.AbstractManifold
 end
 
 """
-    make_cset(manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int, rng::Random.AbstractRNG, type::Type{T})
+    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
 
-DOCSTRING
+Creates a causet and its coordinate representation from a manifold and boundary.
 
-# Arguments:
-- `manifold`: DESCRIPTION
-- `boundary`: DESCRIPTION
-- `n`: DESCRIPTION
-- `d`: DESCRIPTION
-- `rng`: DESCRIPTION
-- `type`: DESCRIPTION
+# Arguments
+- `manifold::CSets.AbstractManifold`: The spacetime manifold
+- `boundary::CSets.AbstractBoundary`: The boundary conditions
+- `n::Int64`: Number of points in the causet
+- `d::Int`: Dimension of the spacetime
+- `rng::Random.AbstractRNG`: Random number generator
+- `type::Type{T}`: Numeric type for coordinates
+
+# Returns
+- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
+
+# Notes
+Special handling for PseudoManifold which generates random causets,
+while other manifolds use CSets sprinkling generation.
 """
 function make_cset(
         manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64,
@@ -86,9 +133,21 @@ function make_cset(
 end
 
 """
-    resize(m::AbstractArray{T}, new_size::Tuple)
+    resize(m::AbstractArray{T}, new_size::Tuple) -> AbstractArray{T}
 
-DOCSTRING
+Resizes an array to a new size, either by truncating or zero-padding.
+
+# Arguments
+- `m::AbstractArray{T}`: The input array to resize
+- `new_size::Tuple`: The target dimensions
+
+# Returns
+- `AbstractArray{T}`: Resized array of the same type as input
+
+# Notes
+- If new size is larger, pads with zeros (preserving sparsity for sparse arrays)
+- If new size is smaller, truncates the array
+- Maintains the original array type (dense or sparse)
 """
 function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T <: Number}
     if any(size(m) .< new_size)
@@ -102,17 +161,24 @@ function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T
 end
 
 """
-    make_pseudosprinkling(n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T}; rng = Random.MersenneTwister(1234))
+    make_pseudosprinkling(n, d, box_min, box_max, type; rng) -> Vector{Vector{T}}
 
-DOCSTRING
+Generates random points uniformly distributed in a d-dimensional box.
 
-# Arguments:
-- `n`: DESCRIPTION
-- `d`: DESCRIPTION
-- `box_min`: DESCRIPTION
-- `box_max`: DESCRIPTION
-- `type`: DESCRIPTION
-- `rng`: DESCRIPTION
+# Arguments
+- `n::Int64`: Number of points to generate
+- `d::Int64`: Dimension of each point
+- `box_min::Float64`: Minimum coordinate value
+- `box_max::Float64`: Maximum coordinate value
+- `type::Type{T}`: Numeric type for coordinates
+- `rng`: Random number generator (default: MersenneTwister(1234))
+
+# Returns
+- `Vector{Vector{T}}`: Vector of n points, each point is a d-dimensional vector
+
+# Notes
+Used for creating pseudo-sprinklings in PseudoManifold when geometric
+manifold sprinkling is not applicable.
 """
 function make_pseudosprinkling(
         n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T};
@@ -123,9 +189,21 @@ function make_pseudosprinkling(
 end
 
 """
-    topsort(adj_matrix, in_degree::AbstractVector{T})
+    topsort(adj_matrix, in_degree::AbstractVector{T}) -> Vector{Int}
 
-DOCSTRING
+Performs topological sorting on a directed graph using Kahn's algorithm.
+
+# Arguments
+- `adj_matrix`: Adjacency matrix representing the directed graph
+- `in_degree::AbstractVector{T}`: Vector containing the in-degree of each vertex
+
+# Returns
+- `Vector{Int}`: Topologically sorted order of vertices
+
+# Notes
+Uses Kahn's algorithm for topological sorting. This will be needed later
+for determining the topological order of causets. The algorithm maintains
+a queue of vertices with zero in-degree and processes them iteratively.
 """
 function topsort(adj_matrix, in_degree::AbstractVector{T})::Vector{Int} where {T <: Number}
     n = size(adj_matrix, 1)

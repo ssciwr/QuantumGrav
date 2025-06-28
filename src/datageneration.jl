@@ -34,17 +34,24 @@ function make_link_matrix(cset::CSet.AbstractCauset)
 end
 
 """
-    make_cset(manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int, rng::Random.AbstractRNG, type::Type{T})
+    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
 
-DOCSTRING
+Creates a causet and its coordinate representation from a manifold and boundary.
 
-# Arguments:
-- `manifold`: DESCRIPTION
-- `boundary`: DESCRIPTION
-- `n`: DESCRIPTION
-- `d`: DESCRIPTION
-- `rng`: DESCRIPTION
-- `type`: DESCRIPTION
+# Arguments
+- `manifold::CSets.AbstractManifold`: The spacetime manifold
+- `boundary::CSets.AbstractBoundary`: The boundary type  
+- `n::Int64`: Number of points in the causet
+- `d::Int`: Dimension of the spacetime
+- `rng::Random.AbstractRNG`: Random number generator
+- `type::Type{T}`: Numeric type for coordinates
+
+# Returns
+- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
+
+# Notes
+Special handling for PseudoManifold which generates random causets,
+while other manifolds use CSets sprinkling generation.
 """
 function make_cset(
         manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64,
@@ -60,25 +67,35 @@ function make_cset(
 end
 
 """
-    calculate_angles(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T})
+    calculate_angles(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseMatrix
 
-DOCSTRING
+Calculates angles between vectors from a central node to its neighbors in a sprinkling.
 
-# Arguments:
-- `sprinkling`: DESCRIPTION
-- `node_idx`: DESCRIPTION
-- `neighbors`: DESCRIPTION
-- `num_nodes`: DESCRIPTION
-- `type`: DESCRIPTION
+# Arguments
+- `sprinkling::AbstractMatrix`: Matrix where each row represents a point's coordinates
+- `node_idx::Int`: Index of the central node
+- `neighbors::AbstractVector`: Vector of neighbor node indices
+- `num_nodes::Int`: Total number of nodes
+- `type::Type{T}`: Numeric type for the angle values
+
+# Returns
+- `SparseMatrix{T}`: Sparse matrix of angles between neighbor pairs, where entry (i,j) 
+  contains the angle between vectors from the central node to neighbors i and j
+
+# Notes
+- Returns angles in radians using acos function
+- Uses dot product and vector norms to calculate angles
+- Diagonal entries (same neighbor) are zero
+- Empty neighbor list returns zero matrix
 """
 function calculate_angles(
         sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
-        num_nodes::Int, type::Type{T}) where {T <: Number}
-    angles = SparseArrays.spzeros(T, num_nodes, num_nodes)
+        num_nodes::Int, type::Type{T}; multithreading::Bool = false) where {T <: Number}
+    angles = SparseArrays.spzeros(type, num_nodes, num_nodes)
     if isempty(neighbors)
         return angles
     end
-
+    # TODO: dispatch on multithreading variable
     for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
         if neighbor_i != neighbor_j
             v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
@@ -94,26 +111,37 @@ function calculate_angles(
 end
 
 """
-    calculate_distances(sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector, num_nodes::Int, type::Type{T})
+    calculate_distances(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseVector
 
-DOCSTRING
+Calculates Euclidean distances from a central node to its neighbors in a sprinkling.
 
-# Arguments:
-- `sprinkling`: DESCRIPTION
-- `node_idx`: DESCRIPTION
-- `neighbors`: DESCRIPTION
-- `num_nodes`: DESCRIPTION
-- `type`: DESCRIPTION
+# Arguments
+- `sprinkling::AbstractMatrix`: Matrix where each row represents a point's coordinates
+- `node_idx::Int`: Index of the central node
+- `neighbors::AbstractVector`: Vector of neighbor node indices  
+- `num_nodes::Int`: Total number of nodes
+- `type::Type{T}`: Numeric type for the distance values
+
+# Returns
+- `SparseVector{T}`: Sparse vector where entry i contains the Euclidean distance 
+  from the central node to neighbor i
+
+# Notes
+- Uses Euclidean norm to calculate distances
+- Distance to self (same node) is zero
+- Empty neighbor list returns zero vector
+- Distances are always non-negative
 """
 function calculate_distances(
         sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
-        num_nodes::Int, type::Type{T}) where {T <: Number}
-    distances = SparseArrays.spzeros(T, num_nodes)
+        num_nodes::Int, type::Type{T}; multithreading::Bool = false) where {T <: Number}
+    distances = SparseArrays.spzeros(type, num_nodes)
 
     if isempty(neighbors)
         return distances
     end
 
+    # TODO: check if multithreading is needed here
     for (i, neighbor_i) in enumerate(neighbors)
         if neighbor_i != node_idx
             distances[i] = LinearAlgebra.norm(sprinkling[neighbor_i, :] -
@@ -147,14 +175,15 @@ in the causal set.
 - The `cardinality_of` function is expected to return `nothing` if no 
   cardinality value exists for a given pair `(i, j)`.
 """
-function make_cardinality_matrix(cset::CSet.AbstractCauset)::SparseArrays.SparseMatrixCSC{
+function make_cardinality_matrix(cset::CSet.AbstractCauset;
+        multithreading::Bool = false)::SparseArrays.SparseMatrixCSC{
         Float32, Int}
     if cset.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
 
     cardinality_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
-
+    # TODO: dispatch on multithreading variable
     for i in 1:(cset.atom_count)
         for j in 1:(cset.atom_count)
             ca = CSet.cardinality_of(cset, i, j)
@@ -185,7 +214,8 @@ Generates a matrix of size `(maxCardinality, ds[end])` filled with coefficients 
 
 """
 # TODO: check again if this is correct, lookup in paper!
-function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
+function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64, type::Type{T};
+        multithreading::Bool = false) where {T <: Real}
     if length(ds) == 0
         throw(ArgumentError("The dimensions must not be empty."))
     end
@@ -194,7 +224,7 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
         throw(ArgumentError("maxCardinality must be a positive integer."))
     end
 
-    mat = SparseArrays.spzeros(Float32, maxCardinality, length(ds))
+    mat = SparseArrays.spzeros(T, maxCardinality, length(ds))
 
     for c in 1:maxCardinality
         for d in 1:length(ds)
@@ -209,30 +239,48 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64 = 10)
 end
 
 """
-    make_pseudosprinkling(n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T}; rng = Random.MersenneTwister(1234))
+    make_pseudosprinkling(n, d, box_min, box_max, type; rng) -> Vector{Vector{T}}
 
-DOCSTRING
+Generates random points uniformly distributed in a d-dimensional box.
 
-# Arguments:
-- `n`: DESCRIPTION
-- `d`: DESCRIPTION
-- `box_min`: DESCRIPTION
-- `box_max`: DESCRIPTION
-- `type`: DESCRIPTION
-- `rng`: DESCRIPTION
+# Arguments
+- `n::Int64`: Number of points to generate
+- `d::Int64`: Dimension of each point
+- `box_min::Float64`: Minimum coordinate value
+- `box_max::Float64`: Maximum coordinate value
+- `type::Type{T}`: Numeric type for coordinates
+- `rng`: Random number generator (default: MersenneTwister(1234))
+
+# Returns
+- `Vector{Vector{T}}`: Vector of n points, each point is a d-dimensional vector
+
+# Notes
+Used for creating pseudo-sprinklings in PseudoManifold when geometric
+manifold sprinkling is not applicable.
 """
 function make_pseudosprinkling(
         n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T};
-        rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where {T <: Number}
+        rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where {T <: Real}
     distr = Distributions.Uniform(box_min, box_max)
 
-    return [[rand(distr) for i in 1:d] for _ in 1:n]
+    return [[rand(distr) |> type for i in 1:d] for _ in 1:n]
 end
 
 """
-    make_adj(c::CSets.AbstractCauset, type::Type{T})
+    make_adj(c::CSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
 
-DOCSTRING
+Creates an adjacency matrix from a causet's future relations.
+
+# Arguments
+- `c::CSets.AbstractCauset`: The causet object containing future relations
+- `type::Type{T}`: Numeric type for the adjacency matrix entries
+
+# Returns
+- `SparseMatrixCSC{T}`: Sparse adjacency matrix representing the causal structure
+
+# Notes
+Converts the causet's future_relations to a sparse matrix format by 
+horizontally concatenating, transposing, and converting to the specified type.
 """
 make_adj(c::CSets.AbstractCauset, type::Type{T}) where {T <: Number} = c.future_relations |>
                                                                        x -> hcat(x...) |>
@@ -240,14 +288,22 @@ make_adj(c::CSets.AbstractCauset, type::Type{T}) where {T <: Number} = c.future_
                                                                             SparseArrays.SparseMatrixCSC{type}
 
 """
-    maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
+    maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int) -> Int32
 
-DOCSTRING
+Calculates the maximum path length from a source node in a directed acyclic graph.
 
-# Arguments:
-- `adj_matrix`: DESCRIPTION
-- `topo_order`: DESCRIPTION
-- `source`: DESCRIPTION
+# Arguments
+- `adj_matrix`: Adjacency matrix representing the directed graph
+- `topo_order::Vector{Int}`: Topologically sorted order of vertices
+- `source::Int`: Source vertex index to calculate distances from
+
+# Returns
+- `Int32`: Maximum finite distance from the source node, or 0 if no paths exist
+
+# Notes
+Uses dynamic programming with topological ordering for efficient longest path computation.
+Processes vertices in topological order to ensure optimal substructure property.
+Returns 0 if no finite distances exist from the source.
 """
 function maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     n = size(adj_matrix, 1)
