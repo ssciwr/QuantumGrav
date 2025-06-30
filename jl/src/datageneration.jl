@@ -1,3 +1,37 @@
+
+"""
+    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
+
+Creates a causet and its coordinate representation from a manifold and boundary.
+
+# Arguments
+- `manifold::CausalSets.AbstractManifold`: The spacetime manifold
+- `boundary::CausalSets.AbstractBoundary`: The boundary type  
+- `n::Int64`: Number of points in the causet
+- `d::Int`: Dimension of the spacetime
+- `rng::Random.AbstractRNG`: Random number generator
+- `type::Type{T}`: Numeric type for coordinates
+
+# Returns
+- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
+
+# Notes
+Special handling for PseudoManifold which generates random causets,
+while other manifolds use CausalSets sprinkling generation.
+"""
+function make_cset(
+        manifold::CausalSets.AbstractManifold, boundary::CausalSets.AbstractBoundary, n::Int64, d::Int,
+        rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
+    if manifold isa PseudoManifold
+        return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
+        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
+    else
+        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng = rng)
+        cset = CausalSets.BitArrayCauset(manifold, sprinkling)
+        return cset, stack(collect.(sprinkling), dims = 1)
+    end
+end
+
 """
     make_link_matrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32}
 
@@ -21,11 +55,12 @@ causal set, so its complexity is quadratic in the number of elements.
 - The sparse matrix representation is used to save memory, as most entries
 are expected to be zero in typical causal sets.
 """
-function make_link_matrix(cset::CSet.AbstractCauset)
-    link_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
-    for i in 1:(cset.atom_count)
-        for j in 1:(cset.atom_count)
-            if CSet.is_link(cset, i, j)
+function make_link_matrix(cset::CausalSets.AbstractCauset)
+    link_matrix = SparseArrays.spzeros(
+        Float32, CausalSets.atom_count, CausalSets.atom_count)
+    for i in 1:(CausalSets.atom_count)
+        for j in 1:(CausalSets.atom_count)
+            if CausalSets.is_link(cset, i, j)
                 @inbounds link_matrix[i, j] = 1
             end
         end
@@ -145,10 +180,10 @@ in the causal set.
 - The `cardinality_of` function is expected to return `nothing` if no 
   cardinality value exists for a given pair `(i, j)`.
 """
-function make_cardinality_matrix(cset::CSet.AbstractCauset;
+function make_cardinality_matrix(cset::CausalSets.AbstractCauset;
         multithreading::Bool = false)::SparseArrays.SparseMatrixCSC{
         Float32, Int}
-    if cset.atom_count == 0
+    if CausalSets.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
 
@@ -156,7 +191,7 @@ function make_cardinality_matrix(cset::CSet.AbstractCauset;
     # TODO: dispatch on multithreading variable
     for i in 1:(cset.atom_count)
         for j in 1:(cset.atom_count)
-            ca = CSet.cardinality_of(cset, i, j)
+            ca = CausalSets.cardinality_of(cset, i, j)
             if isnothing(ca) == false
                 @inbounds cardinality_matrix[i, j] = ca
             end
@@ -209,12 +244,12 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64, type::Type{T};
 end
 
 """
-    make_adj(c::CSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
+    make_adj(c::CausalSets..AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
 
 Creates an adjacency matrix from a causet's future relations.
 
 # Arguments
-- `c::CSets.AbstractCauset`: The causet object containing future relations
+- `c::CausalSets..AbstractCauset`: The causet object containing future relations
 - `type::Type{T}`: Numeric type for the adjacency matrix entries
 
 # Returns
@@ -224,7 +259,7 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CSets.AbstractCauset, type::Type{T}) where {T <: Number}
+function make_adj(c::CausalSets..AbstractCauset, type::Type{T}) where {T <: Number}
     c.future_relations |>
     x -> hcat(x...) |>
          transpose |>
@@ -370,4 +405,30 @@ function make_data(transform::Function, prepare_output::Function,
     end
 
     HDF5.close(file)
+end
+
+"""
+    make_data(transform::Function, prepare_output::Function, write_data::Function, configpath::String)
+Creates data using the specified transform function, prepares the output using the prepare_output function, and writes the data using the write_data function. The configuration is read from a YAML file at the specified path.
+
+# Arguments:
+- `transform`: Function to generate a single datapoint. It should accept a configuration dictionary and
+- `prepare_output`: Function to prepare the HDF5 file for writing data. It should accept the HDF5 file and configuration dictionary as arguments.
+- `write_data`: Function to write the generated data to the HDF5 file. It should accept the HDF5 file and a the data dictionary as arguments.
+- `configpath`: String path to the YAML configuration file containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
+"""
+function make_data(
+        transform::Function,
+        prepare_output::Function,
+        write_data::Function,
+        configpath::String
+)
+    config = YAML.read(abspath(expanduser(configpath)))
+
+    return make_data(
+        transform,
+        prepare_output,
+        write_data,
+        config
+    )
 end

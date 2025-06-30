@@ -3,13 +3,13 @@
     PseudoManifold{N}
 
 A pseudo-manifold structure representing a random manifold in N dimensions.
-This is used as an alternative to the geometric manifolds provided by CSets
+This is used as an alternative to the geometric manifolds provided by CausalSets
 when working with randomly generated causets.
 
 # Type Parameters
 - `N`: The dimension of the manifold
 """
-struct PseudoManifold{N} <: CSets.AbstractManifold{N} end
+struct PseudoManifold{N} <: CausalSets.AbstractManifold{N} end
 
 """
     get_manifold_name(type::Type, d)
@@ -17,7 +17,7 @@ struct PseudoManifold{N} <: CSets.AbstractManifold{N} end
 Returns the string name of a manifold type for a given dimension.
 
 # Arguments
-- `type`: The manifold type (e.g., CSets.MinkowskiManifold{d})
+- `type`: The manifold type (e.g., CausalSets.MinkowskiManifold{d})
 - `d`: The dimension of the manifold
 
 # Returns
@@ -25,11 +25,11 @@ Returns the string name of a manifold type for a given dimension.
 """
 function get_manifold_name(type::Type, d)
     Dict(
-        CSets.MinkowskiManifold{d} => "Minkowski",
-        CSets.DeSitterManifold{d} => "DeSitter",
-        CSets.AntiDeSitterManifold{d} => "AntiDeSitter",
-        CSets.HypercylinderManifold{d} => "HyperCylinder",
-        CSets.TorusManifold{d} => "Torus",
+        CausalSets.MinkowskiManifold{d} => "Minkowski",
+        CausalSets.DeSitterManifold{d} => "DeSitter",
+        CausalSets.AntiDeSitterManifold{d} => "AntiDeSitter",
+        CausalSets.HypercylinderManifold{d} => "HyperCylinder",
+        CausalSets.TorusManifold{d} => "Torus",
         PseudoManifold{2} => "Random")[type]
 end
 
@@ -58,7 +58,7 @@ get_manifold_encoding = Dict(
 )
 
 """
-    make_manifold(i::Int, d::Int) -> CSets.AbstractManifold
+    make_manifold(i::Int, d::Int) -> CausalSets.AbstractManifold
 
 Creates a manifold object based on an integer encoding and dimension.
 
@@ -67,7 +67,7 @@ Creates a manifold object based on an integer encoding and dimension.
 - `d`: Dimension of the manifold
 
 # Returns
-- `CSets.AbstractManifold`: The constructed manifold object
+- `CausalSets.AbstractManifold`: The constructed manifold object
 
 # Manifold Encodings
 - 1: Minkowski manifold
@@ -80,17 +80,17 @@ Creates a manifold object based on an integer encoding and dimension.
 # Throws
 - `ErrorException`: If manifold encoding `i` is not supported (not 1-6)
 """
-function make_manifold(i::Int, d::Int)::CSets.AbstractManifold
+function make_manifold(i::Int, d::Int)::CausalSets.AbstractManifold
     if i == 1
-        return CSets.MinkowskiManifold{d}()
+        return CausalSets.MinkowskiManifold{d}()
     elseif i == 2
-        return CSets.HypercylinderManifold{d}(1.0)
+        return CausalSets.HypercylinderManifold{d}(1.0)
     elseif i == 3
-        return CSets.DeSitterManifold{d}(1.0)
+        return CausalSets.DeSitterManifold{d}(1.0)
     elseif i == 4
-        return CSets.AntiDeSitterManifold{d}(1.0)
+        return CausalSets.AntiDeSitterManifold{d}(1.0)
     elseif i == 5
-        return CSets.TorusManifold{d}(1.0)
+        return CausalSets.TorusManifold{d}(1.0)
     elseif i == 6
         return PseudoManifold{d}()
     else
@@ -116,6 +116,7 @@ Resizes an array to a new size, either by truncating or zero-padding.
 - Maintains the original array type (dense or sparse)
 """
 function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T <: Number}
+    # TODO: make this work with dense matrices as well and general n-d arrays
     if any(size(m) .< new_size)
         resized_m = m isa SparseArrays.AbstractSparseArray ?
                     SparseArrays.spzeros(T, new_size...) : zeros(T, new_size...)
@@ -176,7 +177,7 @@ function topsort(adj_matrix::AbstractMatrix{T},
     n = size(adj_matrix, 1)
     # TODO: make this work with dense matrices as well
 
-    # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the csets
+    # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the CausalSets
     queue = Vector{Int64}()
     sizehint!(queue, n)
     for i in 1:n
@@ -201,37 +202,4 @@ function topsort(adj_matrix::AbstractMatrix{T},
     end
 
     return topo_order
-end
-
-"""
-    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
-
-Creates a causet and its coordinate representation from a manifold and boundary.
-
-# Arguments
-- `manifold::CSets.AbstractManifold`: The spacetime manifold
-- `boundary::CSets.AbstractBoundary`: The boundary type  
-- `n::Int64`: Number of points in the causet
-- `d::Int`: Dimension of the spacetime
-- `rng::Random.AbstractRNG`: Random number generator
-- `type::Type{T}`: Numeric type for coordinates
-
-# Returns
-- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
-
-# Notes
-Special handling for PseudoManifold which generates random causets,
-while other manifolds use CSets sprinkling generation.
-"""
-function make_cset(
-        manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int,
-        rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
-    if manifold isa PseudoManifold
-        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng),
-        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
-    else
-        sprinkling = CSets.generate_sprinkling(manifold, boundary, n; rng = rng)
-        cset = CSets.BitArrayCauset(manifold, sprinkling)
-        return cset, stack(collect.(sprinkling), dims = 1)
-    end
 end
