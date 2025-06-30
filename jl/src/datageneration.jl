@@ -270,8 +270,6 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     return @inbounds isempty(finite_dists) ? 0 : Int 32(maximum(finite_dists))
 end
 
-using AutomaticDocstrings
-
 """
     make_data(transform::Function, prepare_output::Function, write_data::Function, config::Dict{String, Any})
 
@@ -280,10 +278,10 @@ In order to work, transform must return a `Dict{String, Any}` containing the nam
 The write_data function must accept the HDF5 file and the data dictionary to be written as arguments.
 
 # Arguments:
-- `transform`: DESCRIPTION
-- `prepare_output`: DESCRIPTION
-- `write_data`: DESCRIPTION
-- `config`: DESCRIPTION
+- `transform`: Function to generate a single datapoint. It should accept a configuration dictionary and a random number generator, and return a `Dict{String, Any}` with the data.
+- `prepare_output`: Function to prepare the HDF5 file for writing data. It should accept the HDF5 file and configuration dictionary as arguments.
+- `write_data`: Function to write the generated data to the HDF5 file. It should accept the HDF5 file and a the data dictionary as arguments.
+- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
 function make_data(transform::Function, prepare_output::Function,
         write_data::Function, config::Dict{String, Any})::Nothing
@@ -293,7 +291,6 @@ function make_data(transform::Function, prepare_output::Function,
         throw(ArgumentError("The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values."))
     end
 
-    num_datapoints = config["num_datapoints"]
     file = HDF5.HDF5File(
         joinpath(abspath(expanduser(config["output"])), "data.h5"), config["file_mode"])
 
@@ -321,6 +318,8 @@ function make_data(transform::Function, prepare_output::Function,
 
     # prepare the file 
     prepare_output(file, config)
+
+    num_datapoints = config["num_datapoints"]
 
     # check if the data generation should be chunked
     if "chunks" in config
