@@ -34,39 +34,6 @@ function make_link_matrix(cset::CSet.AbstractCauset)
 end
 
 """
-    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
-
-Creates a causet and its coordinate representation from a manifold and boundary.
-
-# Arguments
-- `manifold::CSets.AbstractManifold`: The spacetime manifold
-- `boundary::CSets.AbstractBoundary`: The boundary type  
-- `n::Int64`: Number of points in the causet
-- `d::Int`: Dimension of the spacetime
-- `rng::Random.AbstractRNG`: Random number generator
-- `type::Type{T}`: Numeric type for coordinates
-
-# Returns
-- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
-
-# Notes
-Special handling for PseudoManifold which generates random causets,
-while other manifolds use CSets sprinkling generation.
-"""
-function make_cset(
-        manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64,
-        d::Int, rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
-    if manifold isa PseudoManifold
-        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng),
-        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
-    else
-        sprinkling = CSets.generate_sprinkling(manifold, boundary, n; rng = rng)
-        cset = CSets.BitArrayCauset(manifold, sprinkling)
-        return cset, stack(collect.(sprinkling), dims = 1)
-    end
-end
-
-"""
     calculate_angles(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseMatrix
 
 Calculates angles between vectors from a central node to its neighbors in a sprinkling.
@@ -91,16 +58,19 @@ Calculates angles between vectors from a central node to its neighbors in a spri
 function calculate_angles(
         sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
         num_nodes::Int, type::Type{T}; multithreading::Bool = false) where {T <: Number}
+    # what about the metric?
     angles = SparseArrays.spzeros(type, num_nodes, num_nodes)
     if isempty(neighbors)
         return angles
     end
     # TODO: dispatch on multithreading variable
     for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
+
         if neighbor_i != neighbor_j
             v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
             v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
-            angles[i, j] = acos(clamp(
+            angles[i,
+                j] = acos(clamp(
                 LinearAlgebra.dot(
                     v_i / LinearAlgebra.norm(v_i), v_j / LinearAlgebra.norm(v_j)),
                 -1.0,
@@ -136,7 +106,7 @@ function calculate_distances(
         sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
         num_nodes::Int, type::Type{T}; multithreading::Bool = false) where {T <: Number}
     distances = SparseArrays.spzeros(type, num_nodes)
-
+    # TODO: what about the metric?
     if isempty(neighbors)
         return distances
     end
@@ -239,34 +209,6 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64, type::Type{T};
 end
 
 """
-    make_pseudosprinkling(n, d, box_min, box_max, type; rng) -> Vector{Vector{T}}
-
-Generates random points uniformly distributed in a d-dimensional box.
-
-# Arguments
-- `n::Int64`: Number of points to generate
-- `d::Int64`: Dimension of each point
-- `box_min::Float64`: Minimum coordinate value
-- `box_max::Float64`: Maximum coordinate value
-- `type::Type{T}`: Numeric type for coordinates
-- `rng`: Random number generator (default: MersenneTwister(1234))
-
-# Returns
-- `Vector{Vector{T}}`: Vector of n points, each point is a d-dimensional vector
-
-# Notes
-Used for creating pseudo-sprinklings in PseudoManifold when geometric
-manifold sprinkling is not applicable.
-"""
-function make_pseudosprinkling(
-        n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T};
-        rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where {T <: Real}
-    distr = Distributions.Uniform(box_min, box_max)
-
-    return [[rand(distr) |> type for i in 1:d] for _ in 1:n]
-end
-
-"""
     make_adj(c::CSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
 
 Creates an adjacency matrix from a causet's future relations.
@@ -282,10 +224,12 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-make_adj(c::CSets.AbstractCauset, type::Type{T}) where {T <: Number} = c.future_relations |>
-                                                                       x -> hcat(x...) |>
-                                                                            transpose |>
-                                                                            SparseArrays.SparseMatrixCSC{type}
+function make_adj(c::CSets.AbstractCauset, type::Type{T}) where {T <: Number}
+    c.future_relations |>
+    x -> hcat(x...) |>
+         transpose |>
+         SparseArrays.SparseMatrixCSC{type}
+end
 
 """
     maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int) -> Int32
@@ -305,7 +249,7 @@ Uses dynamic programming with topological ordering for efficient longest path co
 Processes vertices in topological order to ensure optimal substructure property.
 Returns 0 if no finite distances exist from the source.
 """
-function maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
+function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     n = size(adj_matrix, 1)
 
     # Dynamic programming for longest paths
@@ -323,5 +267,108 @@ function maxpathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
 
     # Return max finite distance
     @inbounds finite_dists = filter(d -> d != -Inf, dist)
-    return @inbounds isempty(finite_dists) ? 0 : Int32(maximum(finite_dists))
+    return @inbounds isempty(finite_dists) ? 0 : Int 32(maximum(finite_dists))
+end
+
+using AutomaticDocstrings
+
+"""
+    make_data(transform::Function, prepare_output::Function, write_data::Function, config::Dict{String, Any})
+
+Create data using the transform function and write it to an HDF5 file. The HDF5 file is prepared using the `prepare_output` function, and the data is written using the `write_data` function.
+In order to work, transform must return a `Dict{String, Any}` containing the name and individual data elements. Only primitive types and arrays thereof are supported as values.
+The write_data function must accept the HDF5 file and the data dictionary to be written as arguments.
+
+# Arguments:
+- `transform`: DESCRIPTION
+- `prepare_output`: DESCRIPTION
+- `write_data`: DESCRIPTION
+- `config`: DESCRIPTION
+"""
+function make_data(transform::Function, prepare_output::Function,
+        write_data::Function, config::Dict{String, Any})::Nothing
+
+    # check return type 
+    if Dict in Base.return_types(transform, (Dict{String, Any}, Random.MersenneTwister)) == false
+        throw(ArgumentError("The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values."))
+    end
+
+    num_datapoints = config["num_datapoints"]
+    file = HDF5.HDF5File(
+        joinpath(abspath(expanduser(config["output"])), "data.h5"), config["file_mode"])
+
+    # get the source code of the transform function and write them to the data folder 
+    for func in [transform, prepare_output, write_data]
+        funcdata = first(methods(func))
+        filepath = String(funcdata.file)
+
+        if isfile(abspath(expanduser(filepath)))
+            cp(filepath,
+                joinpath(abspath(expanduser(config["output"])), filepath))
+        end
+    end
+
+    # get the current commit hash of the QuantumGrav package and put it into the config
+    config["commit_hash"] = run(`git rev-parse HEAD`) |> strip
+
+    config["branch_name"] = run(`git rev-parse --abbrev-ref HEAD`) |> strip
+
+    # write out config to the specified output and add it to the hdf5 file
+    HDF5.write(
+        file, "config", config)
+
+    YAML.write(joinpath(abspath(expanduser(config["output"])), "config.yaml"), config)
+
+    # prepare the file 
+    prepare_output(file, config)
+
+    # check if the data generation should be chunked
+    if "chunks" in config
+        num_chunks = config["chunks"]
+        num_datapoints = div(num_datapoints, num_chunks)
+    else
+        num_chunks = 1
+    end
+
+    # create data either single-threaded or multi-threaded 
+    if config["num_threads"] > 1
+        if Threads.nthreads != config["num_threads"]
+            throw(ArgumentError("Number of available threads does not match the configuration."))
+        end
+
+        # Multithreading enabled, use Threads.@threads for parallel data generation
+        rngs = [Random.MersenneTwister(config["seed"] + i) for i in 1:Threads.nthreads()]
+
+        for _ in 1:num_chunks
+            data = [[] for _ in 1:Threads.nthreads()]
+
+            Threads.@threads for _ in 1:num_datapoints
+                t = Threads.threadid()
+                rng = rngs[t]
+                data_point = transform(config, rng)
+                # Store or process the generated data point as needed
+                push!(data[t], data_point)
+            end
+
+            data = reduce(vcat, data)  # Combine results from all threads
+
+            write_data(file, data)
+        end
+    else
+        rng = Random.MersenneTwister(config["seed"])
+        # Single-threaded data generation
+
+        for _ in 1:num_chunks
+            data = []
+            # Generate data points for this chunk
+            for _ in 1:num_datapoints
+                data_point = transform(config, rng)
+                push!(data, data_point)
+            end
+
+            write_data(file, data)
+        end
+    end
+
+    HDF5.close(file)
 end

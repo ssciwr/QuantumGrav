@@ -11,7 +11,6 @@ when working with randomly generated causets.
 """
 struct PseudoManifold{N} <: CSets.AbstractManifold{N} end
 
-
 """
     get_manifold_name(type::Type, d)
 
@@ -100,39 +99,6 @@ function make_manifold(i::Int, d::Int)::CSets.AbstractManifold
 end
 
 """
-    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
-
-Creates a causet and its coordinate representation from a manifold and boundary.
-
-# Arguments
-- `manifold::CSets.AbstractManifold`: The spacetime manifold
-- `boundary::CSets.AbstractBoundary`: The boundary conditions
-- `n::Int64`: Number of points in the causet
-- `d::Int`: Dimension of the spacetime
-- `rng::Random.AbstractRNG`: Random number generator
-- `type::Type{T}`: Numeric type for coordinates
-
-# Returns
-- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
-
-# Notes
-Special handling for PseudoManifold which generates random causets,
-while other manifolds use CSets sprinkling generation.
-"""
-function make_cset(
-        manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64,
-        d::Int, rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
-    if manifold isa PseudoManifold
-        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng),
-        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
-    else
-        sprinkling = CSets.generate_sprinkling(manifold, boundary, n; rng = rng)
-        cset = CSets.BitArrayCauset(manifold, sprinkling)
-        return cset, stack(collect.(sprinkling), dims = 1)
-    end
-end
-
-"""
     resize(m::AbstractArray{T}, new_size::Tuple) -> AbstractArray{T}
 
 Resizes an array to a new size, either by truncating or zero-padding.
@@ -205,8 +171,10 @@ Uses Kahn's algorithm for topological sorting. This will be needed later
 for determining the topological order of causets. The algorithm maintains
 a queue of vertices with zero in-degree and processes them iteratively.
 """
-function topsort(adj_matrix, in_degree::AbstractVector{T})::Vector{Int} where {T <: Number}
+function topsort(adj_matrix::AbstractMatrix{T},
+        in_degree::AbstractVector{T})::Vector{Int} where {T <: Number}
     n = size(adj_matrix, 1)
+    # TODO: make this work with dense matrices as well
 
     # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the csets
     queue = Vector{Int64}()
@@ -233,4 +201,37 @@ function topsort(adj_matrix, in_degree::AbstractVector{T})::Vector{Int} where {T
     end
 
     return topo_order
+end
+
+"""
+    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
+
+Creates a causet and its coordinate representation from a manifold and boundary.
+
+# Arguments
+- `manifold::CSets.AbstractManifold`: The spacetime manifold
+- `boundary::CSets.AbstractBoundary`: The boundary type  
+- `n::Int64`: Number of points in the causet
+- `d::Int`: Dimension of the spacetime
+- `rng::Random.AbstractRNG`: Random number generator
+- `type::Type{T}`: Numeric type for coordinates
+
+# Returns
+- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
+
+# Notes
+Special handling for PseudoManifold which generates random causets,
+while other manifolds use CSets sprinkling generation.
+"""
+function make_cset(
+        manifold::CSets.AbstractManifold, boundary::CSets.AbstractBoundary, n::Int64, d::Int,
+        rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
+    if manifold isa PseudoManifold
+        return CSets.sample_random_causet(CSets.BitArrayCauset, n, 300, rng),
+        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
+    else
+        sprinkling = CSets.generate_sprinkling(manifold, boundary, n; rng = rng)
+        cset = CSets.BitArrayCauset(manifold, sprinkling)
+        return cset, stack(collect.(sprinkling), dims = 1)
+    end
 end
