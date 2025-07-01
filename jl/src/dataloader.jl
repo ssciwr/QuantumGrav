@@ -1,3 +1,10 @@
+module DataLoader
+
+export Dataset, load_data
+
+import Arrow
+import Tables
+import JLD2
 
 """
     Dataset
@@ -164,4 +171,6 @@ Return a vector of data points from the Dataset `d` at the indices specified in 
 """
 function Base.getindex(d::Dataset, is::Union{Vector{Int}, AbstractRange{Int}})
     return [d[i] for i in is]
+end
+
 end
