@@ -100,12 +100,11 @@ function calculate_angles(
     end
     # TODO: dispatch on multithreading variable
     for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
-
         if neighbor_i != neighbor_j
             v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
             v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
             angles[i,
-                j] = acos(clamp(
+            j] = acos(clamp(
                 LinearAlgebra.dot(
                     v_i / LinearAlgebra.norm(v_i), v_j / LinearAlgebra.norm(v_j)),
                 -1.0,
@@ -259,7 +258,7 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets..AbstractCauset, type::Type{T}) where {T <: Number}
+function make_adj(c::CausalSets .. AbstractCauset, type::Type{T}) where {T <: Number}
     c.future_relations |>
     x -> hcat(x...) |>
          transpose |>
@@ -322,7 +321,8 @@ function make_data(transform::Function, prepare_output::Function,
         write_data::Function, config::Dict{String, Any})::Nothing
 
     # check return type 
-    if Dict in Base.return_types(transform, (Dict{String, Any}, Random.MersenneTwister)) == false
+    if Dict in Base.return_types(transform, (Dict{String, Any}, Random.MersenneTwister)) ==
+       false
         throw(ArgumentError("The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values."))
     end
 
@@ -365,43 +365,27 @@ function make_data(transform::Function, prepare_output::Function,
     end
 
     # create data either single-threaded or multi-threaded 
-    if config["num_threads"] > 1
-        if Threads.nthreads != config["num_threads"]
-            throw(ArgumentError("Number of available threads does not match the configuration."))
+    if Threads.nthreads != config["num_threads"]
+        throw(ArgumentError("Number of available threads does not match the configuration."))
+    end
+
+    # Multithreading enabled, use Threads.@threads for parallel data generation
+    rngs = [Random.MersenneTwister(config["seed"] + i) for i in 1:Threads.nthreads()]
+
+    for _ in 1:num_chunks
+        data = [[] for _ in 1:Threads.nthreads()]
+
+        Threads.@threads for _ in 1:num_datapoints
+            t = Threads.threadid()
+            rng = rngs[t]
+            data_point = transform(config, rng)
+            # Store or process the generated data point as needed
+            push!(data[t], data_point)
         end
 
-        # Multithreading enabled, use Threads.@threads for parallel data generation
-        rngs = [Random.MersenneTwister(config["seed"] + i) for i in 1:Threads.nthreads()]
+        data = reduce(vcat, data)  # Combine results from all threads
 
-        for _ in 1:num_chunks
-            data = [[] for _ in 1:Threads.nthreads()]
-
-            Threads.@threads for _ in 1:num_datapoints
-                t = Threads.threadid()
-                rng = rngs[t]
-                data_point = transform(config, rng)
-                # Store or process the generated data point as needed
-                push!(data[t], data_point)
-            end
-
-            data = reduce(vcat, data)  # Combine results from all threads
-
-            write_data(file, data)
-        end
-    else
-        rng = Random.MersenneTwister(config["seed"])
-        # Single-threaded data generation
-
-        for _ in 1:num_chunks
-            data = []
-            # Generate data points for this chunk
-            for _ in 1:num_datapoints
-                data_point = transform(config, rng)
-                push!(data, data_point)
-            end
-
-            write_data(file, data)
-        end
+        write_data(file, data)
     end
 
     HDF5.close(file)

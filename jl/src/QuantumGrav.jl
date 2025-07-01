@@ -10,7 +10,6 @@ import YAML
 import HDF5
 
 include("utils.jl")
-include("dataelements.jl")
 include("datageneration.jl")
 include("dataloader.jl")
 

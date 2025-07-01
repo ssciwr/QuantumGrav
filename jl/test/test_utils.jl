@@ -1,29 +1,37 @@
-using TestItems
 
-@testsnippet importModules begin
-    import CausalSets
-    import SparseArrays
-    import Distributions
-    import Random
-    import Graphs
+@testitem "test_get_manifolds_for_dim" tags=[:utils] setup=[importModules] begin
+
+    manifolds = QuantumGrav.DataGeneration.get_manifolds_of_dim(2)
+
+    expected_manifolds = ["minkowski", "hypercylinder", "deSitter", "antiDeSitter", "torus"]
+
+    @test Set(keys(manifolds)) == Set(expected_manifolds)
+
+    manifolds = QuantumGrav.DataGeneration.get_manifolds_of_dim(21)
+
+    @test Set(keys(manifolds)) == Set(expected_manifolds)
 end
 
-@testitem "get_manifold_names" tags=[:utils] setup=[importModules] begin
-    @test 3 == 6
+@testitem "test_get_manifold_name" tags=[:utils] setup=[importModules] begin 
+    @testitem 3 == 6
 end
 
-@testitem "make_manifold" tags=[:utils] setup=[importModules] begin
-    @test 3 == 6
+@testitem "test_get_manifold_encoding" tags=[:utils] setup=[importModules] begin
+    @testitem 3 == 6
 end
 
-@testitem "resize" tags=[:utils] setup=[importModules] begin
-    @test 3 == 6
+@testitem "test_make_manifold" tags=[:utils] setup=[importModules] begin
+    @testitem 3 == 6
 end
 
-@testitem "make_pseudosprinkling" tags=[:utils] setup=[importModules] begin
-    @test 3 == 6
+@testitem "test_resize" tags=[:utils] setup=[importModules] begin
+    @testitem 3 == 6
 end
 
-@testitem "topsort" tags=[:utils] setup=[importModules] begin
-    @test 3 == 6
+@testitem "test_make_pseudosprinkling" tags=[:utils] setup=[importModules] begin
+    @testitem 3 == 6
+end
+
+@testitem "test_topsort" tags=[:utils] setup=[importModules] begin
+    @testitem 3 == 6
 end

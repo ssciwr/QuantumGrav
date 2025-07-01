@@ -116,7 +116,6 @@ Resizes an array to a new size, either by truncating or zero-padding.
 - Maintains the original array type (dense or sparse)
 """
 function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T <: Number}
-    # TODO: make this work with dense matrices as well and general n-d arrays
     if any(size(m) .< new_size)
         resized_m = m isa SparseArrays.AbstractSparseArray ?
                     SparseArrays.spzeros(T, new_size...) : zeros(T, new_size...)
@@ -175,7 +174,7 @@ a queue of vertices with zero in-degree and processes them iteratively.
 function topsort(adj_matrix::AbstractMatrix{T},
         in_degree::AbstractVector{T})::Vector{Int} where {T <: Number}
     n = size(adj_matrix, 1)
-    # TODO: make this work with dense matrices as well
+    # TODO: check this again
 
     # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the CausalSets
     queue = Vector{Int64}()
@@ -192,11 +191,23 @@ function topsort(adj_matrix::AbstractMatrix{T},
         @inbounds u = popfirst!(queue)
         @inbounds push!(topo_order, u)
 
-        # For each neighbor v of u
-        @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
-            @inbounds in_degree[v] -= 1
-            if in_degree[v] == 0
-                @inbounds push!(queue, v)
+        if adj_matrix isa SparseArrays.AbstractSparseMatrix
+            # For sparse matrices, use findnz to get non-zero neighbors
+            @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
+                @inbounds in_degree[v] -= 1
+                if in_degree[v] == 0
+                    @inbounds push!(queue, v)
+                end
+            end
+        else
+            # For dense matrices, iterate over the row directly
+            @inbounds for v in 1:n
+                if adj_matrix[u, v] != zero(T)
+                    @inbounds in_degree[v] -= 1
+                    if isapprox(in_degree[v], zero(T))
+                        @inbounds push!(queue, v)
+                    end
+                end
             end
         end
     end
