@@ -21,7 +21,7 @@ pip install torch-geometric
 pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.1+cu128.html
 ``` 
 
-See [the pytorch isntallation page](https://pytorch.org/get-started/locally/) and the [pytorch-geometric installation page](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html), respectively, for mor information 
+See [the pytorch installation page](https://pytorch.org/get-started/locally/) and the [pytorch-geometric installation page](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html), respectively, for more information
 
 - to install a specific version, modify the `requirements_torch_*` files to contain the right versions and urls for your hardware and OS.
 
