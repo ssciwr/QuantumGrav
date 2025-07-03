@@ -1,0 +1,4 @@
+name = "QuantumGrav"
+uuid = "f7c7699e-e939-438e-b944-97232f27dad4"
+authors = ["""Harald  Mack <harald.mack@protonmail.com\n>"""]
+version = "0.1.0"

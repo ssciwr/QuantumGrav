@@ -14,10 +14,10 @@ A mutable struct for efficiently loading and caching simulated causal set data f
 """
 mutable struct Dataset
     base_path::String
-    file_paths::Union{Vector{String}, String}
-    indices::Dict{Int, Tuple{Int, Int}}
+    file_paths::Union{Vector{String},String}
+    indices::Dict{Int,Tuple{Int,Int}}
     file_length::Int
-    buffer::Dict{Int, Any}
+    buffer::Dict{Int,Any}
     max_buffer_size::Int64
     mode::String  # jld2 or arrow
 end
@@ -37,24 +37,21 @@ Construct a `Dataset` object from Arrow files for quantum gravity simulations.
 # Returns
 - `Dataset`: A Dataset object for accessing quantum gravity simulation data.
 """
-function Dataset(
-        base_path::String;
-        mode::String = "arrow",
-        cache_size::Int = 5)
+function Dataset(base_path::String; mode::String = "arrow", cache_size::Int = 5)
     chunk_size = 0
 
-    indices = Dict{Int, Tuple{Int, Int}}()
+    indices = Dict{Int,Tuple{Int,Int}}()
 
     idx = 1
 
     if mode == "arrow"
         file_paths = filter(x -> occursin("arrow", x), collect(readdir(base_path)))
 
-        chunk_size = length(Tables.getcolumn(
-            Arrow.Table(joinpath(base_path, file_paths[1])), 1))
+        chunk_size =
+            length(Tables.getcolumn(Arrow.Table(joinpath(base_path, file_paths[1])), 1))
 
-        for f in 1:length(file_paths)
-            for i in 1:chunk_size
+        for f = 1:length(file_paths)
+            for i = 1:chunk_size
                 indices[idx] = (f, i)
                 idx += 1
             end
@@ -64,14 +61,13 @@ function Dataset(
 
         # in jld2 everything is stored in a single file with 
         # multiple, equally sized chunks
-        chunks, chunk_size = JLD2.jldopen(
-            joinpath(base_path, file_paths), "r") do file
+        chunks, chunk_size = JLD2.jldopen(joinpath(base_path, file_paths), "r") do file
             dset = first(keys(file["chunk1"]))
             length(file), length(file["chunk1"][dset])
         end
 
-        for f in 1:chunks
-            for i in 1:chunk_size
+        for f = 1:chunks
+            for i = 1:chunk_size
                 indices[idx] = (f, i)
                 idx += 1
             end
@@ -80,8 +76,15 @@ function Dataset(
         throw(ArgumentError("Unsupported mode: $mode"))
     end
 
-    return Dataset(base_path, file_paths, indices, chunk_size,
-        Dict{Int, Array{Matrix{Float32}}}(), cache_size, mode)
+    return Dataset(
+        base_path,
+        file_paths,
+        indices,
+        chunk_size,
+        Dict{Int,Array{Matrix{Float32}}}(),
+        cache_size,
+        mode,
+    )
 end
 
 """
@@ -100,8 +103,7 @@ function load_data(d::Dataset, i::Int)
     if d.mode == "arrow"
         return Arrow.Table(d.base_path*"/"*d.file_paths[i])
     else
-        return JLD2.jldopen(
-            joinpath(d.base_path, d.file_paths), "r") do file
+        return JLD2.jldopen(joinpath(d.base_path, d.file_paths), "r") do file
             group = file["chunk$i"]
             return Dict(Symbol(k) => group[k] for k in keys(group))
         end
@@ -161,6 +163,6 @@ Return a vector of data points from the Dataset `d` at the indices specified in 
 - `Vector`: A vector containing the data points at the specified indices.
 
 """
-function Base.getindex(d::Dataset, is::Union{Vector{Int}, AbstractRange{Int}})
+function Base.getindex(d::Dataset, is::Union{Vector{Int},AbstractRange{Int}})
     return [d[i] for i in is]
 end

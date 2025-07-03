@@ -16,8 +16,7 @@ end
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()
         boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
-        sprinkling = CausalSets.generate_sprinkling(
-            manifold, boundary, Int(n))
+        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, Int(n))
         cset = CausalSets.BitArrayCauset(manifold, sprinkling)
         return cset
     end
@@ -42,8 +41,8 @@ end
     @test all(link_matrix .== 1.0) == false
     @test size(link_matrix) == (100, 100)
 
-    for i in 1:100
-        for j in 1:100
+    for i = 1:100
+        for j = 1:100
             if CausalSets.is_link(cset_links, i, j)
                 @test link_matrix[i, j] == 1.0
             else
@@ -62,10 +61,13 @@ end
 end
 
 @testitem "make_cardinality_matrix" tags=[:datageneration] setup=[makeData] begin
-    @test_throws "The causal set must not be empty." QuantumGrav.DataGeneration.make_cardinality_matrix(cset_empty)
+    @test_throws "The causal set must not be empty." QuantumGrav.DataGeneration.make_cardinality_matrix(
+        cset_empty,
+    )
 
     # Test case 2: Causal set with some cardinalities
-    cardinality_matrix_links = QuantumGrav.DataGeneration.make_cardinality_matrix(cset_links)
+    cardinality_matrix_links =
+        QuantumGrav.DataGeneration.make_cardinality_matrix(cset_links)
     expected_matrix = SparseArrays.spzeros(Float32, 100, 100)
     @test 0 < SparseArrays.nnz(cardinality_matrix_links) <= 100 * 100
 end
@@ -79,9 +81,13 @@ end
     @test 0 < SparseArrays.nnz(mat_multiple) <= 3 * 4
 
     # test that bad arguments are caught
-    @test_throws "The dimensions must not be empty." QuantumGrav.DataGeneration.make_Bd_matrix(Int[])
+    @test_throws "The dimensions must not be empty." QuantumGrav.DataGeneration.make_Bd_matrix(
+        Int[],
+    )
     @test_throws "maxCardinality must be a positive integer." QuantumGrav.DataGeneration.make_Bd_matrix(
-        [1, 2], 0)
+        [1, 2],
+        0,
+    )
 end
 
 @testitem "make_adj" tags=[:datageneration] setup=[makeData] begin

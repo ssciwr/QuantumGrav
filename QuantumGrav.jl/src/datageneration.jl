@@ -20,8 +20,13 @@ Special handling for PseudoManifold which generates random causets,
 while other manifolds use CausalSets sprinkling generation.
 """
 function make_cset(
-        manifold::CausalSets.AbstractManifold, boundary::CausalSets.AbstractBoundary, n::Int64, d::Int,
-        rng::Random.AbstractRNG, type::Type{T}) where {T <: Number}
+    manifold::CausalSets.AbstractManifold,
+    boundary::CausalSets.AbstractBoundary,
+    n::Int64,
+    d::Int,
+    rng::Random.AbstractRNG,
+    type::Type{T},
+) where {T<:Number}
     if manifold isa PseudoManifold
         return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
         stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
@@ -56,10 +61,10 @@ causal set, so its complexity is quadratic in the number of elements.
 are expected to be zero in typical causal sets.
 """
 function make_link_matrix(cset::CausalSets.AbstractCauset)
-    link_matrix = SparseArrays.spzeros(
-        Float32, CausalSets.atom_count, CausalSets.atom_count)
-    for i in 1:(CausalSets.atom_count)
-        for j in 1:(CausalSets.atom_count)
+    link_matrix =
+        SparseArrays.spzeros(Float32, CausalSets.atom_count, CausalSets.atom_count)
+    for i = 1:(CausalSets.atom_count)
+        for j = 1:(CausalSets.atom_count)
             if CausalSets.is_link(cset, i, j)
                 @inbounds link_matrix[i, j] = 1
             end
@@ -91,8 +96,13 @@ Calculates angles between vectors from a central node to its neighbors in a spri
 - Empty neighbor list returns zero matrix
 """
 function calculate_angles(
-        sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
-        num_nodes::Int, type::Type{T}; multithreading::Bool = false) where {T <: Number}
+    sprinkling::AbstractMatrix,
+    node_idx::Int,
+    neighbors::AbstractVector,
+    num_nodes::Int,
+    type::Type{T};
+    multithreading::Bool = false,
+) where {T<:Number}
     # what about the metric?
     angles = SparseArrays.spzeros(type, num_nodes, num_nodes)
     if isempty(neighbors)
@@ -103,12 +113,16 @@ function calculate_angles(
         if neighbor_i != neighbor_j
             v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
             v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
-            angles[i,
-            j] = acos(clamp(
-                LinearAlgebra.dot(
-                    v_i / LinearAlgebra.norm(v_i), v_j / LinearAlgebra.norm(v_j)),
-                -1.0,
-                1.0))
+            angles[i, j] = acos(
+                clamp(
+                    LinearAlgebra.dot(
+                        v_i / LinearAlgebra.norm(v_i),
+                        v_j / LinearAlgebra.norm(v_j),
+                    ),
+                    -1.0,
+                    1.0,
+                ),
+            )
         end
     end
     return angles
@@ -137,8 +151,13 @@ Calculates Euclidean distances from a central node to its neighbors in a sprinkl
 - Distances are always non-negative
 """
 function calculate_distances(
-        sprinkling::AbstractMatrix, node_idx::Int, neighbors::AbstractVector,
-        num_nodes::Int, type::Type{T}; multithreading::Bool = false) where {T <: Number}
+    sprinkling::AbstractMatrix,
+    node_idx::Int,
+    neighbors::AbstractVector,
+    num_nodes::Int,
+    type::Type{T};
+    multithreading::Bool = false,
+) where {T<:Number}
     distances = SparseArrays.spzeros(type, num_nodes)
     # TODO: what about the metric?
     if isempty(neighbors)
@@ -148,8 +167,8 @@ function calculate_distances(
     # TODO: check if multithreading is needed here
     for (i, neighbor_i) in enumerate(neighbors)
         if neighbor_i != node_idx
-            distances[i] = LinearAlgebra.norm(sprinkling[neighbor_i, :] -
-                                              sprinkling[node_idx, :])
+            distances[i] =
+                LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
         end
     end
     return distances
@@ -179,17 +198,18 @@ in the causal set.
 - The `cardinality_of` function is expected to return `nothing` if no 
   cardinality value exists for a given pair `(i, j)`.
 """
-function make_cardinality_matrix(cset::CausalSets.AbstractCauset;
-        multithreading::Bool = false)::SparseArrays.SparseMatrixCSC{
-        Float32, Int}
+function make_cardinality_matrix(
+    cset::CausalSets.AbstractCauset;
+    multithreading::Bool = false,
+)::SparseArrays.SparseMatrixCSC{Float32,Int}
     if CausalSets.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
 
     cardinality_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
     # TODO: dispatch on multithreading variable
-    for i in 1:(cset.atom_count)
-        for j in 1:(cset.atom_count)
+    for i = 1:(cset.atom_count)
+        for j = 1:(cset.atom_count)
             ca = CausalSets.cardinality_of(cset, i, j)
             if isnothing(ca) == false
                 @inbounds cardinality_matrix[i, j] = ca
@@ -218,8 +238,12 @@ Generates a matrix of size `(maxCardinality, ds[end])` filled with coefficients 
 
 """
 # TODO: check again if this is correct, lookup in paper!
-function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64, type::Type{T};
-        multithreading::Bool = false) where {T <: Real}
+function make_Bd_matrix(
+    ds::Array{Int64},
+    maxCardinality::Int64,
+    type::Type{T};
+    multithreading::Bool = false,
+) where {T<:Real}
     if length(ds) == 0
         throw(ArgumentError("The dimensions must not be empty."))
     end
@@ -230,8 +254,8 @@ function make_Bd_matrix(ds::Array{Int64}, maxCardinality::Int64, type::Type{T};
 
     mat = SparseArrays.spzeros(T, maxCardinality, length(ds))
 
-    for c in 1:maxCardinality
-        for d in 1:length(ds)
+    for c = 1:maxCardinality
+        for d = 1:length(ds)
             bd = CSet.bd_coef(c, ds[d], CSet.Discrete()) #does this work?
             if bd != 0
                 @inbounds mat[c, d] = bd
@@ -258,11 +282,8 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets .. AbstractCauset, type::Type{T}) where {T <: Number}
-    c.future_relations |>
-    x -> hcat(x...) |>
-         transpose |>
-         SparseArrays.SparseMatrixCSC{type}
+function make_adj(c::CausalSets .. AbstractCauset, type::Type{T}) where {T<:Number}
+    c.future_relations |> x -> hcat(x...) |> transpose |> SparseArrays.SparseMatrixCSC{type}
 end
 
 """
@@ -317,17 +338,28 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `write_data`: Function to write the generated data to the HDF5 file. It should accept the HDF5 file and a the data dictionary as arguments.
 - `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
-function make_data(transform::Function, prepare_output::Function,
-        write_data::Function, config::Dict{String, Any})::Nothing
+function make_data(
+    transform::Function,
+    prepare_output::Function,
+    write_data::Function,
+    config::Dict{String,Any},
+)::Nothing
 
     # check return type 
-    if Dict in Base.return_types(transform, (Dict{String, Any}, Random.MersenneTwister)) ==
+    if Dict in
+       Base.return_types(transform, (Dict{String,Any}, Random.MersenneTwister)) ==
        false
-        throw(ArgumentError("The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values."))
+        throw(
+            ArgumentError(
+                "The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values.",
+            ),
+        )
     end
 
     file = HDF5.HDF5File(
-        joinpath(abspath(expanduser(config["output"])), "data.h5"), config["file_mode"])
+        joinpath(abspath(expanduser(config["output"])), "data.h5"),
+        config["file_mode"],
+    )
 
     # get the source code of the transform function and write them to the data folder 
     for func in [transform, prepare_output, write_data]
@@ -335,8 +367,7 @@ function make_data(transform::Function, prepare_output::Function,
         filepath = String(funcdata.file)
 
         if isfile(abspath(expanduser(filepath)))
-            cp(filepath,
-                joinpath(abspath(expanduser(config["output"])), filepath))
+            cp(filepath, joinpath(abspath(expanduser(config["output"])), filepath))
         end
     end
 
@@ -346,8 +377,7 @@ function make_data(transform::Function, prepare_output::Function,
     config["branch_name"] = run(`git rev-parse --abbrev-ref HEAD`) |> strip
 
     # write out config to the specified output and add it to the hdf5 file
-    HDF5.write(
-        file, "config", config)
+    HDF5.write(file, "config", config)
 
     YAML.write(joinpath(abspath(expanduser(config["output"])), "config.yaml"), config)
 
@@ -366,16 +396,18 @@ function make_data(transform::Function, prepare_output::Function,
 
     # create data either single-threaded or multi-threaded 
     if Threads.nthreads != config["num_threads"]
-        throw(ArgumentError("Number of available threads does not match the configuration."))
+        throw(
+            ArgumentError("Number of available threads does not match the configuration."),
+        )
     end
 
     # Multithreading enabled, use Threads.@threads for parallel data generation
-    rngs = [Random.MersenneTwister(config["seed"] + i) for i in 1:Threads.nthreads()]
+    rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
 
-    for _ in 1:num_chunks
-        data = [[] for _ in 1:Threads.nthreads()]
+    for _ = 1:num_chunks
+        data = [[] for _ = 1:Threads.nthreads()]
 
-        Threads.@threads for _ in 1:num_datapoints
+        Threads.@threads for _ = 1:num_datapoints
             t = Threads.threadid()
             rng = rngs[t]
             data_point = transform(config, rng)
@@ -402,17 +434,12 @@ Creates data using the specified transform function, prepares the output using t
 - `configpath`: String path to the YAML configuration file containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
 function make_data(
-        transform::Function,
-        prepare_output::Function,
-        write_data::Function,
-        configpath::String
+    transform::Function,
+    prepare_output::Function,
+    write_data::Function,
+    configpath::String,
 )
     config = YAML.read(abspath(expanduser(configpath)))
 
-    return make_data(
-        transform,
-        prepare_output,
-        write_data,
-        config
-    )
+    return make_data(transform, prepare_output, write_data, config)
 end

@@ -12,7 +12,7 @@
     @test Set(keys(manifolds)) == Set(expected_manifolds)
 end
 
-@testitem "test_get_manifold_name" tags=[:utils] setup=[importModules] begin 
+@testitem "test_get_manifold_name" tags=[:utils] setup=[importModules] begin
     @testitem 3 == 6
 end
 

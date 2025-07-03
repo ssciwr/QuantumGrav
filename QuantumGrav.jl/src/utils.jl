@@ -30,7 +30,8 @@ function get_manifold_name(type::Type, d)
         CausalSets.AntiDeSitterManifold{d} => "AntiDeSitter",
         CausalSets.HypercylinderManifold{d} => "HyperCylinder",
         CausalSets.TorusManifold{d} => "Torus",
-        PseudoManifold{2} => "Random")[type]
+        PseudoManifold{2} => "Random",
+    )[type]
 end
 
 """
@@ -54,7 +55,7 @@ get_manifold_encoding = Dict(
     "AntiDeSitter" => 4,
     "HyperCylinder" => 2,
     "Torus" => 5,
-    "Random" => 6
+    "Random" => 6,
 )
 
 """
@@ -115,10 +116,11 @@ Resizes an array to a new size, either by truncating or zero-padding.
 - If new size is smaller, truncates the array
 - Maintains the original array type (dense or sparse)
 """
-function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T <: Number}
+function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T<:Number}
     if any(size(m) .< new_size)
-        resized_m = m isa SparseArrays.AbstractSparseArray ?
-                    SparseArrays.spzeros(T, new_size...) : zeros(T, new_size...)
+        resized_m =
+            m isa SparseArrays.AbstractSparseArray ? SparseArrays.spzeros(T, new_size...) :
+            zeros(T, new_size...)
         @inbounds resized_m[tuple([1:n for n in size(m)]...)...] .= m
         return resized_m
     else
@@ -147,11 +149,16 @@ Used for creating pseudo-sprinklings in PseudoManifold when geometric
 manifold sprinkling is not applicable.
 """
 function make_pseudosprinkling(
-        n::Int64, d::Int64, box_min::Float64, box_max::Float64, type::Type{T};
-        rng = Random.MersenneTwister(1234))::Vector{Vector{T}} where {T <: Number}
+    n::Int64,
+    d::Int64,
+    box_min::Float64,
+    box_max::Float64,
+    type::Type{T};
+    rng = Random.MersenneTwister(1234),
+)::Vector{Vector{T}} where {T<:Number}
     distr = Distributions.Uniform(box_min, box_max)
 
-    return [[rand(distr) for i in 1:d] for _ in 1:n]
+    return [[rand(distr) for i = 1:d] for _ = 1:n]
 end
 
 """
@@ -171,15 +178,17 @@ Uses Kahn's algorithm for topological sorting. This will be needed later
 for determining the topological order of causets. The algorithm maintains
 a queue of vertices with zero in-degree and processes them iteratively.
 """
-function topsort(adj_matrix::AbstractMatrix{T},
-        in_degree::AbstractVector{T})::Vector{Int} where {T <: Number}
+function topsort(
+    adj_matrix::AbstractMatrix{T},
+    in_degree::AbstractVector{T},
+)::Vector{Int} where {T<:Number}
     n = size(adj_matrix, 1)
     # TODO: check this again
 
     # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the CausalSets
     queue = Vector{Int64}()
     sizehint!(queue, n)
-    for i in 1:n
+    for i = 1:n
         if isapprox(in_degree[i], zero(T))
             @inbounds push!(queue, i)
         end
@@ -201,7 +210,7 @@ function topsort(adj_matrix::AbstractMatrix{T},
             end
         else
             # For dense matrices, iterate over the row directly
-            @inbounds for v in 1:n
+            @inbounds for v = 1:n
                 if adj_matrix[u, v] != zero(T)
                     @inbounds in_degree[v] -= 1
                     if isapprox(in_degree[v], zero(T))
