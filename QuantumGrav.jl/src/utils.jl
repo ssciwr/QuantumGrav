@@ -82,6 +82,11 @@ Creates a manifold object based on an integer encoding and dimension.
 - `ErrorException`: If manifold encoding `i` is not supported (not 1-6)
 """
 function make_manifold(i::Int, d::Int)::CausalSets.AbstractManifold
+
+    if d < 2 || d > 4
+        throw(ArgumentError("Unsupported manifold dimension: $d"))
+    end
+
     if i == 1
         return CausalSets.MinkowskiManifold{d}()
     elseif i == 2
@@ -95,7 +100,7 @@ function make_manifold(i::Int, d::Int)::CausalSets.AbstractManifold
     elseif i == 6
         return PseudoManifold{d}()
     else
-        error("Unsupported manifold: $i")
+        throw(ArgumentError("Unsupported manifold: $i"))
     end
 end
 

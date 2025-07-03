@@ -4,7 +4,7 @@ import LinearAlgebra
 import Random
 import Graphs
 import SparseArrays
-import CausalSets as CS
+import CausalSets
 import Distributions
 import YAML
 import HDF5

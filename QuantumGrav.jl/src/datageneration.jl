@@ -66,7 +66,7 @@ function make_link_matrix(cset::CausalSets.AbstractCauset)
     for i = 1:(CausalSets.atom_count)
         for j = 1:(CausalSets.atom_count)
             if CausalSets.is_link(cset, i, j)
-                @inbounds link_matrix[i, j] = 1
+                link_matrix[i, j] = 1
             end
         end
     end
@@ -212,7 +212,7 @@ function make_cardinality_matrix(
         for j = 1:(cset.atom_count)
             ca = CausalSets.cardinality_of(cset, i, j)
             if isnothing(ca) == false
-                @inbounds cardinality_matrix[i, j] = ca
+                cardinality_matrix[i, j] = ca
             end
         end
     end
@@ -258,7 +258,7 @@ function make_Bd_matrix(
         for d = 1:length(ds)
             bd = CSet.bd_coef(c, ds[d], CSet.Discrete()) #does this work?
             if bd != 0
-                @inbounds mat[c, d] = bd
+                mat[c, d] = bd
             end
         end
     end
@@ -267,7 +267,7 @@ function make_Bd_matrix(
 end
 
 """
-    make_adj(c::CausalSets..AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
+    make_adj(c::CausalSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
 
 Creates an adjacency matrix from a causet's future relations.
 
@@ -282,7 +282,7 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets .. AbstractCauset, type::Type{T}) where {T<:Number}
+function make_adj(c::CausalSets.AbstractCauset, type::Type{T}) where {T<:Number}
     c.future_relations |> x -> hcat(x...) |> transpose |> SparseArrays.SparseMatrixCSC{type}
 end
 
@@ -312,17 +312,17 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     dist[source] = 0
 
     # Process vertices in topological order
-    @inbounds for u in topo_order
-        if @inbounds dist[u] != -Inf
-            @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
-                @inbounds dist[v] = max(dist[v], dist[u] + 1)
+    for u in topo_order
+        if dist[u] != -Inf
+            for v in SparseArrays.findnz(adj_matrix[u, :])[1]
+                dist[v] = max(dist[v], dist[u] + 1)
             end
         end
     end
 
     # Return max finite distance
-    @inbounds finite_dists = filter(d -> d != -Inf, dist)
-    return @inbounds isempty(finite_dists) ? 0 : Int 32(maximum(finite_dists))
+    finite_dists = filter(d -> d != -Inf, dist)
+    return isempty(finite_dists) ? 0 : Int32(maximum(finite_dists))
 end
 
 """
