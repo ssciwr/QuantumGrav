@@ -23,14 +23,26 @@ Returns the string name of a manifold type for a given dimension.
 # Returns
 - `String`: The name of the manifold ("Minkowski", "DeSitter", etc.)
 """
-function get_manifold_name(type::Type, d)
+function get_manifold_name(type::Type)
     Dict(
-        CausalSets.MinkowskiManifold{d} => "Minkowski",
-        CausalSets.DeSitterManifold{d} => "DeSitter",
-        CausalSets.AntiDeSitterManifold{d} => "AntiDeSitter",
-        CausalSets.HypercylinderManifold{d} => "HyperCylinder",
-        CausalSets.TorusManifold{d} => "Torus",
+        CausalSets.MinkowskiManifold{2} => "Minkowski",
+        CausalSets.DeSitterManifold{2} => "DeSitter",
+        CausalSets.AntiDeSitterManifold{2} => "AntiDeSitter",
+        CausalSets.HypercylinderManifold{2} => "HyperCylinder",
+        CausalSets.TorusManifold{2} => "Torus",
         PseudoManifold{2} => "Random",
+        CausalSets.MinkowskiManifold{3} => "Minkowski",
+        CausalSets.DeSitterManifold{3} => "DeSitter",
+        CausalSets.AntiDeSitterManifold{3} => "AntiDeSitter",
+        CausalSets.HypercylinderManifold{3} => "HyperCylinder",
+        CausalSets.TorusManifold{3} => "Torus",
+        PseudoManifold{3} => "Random",
+        CausalSets.MinkowskiManifold{4} => "Minkowski",
+        CausalSets.DeSitterManifold{4} => "DeSitter",
+        CausalSets.AntiDeSitterManifold{4} => "AntiDeSitter",
+        CausalSets.HypercylinderManifold{4} => "HyperCylinder",
+        CausalSets.TorusManifold{4} => "Torus",
+        PseudoManifold{4} => "Random",
     )[type]
 end
 
@@ -161,9 +173,12 @@ function make_pseudosprinkling(
     type::Type{T};
     rng = Random.MersenneTwister(1234),
 )::Vector{Vector{T}} where {T<:Number}
+    if box_min >= box_max
+        throw(ArgumentError("box_min must be less than box_max"))
+    end
     distr = Distributions.Uniform(box_min, box_max)
 
-    return [[rand(distr) for i = 1:d] for _ = 1:n]
+    return [[type(rand(rng, distr)) for _ = 1:d] for _ = 1:n]
 end
 
 """
