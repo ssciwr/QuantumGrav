@@ -5,6 +5,7 @@ using TestItems
     import CausalSets
     import SparseArrays
     import Distributions
+    import Random
 end
 
 @testsnippet makeData begin
@@ -27,16 +28,34 @@ end
 end
 
 @testitem "test_make_csets" tags=[:datageneration] setup=[importModules] begin
-    @testitem 3 == 6
+    rng = Random.MersenneTwister(42)
+    type = Float32
+    cset, sprinkling =
+        QuantumGrav.make_cset("Minkowski", "CausalDiamond", 100, 2, rng, type)
+
+    @test cset.atom_count == 100
+    @test length(cset.future_relations) == 100
+    @test length(cset.past_relations) == 100
+    @test size(sprinkling) == (100, 2)
+
+    cset, sprinkling = QuantumGrav.make_cset("Random", "BoxBoundary", 100, 3, rng, type)
+
+    @test cset.atom_count == 100
+    @test length(cset.future_relations) == 100
+    @test length(cset.past_relations) == 100
+    @test size(sprinkling) == (100, 3)
+
+    @test_throws ArgumentError cset, sprinkling =
+        QuantumGrav.make_cset("Minkowski", "CausalDiamond", 0, 4, rng, type)
 end
 
 # Test makelink_matrix
 @testitem "make_link_matrix" tags=[:datageneration] setup=[makeData] begin
-    link_matrix_empty = QuantumGrav.DataGeneration.make_link_matrix(cset_empty)
+    link_matrix_empty = QuantumGrav.make_link_matrix(cset_empty)
 
     @test link_matrix_empty == SparseArrays.spzeros(Float32, 0, 0)
 
-    link_matrix = QuantumGrav.DataGeneration.make_link_matrix(cset_links)
+    link_matrix = QuantumGrav.make_link_matrix(cset_links)
     @test all(link_matrix .== 0.0) == false
     @test all(link_matrix .== 1.0) == false
     @test size(link_matrix) == (100, 100)

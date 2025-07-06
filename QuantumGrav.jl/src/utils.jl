@@ -47,6 +47,30 @@ function get_manifold_name(type::Type)
 end
 
 """
+    make_manifold(name::String, d::Int) -> CausalSets.AbstractManifold
+Creates a manifold object based on its name and dimension.
+# Arguments
+- `name::String`: Name of the manifold ("Minkowski", "DeSitter", etc.)
+- `d::Int`: Dimension of the manifold (2, 3, or 4)
+# Returns
+- `CausalSets.AbstractManifold`: The constructed manifold object    
+"""
+function make_manifold(name::String, d::Int)::CausalSets.AbstractManifold
+    if d < 2 || d > 4
+        throw(ArgumentError("Unsupported manifold dimension: $d"))
+    end
+
+    return Dict(
+        "Minkowski" => CausalSets.MinkowskiManifold{d}(),
+        "DeSitter" => CausalSets.DeSitterManifold{d}(1.0),
+        "AntiDeSitter" => CausalSets.AntiDeSitterManifold{d}(1.0),
+        "HyperCylinder" => CausalSets.HypercylinderManifold{d}(1.0),
+        "Torus" => CausalSets.TorusManifold{d}(1.0),
+        "Random" => PseudoManifold{d}(),
+    )[name]
+end
+
+"""
     get_manifold_encoding
 
 A dictionary mapping manifold names to their integer encodings.
@@ -99,21 +123,38 @@ function make_manifold(i::Int, d::Int)::CausalSets.AbstractManifold
         throw(ArgumentError("Unsupported manifold dimension: $d"))
     end
 
-    if i == 1
-        return CausalSets.MinkowskiManifold{d}()
-    elseif i == 2
-        return CausalSets.HypercylinderManifold{d}(1.0)
-    elseif i == 3
-        return CausalSets.DeSitterManifold{d}(1.0)
-    elseif i == 4
-        return CausalSets.AntiDeSitterManifold{d}(1.0)
-    elseif i == 5
-        return CausalSets.TorusManifold{d}(1.0)
-    elseif i == 6
-        return PseudoManifold{d}()
-    else
-        throw(ArgumentError("Unsupported manifold: $i"))
+    Dict(
+        1 => CausalSets.MinkowskiManifold{d}(),
+        2 => CausalSets.HypercylinderManifold{d}(1.0),
+        3 => CausalSets.DeSitterManifold{d}(1.0),
+        4 => CausalSets.AntiDeSitterManifold{d}(1.0),
+        5 => CausalSets.TorusManifold{d}(1.0),
+        6 => PseudoManifold{d}(),
+    )[i] || throw(ErrorException("Unsupported manifold encoding: $i"))
+end
+
+"""
+    make_boundary(name::String, d::Int) -> CausalSets.AbstractBoundary
+Creates a boundary object based on its name and dimension.
+# Arguments
+- `name::String`: Name of the boundary ("CausalDiamond", "TimeBoundary", "BoxBoundary")
+- `d::Int`: Dimension of the boundary (2, 3, or 4)
+# Returns
+- `CausalSets.AbstractBoundary`: The constructed boundary object
+"""
+function make_boundary(name::String, d::Int)::CausalSets.AbstractBoundary
+    if d < 2 || d > 4
+        throw(ArgumentError("Unsupported boundary dimension: $d"))
     end
+
+    return Dict(
+        "CausalDiamond" => CausalSets.CausalDiamondBoundary{d}(1.0),
+        "TimeBoundary" => CausalSets.TimeBoundary{d}(-1.0, 1.0), # check if this makes sense
+        "BoxBoundary" => CausalSets.BoxBoundary{d}((
+            ([-0.49 for i = 1:d]...,),
+            ([0.49 for i = 1:d]...,),
+        )),
+    )[name]
 end
 
 """
@@ -179,67 +220,4 @@ function make_pseudosprinkling(
     distr = Distributions.Uniform(box_min, box_max)
 
     return [[type(rand(rng, distr)) for _ = 1:d] for _ = 1:n]
-end
-
-"""
-    topsort(adj_matrix, in_degree::AbstractVector{T}) -> Vector{Int}
-
-Performs topological sorting on a directed graph using Kahn's algorithm.
-
-# Arguments
-- `adj_matrix`: Adjacency matrix representing the directed graph
-- `in_degree::AbstractVector{T}`: Vector containing the in-degree of each vertex
-
-# Returns
-- `Vector{Int}`: Topologically sorted order of vertices
-
-# Notes
-Uses Kahn's algorithm for topological sorting. This will be needed later
-for determining the topological order of causets. The algorithm maintains
-a queue of vertices with zero in-degree and processes them iteratively.
-"""
-function topsort(
-    adj_matrix::AbstractMatrix{T},
-    in_degree::AbstractVector{T},
-)::Vector{Int} where {T<:Number}
-    n = size(adj_matrix, 1)
-    # TODO: check this again
-
-    # Topological sort using Kahn's algorithm --> will be needed later for the topo order of the CausalSets
-    queue = Vector{Int64}()
-    sizehint!(queue, n)
-    for i = 1:n
-        if isapprox(in_degree[i], zero(T))
-            @inbounds push!(queue, i)
-        end
-    end
-
-    topo_order = Vector{Int64}()
-    sizehint!(topo_order, n)
-    while !isempty(queue)
-        @inbounds u = popfirst!(queue)
-        @inbounds push!(topo_order, u)
-
-        if adj_matrix isa SparseArrays.AbstractSparseMatrix
-            # For sparse matrices, use findnz to get non-zero neighbors
-            @inbounds for v in SparseArrays.findnz(adj_matrix[u, :])[1]
-                @inbounds in_degree[v] -= 1
-                if in_degree[v] == 0
-                    @inbounds push!(queue, v)
-                end
-            end
-        else
-            # For dense matrices, iterate over the row directly
-            @inbounds for v = 1:n
-                if adj_matrix[u, v] != zero(T)
-                    @inbounds in_degree[v] -= 1
-                    if isapprox(in_degree[v], zero(T))
-                        @inbounds push!(queue, v)
-                    end
-                end
-            end
-        end
-    end
-
-    return topo_order
 end

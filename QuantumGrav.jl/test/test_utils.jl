@@ -50,7 +50,67 @@ end
     @test_throws KeyError QuantumGrav.get_manifold_encoding["UnknownManifold"]
 end
 
-@testitem "test_make_manifold" tags=[:utils] setup=[importModules] begin
+
+@testitem "test_make_boundary" tags=[:utils] setup=[importModules] begin
+    @test isa(
+        QuantumGrav.make_boundary("CausalDiamond", 2),
+        CausalSets.CausalDiamondBoundary{2},
+    )
+    @test isa(
+        QuantumGrav.make_boundary("CausalDiamond", 3),
+        CausalSets.CausalDiamondBoundary{3},
+    )
+    @test isa(
+        QuantumGrav.make_boundary("CausalDiamond", 4),
+        CausalSets.CausalDiamondBoundary{4},
+    )
+
+    @test_throws ArgumentError QuantumGrav.make_boundary("UnknownBoundary", 2)
+    @test_throws ArgumentError QuantumGrav.make_boundary("CausalDiamond", 1)
+end
+
+@testitem "test_make_manifold_from_name" tags=[:utils] setup=[importModules] begin
+    @test isa(QuantumGrav.make_manifold("Minkowski", 2), CausalSets.MinkowskiManifold{2})
+    @test isa(QuantumGrav.make_manifold("DeSitter", 2), CausalSets.DeSitterManifold{2})
+    @test isa(
+        QuantumGrav.make_manifold("AntiDeSitter", 2),
+        CausalSets.AntiDeSitterManifold{2},
+    )
+    @test isa(
+        QuantumGrav.make_manifold("HyperCylinder", 2),
+        CausalSets.HypercylinderManifold{2},
+    )
+    @test isa(QuantumGrav.make_manifold("Torus", 2), CausalSets.TorusManifold{2})
+    @test isa(QuantumGrav.make_manifold("Random", 2), QuantumGrav.PseudoManifold{2})
+
+    @test isa(QuantumGrav.make_manifold("Minkowski", 3), CausalSets.MinkowskiManifold{3})
+    @test isa(QuantumGrav.make_manifold("DeSitter", 3), CausalSets.DeSitterManifold{3})
+    @test isa(
+        QuantumGrav.make_manifold("AntiDeSitter", 3),
+        CausalSets.AntiDeSitterManifold{3},
+    )
+    @test isa(
+        QuantumGrav.make_manifold("HyperCylinder", 3),
+        CausalSets.HypercylinderManifold{3},
+    )
+    @test isa(QuantumGrav.make_manifold("Torus", 3), CausalSets.TorusManifold{3})
+    @test isa(QuantumGrav.make_manifold("Random", 3), QuantumGrav.PseudoManifold{3})
+
+    @test isa(QuantumGrav.make_manifold("Minkowski", 4), CausalSets.MinkowskiManifold{4})
+    @test isa(QuantumGrav.make_manifold("DeSitter", 4), CausalSets.DeSitterManifold{4})
+    @test isa(
+        QuantumGrav.make_manifold("AntiDeSitter", 4),
+        CausalSets.AntiDeSitterManifold{4},
+    )
+    @test isa(
+        QuantumGrav.make_manifold("HyperCylinder", 4),
+        CausalSets.HypercylinderManifold{4},
+    )
+    @test isa(QuantumGrav.make_manifold("Torus", 4), CausalSets.TorusManifold{4})
+    @test isa(QuantumGrav.make_manifold("Random", 4), QuantumGrav.PseudoManifold{4})
+end
+
+@testitem "test_make_manifold_index" tags=[:utils] setup=[importModules] begin
     @test isa(QuantumGrav.make_manifold(1, 2), CausalSets.MinkowskiManifold{2})
     @test isa(QuantumGrav.make_manifold(2, 2), CausalSets.HypercylinderManifold{2})
     @test isa(QuantumGrav.make_manifold(3, 2), CausalSets.DeSitterManifold{2})
@@ -148,8 +208,4 @@ end
         type;
         rng = rng,
     ) # box_min must be less than box_max
-end
-
-@testitem "test_topsort" tags=[:utils] setup=[importModules] begin
-    @test 3 == 6
 end

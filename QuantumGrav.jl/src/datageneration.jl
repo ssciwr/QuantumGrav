@@ -5,8 +5,8 @@
 Creates a causet and its coordinate representation from a manifold and boundary.
 
 # Arguments
-- `manifold::CausalSets.AbstractManifold`: The spacetime manifold
-- `boundary::CausalSets.AbstractBoundary`: The boundary type  
+- `manifold::String`: The spacetime manifold
+- `boundary::String`: The boundary type  
 - `n::Int64`: Number of points in the causet
 - `d::Int`: Dimension of the spacetime
 - `rng::Random.AbstractRNG`: Random number generator
@@ -20,13 +20,16 @@ Special handling for PseudoManifold which generates random causets,
 while other manifolds use CausalSets sprinkling generation.
 """
 function make_cset(
-    manifold::CausalSets.AbstractManifold,
-    boundary::CausalSets.AbstractBoundary,
+    manifold::String,
+    boundary::String,
     n::Int64,
     d::Int,
     rng::Random.AbstractRNG,
     type::Type{T},
 ) where {T<:Number}
+    manifold = make_manifold(manifold, d)
+    boundary = make_boundary(boundary, d)
+
     if manifold isa PseudoManifold
         return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
         stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
@@ -61,10 +64,9 @@ causal set, so its complexity is quadratic in the number of elements.
 are expected to be zero in typical causal sets.
 """
 function make_link_matrix(cset::CausalSets.AbstractCauset)
-    link_matrix =
-        SparseArrays.spzeros(Float32, CausalSets.atom_count, CausalSets.atom_count)
-    for i = 1:(CausalSets.atom_count)
-        for j = 1:(CausalSets.atom_count)
+    link_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
+    for i = 1:(cset.atom_count)
+        for j = 1:(cset.atom_count)
             if CausalSets.is_link(cset, i, j)
                 link_matrix[i, j] = 1
             end
@@ -103,26 +105,31 @@ function calculate_angles(
     type::Type{T};
     multithreading::Bool = false,
 ) where {T<:Number}
-    # what about the metric?
+    # TODO: what about the metric? --> we would need this 
+    # for the angle calculation, but we don't have a metric in the sprinkling or manifold, so needs to be put in ourselves? 
     angles = SparseArrays.spzeros(type, num_nodes, num_nodes)
     if isempty(neighbors)
         return angles
     end
-    # TODO: dispatch on multithreading variable
-    for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
-        if neighbor_i != neighbor_j
-            v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
-            v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
-            angles[i, j] = acos(
-                clamp(
-                    LinearAlgebra.dot(
-                        v_i / LinearAlgebra.norm(v_i),
-                        v_j / LinearAlgebra.norm(v_j),
+
+    if multithreading
+        # TODO: 
+    else
+        for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
+            if neighbor_i != neighbor_j
+                v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
+                v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
+                angles[i, j] = acos(
+                    clamp(
+                        LinearAlgebra.dot(
+                            v_i / LinearAlgebra.norm(v_i),
+                            v_j / LinearAlgebra.norm(v_j),
+                        ),
+                        -1.0,
+                        1.0,
                     ),
-                    -1.0,
-                    1.0,
-                ),
-            )
+                )
+            end
         end
     end
     return angles
@@ -356,71 +363,72 @@ function make_data(
         )
     end
 
-    file = HDF5.HDF5File(
+    HDF5.HDF5File(
         joinpath(abspath(expanduser(config["output"])), "data.h5"),
         config["file_mode"],
-    )
+    ) do file
 
-    # get the source code of the transform function and write them to the data folder 
-    for func in [transform, prepare_output, write_data]
-        funcdata = first(methods(func))
-        filepath = String(funcdata.file)
+        # get the source code of the transform function and write them to the data folder 
+        for func in [transform, prepare_output, write_data]
+            funcdata = first(methods(func))
+            filepath = String(funcdata.file)
 
-        if isfile(abspath(expanduser(filepath)))
-            cp(filepath, joinpath(abspath(expanduser(config["output"])), filepath))
-        end
-    end
-
-    # get the current commit hash of the QuantumGrav package and put it into the config
-    config["commit_hash"] = run(`git rev-parse HEAD`) |> strip
-
-    config["branch_name"] = run(`git rev-parse --abbrev-ref HEAD`) |> strip
-
-    # write out config to the specified output and add it to the hdf5 file
-    HDF5.write(file, "config", config)
-
-    YAML.write(joinpath(abspath(expanduser(config["output"])), "config.yaml"), config)
-
-    # prepare the file 
-    prepare_output(file, config)
-
-    num_datapoints = config["num_datapoints"]
-
-    # check if the data generation should be chunked
-    if "chunks" in config
-        num_chunks = config["chunks"]
-        num_datapoints = div(num_datapoints, num_chunks)
-    else
-        num_chunks = 1
-    end
-
-    # create data either single-threaded or multi-threaded 
-    if Threads.nthreads != config["num_threads"]
-        throw(
-            ArgumentError("Number of available threads does not match the configuration."),
-        )
-    end
-
-    # Multithreading enabled, use Threads.@threads for parallel data generation
-    rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
-
-    for _ = 1:num_chunks
-        data = [[] for _ = 1:Threads.nthreads()]
-
-        Threads.@threads for _ = 1:num_datapoints
-            t = Threads.threadid()
-            rng = rngs[t]
-            data_point = transform(config, rng)
-            # Store or process the generated data point as needed
-            push!(data[t], data_point)
+            if isfile(abspath(expanduser(filepath)))
+                cp(filepath, joinpath(abspath(expanduser(config["output"])), filepath))
+            end
         end
 
-        data = reduce(vcat, data)  # Combine results from all threads
+        # get the current commit hash of the QuantumGrav package and put it into the config
+        config["commit_hash"] = run(`git rev-parse HEAD`) |> strip
 
-        write_data(file, data)
+        config["branch_name"] = run(`git rev-parse --abbrev-ref HEAD`) |> strip
+
+        # write out config to the specified output and add it to the hdf5 file
+        HDF5.write(file, "config", config)
+
+        YAML.write(joinpath(abspath(expanduser(config["output"])), "config.yaml"), config)
+
+        # prepare the file 
+        prepare_output(file, config)
+
+        num_datapoints = config["num_datapoints"]
+
+        # check if the data generation should be chunked
+        if "chunks" in config
+            num_chunks = config["chunks"]
+            num_datapoints = div(num_datapoints, num_chunks)
+        else
+            num_chunks = 1
+        end
+
+        # create data either single-threaded or multi-threaded 
+        if Threads.nthreads != config["num_threads"]
+            throw(
+                ArgumentError(
+                    "Number of available threads does not match the configuration.",
+                ),
+            )
+        end
+
+        # Multithreading enabled, use Threads.@threads for parallel data generation
+        rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
+
+        for _ = 1:num_chunks
+            data = [[] for _ = 1:Threads.nthreads()]
+
+            Threads.@threads for _ = 1:num_datapoints
+                t = Threads.threadid()
+                rng = rngs[t]
+                data_point = transform(config, rng)
+                # Store or process the generated data point as needed
+                push!(data[t], data_point)
+            end
+
+            data = reduce(vcat, data)  # Combine results from all threads
+
+            write_data(file, data)
+        end
     end
-
-    HDF5.close(file)
 end
 
 """
