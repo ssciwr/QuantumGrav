@@ -175,6 +175,8 @@ Resizes an array to a new size, either by truncating or zero-padding.
 - Maintains the original array type (dense or sparse)
 """
 function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T<:Number}
+
+    # FIXME: handle shrinking/growing on per-dimension basis or exclude the case where it's inconsistent
     if any(size(m) .< new_size)
         resized_m =
             m isa SparseArrays.AbstractSparseArray ? SparseArrays.spzeros(T, new_size...) :
