@@ -1,3 +1,5 @@
+using TestItems
+
 @testsnippet importModules begin
     using QuantumGrav
     using TestItemRunner
