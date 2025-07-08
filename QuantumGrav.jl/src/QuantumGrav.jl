@@ -11,6 +11,5 @@ import HDF5
 
 include("utils.jl")
 include("datageneration.jl")
-include("dataloader.jl")
 
 end # module QuantumGrav

@@ -139,7 +139,7 @@ end
 end
 
 @testitem "test_resize" tags=[:utils] setup=[importModules] begin
-    A = spzeros(Float32, 5, 5)
+    A = SparseArrays.spzeros(Float32, 5, 5)
     A[1, 1] = 1.0
     A[2, 2] = 2.0
     A[3, 3] = 3.0
@@ -191,7 +191,7 @@ end
     box_min = -1.0
     box_max = 1.0
     type = Float32
-    rng = MersenneTwister(1234)
+    rng = Random.MersenneTwister(1234)
 
     sprinkling = QuantumGrav.make_pseudosprinkling(n, d, box_min, box_max, type; rng = rng)
 

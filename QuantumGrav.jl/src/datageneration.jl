@@ -25,18 +25,18 @@ function make_cset(
     n::Int64,
     d::Int,
     rng::Random.AbstractRNG;
-    type::Type{T}=Float32,
+    type::Type{T} = Float32,
 ) where {T<:Number}
     manifold = make_manifold(manifold, d)
     boundary = make_boundary(boundary, d)
 
     if manifold isa PseudoManifold
         return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
-        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng=rng), dims=1)
+        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
     else
-        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng=rng)
+        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng = rng)
         cset = CausalSets.BitArrayCauset(manifold, sprinkling)
-        return cset, type.(stack(collect.(sprinkling), dims=1))
+        return cset, type.(stack(collect.(sprinkling), dims = 1))
     end
 end
 
@@ -63,7 +63,10 @@ causal set, so its complexity is quadratic in the number of elements.
 - The sparse matrix representation is used to save memory, as most entries
 are expected to be zero in typical causal sets.
 """
-function make_link_matrix(cset::CausalSets.AbstractCauset; type::Type{T}=Float32) where {T<:Number}
+function make_link_matrix(
+    cset::CausalSets.AbstractCauset;
+    type::Type{T} = Float32,
+) where {T<:Number}
     link_matrix = SparseArrays.spzeros(T, cset.atom_count, cset.atom_count)
     for i = 1:(cset.atom_count)
         for j = 1:(cset.atom_count)
@@ -100,80 +103,71 @@ Calculates angles between vectors from a central node given by `node_idx` to its
 function calculate_angles(
     sprinkling::AbstractMatrix,
     node_idx::Int,
-    neighbors::AbstractVector,
-    num_nodes::Int;
-    type::Type{T}=Float32,
-    multithreading::Bool=false,
+    neighbors::AbstractVector;
+    type::Type{T} = Float32,
+    multithreading::Bool = false,
 ) where {T<:Number}
 
-    if isempty(neighbors)
-        return SparseArrays.spzeros((num_nodes, num_nodes))
+    function compute_angle(sprinkling::AbstractMatrix, node_idx::Int, i::Int, j::Int)
+        v_i = sprinkling[i, :] - sprinkling[node_idx, :]
+        v_j = sprinkling[j, :] - sprinkling[node_idx, :]
+
+        angle = acos(
+            clamp(
+                LinearAlgebra.dot(
+                    v_i / LinearAlgebra.norm(v_i),
+                    v_j / LinearAlgebra.norm(v_j),
+                ),
+                -1.0,
+                1.0,
+            ),
+        )
+
+        return angle
     end
 
-    # Inner loop to calculate angles between neighbors. 
-    function inner_loop(i::Int, neighbor_i::Integer, sprinkling::AbstractMatrix, node_idx::Int)
-        # Initialize vectors to store indices and angles
-        # for the sparse matrix representation
-        Js = Vector{Int}()
-        angles = Vector{T}()
+    if multithreading
+        Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
+        Js = [Vector{Int}() for _ = 1:Threads.nthreads()]
+        angles = [Vector{type}() for _ = 1:Threads.nthreads()]
+        sizehint!.(Is, length(neighbors))
+        sizehint!.(Js, length(neighbors))
+        sizehint!.(angles, length(neighbors))
 
-        # sizehint to avoid some reallocations. This is not accurate
-        sizehint!(Js, length(neighbors))
-        sizehint!(angles, length(neighbors))
+        Threads.@threads for ((i, neighbor_i), (j, neighbor_j)) in collect(
+            Iterators.product(enumerate(neighbors), enumerate(neighbors)),
+        )
+            if neighbor_i != neighbor_j
+                angle = compute_angle(sprinkling, node_idx, i, j)
+                push!(Is[Threads.threadid()], i)
+                push!(Js[Threads.threadid()], j)
+                push!(angles[Threads.threadid()], type(angle))
 
-        # calculate the vector from the central node to the neighbor
-        # the same is done for the other neighbor later in the loop
-        v_i = sprinkling[i, :] - sprinkling[node_idx, :]
-
-        # go over neighbors, pairwise calculate angles between them relative to # `neighbor_i`. put indices and angles into vectors to later make a 
-        # sparse matrix out of them
-        for (j, neighbor_j) in enumerate(neighbors)
-            if i != j
-
-                v_j = sprinkling[j, :] - sprinkling[node_idx, :]
-
-                angle = acos(
-                    clamp(
-                        LinearAlgebra.dot(
-                            v_i / LinearAlgebra.norm(v_i),
-                            v_j / LinearAlgebra.norm(v_j),
-                        ),
-                        -1.0,
-                        1.0,
-                    ),
-                )
-                push!(Js, j)
-                push!(angles, type(angle))
             end
         end
 
-        return Js, angles
-    end
-
-    Is = Vector{Int}(undef, length(neighbors))
-    Js = Vector{Int}(undef, length(neighbors))
-    angles = Vector{Vector{T}}(undef, length(neighbors))
-
-    if multithreading
-        Threads.@threads for (i, neighbor_i) in collect(enumerate(neighbors))
-            Js[i], angles[i] = inner_loop(i, neighbor_i, sprinkling, node_idx)
-        end
+        Is = vcat(Is...)
+        Js = vcat(Js...)
+        angles = vcat(angles...)
     else
-        for (i, neighbor_i) in enumerate(neighbors)
-            angles[i] = inner_loop(i, neighbor_i, sprinkling, node_idx)
+        Is = Vector{Int}()
+        Js = Vector{Int}()
+        angles = Vector{type}()
+        sizehint!(Is, length(neighbors))
+        sizehint!(Js, length(neighbors))
+        sizehint!(angles, length(neighbors))
+
+        for ((i, neighbor_i), (j, neighbor_j)) in
+            Iterators.product(enumerate(neighbors), enumerate(neighbors))
+            if neighbor_i != neighbor_j
+                angle = compute_angle(sprinkling, node_idx, i, j)
+                Is = push!(Is, i)
+                Js = push!(Js, j)
+                angles = push!(angles, type(angle))
+            end
         end
     end
-
-    # Concatenate the vectors into a sparse matrix by passing rows, columns, and values where the entry (i,j) contains the angle between vectors from the central node `node_index` to neighbors i and j
-    return SparseArrays.sparse(
-        vcat(Is...),
-        vcat(Js...),
-        vcat(angles...),
-        num_nodes,
-        num_nodes,
-        type,
-    )
-
+    return SparseArrays.sparse(Is, Js, angles, length(neighbors), length(neighbors), type)
 end
 
 """
@@ -203,35 +197,53 @@ function calculate_distances(
     node_idx::Int,
     neighbors::AbstractVector,
     num_nodes::Int;
-    type::Type{T}=Float32,
-    multithreading::Bool=false,
+    type::Type{T} = Float32,
+    multithreading::Bool = false,
 ) where {T<:Number}
-
-    Is = Vector{Int}(undef, length(neighbors))
-    distances = Vector{type}(undef, length(neighbors))
 
     if isempty(neighbors)
         return SparseArrays.spzeros(type, num_nodes)
     end
 
     if multithreading
-        Threads.@threads for (i, neighbor_i) in collect(enumerate(neighbors))
-            if neighbor_i != node_idx
-                Is[i] = neighbor_i
-                distances[i] =
-                    LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+
+        Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
+        distances = [Vector{type}() for _ = 1:Threads.nthreads()]
+
+        sizehint!.(Is, num_nodes)
+        sizehint!.(distances, num_nodes)
+
+        Threads.@threads for (i, _) in collect(enumerate(neighbors))
+            if i != node_idx
+                push!(Is[Threads.threadid()], i)
+                push!(
+                    distances[Threads.threadid()],
+                    LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]),
+                )
             end
         end
+
+        Is = vcat(Is...)
+        distances = vcat(distances...)
     else
-        for (i, neighbor_i) in enumerate(neighbors)
-            if neighbor_i != node_idx
-                Is[i] = neighbor_i
-                distances[i] =
-                    LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+
+        Is = Vector{Int}()
+        distances = Vector{type}()
+
+        sizehint!(Is, num_nodes)
+        sizehint!(distances, num_nodes)
+
+        for (i, _) in enumerate(neighbors)
+            if i != node_idx
+                push!(Is, i)
+                push!(
+                    distances,
+                    LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]),
+                )
             end
         end
     end
-    return SparseArrays.sparse(Is, distances, num_nodes, type)
+    return SparseArrays.sparsevec(Is, type.(distances), num_nodes)
 end
 
 """
@@ -260,8 +272,8 @@ in the causal set.
 """
 function make_cardinality_matrix(
     cset::CausalSets.AbstractCauset;
-    type::Type{T}=Float32,
-    multithreading::Bool=false,
+    type::Type{T} = Float32,
+    multithreading::Bool = false,
 )::SparseArrays.SparseMatrixCSC{T,Int} where {T<:Number}
     if cset.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
@@ -269,15 +281,15 @@ function make_cardinality_matrix(
 
     if multithreading
 
-        Is = [Vector{Int}() for _ in 1:Threads.nthreads()]
-        Js = [Vector{Int}() for _ in 1:Threads.nthreads()]
-        Vs = [Vector{type}() for _ in 1:Threads.nthreads()]
+        Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
+        Js = [Vector{Int}() for _ = 1:Threads.nthreads()]
+        Vs = [Vector{type}() for _ = 1:Threads.nthreads()]
 
         sizehint!.(Is, cset.atom_count)
         sizehint!.(Js, cset.atom_count)
         sizehint!.(Vs, cset.atom_count)
 
-        Threads.@threads for i = collect(1:cset.atom_count)
+        Threads.@threads for i in collect(1:cset.atom_count)
             for j = 1:cset.atom_count
                 ca = CausalSets.cardinality_of(cset, i, j)
                 if isnothing(ca) == false
@@ -312,14 +324,7 @@ function make_cardinality_matrix(
             end
         end
     end
-    return SparseArrays.sparse(
-        Is,
-        Js,
-        Vs,
-        cset.atom_count,
-        cset.atom_count,
-        type,
-    )
+    return SparseArrays.sparse(Is, Js, Vs, cset.atom_count, cset.atom_count, type)
 end
 
 
@@ -339,7 +344,7 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets.AbstractCauset; type::Type{T}=Float32) where {T<:Number}
+function make_adj(c::CausalSets.AbstractCauset; type::Type{T} = Float32) where {T<:Number}
     if c.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
@@ -365,7 +370,7 @@ Uses dynamic programming with topological ordering for efficient longest path co
 Processes vertices in topological order to ensure optimal substructure property.
 Returns 0 if no finite distances exist from the source.
 """
-function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int,)
+function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     n = size(adj_matrix, 1)
 
     # Dynamic programming for longest paths
@@ -409,9 +414,20 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 function make_data(
     transform::Function,
     prepare_output::Function,
-    write_data::Function,
-    config::Dict{String,Any},
-)::Nothing
+    write_data::Function;
+    config::Dict{String,Any} = Dict{String,Any}(
+        "num_datapoints" => 1000,
+        "output" => "~/QuantumGrav/data",
+        "file_mode" => "w",
+        "num_threads" => Threads.nthreads(),
+        "seed" => 42,
+    ),
+)
+    for key in ["num_datapoints", "output", "file_mode", "num_threads", "seed"]
+        if !haskey(config, key)
+            throw(ArgumentError("Configuration must contain the key: $key"))
+        end
+    end
 
     # check return type 
     if Dict in
@@ -424,7 +440,11 @@ function make_data(
         )
     end
 
-    HDF5.HDF5File(
+    if !isdir(abspath(expanduser(config["output"])))
+        mkpath(abspath(expanduser(config["output"])))
+    end
+
+    HDF5.h5open(
         joinpath(abspath(expanduser(config["output"])), "data.h5"),
         config["file_mode"],
     ) do file
@@ -433,21 +453,23 @@ function make_data(
         for func in [transform, prepare_output, write_data]
             funcdata = first(methods(func))
             filepath = String(funcdata.file)
-
-            if isfile(abspath(expanduser(filepath)))
-                cp(filepath, joinpath(abspath(expanduser(config["output"])), filepath))
+            if isfile(abspath(expanduser(filepath))) == false
+                cp(
+                    filepath,
+                    joinpath(abspath(expanduser(config["output"])), basename(filepath)),
+                )
             end
         end
 
         # get the current commit hash of the QuantumGrav package and put it into the config
-        config["commit_hash"] = run(`git rev-parse HEAD`) |> strip
+        config["commit_hash"] = read(`git rev-parse HEAD`, String)
 
-        config["branch_name"] = run(`git rev-parse --abbrev-ref HEAD`) |> strip
+        config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
 
-        # write out config to the specified output and add it to the hdf5 file
-        HDF5.write(file, "config", config)
-
-        YAML.write(joinpath(abspath(expanduser(config["output"])), "config.yaml"), config)
+        YAML.write_file(
+            joinpath(abspath(expanduser(config["output"])), "config.yaml"),
+            config,
+        )
 
         # prepare the file 
         prepare_output(file, config)
@@ -455,7 +477,7 @@ function make_data(
         num_datapoints = config["num_datapoints"]
 
         # check if the data generation should be chunked
-        if "chunks" in config
+        if "chunks" in keys(config)
             num_chunks = config["chunks"]
             num_datapoints = div(num_datapoints, num_chunks)
         else
@@ -463,7 +485,7 @@ function make_data(
         end
 
         # create data either single-threaded or multi-threaded 
-        if Threads.nthreads != config["num_threads"]
+        if Threads.nthreads() != config["num_threads"]
             throw(
                 ArgumentError(
                     "Number of available threads does not match the configuration.",
@@ -473,7 +495,6 @@ function make_data(
 
         # Multithreading enabled, use Threads.@threads for parallel data generation
         rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
-
         for _ = 1:num_chunks
             data = [[] for _ = 1:Threads.nthreads()]
 
@@ -485,30 +506,21 @@ function make_data(
                 push!(data[t], data_point)
             end
 
-            data = reduce(vcat, data)  # Combine results from all threads
+            final_data = Dict{String,Any}()
+            for thread_local_data in data
+                for datapoint in thread_local_data
+                    for (key, value) in datapoint
+                        if haskey(final_data, key)
+                            final_data[key] =
+                                cat(final_data[key], value; dims = ndims(value)+1)
+                        else
+                            final_data[key] = value
+                        end
+                    end
+                end
+            end
 
-            write_data(file, data)
+            write_data(file, final_data)
         end
     end
-end
-
-"""
-    make_data(transform::Function, prepare_output::Function, write_data::Function, configpath::String)
-Creates data using the specified transform function, prepares the output using the prepare_output function, and writes the data using the write_data function. The configuration is read from a YAML file at the specified path.
-
-# Arguments:
-- `transform`: Function to generate a single datapoint. It should accept a configuration dictionary and
-- `prepare_output`: Function to prepare the HDF5 file for writing data. It should accept the HDF5 file and configuration dictionary as arguments.
-- `write_data`: Function to write the generated data to the HDF5 file. It should accept the HDF5 file and a the data dictionary as arguments.
-- `configpath`: String path to the YAML configuration file containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
-"""
-function make_data(
-    transform::Function,
-    prepare_output::Function,
-    write_data::Function,
-    configpath::String,
-)
-    config = YAML.read(abspath(expanduser(configpath)))
-
-    return make_data(transform, prepare_output, write_data, config)
 end

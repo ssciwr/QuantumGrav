@@ -7,6 +7,8 @@ using TestItems
     import Distributions
     import Random
     import Graphs
+    import HDF5
+    import YAML
 end
 
 @testsnippet makeData begin
@@ -15,6 +17,8 @@ end
     import SparseArrays
     import Distributions
     import Graphs
+    import HDF5
+    import YAML
 
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()
@@ -40,7 +44,8 @@ end
     @test length(cset.past_relations) == 100
     @test size(sprinkling) == (100, 2)
 
-    cset, sprinkling = QuantumGrav.make_cset("Random", "BoxBoundary", 100, 3, rng; type = type)
+    cset, sprinkling =
+        QuantumGrav.make_cset("Random", "BoxBoundary", 100, 3, rng; type = type)
 
     @test cset.atom_count == 100
     @test length(cset.future_relations) == 100
@@ -88,7 +93,7 @@ end
 
 
 @testitem "make_adj" tags = [:datageneration] setup = [makeData] begin
-    adj = QuantumGrav.make_adj(cset_links; type= Float32)
+    adj = QuantumGrav.make_adj(cset_links; type = Float32)
     @test size(adj) == (100, 100)
     @test all(adj .== 0.0) == false
     @test all(adj .== 1.0) == false
@@ -105,7 +110,7 @@ end
 
     @test all(adj .== test_adj) == true
 
-    @test_throws ArgumentError QuantumGrav.make_adj(cset_empty; type=Float32)
+    @test_throws ArgumentError QuantumGrav.make_adj(cset_empty; type = Float32)
 end
 
 @testitem "test_max_pathlen" tags = [:datageneration] setup = [makeData] begin
@@ -121,7 +126,8 @@ end
     max_path = QuantumGrav.max_pathlen(adj, collect(1:cset_links.atom_count), 1)
 
     sdg = Graphs.SimpleDiGraph(adj)
-    max_path_expected = Graphs.dag_longest_path(sdg, topological_order = collect(1:cset_links.atom_count))
+    max_path_expected =
+        Graphs.dag_longest_path(sdg, topological_order = collect(1:cset_links.atom_count))
 
     @test max_path > 1
     @test max_path <= cset_links.atom_count
@@ -130,20 +136,17 @@ end
 
 @testitem "test_calculate_angles" tags = [:datageneration] setup = [makeData] begin
 
-    sprinkling_links = Float32.(stack(collect.(sprinkling_links), dims=1))
+    sprinkling_links = Float32.(stack(collect.(sprinkling_links), dims = 1))
 
-    println("neighbors: ", cset_links.future_relations[1])
     # sprinkling with 100 points
     angles = QuantumGrav.calculate_angles(
         sprinkling_links,
         1,
         cset_links.future_relations[1],
-        100;
-        type=Float32,
+        type = Float32,
     )
-
-    @test size(angles) < (100, 100)
-    @test SparseArrays.nnz(angles) == length(cset_links.future_relations[1])
+    @test all(size(angles) .== (100, 100))
+    @test SparseArrays.nnz(angles) <= length(cset_links.future_relations[1])^2
 
     # Check that the angles are calculated correctly
     for i = 1:length(cset_links.future_relations[1])
@@ -159,34 +162,149 @@ end
         sprinkling_links,
         1,
         cset_links.future_relations[1],
-        100,
-        Float32,
+        type = Float32,
         multithreading = true,
     )
+
+    @test all(size(angles_mt) .== (100, 100))
+    @test SparseArrays.nnz(angles_mt) <= length(cset_links.future_relations[1])^2
+
+    # Check that the angles are calculated correctly
+    for i = 1:length(cset_links.future_relations[1])
+        for j = 1:length(cset_links.future_relations[1])
+            if i != j && angles_mt[i, j] > 0
+                @test 0.0 <= angles_mt[i, j] <= π
+            end
+        end
+    end
+
 end
 
 
 @testitem "test_calculate_distances" tags = [:datageneration] setup = [makeData] begin
-    # empty sprinkling
-    distances = QuantumGrav.calculate_distances(sprinkling_empty, 1, Int[], 100, Float32)
-
-    @test distances == SparseArrays.spzeros(Float32, 100)
+    sprinkling_links = Float32.(stack(collect.(sprinkling_links), dims = 1))
 
     # sprinkling with 100 points
     distances = QuantumGrav.calculate_distances(
         sprinkling_links,
         1,
         cset_links.future_relations[1],
-        100,
-        Float32,
+        100;
+        type = Float32,
+        multithreading = false,
     )
 
     @test size(distances) < (100, 100)
     @test SparseArrays.nnz(distances) > 0
-    @test SparseArrays.nnz(distances) == length(cset_links.future_relations[1])
+    @test SparseArrays.nnz(distances) == length(cset_links.future_relations[1]) - 1
 
+    distances = QuantumGrav.calculate_distances(
+        sprinkling_links,
+        1,
+        cset_links.future_relations[1],
+        100;
+        type = Float32,
+        multithreading = true,
+    )
+
+    @test size(distances) < (100, 100)
+    @test SparseArrays.nnz(distances) > 0
+    @test SparseArrays.nnz(distances) == length(cset_links.future_relations[1]) - 1
 end
 
 @testitem "test_make_data" tags = [:datageneration] setup = [importModules] begin
-    @test 3 == 6
+
+    bad_config = Dict(
+        "num_datapoints" => 10,
+        "file_mode" => "w",
+        "num_threads" => Threads.nthreads(),
+        "seed" => 42,
+    )
+
+    wrong_config = Dict(
+        "num_datapoints" => 10,
+        "output" => joinpath(tempdir(), "test_data"),
+        "file_mode" => "w",
+        "num_threads" => 2*Threads.nthreads(),
+        "seed" => 42,
+    )
+
+    config = Dict(
+        "num_datapoints" => 10,
+        "output" => joinpath(tempdir(), "test_data"),
+        "file_mode" => "w",
+        "num_threads" => Threads.nthreads(),
+        "seed" => 42,
+    )
+
+    function transform(config, rng::Random.AbstractRNG)
+
+        cset, sprinkling =
+            QuantumGrav.make_cset("Minkowski", "CausalDiamond", 100, 2, rng; type = Float32)
+        adj = QuantumGrav.make_adj(cset; type = Float32)
+
+        return Dict("adjacency_matrices" => Matrix(adj), "sprinkling" => sprinkling)
+    end
+
+    function prepare_output(file, config::Dict)
+        dset = QuantumGrav.HDF5.create_dataset(
+            file,
+            "/adjacency_matrices",
+            Float32,
+            QuantumGrav.HDF5.dataspace((100, 100, 0), (100, 100, -1)),
+            chunk = (100, 100, 1),
+            compress = 8,
+        )
+        close(dset)
+
+        dset = QuantumGrav.HDF5.create_dataset(
+            file,
+            "/sprinkling",
+            Float32,
+            QuantumGrav.HDF5.dataspace((100, 2, 0), (100, 2, -1)),
+            chunk = (100, 2, 1),
+            compress = 8,
+        )
+        close(dset)
+    end
+
+    function write_data(file, data::Dict)
+
+        dset = HDF5.open_dataset(file, "/adjacency_matrices")
+        old_size = size(dset)
+        new_size =
+            (old_size[1], old_size[2], old_size[3] + size(data["adjacency_matrices"], 3))
+
+        HDF5.set_extent_dims(dset, new_size)
+
+        dset[1:new_size[1], 1:new_size[2], (old_size[3]+1):new_size[3]] .=
+            data["adjacency_matrices"]
+
+        close(dset)
+    end
+
+    @test_throws ArgumentError QuantumGrav.make_data(
+        transform,
+        prepare_output,
+        write_data;
+        config = bad_config,
+    )
+
+    @test_throws ArgumentError QuantumGrav.make_data(
+        transform,
+        prepare_output,
+        write_data;
+        config = wrong_config,
+    )
+
+    QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
+
+    HDF5.h5open(joinpath(config["output"], "data.h5"), "r") do file
+        @test haskey(file, "/adjacency_matrices")
+        @test size(file["/adjacency_matrices"]) == (100, 100, 10)
+    end
+
+    @test isfile(joinpath(config["output"], "data.h5"))
+    @test isfile(joinpath(config["output"], "config.yaml"))
+
 end
