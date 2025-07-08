@@ -270,7 +270,7 @@ end
 
     function write_data(file, data::Dict)
 
-        dset = HDF5.open_dataset(file, "/adjacency_matrices")
+        dset = QuantumGrav.HDF5.open_dataset(file, "/adjacency_matrices")
         old_size = size(dset)
         new_size =
             (old_size[1], old_size[2], old_size[3] + size(data["adjacency_matrices"], 3))
@@ -298,7 +298,7 @@ end
     )
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
-
+    println("data dir: ", readdir(abspath(config["output"])))
     @test isfile(joinpath(config["output"], "data.h5"))
     @test isfile(joinpath(config["output"], "config.yaml"))
     @test isfile(joinpath(config["output"], "test_datageneration.jl"))

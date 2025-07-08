@@ -453,7 +453,10 @@ function make_data(
         for func in [transform, prepare_output, write_data]
             funcdata = first(methods(func))
             filepath = String(funcdata.file)
-            if isfile(abspath(expanduser(filepath))) == false
+            if isfile(
+                joinpath(abspath(expanduser(config["output"])), basename(filepath)),
+            ) == false
+
                 cp(
                     filepath,
                     joinpath(abspath(expanduser(config["output"])), basename(filepath)),
@@ -512,7 +515,7 @@ function make_data(
                     for (key, value) in datapoint
                         if haskey(final_data, key)
                             final_data[key] =
-                                cat(final_data[key], value; dims = ndims(value)+1)
+                                cat(final_data[key], value; dims = ndims(value) + 1)
                         else
                             final_data[key] = value
                         end
