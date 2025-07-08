@@ -78,7 +78,7 @@ end
 """
     calculate_angles(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseMatrix
 
-Calculates angles between vectors from a central node to its neighbors in a sprinkling.
+Calculates angles between vectors from a central node given by `node_idx` to its neighbors in a sprinkling. This uses a euclidean metric to compute angles between pairs of neighbors relative to the node given by `node_idx`. It thus assumes that the manifold is represented as a `point cloud` in a euclidean space. 
 
 # Arguments
 - `sprinkling::AbstractMatrix`: Matrix where each row represents a point's coordinates
@@ -105,21 +105,36 @@ function calculate_angles(
     type::Type{T};
     multithreading::Bool = false,
 ) where {T<:Number}
-    # TODO: what about the metric? --> we would need this 
-    # for the angle calculation, but we don't have a metric in the sprinkling or manifold, so needs to be put in ourselves? 
-    angles = SparseArrays.spzeros(type, num_nodes, num_nodes)
+
     if isempty(neighbors)
-        return angles
+        return SparseArrays.spzeros((num_nodes, num_nodes))
     end
 
-    if multithreading
-        # TODO: 
-    else
-        for (i, neighbor_i) in enumerate(neighbors), (j, neighbor_j) in enumerate(neighbors)
+    # Inner loop to calculate angles between neighbors. 
+    function inner_loop(neighbor_i::Int, sprinkling::AbstractMatrix, node_idx::Int)
+        # Initialize vectors to store indices and angles
+        # for the sparse matrix representation
+        Is = Vector{Int}()
+        Js = Vector{Int}()
+        angles = Vector{T}()
+
+        # sizehint to avoid some reallocations. This is not accurate
+        sizehint!(Is, length(neighbors))
+        sizehint!(Js, length(neighbors))
+        sizehint!(angles, length(neighbors))
+
+        # calculate the vector from the central node to the neighbor
+        # the same is done for the other neighbor later in the loop
+        v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
+
+        # go over neighbors, pairwise calculate angles between them relative to # `neighbor_i`. put indices and angles into vectors to later make a 
+        # sparse matrix out of them
+        for (_, neighbor_j) in enumerate(neighbors)
             if neighbor_i != neighbor_j
-                v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
+
                 v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
-                angles[i, j] = acos(
+
+                angle = acos(
                     clamp(
                         LinearAlgebra.dot(
                             v_i / LinearAlgebra.norm(v_i),
@@ -129,16 +144,45 @@ function calculate_angles(
                         1.0,
                     ),
                 )
+                push!(Is, neighbor_i)
+                push!(Js, neighbor_j)
+                push!(angles, type(angle))
             end
         end
+
+        return Is, Js, angles
     end
-    return angles
+
+    Is = Vector{Vector{Int}}(undef, length(neighbors))
+    Js = Vector{Vector{Int}}(undef, length(neighbors))
+    angles = Vector{Vector{T}}(undef, length(neighbors))
+
+    if multithreading
+        Threads.@threads for (i, neighbor_i) in collect(enumerate(neighbors))
+            Is[i], Js[i], angles[i] = inner_loop(neighbor_i, sprinkling, node_idx)
+        end
+    else
+        for (i, neighbor_i) in enumerate(neighbors)
+            Is[i], Js[i], angles[i] = inner_loop(neighbor_i, sprinkling, node_idx)
+        end
+    end
+
+    # Concatenate the vectors into a sparse matrix by passing rows, columns, and values where the entry (i,j) contains the angle between vectors from the central node `node_index` to neighbors i and j
+    return SparseArrays.sparse(
+        vcat(Is...),
+        vcat(Js...),
+        vcat(angles...),
+        num_nodes,
+        num_nodes,
+        type,
+    )
+
 end
 
 """
     calculate_distances(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseVector
 
-Calculates Euclidean distances from a central node to its neighbors in a sprinkling.
+Calculates Euclidean distances from a central node to its neighbors in a sprinkling. Since this uses a euclidean metric, it assumes that the manifold is represented as a `point cloud` in a euclidean space.
 
 # Arguments
 - `sprinkling::AbstractMatrix`: Matrix where each row represents a point's coordinates
@@ -165,20 +209,32 @@ function calculate_distances(
     type::Type{T};
     multithreading::Bool = false,
 ) where {T<:Number}
-    distances = SparseArrays.spzeros(type, num_nodes)
-    # TODO: what about the metric?
+
+    Is = Vector{Int}(undef, length(neighbors))
+    distances = Vector{type}(undef, length(neighbors))
+
     if isempty(neighbors)
-        return distances
+        return SparseArrays.spzeros(type, num_nodes)
     end
 
-    # TODO: check if multithreading is needed here
-    for (i, neighbor_i) in enumerate(neighbors)
-        if neighbor_i != node_idx
-            distances[i] =
-                LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+    if multithreading
+        Threads.@threads for (i, neighbor_i) in collect(enumerate(neighbors))
+            if neighbor_i != node_idx
+                Is[i] = neighbor_i
+                distances[i] =
+                    LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+            end
+        end
+    else
+        for (i, neighbor_i) in enumerate(neighbors)
+            if neighbor_i != node_idx
+                Is[i] = neighbor_i
+                distances[i] =
+                    LinearAlgebra.norm(sprinkling[neighbor_i, :] - sprinkling[node_idx, :])
+            end
         end
     end
-    return distances
+    return SparseArrays.sparse(Is, distances, num_nodes, type)
 end
 
 """
@@ -214,64 +270,28 @@ function make_cardinality_matrix(
     end
 
     cardinality_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
-    # TODO: dispatch on multithreading variable
-    for i = 1:(cset.atom_count)
-        for j = 1:(cset.atom_count)
-            ca = CausalSets.cardinality_of(cset, i, j)
-            if isnothing(ca) == false
-                cardinality_matrix[i, j] = ca
+    if multithreading
+        Threads.@threads for i = 1:(cset.atom_count)
+            for j = 1:(cset.atom_count)
+                ca = CausalSets.cardinality_of(cset, i, j)
+                if isnothing(ca) == false
+                    cardinality_matrix[i, j] = ca
+                end
+            end
+        end
+    else
+        for i = 1:(cset.atom_count)
+            for j = 1:(cset.atom_count)
+                ca = CausalSets.cardinality_of(cset, i, j)
+                if isnothing(ca) == false
+                    cardinality_matrix[i, j] = ca
+                end
             end
         end
     end
     return cardinality_matrix
 end
 
-"""
-    make_Bd_matrix(cset, ds::Array{Int64}, maxCardinality::Int64=10) -> Array{Float32, 2}
-
-Generates a matrix of size `(maxCardinality, ds[end])` filled with coefficients computed using the `bd_coef` function.
-
-# Arguments
-- `ds::Array{Int64}`: An array of integers representing the dimensions or parameters for which the coefficients are computed.
-- `maxCardinality::Int64`: The maximum cardinality (number of rows in the matrix). Defaults to `10`.
-
-# Returns
-- A 2D array of type `Float32` where each element at position `(c, d)` is the coefficient computed by `bd_coef(c, d, CausalSets.Discrete())`. If the coefficient is `0`, the corresponding matrix element remains `0`.
-
-# Notes
-- The function iterates over all combinations of `c` (from `1` to `maxCardinality`) and `d` (elements of `ds`).
-- The `bd_coef` function is expected to return a coefficient for the given `c` and `d`. If the coefficient is `0`, the matrix element is not updated.
-- The `CausalSets.Discrete()` object is passed to `bd_coef` as a parameter, which may influence the computation of the coefficients.
-
-"""
-# TODO: check again if this is correct, lookup in paper!
-function make_Bd_matrix(
-    ds::Array{Int64},
-    maxCardinality::Int64,
-    type::Type{T};
-    multithreading::Bool = false,
-) where {T<:Real}
-    if length(ds) == 0
-        throw(ArgumentError("The dimensions must not be empty."))
-    end
-
-    if maxCardinality <= 0
-        throw(ArgumentError("maxCardinality must be a positive integer."))
-    end
-
-    mat = SparseArrays.spzeros(T, maxCardinality, length(ds))
-
-    for c = 1:maxCardinality
-        for d = 1:length(ds)
-            bd = CSet.bd_coef(c, ds[d], CSet.Discrete()) #does this work?
-            if bd != 0
-                mat[c, d] = bd
-            end
-        end
-    end
-
-    return mat
-end
 
 """
     make_adj(c::CausalSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
@@ -290,6 +310,10 @@ Converts the causet's future_relations to a sparse matrix format by
 horizontally concatenating, transposing, and converting to the specified type.
 """
 function make_adj(c::CausalSets.AbstractCauset, type::Type{T}) where {T<:Number}
+    if c.atom_count == 0
+        throw(ArgumentError("The causal set must not be empty."))
+    end
+
     c.future_relations |> x -> hcat(x...) |> transpose |> SparseArrays.SparseMatrixCSC{type}
 end
 
@@ -321,7 +345,14 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     # Process vertices in topological order
     for u in topo_order
         if dist[u] != -Inf
-            for v in SparseArrays.findnz(adj_matrix[u, :])[1]
+            if adj_matrix isa SparseArrays.AbstractSparseMatrix
+                indices = SparseArrays.findnz(adj_matrix[u, :])[1]
+
+            else
+                indices = [v for v = 1:n if adj_matrix[u, v] != 0]
+            end
+
+            for v in indices
                 dist[v] = max(dist[v], dist[u] + 1)
             end
         end

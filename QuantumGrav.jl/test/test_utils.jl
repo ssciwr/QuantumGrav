@@ -46,7 +46,6 @@ end
     @test QuantumGrav.get_manifold_encoding["HyperCylinder"] == 2
     @test QuantumGrav.get_manifold_encoding["Torus"] == 5
     @test QuantumGrav.get_manifold_encoding["Random"] == 6
-
     @test_throws KeyError QuantumGrav.get_manifold_encoding["UnknownManifold"]
 end
 
@@ -64,10 +63,10 @@ end
         QuantumGrav.make_boundary("CausalDiamond", 4),
         CausalSets.CausalDiamondBoundary{4},
     )
-
-    @test_throws ArgumentError QuantumGrav.make_boundary("UnknownBoundary", 2)
+    @test_throws KeyError QuantumGrav.make_boundary("UnknownBoundary", 2)
     @test_throws ArgumentError QuantumGrav.make_boundary("CausalDiamond", 1)
 end
+@test SparseArrays.nnz(angles) > 0
 
 @testitem "test_make_manifold_from_name" tags=[:utils] setup=[importModules] begin
     @test isa(QuantumGrav.make_manifold("Minkowski", 2), CausalSets.MinkowskiManifold{2})
@@ -111,7 +110,9 @@ end
 end
 
 @testitem "test_make_manifold_index" tags=[:utils] setup=[importModules] begin
-    @test isa(QuantumGrav.make_manifold(1, 2), CausalSets.MinkowskiManifold{2})
+
+    @test QuantumGrav.make_manifold(1, 2) isa CausalSets.MinkowskiManifold{2}
+
     @test isa(QuantumGrav.make_manifold(2, 2), CausalSets.HypercylinderManifold{2})
     @test isa(QuantumGrav.make_manifold(3, 2), CausalSets.DeSitterManifold{2})
     @test isa(QuantumGrav.make_manifold(4, 2), CausalSets.AntiDeSitterManifold{2})
@@ -131,9 +132,8 @@ end
     @test isa(QuantumGrav.make_manifold(4, 4), CausalSets.AntiDeSitterManifold{4})
     @test isa(QuantumGrav.make_manifold(5, 4), CausalSets.TorusManifold{4})
     @test isa(QuantumGrav.make_manifold(6, 4), QuantumGrav.PseudoManifold{4})
-
-    @test_throws ArgumentError QuantumGrav.make_manifold(0, 2)
-    @test_throws ArgumentError QuantumGrav.make_manifold(7, 2)
+    @test_throws KeyError QuantumGrav.make_manifold(0, 2)
+    @test_throws KeyError QuantumGrav.make_manifold(7, 2)
     @test_throws ArgumentError QuantumGrav.make_manifold(1, 1)
     @test_throws ArgumentError QuantumGrav.make_manifold(1, 5)
 end

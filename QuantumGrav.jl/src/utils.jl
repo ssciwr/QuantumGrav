@@ -130,7 +130,7 @@ function make_manifold(i::Int, d::Int)::CausalSets.AbstractManifold
         4 => CausalSets.AntiDeSitterManifold{d}(1.0),
         5 => CausalSets.TorusManifold{d}(1.0),
         6 => PseudoManifold{d}(),
-    )[i] || throw(ErrorException("Unsupported manifold encoding: $i"))
+    )[i]
 end
 
 """
