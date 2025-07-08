@@ -68,7 +68,6 @@ end
     @test_throws KeyError QuantumGrav.make_boundary("UnknownBoundary", 2)
     @test_throws ArgumentError QuantumGrav.make_boundary("CausalDiamond", 1)
 end
-@test SparseArrays.nnz(angles) > 0
 
 @testitem "test_make_manifold_from_name" tags=[:utils] setup=[importModules] begin
     @test isa(QuantumGrav.make_manifold("Minkowski", 2), CausalSets.MinkowskiManifold{2})
