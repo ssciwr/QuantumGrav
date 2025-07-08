@@ -24,19 +24,19 @@ function make_cset(
     boundary::String,
     n::Int64,
     d::Int,
-    rng::Random.AbstractRNG,
-    type::Type{T},
+    rng::Random.AbstractRNG;
+    type::Type{T}=Float32,
 ) where {T<:Number}
     manifold = make_manifold(manifold, d)
     boundary = make_boundary(boundary, d)
 
     if manifold isa PseudoManifold
         return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
-        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
+        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng=rng), dims=1)
     else
-        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng = rng)
+        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng=rng)
         cset = CausalSets.BitArrayCauset(manifold, sprinkling)
-        return cset, stack(collect.(sprinkling), dims = 1)
+        return cset, type.(stack(collect.(sprinkling), dims=1))
     end
 end
 
@@ -63,8 +63,8 @@ causal set, so its complexity is quadratic in the number of elements.
 - The sparse matrix representation is used to save memory, as most entries
 are expected to be zero in typical causal sets.
 """
-function make_link_matrix(cset::CausalSets.AbstractCauset)
-    link_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
+function make_link_matrix(cset::CausalSets.AbstractCauset; type::Type{T}=Float32) where {T<:Number}
+    link_matrix = SparseArrays.spzeros(T, cset.atom_count, cset.atom_count)
     for i = 1:(cset.atom_count)
         for j = 1:(cset.atom_count)
             if CausalSets.is_link(cset, i, j)
@@ -101,9 +101,9 @@ function calculate_angles(
     sprinkling::AbstractMatrix,
     node_idx::Int,
     neighbors::AbstractVector,
-    num_nodes::Int,
-    type::Type{T};
-    multithreading::Bool = false,
+    num_nodes::Int;
+    type::Type{T}=Float32,
+    multithreading::Bool=false,
 ) where {T<:Number}
 
     if isempty(neighbors)
@@ -111,28 +111,26 @@ function calculate_angles(
     end
 
     # Inner loop to calculate angles between neighbors. 
-    function inner_loop(neighbor_i::Int, sprinkling::AbstractMatrix, node_idx::Int)
+    function inner_loop(i::Int, neighbor_i::Integer, sprinkling::AbstractMatrix, node_idx::Int)
         # Initialize vectors to store indices and angles
         # for the sparse matrix representation
-        Is = Vector{Int}()
         Js = Vector{Int}()
         angles = Vector{T}()
 
         # sizehint to avoid some reallocations. This is not accurate
-        sizehint!(Is, length(neighbors))
         sizehint!(Js, length(neighbors))
         sizehint!(angles, length(neighbors))
 
         # calculate the vector from the central node to the neighbor
         # the same is done for the other neighbor later in the loop
-        v_i = sprinkling[neighbor_i, :] - sprinkling[node_idx, :]
+        v_i = sprinkling[i, :] - sprinkling[node_idx, :]
 
         # go over neighbors, pairwise calculate angles between them relative to # `neighbor_i`. put indices and angles into vectors to later make a 
         # sparse matrix out of them
-        for (_, neighbor_j) in enumerate(neighbors)
-            if neighbor_i != neighbor_j
+        for (j, neighbor_j) in enumerate(neighbors)
+            if i != j
 
-                v_j = sprinkling[neighbor_j, :] - sprinkling[node_idx, :]
+                v_j = sprinkling[j, :] - sprinkling[node_idx, :]
 
                 angle = acos(
                     clamp(
@@ -144,26 +142,25 @@ function calculate_angles(
                         1.0,
                     ),
                 )
-                push!(Is, neighbor_i)
-                push!(Js, neighbor_j)
+                push!(Js, j)
                 push!(angles, type(angle))
             end
         end
 
-        return Is, Js, angles
+        return Js, angles
     end
 
-    Is = Vector{Vector{Int}}(undef, length(neighbors))
-    Js = Vector{Vector{Int}}(undef, length(neighbors))
+    Is = Vector{Int}(undef, length(neighbors))
+    Js = Vector{Int}(undef, length(neighbors))
     angles = Vector{Vector{T}}(undef, length(neighbors))
 
     if multithreading
         Threads.@threads for (i, neighbor_i) in collect(enumerate(neighbors))
-            Is[i], Js[i], angles[i] = inner_loop(neighbor_i, sprinkling, node_idx)
+            Js[i], angles[i] = inner_loop(i, neighbor_i, sprinkling, node_idx)
         end
     else
         for (i, neighbor_i) in enumerate(neighbors)
-            Is[i], Js[i], angles[i] = inner_loop(neighbor_i, sprinkling, node_idx)
+            angles[i] = inner_loop(i, neighbor_i, sprinkling, node_idx)
         end
     end
 
@@ -205,9 +202,9 @@ function calculate_distances(
     sprinkling::AbstractMatrix,
     node_idx::Int,
     neighbors::AbstractVector,
-    num_nodes::Int,
-    type::Type{T};
-    multithreading::Bool = false,
+    num_nodes::Int;
+    type::Type{T}=Float32,
+    multithreading::Bool=false,
 ) where {T<:Number}
 
     Is = Vector{Int}(undef, length(neighbors))
@@ -263,33 +260,66 @@ in the causal set.
 """
 function make_cardinality_matrix(
     cset::CausalSets.AbstractCauset;
-    multithreading::Bool = false,
-)::SparseArrays.SparseMatrixCSC{Float32,Int}
-    if CausalSets.atom_count == 0
+    type::Type{T}=Float32,
+    multithreading::Bool=false,
+)::SparseArrays.SparseMatrixCSC{T,Int} where {T<:Number}
+    if cset.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
 
-    cardinality_matrix = SparseArrays.spzeros(Float32, cset.atom_count, cset.atom_count)
     if multithreading
-        Threads.@threads for i = 1:(cset.atom_count)
-            for j = 1:(cset.atom_count)
+
+        Is = [Vector{Int}() for _ in 1:Threads.nthreads()]
+        Js = [Vector{Int}() for _ in 1:Threads.nthreads()]
+        Vs = [Vector{type}() for _ in 1:Threads.nthreads()]
+
+        sizehint!.(Is, cset.atom_count)
+        sizehint!.(Js, cset.atom_count)
+        sizehint!.(Vs, cset.atom_count)
+
+        Threads.@threads for i = collect(1:cset.atom_count)
+            for j = 1:cset.atom_count
                 ca = CausalSets.cardinality_of(cset, i, j)
                 if isnothing(ca) == false
-                    cardinality_matrix[i, j] = ca
+                    push!(Is[Threads.threadid()], i)
+                    push!(Js[Threads.threadid()], j)
+                    push!(Vs[Threads.threadid()], type(ca))
                 end
             end
         end
+
+        Is = vcat(Is...)
+        Js = vcat(Js...)
+        Vs = vcat(Vs...)
     else
-        for i = 1:(cset.atom_count)
-            for j = 1:(cset.atom_count)
+
+        Is = Vector{Int}()
+        Js = Vector{Int}()
+        Vs = Vector{type}()
+
+        sizehint!(Is, cset.atom_count)
+        sizehint!(Js, cset.atom_count)
+        sizehint!(Vs, cset.atom_count)
+
+        for i = 1:cset.atom_count
+            for j = 1:cset.atom_count
                 ca = CausalSets.cardinality_of(cset, i, j)
                 if isnothing(ca) == false
-                    cardinality_matrix[i, j] = ca
+                    push!(Is, i)
+                    push!(Js, j)
+                    push!(Vs, type(ca))
                 end
             end
         end
     end
-    return cardinality_matrix
+    return SparseArrays.sparse(
+        Is,
+        Js,
+        Vs,
+        cset.atom_count,
+        cset.atom_count,
+        type,
+    )
 end
 
 
@@ -309,7 +339,7 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets.AbstractCauset, type::Type{T}) where {T<:Number}
+function make_adj(c::CausalSets.AbstractCauset; type::Type{T}=Float32) where {T<:Number}
     if c.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
@@ -335,7 +365,7 @@ Uses dynamic programming with topological ordering for efficient longest path co
 Processes vertices in topological order to ensure optimal substructure property.
 Returns 0 if no finite distances exist from the source.
 """
-function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
+function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int,)
     n = size(adj_matrix, 1)
 
     # Dynamic programming for longest paths
