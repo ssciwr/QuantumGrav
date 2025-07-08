@@ -28,11 +28,13 @@ See [the pytorch installation page](https://pytorch.org/get-started/locally/) an
 ```bash 
 - finally, install the package 
 ```bash 
+cd ./py
 python3 -m pip install .
 ``` 
 
 - or, for development, do: 
 ```bash 
+cd ./py
 python3 -m pip install -e .[dev]
 ```
 
