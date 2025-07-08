@@ -138,7 +138,6 @@ end
 
     sprinkling_links = Float32.(stack(collect.(sprinkling_links), dims = 1))
 
-    # sprinkling with 100 points
     angles = QuantumGrav.calculate_angles(
         sprinkling_links,
         1,
@@ -275,7 +274,7 @@ end
         new_size =
             (old_size[1], old_size[2], old_size[3] + size(data["adjacency_matrices"], 3))
 
-        HDF5.set_extent_dims(dset, new_size)
+        QuantumGrav.HDF5.set_extent_dims(dset, new_size)
 
         dset[1:new_size[1], 1:new_size[2], (old_size[3]+1):new_size[3]] .=
             data["adjacency_matrices"]
@@ -296,6 +295,7 @@ end
         write_data;
         config = wrong_config,
     )
+    println("path: ", joinpath(config["output"], "test_datageneration.jl"))
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
     println("data dir: ", readdir(abspath(config["output"])))
@@ -303,7 +303,7 @@ end
     @test isfile(joinpath(config["output"], "config.yaml"))
     @test isfile(joinpath(config["output"], "test_datageneration.jl"))
 
-    HDF5.h5open(joinpath(config["output"], "data.h5"), "r") do file
+    QuantumGrav.HDF5.h5open(joinpath(config["output"], "data.h5"), "r") do file
         @test haskey(file, "/adjacency_matrices")
         @test size(file["/adjacency_matrices"]) == (100, 100, 10)
     end

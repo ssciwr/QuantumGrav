@@ -108,10 +108,12 @@ function calculate_angles(
     multithreading::Bool = false,
 ) where {T<:Number}
 
-    function compute_angle(sprinkling::AbstractMatrix, node_idx::Int, i::Int, j::Int)
-        v_i = sprinkling[i, :] - sprinkling[node_idx, :]
-        v_j = sprinkling[j, :] - sprinkling[node_idx, :]
-
+    # actual angle calculation function for two neighbors i and j
+    # in euclidean space with respect to the node given by node_idx
+    @inline
+    function inner(sprinkling, i, j, n)
+        @inbounds v_i = sprinkling[i, :] - sprinkling[n, :]
+        @inbounds v_j = sprinkling[j, :] - sprinkling[n, :]
         angle = acos(
             clamp(
                 LinearAlgebra.dot(
@@ -122,9 +124,10 @@ function calculate_angles(
                 1.0,
             ),
         )
-
-        return angle
+        return type(angle)
     end
+
+    idxs = findall(x -> x > 0, neighbors)
 
     if multithreading
         Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
@@ -134,15 +137,12 @@ function calculate_angles(
         sizehint!.(Js, length(neighbors))
         sizehint!.(angles, length(neighbors))
 
-        Threads.@threads for ((i, neighbor_i), (j, neighbor_j)) in collect(
-            Iterators.product(enumerate(neighbors), enumerate(neighbors)),
-        )
-            if neighbor_i != neighbor_j
-                angle = compute_angle(sprinkling, node_idx, i, j)
+        Threads.@threads for (i, j) in collect(Iterators.product(idxs, idxs))
+            if i != j
+                angle = inner(sprinkling, i, j, node_idx)
                 push!(Is[Threads.threadid()], i)
                 push!(Js[Threads.threadid()], j)
-                push!(angles[Threads.threadid()], type(angle))
-
+                push!(angles[Threads.threadid()], angle)
             end
         end
 
@@ -157,13 +157,12 @@ function calculate_angles(
         sizehint!(Js, length(neighbors))
         sizehint!(angles, length(neighbors))
 
-        for ((i, neighbor_i), (j, neighbor_j)) in
-            Iterators.product(enumerate(neighbors), enumerate(neighbors))
-            if neighbor_i != neighbor_j
-                angle = compute_angle(sprinkling, node_idx, i, j)
-                Is = push!(Is, i)
-                Js = push!(Js, j)
-                angles = push!(angles, type(angle))
+        for (i, j) in collect(Iterators.product(idxs, idxs))
+            if i != j
+                angle = inner(sprinkling, i, j, node_idx)
+                push!(Is, i)
+                push!(Js, j)
+                push!(angles, angle)
             end
         end
     end
@@ -453,6 +452,11 @@ function make_data(
         for func in [transform, prepare_output, write_data]
             funcdata = first(methods(func))
             filepath = String(funcdata.file)
+            println(
+                "Copying function source code from: ",
+                joinpath(abspath(expanduser(config["output"])), basename(filepath)),
+            )
+
             if isfile(
                 joinpath(abspath(expanduser(config["output"])), basename(filepath)),
             ) == false
