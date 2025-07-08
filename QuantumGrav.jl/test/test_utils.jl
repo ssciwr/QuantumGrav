@@ -147,6 +147,8 @@ end
     A[4, 4] = 4.0
     A[5, 5] = 5.0
 
+    @test_throws ArgumentError QuantumGrav.resize(A, (6, 2)) # Cannot resize to smaller in some dimensions
+
     B = QuantumGrav.resize(A, (3, 4))
 
     @test size(B) == (3, 4)
