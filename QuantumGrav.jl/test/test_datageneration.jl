@@ -267,7 +267,7 @@ end
         close(dset)
     end
 
-    function write_data(file, data::Dict)
+    function write_data(file, config::Dict, data::Dict)
 
         dset = QuantumGrav.HDF5.open_dataset(file, "/adjacency_matrices")
         old_size = size(dset)
