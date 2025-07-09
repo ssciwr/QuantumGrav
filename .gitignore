@@ -28,10 +28,15 @@ Manifest.toml
 .venv
 *.pyc 
 __pycache__/
-
+.venv/
 
 # data files 
 data/
 *.h5
 *.jld2
 *.csv
+*.zip
+*.tar.gz
+*.pickle 
+*.pt 
+*.index

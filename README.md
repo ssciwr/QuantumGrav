@@ -1,6 +1,42 @@
 # QuantumGrav
 Quantum gravity project experimental repo. 
 
+## Python
+*this assumes a UNIX system* 
+
+- Set up a virtual environment first
+```bash 
+python3 -m venv .venv 
+```
+- activate it
+```bash
+source ./.venv/bin/activate  
+```
+
+- install the dependencies. Because these differ based on hardware, please refer to the [pytorch-geometric documentation](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) for further details.
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install torch-geometric
+pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+``` 
+
+See [the pytorch installation page](https://pytorch.org/get-started/locally/) and the [pytorch-geometric installation page](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html), respectively, for more information
+
+```bash 
+- finally, install the package 
+```bash 
+cd ./py
+python3 -m pip install .
+``` 
+
+- or, for development, do: 
+```bash 
+cd ./py
+python3 -m pip install -e .[dev]
+```
+
+## Julia
 - To work on the software, clone the repo, and in the base directory in the terminal run: 
 - `julia`
 - hit `]` 
