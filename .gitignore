@@ -23,14 +23,20 @@ docs/site/
 # environment.
 Manifest.toml
 
-# python things 
-*.pyc
-py/__pycache__/
+# Python stuff
+
+.venv
+*.pyc 
+__pycache__/
 .venv/
 
+# data files 
+data/
+*.h5
+*.jld2
+*.csv
 *.zip
 *.tar.gz
-*.csv
 *.pickle 
 *.pt 
 *.index
