@@ -32,6 +32,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "matplotlib>=3.10.3",
     "scikit-learn>=1.7.0",
+    "juliacall>=0.9.25"
 ]
 
 # Optional dependencies

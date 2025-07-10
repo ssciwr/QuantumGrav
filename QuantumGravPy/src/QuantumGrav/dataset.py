@@ -234,6 +234,7 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
             with open(os.path.join(self.processed_dir, "metadata.json"), "w") as f:
                 json.dump(self.metadata, f)
 
+            full_data = []
             for file in self.raw_paths:
                 with h5py.File(file, "r") as raw_file:
                     num_read = 0
@@ -245,16 +246,19 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
                             pre_transform=self.pre_transform,
                             pre_filter=self.pre_filter,
                         )
-                        if self.data_writer is None:
-                            self.save(processed, self.processed_dir, self.writer_kwargs)
-                        else:
-                            self.data_writer(
-                                processed,
-                                self.processed_dir,
-                                self.writer_kwargs,
-                            )
-
+                        full_data.extend(processed)
                         num_read += read_raw
+
+            # if there is no separate data writer given,
+            # use the default save method of InMemoryDataset
+            if self.data_writer is None:
+                self.save(full_data, self.processed_dir, self.writer_kwargs)
+            else:
+                self.data_writer(
+                    full_data,
+                    self.processed_dir,
+                    self.writer_kwargs,
+                )
 
 
 class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
