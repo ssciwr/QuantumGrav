@@ -16,9 +16,11 @@ from joblib import Parallel, delayed
 
 
 class QuantumGravDatasetMixin:
+    """Mixin class for QuantumGrav dataset handling. Provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
+
     def __init__(
         self,
-        input: list[str | Path] | Callable[[Any], dict],
+        input: list[str | Path],
         get_metadata: Callable[[str | Path], dict] | None = None,
         loader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
@@ -29,6 +31,24 @@ class QuantumGravDatasetMixin:
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
     ):
+        """Initialize a QuantumGravDatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
+
+        Args:
+            input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
+            get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to retrieve metadata for the dataset. Defaults to None.
+            loader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
+            writer (Callable[[list[Data], str, dict[Any, Any]], None] | None, optional): A function to write data to a file. Defaults to None.
+            float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
+            int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
+            validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
+            parallel_processing (bool, optional): Whether to use parallel processing for data loading. Defaults to False.
+            writer_kwargs (dict[str, Any], optional): Additional keyword arguments to pass to the writer function. Defaults to None.
+
+        Raises:
+            ValueError: If one of the input data files is not a valid HDF5 file
+            ValueError: If the metadata retrieval function is invalid.
+            FileNotFoundError: If an input file does not exist.
+        """
         self.writer_kwargs = writer_kwargs or {}
         if loader is None:
             raise ValueError("A loader function must be provided to load the data.")
@@ -62,10 +82,10 @@ class QuantumGravDatasetMixin:
 
     @property
     def processed_dir(self) -> str | None:
-        """_summary_
+        """Get the path to the processed directory.
 
         Returns:
-            str: _description_
+            str: The path to the processed directory, or None if it doesn't exist.
         """
         processed_path = os.path.join(self.root, "processed")
         if not os.path.exists(processed_path):
@@ -74,10 +94,10 @@ class QuantumGravDatasetMixin:
 
     @property
     def processed_files(self) -> list[str]:
-        """_summary_
+        """Get a list of processed files in the processed directory.
 
         Returns:
-            list[str]: _description_
+            list[str]: A list of processed file paths, excluding JSON files.
         """
 
         if not os.path.isdir(self.processed_dir):
@@ -91,19 +111,19 @@ class QuantumGravDatasetMixin:
 
     @property
     def raw_file_names(self) -> list[str]:
-        """_summary_
+        """Get the raw file names from the input list.
 
         Returns:
-            list[str]: _description_
+            list[str]: A list of raw file names.
         """
         return [os.path.basename(f) for f in self.input if Path(f).suffix == ".h5"]
 
     @property
     def processed_file_names(self) -> list[str]:
-        """_summary_
+        """Get the processed file names from the processed directory.
 
         Returns:
-            list[str]: _description_
+            list[str]: A list of processed file names.
         """
         if os.path.isdir(self.root) is False:
             return []
@@ -151,7 +171,7 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
 
     def __init__(
         self,
-        input: list[str | Path] | Callable[[Any], dict],
+        input: list[str | Path],
         output: str | Path,
         transform: Callable[[Data], Data] | None = None,
         pre_transform: Callable[[Data], Data] | None = None,
@@ -166,6 +186,23 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
     ):
+        """Initialize a QuantumGravDatasetInMemory instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that can be loaded into memory completely.
+
+        Args:
+            input (list[str  |  Path] | Callable[[Any], dict]): The list of input files for the dataset, or a callable that generates a set of input files.
+            output (str | Path): The output directory for processed data.
+            transform (Callable[[Data], Data] | None, optional): A function to apply transformations to the data. Defaults to None.
+            pre_transform (Callable[[Data], Data] | None, optional): A function to apply preprocessing transformations to the data. Defaults to None.
+            pre_filter (Callable[[Data], bool] | None, optional): A function to filter the data before processing. Defaults to None.
+            get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to retrieve metadata for the dataset. Defaults to None.
+            loader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from raw HDF5 files. Defaults to None.
+            writer (Callable[[list[Data], str, dict[Any, Any]], None] | None, optional): A function to write processed data to disk. Defaults to None.
+            float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
+            int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
+            validate_data (bool, optional): Whether to validate the data after processing. Defaults to True.
+            parallel_processing (bool, optional): Whether to use parallel processing for data loading and processing. Defaults to False.
+            writer_kwargs (dict[str, Any], optional): Additional keyword arguments to pass to the writer function. Defaults to None.
+        """
         QuantumGravDatasetMixin.__init__(
             input,
             get_metadata,
@@ -186,7 +223,7 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
         )
 
     def process(self) -> None:
-        """_summary_"""
+        """Process the dataset by reading raw data files, applying transformations, and saving processed data."""
         if (
             not os.path.exists(self.processed_dir)
             or len(self.processed_file_names) == 0
@@ -221,6 +258,8 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
 
 
 class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
+    """A dataset class for QuantumGrav data that is designed to handle large datasets stored on disk. This class provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
+
     def __init__(
         self,
         input: list[str | Path] | Callable[[Any], dict],
@@ -239,6 +278,28 @@ class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
     ):
+        """Initialize a QuantumGravDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. It provides a common interface for both in-memory and on-disk datasets.
+
+        Args:
+            input (list[str  |  Path] | Callable[[Any], dict]): The input data source, either a list of file paths or a function that returns a dictionary of data.
+            output (str | Path): The output directory where processed data will be saved.
+            transform (Callable[[Data], Data] | None, optional): A function to transform the data after loading. Defaults to None.
+            pre_transform (Callable[[Data], Data] | None, optional): A function to transform the data before loading. Defaults to None.
+            pre_filter (Callable[[Data], bool] | None, optional): A function to filter the data before loading. Defaults to None.
+            get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to get metadata from the input files. Defaults to None.
+            loader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from raw HDF5 files. Defaults to None.
+            writer (Callable[[list[Data], str, dict[Any, Any]], None] | None, optional): A function to write processed data to disk. Defaults to None.
+            reader (Callable[[str  |  Path, int], Data] | None, optional): A function to read processed data from disk. Defaults to None.
+            float_type (torch.dtype, optional): The data type to use for floating point numbers. Defaults to torch.float32.
+            int_type (torch.dtype, optional): The data type to use for integers. Defaults to torch.int64.
+            validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
+            parallel_processing (bool, optional): Whether to use parallel processing for data loading and processing. Defaults to False.
+            writer_kwargs (dict[str, Any], optional): Additional keyword arguments to pass to the writer function. Defaults to None.
+
+        Raises:
+            ValueError: If the input data source is invalid.
+            ValueError: If the output directory is invalid.
+        """
         if writer is None:
             raise ValueError("A writer function must be provided to save the data.")
 
@@ -272,7 +333,7 @@ class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
             self.cached_processed_files = []
 
     def process(self) -> None:
-        """_summary_"""
+        """Process the dataset and save the processed data to disk."""
         if (
             not os.path.exists(self.processed_dir)
             or len(self.processed_file_names) == 0
@@ -297,7 +358,11 @@ class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
 
                         num_read += read_raw
 
-                        # TODO: write out data
+                        self.data_writer(
+                            processed,
+                            self.processed_dir,
+                            self.writer_kwargs,
+                        )
 
     def len(self) -> int:
         """Return the number of samples in the dataset."""
