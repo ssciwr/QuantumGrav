@@ -14,9 +14,12 @@ from collections.abc import Callable
 from typing import Any
 from joblib import Parallel, delayed
 
+# julia interface
+from QuantumGravPy.src.QuantumGrav.julia_interface import JuliaInterface
 
-class QuantumGravDatasetMixin:
-    """Mixin class for QuantumGrav dataset handling. Provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
+
+class QGDatasetMixin:
+    """Mixin class for QG dataset handling. Provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
 
     def __init__(
         self,
@@ -31,7 +34,7 @@ class QuantumGravDatasetMixin:
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
     ):
-        """Initialize a QuantumGravDatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
+        """Initialize a DatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
@@ -166,7 +169,7 @@ class QuantumGravDatasetMixin:
         return len(data_list), processed
 
 
-class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
+class QGDatasetInMemory(QGDatasetMixin, InMemoryDataset):
     """A dataset class for QuantumGrav data that can be loaded into memory."""
 
     def __init__(
@@ -186,7 +189,7 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
     ):
-        """Initialize a QuantumGravDatasetInMemory instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that can be loaded into memory completely.
+        """Initialize a QGDatasetInMemory instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that can be loaded into memory completely.
 
         Args:
             input (list[str  |  Path] | Callable[[Any], dict]): The list of input files for the dataset, or a callable that generates a set of input files.
@@ -203,7 +206,7 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
             parallel_processing (bool, optional): Whether to use parallel processing for data loading and processing. Defaults to False.
             writer_kwargs (dict[str, Any], optional): Additional keyword arguments to pass to the writer function. Defaults to None.
         """
-        QuantumGravDatasetMixin.__init__(
+        QGDatasetMixin.__init__(
             input,
             get_metadata,
             loader,
@@ -261,7 +264,7 @@ class QuantumGravDatasetInMemory(QuantumGravDatasetMixin, InMemoryDataset):
                 )
 
 
-class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
+class QGDataset(QGDatasetMixin, Dataset):
     """A dataset class for QuantumGrav data that is designed to handle large datasets stored on disk. This class provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
 
     def __init__(
@@ -282,7 +285,7 @@ class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
     ):
-        """Initialize a QuantumGravDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. It provides a common interface for both in-memory and on-disk datasets.
+        """Initialize a QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. It provides a common interface for both in-memory and on-disk datasets.
 
         Args:
             input (list[str  |  Path] | Callable[[Any], dict]): The input data source, either a list of file paths or a function that returns a dictionary of data.
@@ -310,7 +313,7 @@ class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
         if reader is None:
             raise ValueError("A reader function must be provided to read the data.")
 
-        QuantumGravDatasetMixin.__init__(
+        QGDatasetMixin.__init__(
             input,
             get_metadata,
             loader,
@@ -385,3 +388,33 @@ class QuantumGravDataset(QuantumGravDatasetMixin, Dataset):
         if self.transform is not None:
             data = self.transform(data)
         return data
+
+
+class QGDatasetOnthefly(Dataset):
+    def __init__(self):
+        self.jlqg = JuliaInterface()
+
+    @property
+    def processed_dir(self) -> str | None:
+        pass
+
+    @property
+    def processed_files(self) -> list[str]:
+        pass
+
+    @property
+    def raw_file_names(self) -> list[str]:
+        pass
+
+    @property
+    def processed_file_names(self) -> list[str]:
+        pass
+
+    def process(self) -> None:
+        pass
+
+    def len(self) -> int:
+        pass
+
+    def get(self, idx: int) -> Data:
+        pass
