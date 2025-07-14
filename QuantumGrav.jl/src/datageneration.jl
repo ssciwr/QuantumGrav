@@ -68,7 +68,7 @@ function make_link_matrix(
     cset::CausalSets.AbstractCauset;
     type::Type{T} = Float32,
 ) where {T<:Number}
-    link_matrix = SparseArrays.spzeros(T, cset.atom_count, cset.atom_count)
+    link_matrix = SparseArrays.spzeros(type, cset.atom_count, cset.atom_count)
     for i = 1:(cset.atom_count)
         for j = 1:(cset.atom_count)
             if CausalSets.is_link(cset, i, j)
