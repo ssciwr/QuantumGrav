@@ -391,8 +391,13 @@ class QGDataset(QGDatasetMixin, Dataset):
 
 
 class QGDatasetOnthefly(Dataset):
-    def __init__(self):
-        self.jlqg = JuliaInterface()
+    def __init__(
+        self, data_generator_code: str | Path, data_generator_name: str = "create_data"
+    ):
+        self.jl = JuliaInterface()
+        self.data_generator_code = data_generator_code
+        self.jl.load_custom_module(Path(self.data_generator_code).resolve().abspath())
+        self.generator_name = data_generator_name
 
     @property
     def processed_dir(self) -> str | None:
