@@ -1,0 +1,10 @@
+name = "TestModule"
+authors = ["""Harald  Mack <harald.mack@protonmail.com\n>"""]
+version = "0.1.0"
+
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+QuantumGrav = "f7c7699e-e939-438e-b944-97232f27dad4"
+
+[sources]
+QuantumGrav = {path = "../QuantumGrav.jl"}

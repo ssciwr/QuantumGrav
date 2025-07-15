@@ -48,8 +48,10 @@ end
 function (gen::Generator)()
 
     atom_count = rand(gen.rng, gen.atom_distr)
-    manifold = gen.manifolds[rand(gen.rng, gen.manifold_distr)]
-    boundary = gen.boundaries[rand(gen.rng, gen.boundary_distr)]
+    manifold_id = rand(gen.rng, gen.manifold_distr)
+    boundary_id = rand(gen.rng, gen.boundary_distr)
+    manifold = gen.manifolds[manifold_id]
+    boundary = gen.boundaries[boundary_id]
     dimension = rand(gen.rng, gen.dimension_distr)
     cset = nothing
     sprinkling = nothing
@@ -85,8 +87,8 @@ function (gen::Generator)()
 
         data = Dict(
             "atom_count" => atom_count,
-            "manifold" => manifold,
-            "boundary" => boundary,
+            "manifold" => manifold_id,
+            "boundary" => boundary_id,
             "dimension" => dimension,
             "sprinkling" => sprinkling,
             "adjacency_matrix" => adj,

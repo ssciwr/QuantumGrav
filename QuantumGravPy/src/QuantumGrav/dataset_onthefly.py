@@ -20,14 +20,15 @@ class QGOntheflyConfig:
     atom_count_min: int = 1
     atom_count_max: int = 1
     seed: int = 42
-    manifolds: list[int] = [1, 2, 3, 4, 5, 6]
-    boundaries: list[int] = [1, 2, 3]
-    dimensions: list[int] = [2, 3, 4]
+    manifolds: list[int] = None
+    boundaries: list[int] = None
+    dimensions: list[int] = None
     n_samples: int = 64
     n_processes: int = -1
     julia_nthreads: int = 1
 
 
+# FIXME: this is very unstable right now
 class QGDatasetOnthefly(Dataset):
     """A dataset that generates data on the fly using a Julia function.
 
@@ -44,6 +45,8 @@ class QGDatasetOnthefly(Dataset):
         jl_code_path: str | Path | None = None,
         jl_func_name: str | None = None,
         jl_module_name: str | None = None,
+        jl_base_module_path: str | Path | None = None,
+        jl_dependencies: list[str] | None = None,
         transform: Callable[[dict[Any, Any]], Data] | None = None,
     ):
         """Initialize the dataset.
@@ -79,9 +82,27 @@ class QGDatasetOnthefly(Dataset):
             jl_module_name = jl_code_path.stem
 
         try:
-            jcall.eval(f'push!(LOAD_PATH, "{jl_code_path}")')
-            jcall.eval(f'include("{jl_code_path}")')
             self.jl_module = jcall.newmodule(jl_module_name)
+
+            # add base module for dependencies
+            if jl_base_module_path is None:
+                raise NotImplementedError(
+                    "Base module path must be provided at the moment"
+                )
+            else:
+                self.jl_module.seval(
+                    f'using Pkg; Pkg.develop(path="{jl_base_module_path}")'
+                )  # only for now -> get from package index later
+
+            # add dependencies if provided
+            if jl_dependencies is not None:
+                for dep in jl_dependencies:
+                    self.jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
+
+            # load the julia data generation julia code
+            self.jl_module.seval(f'push!(LOAD_PATH, "{jl_code_path}")')
+            self.jl_module.seval("using QuantumGrav")
+            self.jl_module.seval(f'include("{jl_code_path}")')
             # generate the julia object and call it later with arguments
             self.jl_generator = self.jl_module.seval(
                 f"{jl_module_name}.{jl_func_name}({config.seed},{config.atom_count_min},{config.atom_count_max},{config.manifolds},{config.boundaries},{config.dimensions},{config.n_samples},{config.julia_nthreads > 1})"
