@@ -21,7 +21,7 @@ class QGDatasetMixin:
         self,
         input: list[str | Path],
         get_metadata: Callable[[str | Path], dict] | None = None,
-        loader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
+        reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
         writer: Callable[[list[Data], str, dict[Any, Any]], None] | None = None,
         float_type: torch.dtype = torch.float32,
@@ -29,19 +29,22 @@ class QGDatasetMixin:
         validate_data: bool = True,
         parallel_processing: bool = False,
         writer_kwargs: dict[str, Any] = None,
+        n_processes: int = -1,
     ):
         """Initialize a DatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
             get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to retrieve metadata for the dataset. Defaults to None.
-            loader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
+            reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
             writer (Callable[[list[Data], str, dict[Any, Any]], None] | None, optional): A function to write data to a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
             parallel_processing (bool, optional): Whether to use parallel processing for data loading. Defaults to False.
             writer_kwargs (dict[str, Any], optional): Additional keyword arguments to pass to the writer function. Defaults to None.
+            n_processes (int, optional): The number of processes to use for parallel processing. Defaults to -1, which uses all available cores.
+            Only used if parallel_processing is True.
 
         Raises:
             ValueError: If one of the input data files is not a valid HDF5 file
@@ -49,15 +52,15 @@ class QGDatasetMixin:
             FileNotFoundError: If an input file does not exist.
         """
         self.writer_kwargs = writer_kwargs or {}
-        if loader is None:
-            raise ValueError("A loader function must be provided to load the data.")
+        if reader is None:
+            raise ValueError("A reader function must be provided to load the data.")
 
         if get_metadata is None:
             raise ValueError("A metadata retrieval function must be provided.")
 
         self.input = input
         self._num_samples = None
-        self.data_loader = loader
+        self.data_reader = reader
         self.data_writer = writer
         self.get_metadata = get_metadata
         self.metadata = {}
@@ -65,7 +68,7 @@ class QGDatasetMixin:
         self.int_type = int_type
         self.validate_data = validate_data
         self.parallel_processing = parallel_processing
-
+        self.n_processes = n_processes
         # ensure the input is a list of paths
         if self.processed_dir is not None:
             with open(os.path.join(self.processed_dir, "metadata.json"), "r") as f:
@@ -143,7 +146,7 @@ class QGDatasetMixin:
         Returns:
             list[Data]: A list of processed data items.
         """
-        data_list = self.data_loader(
+        data_list = self.data_reader(
             raw_file,
             float_type=self.float_type,
             int_type=self.int_type,
@@ -151,7 +154,7 @@ class QGDatasetMixin:
         )
 
         if self.parallel_processing:
-            processed = Parallel(n_jobs=-1)(
+            processed = Parallel(n_jobs=self.n_processes)(
                 delayed(pre_transform)(data_point)
                 for data_point in data_list
                 if delayed(pre_filter)(data_point)

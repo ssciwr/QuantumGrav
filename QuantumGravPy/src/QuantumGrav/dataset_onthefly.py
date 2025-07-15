@@ -10,6 +10,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 from dataclasses import dataclass
+from joblib import Parallel, delayed
 
 
 @dataclass
@@ -23,6 +24,7 @@ class QGOntheflyConfig:
     boundaries: list[int] = [1, 2, 3]
     dimensions: list[int] = [2, 3, 4]
     n_samples: int = 64
+    n_processes: int = -1
 
 
 class QGDatasetOnthefly(Dataset):
@@ -82,9 +84,7 @@ class QGDatasetOnthefly(Dataset):
             ) from e
 
         self.config = config
-
-        self.databatch = list[Data]
-        self.current_index = 0
+        self.databatch: list[Data] = []  # hold a batch of generated data
 
         super().__init__(None, transform=transform, pre_transform=None, pre_filter=None)
 
@@ -117,9 +117,16 @@ class QGDatasetOnthefly(Dataset):
             raw_data = self.jl_module.seval(f"{self.func_name}()")
 
             try:
-                self.databatch = [
-                    self.transform(raw_datapoint) for raw_datapoint in raw_data
-                ]
+                # parallel processing in Julia is handled on the Julia side
+                if self.config.n_processes != 1:
+                    self.databatch = Parallel(n_jobs=self.config.n_processes)(
+                        delayed(self.transform)(raw_datapoint)
+                        for raw_datapoint in raw_data
+                    )
+                else:
+                    self.databatch = [
+                        self.transform(raw_datapoint) for raw_datapoint in raw_data
+                    ]
             except Exception as e:
                 self.logger.error(f"Error transforming data: {e}")
                 raise RuntimeError(f"Error transforming data: {e}") from e

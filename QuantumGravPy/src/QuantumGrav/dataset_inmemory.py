@@ -109,3 +109,5 @@ class QGDatasetInMemory(QGDatasetMixin, InMemoryDataset):
                     self.processed_dir,
                     self.writer_kwargs,
                 )
+
+    # TODO: I think there is some stuff missing here.
