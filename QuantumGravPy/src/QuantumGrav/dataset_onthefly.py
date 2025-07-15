@@ -25,6 +25,7 @@ class QGOntheflyConfig:
     dimensions: list[int] = [2, 3, 4]
     n_samples: int = 64
     n_processes: int = -1
+    julia_nthreads: int = 1
 
 
 class QGDatasetOnthefly(Dataset):
@@ -33,6 +34,9 @@ class QGDatasetOnthefly(Dataset):
     Args:
         Dataset (Dataset): The base dataset class.
     """
+
+    jl_generator: jcall.AnyValue | None = None
+    jl_module: jcall.ModuleValue | None = None
 
     def __init__(
         self,
@@ -55,14 +59,14 @@ class QGDatasetOnthefly(Dataset):
             ValueError: If the Julia code path is not provided.
             FileNotFoundError: _description_
         """
-        self.jl = jcall.newmodule("GenerateData")
-        self.add_to_jl_load_path(jl_code_path)
-        self.func_name = jl_func_name
 
         if transform is None:
             self.transform = lambda x: Data.from_dict(x)
         else:
             self.transform = transform
+
+        if jl_func_name is None:
+            raise ValueError("Julia function name must be provided.")
 
         if jl_code_path is None:
             raise ValueError("Julia code path must be provided.")
@@ -75,9 +79,13 @@ class QGDatasetOnthefly(Dataset):
             jl_module_name = jl_code_path.stem
 
         try:
-            self.jl.seval(f'push!(LOAD_PATH, "{jl_code_path}")')
-            self.jl.seval(f'include("{jl_code_path}")')
+            jcall.eval(f'push!(LOAD_PATH, "{jl_code_path}")')
+            jcall.eval(f'include("{jl_code_path}")')
             self.jl_module = jcall.newmodule(jl_module_name)
+            # generate the julia object and call it later with arguments
+            self.jl_generator = self.jl_module.seval(
+                f"{jl_module_name}.{jl_func_name}({config.seed},{config.atom_count_min},{config.atom_count_max},{config.manifolds},{config.boundaries},{config.dimensions},{config.n_samples},{config.julia_nthreads > 1})"
+            )
         except Exception as e:
             raise RuntimeError(
                 f"Error loading Julia module {jl_module_name}: {e}"
@@ -114,7 +122,7 @@ class QGDatasetOnthefly(Dataset):
 
         if len(self.databatch) == 0:
             # Call the Julia function to get the data
-            raw_data = self.jl_module.seval(f"{self.func_name}()")
+            raw_data = self.jl_generator()
 
             try:
                 # parallel processing in Julia is handled on the Julia side
