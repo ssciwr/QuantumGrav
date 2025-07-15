@@ -1,11 +1,13 @@
 # pytorch and torch geometric imports
 from torch_geometric.data import Data, InMemoryDataset, Dataset
 import torch
-
+import sys
 
 # data handling
 import h5py
 import json
+import logging
+import juliacall as jcall
 
 # system imports and quality of life tools
 from pathlib import Path
@@ -15,7 +17,6 @@ from typing import Any
 from joblib import Parallel, delayed
 
 # julia interface
-from QuantumGravPy.src.QuantumGrav.julia_interface import JuliaInterface
 
 
 class QGDatasetMixin:
@@ -392,34 +393,46 @@ class QGDataset(QGDatasetMixin, Dataset):
 
 class QGDatasetOnthefly(Dataset):
     def __init__(
-        self, data_generator_code: str | Path, data_generator_name: str = "create_data"
+        self,
+        jl_code_path: str | Path,
+        jl_func_name: str,
+        jl_module_name: str | None = None,
+        jl_log_level: int = logging.INFO,
+        transform: Callable[[dict[Any, Any]], Data] | None = None,
     ):
-        self.jl = JuliaInterface()
-        self.data_generator_code = data_generator_code
-        self.jl.load_custom_module(Path(self.data_generator_code).resolve().abspath())
-        self.generator_name = data_generator_name
+        self.jl = jcall.newmodule("GenerateData")
+        self.add_to_jl_load_path(jl_code_path)
+        self.func_name = jl_func_name
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(jl_log_level)
+        if transform is None:
+            self.transform = lambda x: Data.from_dict(x)
+        else:
+            self.transform = transform
 
-    @property
-    def processed_dir(self) -> str | None:
-        pass
+        self.jl.seval(f'include("{jl_code_path}")')
+        if jl_module_name is not None:
+            self.jl.seval(f"using {jl_module_name}")
+        super().__init__(None, transform=transform, pre_transform=None, pre_filter=None)
 
-    @property
-    def processed_files(self) -> list[str]:
-        pass
-
-    @property
-    def raw_file_names(self) -> list[str]:
-        pass
-
-    @property
-    def processed_file_names(self) -> list[str]:
-        pass
-
-    def process(self) -> None:
-        pass
+    def add_to_jl_load_path(self, path: str | Path) -> None:
+        self.jl.seval(f'push!(LOAD_PATH, "{path}")')
 
     def len(self) -> int:
-        pass
+        return sys.maxsize
 
     def get(self, idx: int) -> Data:
-        pass
+        """Get a single data point by index."""
+        if self.jl.module is None:
+            raise RuntimeError("Julia module is not initialized.")
+
+        # Call the Julia function to get the data
+        raw_data = self.jl.module.seval(f"{self.func_name}()")
+
+        try:
+            data = self.transform(raw_data)
+        except Exception as e:
+            self.logger.error(f"Error transforming data: {e}")
+            raise RuntimeError(f"Error transforming data: {e}") from e
+
+        return data
