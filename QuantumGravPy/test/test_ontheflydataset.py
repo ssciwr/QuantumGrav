@@ -4,30 +4,28 @@ import pytest
 from torch_geometric.data import Data
 
 
-def test_onthefly_dataset_creation_works(ontheflyconfig, basictransform):
-    transform_function = basictransform()
-
+def test_onthefly_dataset_creation_works(ontheflyconfig, basic_transform):
     ontheflydataset = QG.QGDatasetOnthefly(
         config=ontheflyconfig,
-        jl_code_path="test/julia_testmodule.jl",
+        jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
         jl_func_name="Generator",
-        jl_base_module_path="../../QuantumGrav.jl",
+        jl_base_module_path="./QuantumGrav.jl",
         jl_dependencies=[
             "Distributions",
             "Random",
         ],
-        transform=transform_function,
+        transform=basic_transform,
     )
 
-    assert isinstance(ontheflydataset, jcall.ModuleValue)
+    assert isinstance(ontheflydataset.jl_module, jcall.ModuleValue)
     assert isinstance(ontheflydataset.jl_generator, jcall.AnyValue)
-    assert ontheflydataset.transform == transform_function
+    assert ontheflydataset.transform == basic_transform
 
-    datapoint = ontheflydataset.jl_generator.__call__(42)
+    data = ontheflydataset.jl_generator.__call__()
 
-    assert isinstance(datapoint, dict)
+    assert len(data) == 5
     assert all(
-        key in datapoint
+        key in data[0]
         for key in [
             "manifold",
             "boundary",
@@ -48,9 +46,9 @@ def test_onthefly_dataset_no_transform(ontheflyconfig):
     ):
         QG.QGDatasetOnthefly(
             config=ontheflyconfig,
-            jl_code_path="test/julia_testmodule.jl",
+            jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
             jl_func_name="Generator",
-            jl_base_module_path="../../QuantumGrav.jl",
+            jl_base_module_path="./QuantumGrav.jl",
             jl_dependencies=[
                 "Distributions",
                 "Random",
@@ -59,33 +57,33 @@ def test_onthefly_dataset_no_transform(ontheflyconfig):
         )
 
 
-def test_onthefly_dataset_no_funcname(ontheflyconfig):
+def test_onthefly_dataset_no_funcname(ontheflyconfig, basic_transform):
     with pytest.raises(ValueError, match="Julia function name must be provided."):
         QG.QGDatasetOnthefly(
             config=ontheflyconfig,
-            jl_code_path="test/julia_testmodule.jl",
+            jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
             jl_func_name=None,
-            jl_base_module_path="../../QuantumGrav.jl",
+            jl_base_module_path="./QuantumGrav.jl",
             jl_dependencies=[
                 "Distributions",
                 "Random",
             ],
-            transform=lambda x: x,
+            transform=basic_transform,
         )
 
 
-def test_onthefly_dataset_no_codepath(ontheflyconfig):
+def test_onthefly_dataset_no_codepath(ontheflyconfig, basic_transform):
     with pytest.raises(ValueError, match="Julia code path must be provided."):
         QG.QGDatasetOnthefly(
             config=ontheflyconfig,
             jl_code_path=None,
             jl_func_name="Generator",
-            jl_base_module_path="../../QuantumGrav.jl",
+            jl_base_module_path="./QuantumGrav.jl",
             jl_dependencies=[
                 "Distributions",
                 "Random",
             ],
-            transform=lambda x: x,
+            transform=basic_transform,
         )
 
 
@@ -97,9 +95,9 @@ def test_onthefly_dataset_jl_failure(ontheflyconfig, mocker):
         with pytest.raises(RuntimeError, match="Julia call failed."):
             QG.QGDatasetOnthefly(
                 config=ontheflyconfig,
-                jl_code_path="test/julia_testmodule.jl",
+                jl_code_path="./QuantumGraphPy/test/julia_testmodule.jl",
                 jl_func_name="Generator",
-                jl_base_module_path="../../QuantumGrav.jl",
+                jl_base_module_path="./QuantumGrav.jl",
                 jl_dependencies=[
                     "Distributions",
                     "Random",
@@ -108,19 +106,20 @@ def test_onthefly_dataset_jl_failure(ontheflyconfig, mocker):
             )
 
 
-def test_onthefly_dataset_processing_sequential(ontheflyconfig, basic_transform):
+def test_onthefly_dataset_processing_seq(ontheflyconfig, basic_transform):
     # check that the get function works and returns a viable data object
     ontheflydataset = QG.QGDatasetOnthefly(
         config=ontheflyconfig,
-        jl_code_path="test/julia_testmodule.jl",
+        jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
         jl_func_name="Generator",
-        jl_base_module_path="../../QuantumGrav.jl",
+        jl_base_module_path="./QuantumGrav.jl",
         jl_dependencies=[
             "Distributions",
             "Random",
         ],
         transform=basic_transform,
     )
+
     datapoint = ontheflydataset.get(0)
 
     assert isinstance(datapoint, Data)
@@ -133,9 +132,9 @@ def test_onthefly_dataset_processing_parallel(ontheflyconfig, basic_transform):
     ontheflyconfig["n_processes"] = 2  # set to 2 for parallel processing
     ontheflydataset = QG.QGDatasetOnthefly(
         config=ontheflyconfig,
-        jl_code_path="test/julia_testmodule.jl",
+        jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
         jl_func_name="Generator",
-        jl_base_module_path="../../QuantumGrav.jl",
+        jl_base_module_path="./QuantumGrav.jl",
         jl_dependencies=[
             "Distributions",
             "Random",

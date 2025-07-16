@@ -84,7 +84,7 @@ class QGDatasetOnthefly(Dataset):
                     f'using Pkg; Pkg.develop(path="{jl_base_module_path}")'
                 )  # only for now -> get from package index later
 
-            # add dependencies if provided
+            # add dependencies if provided\
             if jl_dependencies is not None:
                 for dep in jl_dependencies:
                     self.jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
@@ -94,9 +94,14 @@ class QGDatasetOnthefly(Dataset):
             self.jl_module.seval("using QuantumGrav")
             self.jl_module.seval(f'include("{jl_code_path}")')
             # generate the julia object and call it later with arguments
-            self.jl_generator = self.jl_module.seval(
-                f"{jl_module_name}.{jl_func_name}({config})"
-            )
+            # self.jl_generator = self.jl_module.seval(
+            # f"{jl_module_name}.{jl_func_name}(config)"
+            # )
+
+            generator_constructor = getattr(self.jl_module, jl_func_name)
+
+            # print("fucking dogshit julia dict: ", jl_config)
+            self.jl_generator = generator_constructor(config)
         except Exception as e:
             raise RuntimeError(
                 f"Error loading Julia module {jl_module_name}: {e}"
@@ -106,6 +111,18 @@ class QGDatasetOnthefly(Dataset):
         self.databatch: list[Data] = []  # hold a batch of generated data
 
         super().__init__(None, transform=transform, pre_transform=None, pre_filter=None)
+
+    def _convert_to_julia_dict(self, py_dict: dict[str, Any]) -> jcall.AnyValue:
+        """Convert a Python dictionary to a Julia dictionary.
+
+        Args:
+            config (dict[str, Any]): The Python dictionary to convert.
+
+        Returns:
+            jcall.AnyValue: The converted Julia dictionary.
+        """
+        jlstore = self.jl_module.seval("(k, v) -> (@eval $(Symbol(k)) = $v; return)")
+        jlstore("config_dict", py_dict)
 
     def len(self) -> int:
         """Return the length of the dataset.
@@ -147,9 +164,8 @@ class QGDatasetOnthefly(Dataset):
                         self.transform(raw_datapoint) for raw_datapoint in raw_data
                     ]
             except Exception as e:
-                self.logger.error(f"Error transforming data: {e}")
                 raise RuntimeError(f"Error transforming data: {e}") from e
 
         datapoint = self.databatch.pop()
 
-        yield datapoint
+        return datapoint
