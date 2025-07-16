@@ -94,6 +94,8 @@ get_manifold_encoding = Dict(
     "Random" => 6,
 )
 
+get_boundary_encoding = Dict("CausalDiamond" => 1, "TimeBoundary" => 2, "BoxBoundary" => 3)
+
 """
     make_manifold(i::Int, d::Int) -> CausalSets.AbstractManifold
 
@@ -180,6 +182,9 @@ function make_boundary(i::Int, d::Int)::CausalSets.AbstractBoundary
         )),
     )[i]
 end
+
+
+
 
 
 """

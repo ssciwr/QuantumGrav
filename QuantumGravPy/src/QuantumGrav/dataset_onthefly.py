@@ -9,26 +9,9 @@ import juliacall as jcall
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any
-from dataclasses import dataclass
 from joblib import Parallel, delayed
 
 
-@dataclass
-class QGOntheflyConfig:
-    """Config class for the QGDatasetOnthefly dataset. This class holds the configuration parameters for generating data on the fly using a Julia function."""
-
-    atom_count_min: int = 1
-    atom_count_max: int = 1
-    seed: int = 42
-    manifolds: list[int] = None
-    boundaries: list[int] = None
-    dimensions: list[int] = None
-    n_samples: int = 64
-    n_processes: int = -1
-    julia_nthreads: int = 1
-
-
-# FIXME: this is very unstable right now
 class QGDatasetOnthefly(Dataset):
     """A dataset that generates data on the fly using a Julia function.
 
@@ -41,7 +24,7 @@ class QGDatasetOnthefly(Dataset):
 
     def __init__(
         self,
-        config: QGOntheflyConfig,
+        config: dict[str, Any],
         jl_code_path: str | Path | None = None,
         jl_func_name: str | None = None,
         jl_module_name: str | None = None,
@@ -49,24 +32,31 @@ class QGDatasetOnthefly(Dataset):
         jl_dependencies: list[str] | None = None,
         transform: Callable[[dict[Any, Any]], Data] | None = None,
     ):
-        """Initialize the dataset.
+        """_summary_
 
         Args:
-            jl_code_path (str | Path | None, optional): The path to the Julia code file that contains the data generation function. Must be a module. Defaults to None.
-            jl_func_name (str | None, optional): The name of the Julia function to call for data production. Defaults to None.
-            jl_module_name (str | None, optional): The name of the Julia module to use. Defaults to None.
-
-            transform (Callable[[dict[Any, Any]], Data] | None, optional): A function to transform the raw data. Defaults to None.
+            config (dict[str, Any]): _description_
+            jl_code_path (str | Path | None, optional): _description_. Defaults to None.
+            jl_func_name (str | None, optional): _description_. Defaults to None.
+            jl_module_name (str | None, optional): _description_. Defaults to None.
+            jl_base_module_path (str | Path | None, optional): _description_. Defaults to None.
+            jl_dependencies (list[str] | None, optional): _description_. Defaults to None.
+            transform (Callable[[dict[Any, Any]], Data] | None, optional): _description_. Defaults to None.
 
         Raises:
-            ValueError: If the Julia code path is not provided.
+            ValueError: _description_
+            ValueError: _description_
+            ValueError: _description_
             FileNotFoundError: _description_
+            NotImplementedError: _description_
+            RuntimeError: _description_
         """
 
         if transform is None:
-            self.transform = lambda x: Data.from_dict(x)
-        else:
-            self.transform = transform
+            raise ValueError(
+                "Transform function must be provided to turn raw data dictionaries into PyTorch Geometric Data objects."
+            )
+        self.transform = transform
 
         if jl_func_name is None:
             raise ValueError("Julia function name must be provided.")
@@ -105,7 +95,7 @@ class QGDatasetOnthefly(Dataset):
             self.jl_module.seval(f'include("{jl_code_path}")')
             # generate the julia object and call it later with arguments
             self.jl_generator = self.jl_module.seval(
-                f"{jl_module_name}.{jl_func_name}({config.seed},{config.atom_count_min},{config.atom_count_max},{config.manifolds},{config.boundaries},{config.dimensions},{config.n_samples},{config.julia_nthreads > 1})"
+                f"{jl_module_name}.{jl_func_name}({config})"
             )
         except Exception as e:
             raise RuntimeError(
@@ -147,8 +137,8 @@ class QGDatasetOnthefly(Dataset):
 
             try:
                 # parallel processing in Julia is handled on the Julia side
-                if self.config.n_processes != 1:
-                    self.databatch = Parallel(n_jobs=self.config.n_processes)(
+                if self.config["n_processes"] != 1:
+                    self.databatch = Parallel(n_jobs=self.config["n_processes"])(
                         delayed(self.transform)(raw_datapoint)
                         for raw_datapoint in raw_data
                     )
