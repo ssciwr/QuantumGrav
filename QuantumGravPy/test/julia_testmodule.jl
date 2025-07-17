@@ -53,7 +53,6 @@ function (gen::Generator)()
                 ok = true
                 e = nothing
             catch error
-                println("Error generating data: ", error)
                 ok = false
                 e = error
                 cset = nothing
@@ -81,8 +80,8 @@ function (gen::Generator)()
         data["boundary"] = boundary_id
         data["dimension"] = dimension
         data["atomcount"] = atomcount
-        data["adjacency_matrix"] = adjacency_matrix
-        data["link_matrix"] = link_matrix
+        data["adjacency_matrix"] = Matrix(adjacency_matrix)
+        data["link_matrix"] = Matrix(link_matrix)
         data["max_pathlen_future"] = max_pathlen_future
         data["max_pathlen_past"] = max_pathlen_past
 

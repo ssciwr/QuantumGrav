@@ -1,3 +1,7 @@
+import multiprocessing
+
+multiprocessing.set_start_method("spawn", force=True)
+
 import pytest
 import juliacall as jcall
 import h5py
@@ -10,7 +14,6 @@ from torch_geometric.utils import dense_to_sparse
 @pytest.fixture(scope="module")
 def basic_transform():
     def transform(raw: jcall.DictValue) -> Data:
-        print("keys: ", raw.keys())
         # this function will transform the raw data dictionary from Julia into a PyTorch Geometric Data object. Hence, we have to deal with julia objects here
         adj_raw = raw["adjacency_matrix"].to_numpy()
         adj_matrix = torch.tensor(adj_raw, dtype=torch.float32)

@@ -1,11 +1,17 @@
-import juliacall as jcall
-import pickle
 from multiprocessing import Pipe
 from pathlib import Path
 from typing import Any
+import dill
 
 
 class JuliaWorker:
+    """_summary_"""
+
+    jl_code_path = None
+    jl_func_name = None
+    jl_module_name = None
+    jl_base_module_path = None
+
     def __init__(
         self,
         config: dict[str, Any] | None = None,
@@ -15,6 +21,28 @@ class JuliaWorker:
         jl_base_module_path: str | Path | None = None,
         jl_dependencies: list[str] | None = None,
     ):
+        """_summary_
+
+        Args:
+            config (dict[str, Any] | None, optional): _description_. Defaults to None.
+            jl_code_path (str | Path | None, optional): _description_. Defaults to None.
+            jl_func_name (str | None, optional): _description_. Defaults to None.
+            jl_module_name (str | None, optional): _description_. Defaults to None.
+            jl_base_module_path (str | Path | None, optional): _description_. Defaults to None.
+            jl_dependencies (list[str] | None, optional): _description_. Defaults to None.
+
+        Raises:
+            ValueError: _description_
+            ValueError: _description_
+            FileNotFoundError: _description_
+            ValueError: _description_
+            NotImplementedError: _description_
+            RuntimeError: _description_
+            RuntimeError: _description_
+            RuntimeError: _description_
+        """
+        import juliacall as jcall
+
         if jl_func_name is None:
             raise ValueError("Julia function name must be provided.")
 
@@ -28,16 +56,15 @@ class JuliaWorker:
         if jl_module_name is None:
             jl_module_name = jl_code_path.stem
 
-        self.jl_code_path = jl_code_path
+        self.jl_code_path = str(jl_code_path)
         self.jl_func_name = jl_func_name
         self.jl_module_name = jl_module_name
-        self.jl_base_module_path = jl_base_module_path
-        self.jl_dependencies = jl_dependencies
+        self.jl_base_module_path = str(Path(jl_base_module_path).resolve().absolute())
 
         try:
             self.jl_module = jcall.newmodule(jl_module_name)
         except Exception as e:
-            raise RuntimeError(
+            raise ValueError(
                 f"Error creating Julia module {jl_module_name}: {e}"
             ) from e
 
@@ -78,6 +105,14 @@ class JuliaWorker:
             ) from e
 
     def __call__(self):
+        """_summary_
+
+        Raises:
+            RuntimeError: _description_
+
+        Returns:
+            _type_: _description_
+        """
         if self.jl_module is None:
             raise RuntimeError("Julia module is not initialized.")
         raw_data = self.jl_generator()
@@ -93,7 +128,18 @@ def worker_loop(
     jl_base_module_path: str | Path | None = None,
     jl_dependencies: list[str] | None = None,
 ):
-    print("Worker started", flush=True)
+    """_summary_
+
+    Args:
+        pipe (Pipe): _description_
+        config (dict[str, Any] | None, optional): _description_. Defaults to None.
+        jl_code_path (str | Path | None, optional): _description_. Defaults to None.
+        jl_func_name (str | None, optional): _description_. Defaults to None.
+        jl_module_name (str | None, optional): _description_. Defaults to None.
+        jl_base_module_path (str | Path | None, optional): _description_. Defaults to None.
+        jl_dependencies (list[str] | None, optional): _description_. Defaults to None.
+    """
+    print("make worker")
     worker = JuliaWorker(
         config=config,
         jl_code_path=jl_code_path,
@@ -103,14 +149,16 @@ def worker_loop(
         jl_dependencies=jl_dependencies,
     )
 
+    print("done")
     while True:
+        print("run loop")
         msg = pipe.recv()
         if msg == "STOP":
             break
         elif msg == "GET":
+            print("run shit")
             try:
                 result = worker()
-                pipe.send(pickle.dumps(result))
-                print(f"Worker sent result: {result}", flush=True)
+                pipe.send(dill.dumps(result))
             except Exception as e:
-                pipe.send(pickle.dumps(e))
+                pipe.send(dill.dumps(e))  # Change this to dill too
