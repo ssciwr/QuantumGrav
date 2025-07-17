@@ -9,8 +9,6 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 from joblib import Parallel, delayed
-from multiprocessing import Process, Pipe
-import dill
 
 
 class QGDatasetOnthefly(Dataset):
@@ -29,6 +27,7 @@ class QGDatasetOnthefly(Dataset):
         jl_base_module_path: str | Path | None = None,
         jl_dependencies: list[str] | None = None,
         transform: Callable[[dict[Any, Any]], Data] | None = None,
+        converter: Callable[[Any], Any] | None = None,
     ):
         if transform is None:
             raise ValueError(
@@ -36,50 +35,30 @@ class QGDatasetOnthefly(Dataset):
             )
         self.transform = transform
 
+        if converter is None:
+            raise ValueError(
+                "Converter function must be provided to convert Julia objects into standard Python objects."
+            )
+        else:
+            self.converter = converter
+
         self.config = config
         self.databatch: list[Data] = []  # hold a batch of generated data
-        self.parent_conn, self.child_conn = Pipe()
 
         try:
-            self.worker = Process(
-                target=jl_worker.worker_loop,
-                args=(
-                    self.child_conn,
-                    config,
-                    jl_code_path,
-                    jl_func_name,
-                    jl_module_name,
-                    jl_base_module_path,
-                    jl_dependencies,
-                ),
+            self.worker = jl_worker.JuliaWorker(
+                config,
+                jl_code_path,
+                jl_func_name,
+                jl_module_name,
+                jl_base_module_path,
+                jl_dependencies,
             )
-            self.worker.start()
             print("done")
         except Exception as e:
             raise RuntimeError(f"Error initializing Julia process: {e}") from e
 
         super().__init__(None, transform=transform, pre_transform=None, pre_filter=None)
-
-    def shutdown(self):
-        if (
-            self.worker is not None
-            and self.parent_conn is not None
-            and self.child_conn is not None
-        ):
-            self.parent_conn.send("STOP")
-            self.worker.join()
-            self.parent_conn.close()
-            self.child_conn.close()
-            self.parent_conn = None
-            self.child_conn = None
-            self.worker = None
-
-    def __del__(self):
-        """Ensure the worker process is terminated when the dataset is deleted."""
-        try:
-            self.shutdown()
-        except Exception as e:
-            print(f"Error shutting down worker: {e}")
 
     def len(self) -> int:
         """Return the length of the dataset.
@@ -100,16 +79,18 @@ class QGDatasetOnthefly(Dataset):
 
         if len(self.databatch) == 0:
             # Call the Julia function to get the data
-            self.parent_conn.send("GET")
-            raw_bytes = self.parent_conn.recv()
-            raw_data = dill.loads(raw_bytes)
+            raw_data = [
+                self.converter(x) for x in self.worker(self.config["batch_size"])
+            ]
             if isinstance(raw_data, Exception):
                 raise raw_data
             try:
                 # parallel processing in Julia is handled on the Julia side
                 # use primitve indexing here to avoid issues with julia arrays
                 if self.config["n_processes"] > 1:
-                    self.databatch = Parallel(n_jobs=self.config["n_processes"])(
+                    self.databatch = Parallel(
+                        n_jobs=self.config["n_processes"], verbose=10
+                    )(
                         delayed(self.transform)(raw_data[i])
                         for i in range(len(raw_data))
                     )

@@ -1,7 +1,3 @@
-import multiprocessing
-
-multiprocessing.set_start_method("spawn", force=True)
-
 import pytest
 import juliacall as jcall
 import h5py
@@ -15,7 +11,7 @@ from torch_geometric.utils import dense_to_sparse
 def basic_transform():
     def transform(raw: jcall.DictValue) -> Data:
         # this function will transform the raw data dictionary from Julia into a PyTorch Geometric Data object. Hence, we have to deal with julia objects here
-        adj_raw = raw["adjacency_matrix"].to_numpy()
+        adj_raw = raw["adjacency_matrix"]
         adj_matrix = torch.tensor(adj_raw, dtype=torch.float32)
         edge_index, edge_weight = dense_to_sparse(adj_matrix)
         adj_matrix = adj_matrix.to_sparse()
@@ -49,6 +45,24 @@ def basic_transform():
 
 
 @pytest.fixture(scope="module")
+def basic_converter():
+    def converter(raw: jcall.DictValue) -> dict:
+        # convert the raw data dictionary from Julia into a standard Python dictionary
+        return {
+            "manifold": int(raw["manifold"]),
+            "boundary": int(raw["boundary"]),
+            "dimension": int(raw["dimension"]),
+            "atomcount": int(raw["atomcount"]),
+            "adjacency_matrix": raw["adjacency_matrix"].to_numpy(),
+            "link_matrix": raw["link_matrix"].to_numpy(),
+            "max_pathlen_future": raw["max_pathlen_future"].to_numpy(),
+            "max_pathlen_past": raw["max_pathlen_past"].to_numpy(),
+        }
+
+    return converter
+
+
+@pytest.fixture(scope="module")
 def create_data(tmp_path):
     jl_module = jcall.newmodule("test_qg")
     jl_module.seval(
@@ -73,5 +87,6 @@ def ontheflyconfig():
     onthefly_config = {
         "seed": 42,
         "n_processes": 1,
+        "batch_size": 5,
     }
     return onthefly_config

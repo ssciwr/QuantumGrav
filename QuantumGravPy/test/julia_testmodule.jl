@@ -11,7 +11,7 @@ function Generator(config::AbstractDict)
 end
 
 # this is a test function to create a single datapoint of a dataset
-function (gen::Generator)()
+function (gen::Generator)(batchsize::Int)
     manifolds =
         ["Minkowski", "DeSitter", "AntiDeSitter", "HyperCylinder", "Torus", "Random"]
     boundaries = ["CausalDiamond", "TimeBoundary", "BoxBoundary"]
@@ -25,7 +25,7 @@ function (gen::Generator)()
 
     # make a bunch of datapoints
     batch = []
-    for _ = 1:5
+    for _ = 1:batchsize
         data = Dict{String,Any}()
         ok = false
         max_iter = 20

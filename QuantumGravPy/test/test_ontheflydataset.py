@@ -1,9 +1,11 @@
 import QuantumGrav as QG
 import pytest
-import dill
+from torch_geometric.data import Data
 
 
-def test_onthefly_dataset_creation_works(ontheflyconfig, basic_transform):
+def test_onthefly_dataset_creation_works(
+    ontheflyconfig, basic_transform, basic_converter
+):
     ontheflydataset = QG.QGDatasetOnthefly(
         config=ontheflyconfig,
         jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
@@ -14,14 +16,13 @@ def test_onthefly_dataset_creation_works(ontheflyconfig, basic_transform):
             "Random",
         ],
         transform=basic_transform,
+        converter=basic_converter,
     )
 
     assert ontheflydataset.worker is not None
     assert ontheflydataset.transform == basic_transform
 
-    ontheflydataset.parent_conn.send("GET")
-    data = ontheflydataset.parent_conn.recv()
-    data = dill.loads(data)
+    data = ontheflydataset.worker(5)
 
     assert len(data) == 5
     assert all(
@@ -37,15 +38,13 @@ def test_onthefly_dataset_creation_works(ontheflyconfig, basic_transform):
     )
     assert ontheflydataset.config == ontheflyconfig
 
-    ontheflydataset.shutdown()
-
 
 def test_onthefly_dataset_no_transform(ontheflyconfig):
     with pytest.raises(
         ValueError,
         match="Transform function must be provided to turn raw data dictionaries into PyTorch Geometric Data objects.",
     ):
-        dataset = QG.QGDatasetOnthefly(
+        QG.QGDatasetOnthefly(
             config=ontheflyconfig,
             jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
             jl_func_name="Generator",
@@ -55,12 +54,33 @@ def test_onthefly_dataset_no_transform(ontheflyconfig):
                 "Random",
             ],
             transform=None,
+            converter=lambda x: x,
         )
-        dataset.shutdown()
+
+
+def test_onthefly_dataset_no_converter(ontheflyconfig):
+    with pytest.raises(
+        ValueError,
+        match="Converter function must be provided to convert Julia objects into standard Python objects.",
+    ):
+        QG.QGDatasetOnthefly(
+            config=ontheflyconfig,
+            jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
+            jl_func_name="Generator",
+            jl_base_module_path="./QuantumGrav.jl",
+            jl_dependencies=[
+                "Distributions",
+                "Random",
+            ],
+            transform=lambda x: x,
+            converter=None,
+        )
 
 
 @pytest.mark.parametrize("n", [1, 2], ids=["sequential", "parallel"])
-def test_onthefly_dataset_processing(ontheflyconfig, basic_transform, n):
+def test_onthefly_dataset_processing(
+    ontheflyconfig, basic_transform, basic_converter, n
+):
     # check that the get function works and returns a viable data object
     ontheflyconfig["n_processes"] = n
 
@@ -74,6 +94,7 @@ def test_onthefly_dataset_processing(ontheflyconfig, basic_transform, n):
             "Random",
         ],
         transform=basic_transform,
+        converter=basic_converter,
     )
 
     datapoint = ontheflydataset.get(0)

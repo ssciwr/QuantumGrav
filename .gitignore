@@ -29,7 +29,7 @@ Manifest.toml
 *.pyc 
 __pycache__/
 .venv/
-
+settings.json
 # data files 
 data/
 *.h5

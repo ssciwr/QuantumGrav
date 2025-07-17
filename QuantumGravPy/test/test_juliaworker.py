@@ -1,8 +1,6 @@
 import QuantumGrav as QG
 import pytest
 from pathlib import Path
-from multiprocessing import Pipe, Process
-import dill
 
 
 def test_juliaworker_works(ontheflyconfig):
@@ -75,31 +73,28 @@ def test_juliaworker_jl_failure(ontheflyconfig, mocker):
         )
 
 
-def test_juliaworker_workerloop(ontheflyconfig):
-    parent, child = Pipe(duplex=True)
-    process = Process(
-        target=QG.julia_worker.worker_loop,
-        args=[
-            child,
-            ontheflyconfig,
-            "./QuantumGravPy/test/julia_testmodule.jl",
-            "Generator",
-            "./QuantumGrav.jl",
-            [
-                "Distributions",
-                "Random",
-            ],
+def test_juliaworker_jl_call(ontheflyconfig):
+    jlworker = QG.JuliaWorker(
+        config=ontheflyconfig,
+        jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
+        jl_func_name="Generator",
+        jl_base_module_path="./QuantumGrav.jl",
+        jl_dependencies=[
+            "Distributions",
+            "Random",
         ],
     )
 
-    process.start()
-
-    parent.send("GET")
-
-    raw_bytes = parent.recv()
-    raw_data = dill.loads(raw_bytes)
-
-    assert len(raw_data) == 5
-
-    parent.send("STOP")
-    process.join()
+    batch = jlworker(5)
+    assert len(batch) == 5
+    assert all(
+        key in batch[0]
+        for key in [
+            "manifold",
+            "boundary",
+            "dimension",
+            "atomcount",
+            "adjacency_matrix",
+            "link_matrix",
+        ]
+    )

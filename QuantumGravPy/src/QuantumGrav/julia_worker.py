@@ -1,7 +1,5 @@
-from multiprocessing import Pipe
 from pathlib import Path
 from typing import Any
-import dill
 
 
 class JuliaWorker:
@@ -104,7 +102,7 @@ class JuliaWorker:
                 f"Error loading Julia module {jl_module_name}: {e}"
             ) from e
 
-    def __call__(self):
+    def __call__(self, n: int):
         """_summary_
 
         Raises:
@@ -115,50 +113,5 @@ class JuliaWorker:
         """
         if self.jl_module is None:
             raise RuntimeError("Julia module is not initialized.")
-        raw_data = self.jl_generator()
+        raw_data = self.jl_generator(n)
         return raw_data
-
-
-def worker_loop(
-    pipe: Pipe,
-    config: dict[str, Any] | None = None,
-    jl_code_path: str | Path | None = None,
-    jl_func_name: str | None = None,
-    jl_module_name: str | None = None,
-    jl_base_module_path: str | Path | None = None,
-    jl_dependencies: list[str] | None = None,
-):
-    """_summary_
-
-    Args:
-        pipe (Pipe): _description_
-        config (dict[str, Any] | None, optional): _description_. Defaults to None.
-        jl_code_path (str | Path | None, optional): _description_. Defaults to None.
-        jl_func_name (str | None, optional): _description_. Defaults to None.
-        jl_module_name (str | None, optional): _description_. Defaults to None.
-        jl_base_module_path (str | Path | None, optional): _description_. Defaults to None.
-        jl_dependencies (list[str] | None, optional): _description_. Defaults to None.
-    """
-    print("make worker")
-    worker = JuliaWorker(
-        config=config,
-        jl_code_path=jl_code_path,
-        jl_func_name=jl_func_name,
-        jl_module_name=jl_module_name,
-        jl_base_module_path=jl_base_module_path,
-        jl_dependencies=jl_dependencies,
-    )
-
-    print("done")
-    while True:
-        print("run loop")
-        msg = pipe.recv()
-        if msg == "STOP":
-            break
-        elif msg == "GET":
-            print("run shit")
-            try:
-                result = worker()
-                pipe.send(dill.dumps(result))
-            except Exception as e:
-                pipe.send(dill.dumps(e))  # Change this to dill too
