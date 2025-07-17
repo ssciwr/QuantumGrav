@@ -15,8 +15,8 @@ function (gen::Generator)()
     manifolds =
         ["Minkowski", "DeSitter", "AntiDeSitter", "HyperCylinder", "Torus", "Random"]
     boundaries = ["CausalDiamond", "TimeBoundary", "BoxBoundary"]
-    min_atomcount = 50
-    max_atomcount = 600
+    min_atomcount = 5
+    max_atomcount = 12
     rng = Random.MersenneTwister(gen.seed)
     dim_distr = Distributions.DiscreteUniform(2, 4)
     manifold_distr = Distributions.DiscreteUniform(1, 6)
@@ -31,6 +31,12 @@ function (gen::Generator)()
         max_iter = 20
         type = Float32
         e = nothing
+        cset = nothing
+        sprinkling = nothing
+        dimension = nothing
+        manifold_id = nothing
+        boundary_id = nothing
+        atomcount = nothing
         while ok == false && max_iter > 0
             max_iter -= 1
             dimension = rand(rng, dim_distr)
@@ -44,28 +50,50 @@ function (gen::Generator)()
                 # make data needed 
                 cset, sprinkling =
                     QG.make_cset(manifold, boundary, atomcount, dimension, rng; type = type)
-
-                link_matrix = QG.make_link_matrix(cset, type = type)
-                adjacency_matrix = QG.make_adj(cset, type = type)
-
-                data["manifold"] = manifold_id
-                data["boundary"] = boundary_id
-                data["dimension"] = dimension
-                data["atomcount"] = atomcount
-                data["adjacency_matrix"] = adjacency_matrix
-                data["link_matrix"] = link_matrix
-
                 ok = true
+                e = nothing
             catch error
                 println("Error generating data: ", error)
                 ok = false
                 e = error
+                cset = nothing
+                sprinkling = nothing
             end
+
             if max_iter <= 0
                 println("Max iterations reached, breaking out of loop.")
                 break
             end
         end
+
+        link_matrix = QG.make_link_matrix(cset, type = type)
+        adjacency_matrix = QG.make_adj(cset, type = type)
+        max_pathlen_future = [
+            QG.max_pathlen(adjacency_matrix, collect(1:size(adjacency_matrix, 1)), i)
+            for i = 1:cset.atom_count
+        ]
+        max_pathlen_past = [
+            QG.max_pathlen(adjacency_matrix', collect(1:size(adjacency_matrix, 2)), i)
+            for i = 1:cset.atom_count
+        ]
+
+        data["manifold"] = manifold_id
+        data["boundary"] = boundary_id
+        data["dimension"] = dimension
+        data["atomcount"] = atomcount
+        data["adjacency_matrix"] = adjacency_matrix
+        data["link_matrix"] = link_matrix
+        data["max_pathlen_future"] = max_pathlen_future
+        data["max_pathlen_past"] = max_pathlen_past
+
+        if e !== nothing
+            throw(
+                ErrorException(
+                    "Failed to create a valid causal set after multiple attempts: $e",
+                ),
+            )
+        end
+
         push!(batch, data)
     end
     return batch
