@@ -11,5 +11,6 @@ import HDF5
 
 include("utils.jl")
 include("datageneration.jl")
+include("chebychev_causets.jl")
 
 end # module QuantumGrav
