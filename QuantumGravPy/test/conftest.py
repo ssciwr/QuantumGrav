@@ -75,9 +75,7 @@ def jlcall_args():
 @pytest.fixture(scope="session")
 def project_root():
     """Return the project root directory as a Path object."""
-    # Get the path to the test directory (where conftest.py is)
     test_dir = Path(__file__).parent
-    # Go up to the project root (QuantumGravPy directory)
     return test_dir.parent
 
 
