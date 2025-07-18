@@ -1,5 +1,6 @@
 import pytest
 import juliacall as jcall
+from pathlib import Path
 
 import torch
 from torch_geometric.data import Data
@@ -71,14 +72,35 @@ def jlcall_args():
     return onthefly_config
 
 
-@pytest.fixture
-def jl_vars():
+@pytest.fixture(scope="session")
+def project_root():
+    """Return the project root directory as a Path object."""
+    # Get the path to the test directory (where conftest.py is)
+    test_dir = Path(__file__).parent
+    # Go up to the project root (QuantumGravPy directory)
+    return test_dir.parent
+
+
+@pytest.fixture(scope="session")
+def test_dir(project_root):
+    """Return the test directory."""
+    return project_root / "test"
+
+
+@pytest.fixture(scope="session")
+def julia_paths(project_root, test_dir):
+    """Return paths to Julia code and dependencies."""
     return {
-        "jl_code_path": "./QuantumGravPy/test/julia_testmodule.jl",
+        "jl_code_path": test_dir / "julia_testmodule.jl",
+        "jl_base_module_path": project_root.parent / "QuantumGrav.jl",
         "jl_constructor_name": "Generator",
-        "jl_base_module_path": "./QuantumGrav.jl",
         "jl_dependencies": [
             "Distributions",
             "Random",
         ],
     }
+
+
+@pytest.fixture
+def jl_vars(julia_paths):
+    return julia_paths
