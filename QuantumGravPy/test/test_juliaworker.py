@@ -1,6 +1,5 @@
 import QuantumGrav as QG
 import pytest
-from pathlib import Path
 
 
 def test_juliaworker_works(jlcall_args, jl_vars):
@@ -8,14 +7,8 @@ def test_juliaworker_works(jlcall_args, jl_vars):
         jl_kwargs=jlcall_args,
         **jl_vars,
     )
-
-    assert jlworker.jl_code_path == str(
-        Path("./QuantumGravPy/test/julia_testmodule.jl").resolve().absolute()
-    )
     assert jlworker.jl_constructor_name == "Generator"
-    assert jlworker.jl_base_module_path == str(
-        Path("./QuantumGrav.jl").resolve().absolute()
-    )
+    assert jlworker.jl_generator is not None
 
 
 def test_juliaworker_no_funcname(jlcall_args):

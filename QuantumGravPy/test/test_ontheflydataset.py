@@ -12,12 +12,9 @@ def test_onthefly_dataset_creation_works(
         converter=basic_converter,
         **jl_vars,
     )
-
     assert ontheflydataset.worker is not None
     assert ontheflydataset.transform == basic_transform
-
     data = ontheflydataset.worker(5)
-
     assert len(data) == 5
     assert all(
         key in data[0]

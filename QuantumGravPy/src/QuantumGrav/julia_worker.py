@@ -9,9 +9,7 @@ class JuliaWorker:
     **Warning**: This class is in early development and may change in the future, be slow, or otherwis not ready for high performance production use.
     """
 
-    jl_code_path = None
     jl_constructor_name = None
-    jl_base_module_path = None
 
     def __init__(
         self,
@@ -39,6 +37,8 @@ class JuliaWorker:
             RuntimeError: If there is an error loading Julia dependencies.
             RuntimeError: If there is an error loading the Julia code.
         """
+
+        # we test for a bunch of needed args first
         if jl_constructor_name is None:
             raise ValueError("Julia function name must be provided.")
 
@@ -49,11 +49,10 @@ class JuliaWorker:
         if not jl_code_path.exists():
             raise FileNotFoundError(f"Julia code path {jl_code_path} does not exist.")
 
-        self.jl_code_path = str(jl_code_path)
         self.jl_constructor_name = jl_constructor_name
-        self.jl_module_name = "QuantumGravPy2Jl"
-        self.jl_base_module_path = str(Path(jl_base_module_path).resolve().absolute())
+        self.jl_module_name = "QuantumGravPy2Jl"  # the module name is hardcoded here
 
+        # try to initialize the new Julia module,  the do every julia call through thisi module
         try:
             self.jl_module = jcall.newmodule("QuantumGravPy2Jl")
         except Exception as e:
@@ -61,7 +60,7 @@ class JuliaWorker:
                 f"Error creating Julia module {self.jl_module_name}: {e}"
             ) from e
 
-        # add base module for dependencies
+        # add base module for dependencies if exists
         if jl_base_module_path is not None:
             try:
                 self.jl_module.seval(
