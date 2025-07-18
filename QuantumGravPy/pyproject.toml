@@ -17,22 +17,15 @@ license = { file = "../LICENSE"}
 readme = { file = "../README.md", content-type = "text/markdown" }
 
 dependencies = [
-    "torch>=2.7.1", 
-    "torchaudio>=2.7.1",
-    "torchvision>=0.22.1",
-    "torch_scatter>=2.1.2",
-    "torch_sparse>=0.6.18",
-    "torch_cluster>=1.6.3",
-    "torch_spline_conv>=1.2.2",
-    "pyg_lib>=0.4.0",
-    "torch-geometric>=2.6.1",
-    "torchviz>=0.0.3",
-    "h5py>=3.14.0",
-    "pandas>=2.3.0",
-    "seaborn>=0.13.2",
-    "matplotlib>=3.10.3",
-    "scikit-learn>=1.7.0",
-    "juliacall>=0.9.25"
+    "torch", 
+    "torchaudio",
+    "torchvision",
+    "torch-geometric",
+    "h5py",
+    "pandas",
+    "seaborn",
+    "matplotlib",
+    "scikit-learn",
 ]
 
 # Optional dependencies
@@ -41,8 +34,6 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-mock",
-    "ruff",
-    "mypy",
 ]
 
 

@@ -13,7 +13,7 @@ from multiprocessing import Pool
 
 
 class QGDatasetMixin:
-    """Mixin class that provides common functionality for the dataset classes. Works only for file-based datasets. Provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
+    """Mixin class that provides common functionality for the dataset classes. Works only for file-based datasets. Provides methods for processing data."""
 
     def __init__(
         self,
@@ -153,6 +153,8 @@ class QGDatasetMixin:
         Returns:
             Data | None: _description_
         """
+
+        # we can't rely on being able to read from the raw_files in parallel, so we need to read the data sequentially
         data = [
             self.data_reader(
                 raw_file,
