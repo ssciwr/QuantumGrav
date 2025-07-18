@@ -28,6 +28,22 @@ class QGDatasetOnthefly(Dataset):
         transform: Callable[[dict[Any, Any]], Data] | None = None,
         converter: Callable[[Any], Any] | None = None,
     ):
+        """Initialize the dataset.
+
+        Args:
+            config (dict[str, Any]): Configuration dictionary.
+            jl_code_path (str | Path | None, optional): Path to the Julia code. Defaults to None.
+            jl_constructor_name (str | None, optional): Name of the Julia constructor. Defaults to None.
+            jl_base_module_path (str | Path | None, optional): Path to the base Julia module. Defaults to None.
+            jl_dependencies (list[str] | None, optional): List of Julia dependencies. Defaults to None.
+            transform (Callable[[dict[Any, Any]], Data] | None, optional): Function to transform raw data into PyTorch Geometric Data objects. Defaults to None.
+            converter (Callable[[Any], Any] | None, optional): Function to convert Julia objects into standard Python objects. Defaults to None.
+
+        Raises:
+            ValueError: If the transform function is not provided.
+            ValueError: If the converter function is not provided.
+            RuntimeError: If there is an error initializing the Julia process.
+        """
         if transform is None:
             raise ValueError(
                 "Transform function must be provided to turn raw data dictionaries into PyTorch Geometric Data objects."
@@ -67,9 +83,30 @@ class QGDatasetOnthefly(Dataset):
         return sys.maxsize
 
     def make_batch(self, size: int) -> list[Data]:
+        """Create a batch of data.
+
+        Args:
+            size (int): The number of samples in the batch.
+
+        Returns:
+            list[Data]: The list of Data objects in the batch.
+        """
         return [self.get(i) for i in range(size)]
 
     def get(self, _: int) -> Data:
+        """Get a data point from the dataset.
+
+        Args:
+            _ (int): The index of the data point to retrieve. This is ignored since the dataset generates data on the fly.
+
+        Raises:
+            RuntimeError: If the worker process is not initialized.
+            raw_data: If there is an error retrieving raw data from the worker.
+            RuntimeError: If there is an error transforming the data.
+
+        Returns:
+            Data: The transformed data point.
+        """
         # this breaks the contract of the 'get'method that the base class provides, but
         # it nevertheless is useful to generate training data
         if self.worker is None:

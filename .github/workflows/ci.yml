@@ -12,27 +12,27 @@ permissions:
     actions: write 
 
 jobs: 
-#     test_julia:
-#         runs-on: ${{ matrix.os }}
-#         strategy:
-#           matrix:
-#             julia-version: ['1.11.1', '1']
-#             julia-arch: [x64]
-#             os: [ubuntu-latest, windows-latest, macOS-latest]
-#         steps:
-#             - uses: actions/checkout@v4
-#             - uses: julia-actions/setup-julia@v2
-#               with:
-#                 version: ${{ matrix.julia-version }}
-#                 arch: ${{ matrix.julia-arch }}
-#                 show-versioninfo: true
-#             - uses: julia-actions/cache@v2
-#             - uses: julia-actions/julia-buildpkg@v1
-#               with: 
-#                 project: QuantumGrav.jl
-#             - uses: julia-actions/julia-runtest@v1
-#               with:
-#                 project: QuantumGrav.jl
+    test_julia:
+        runs-on: ${{ matrix.os }}
+        strategy:
+          matrix:
+            julia-version: ['1.11.1', '1']
+            julia-arch: [x64]
+            os: [ubuntu-latest, windows-latest, macOS-latest]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: julia-actions/setup-julia@v2
+              with:
+                version: ${{ matrix.julia-version }}
+                arch: ${{ matrix.julia-arch }}
+                show-versioninfo: true
+            - uses: julia-actions/cache@v2
+            - uses: julia-actions/julia-buildpkg@v1
+              with: 
+                project: QuantumGrav.jl
+            - uses: julia-actions/julia-runtest@v1
+              with:
+                project: QuantumGrav.jl
     test_python:
         runs-on: ${{ matrix.os }}
         strategy:
