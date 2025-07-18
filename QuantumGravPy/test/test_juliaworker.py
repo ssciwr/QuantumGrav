@@ -3,16 +3,10 @@ import pytest
 from pathlib import Path
 
 
-def test_juliaworker_works(ontheflyconfig):
+def test_juliaworker_works(ontheflyconfig, jl_vars):
     jlworker = QG.JuliaWorker(
         config=ontheflyconfig,
-        jl_code_path="./QuantumGravPy/test/julia_testmodule.jl",
-        jl_func_name="Generator",
-        jl_base_module_path="./QuantumGrav.jl",
-        jl_dependencies=[
-            "Distributions",
-            "Random",
-        ],
+        **jl_vars,
     )
 
     assert jlworker.jl_code_path == str(

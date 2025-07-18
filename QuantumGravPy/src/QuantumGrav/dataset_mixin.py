@@ -8,10 +8,8 @@ import json
 
 # system imports and quality of life tools
 from pathlib import Path
-import os
 from collections.abc import Callable
-from typing import Any
-from joblib import Parallel, delayed
+from multiprocessing import Pool
 
 
 class QGDatasetMixin:
@@ -23,13 +21,9 @@ class QGDatasetMixin:
         get_metadata: Callable[[str | Path], dict] | None = None,
         reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
-        writer: Callable[[list[Data], str, dict[Any, Any]], None] | None = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
         validate_data: bool = True,
-        parallel_processing: bool = False,
-        writer_kwargs: dict[str, Any] = None,
-        n_processes: int = -1,
     ):
         """Initialize a DatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
@@ -37,21 +31,15 @@ class QGDatasetMixin:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
             get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to retrieve metadata for the dataset. Defaults to None.
             reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
-            writer (Callable[[list[Data], str, dict[Any, Any]], None] | None, optional): A function to write data to a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
-            parallel_processing (bool, optional): Whether to use parallel processing for data loading. Defaults to False.
-            writer_kwargs (dict[str, Any], optional): Additional keyword arguments to pass to the writer function. Defaults to None.
-            n_processes (int, optional): The number of processes to use for parallel processing. Defaults to -1, which uses all available cores.
-            Only used if parallel_processing is True.
 
         Raises:
             ValueError: If one of the input data files is not a valid HDF5 file
             ValueError: If the metadata retrieval function is invalid.
             FileNotFoundError: If an input file does not exist.
         """
-        self.writer_kwargs = writer_kwargs or {}
         if reader is None:
             raise ValueError("A reader function must be provided to load the data.")
 
@@ -61,23 +49,20 @@ class QGDatasetMixin:
         self.input = input
         self._num_samples = None
         self.data_reader = reader
-        self.data_writer = writer
         self.get_metadata = get_metadata
         self.metadata = {}
         self.float_type = float_type
         self.int_type = int_type
         self.validate_data = validate_data
-        self.parallel_processing = parallel_processing
-        self.n_processes = n_processes
         # ensure the input is a list of paths
         if self.processed_dir is not None:
-            with open(os.path.join(self.processed_dir, "metadata.json"), "r") as f:
+            with open(Path(self.processed_dir) / "metadata.json", "r") as f:
                 self.metadata = json.load(f)
 
         # get the number of samples in the dataset
         self._num_samples = 0
         for file in self.input:
-            if not os.path.exists(file):
+            if not Path(file).exists():
                 raise FileNotFoundError(f"Input file {file} does not exist.")
             with h5py.File(file, "r") as f:
                 self._num_samples += f["num_causal_sets"][()]
@@ -89,10 +74,10 @@ class QGDatasetMixin:
         Returns:
             str: The path to the processed directory, or None if it doesn't exist.
         """
-        processed_path = os.path.join(self.root, "processed")
-        if not os.path.exists(processed_path):
+        processed_path = Path(self.root) / "processed"
+        if not processed_path.exists():
             return None
-        return processed_path
+        return str(processed_path)
 
     @property
     def processed_files(self) -> list[str]:
@@ -102,13 +87,13 @@ class QGDatasetMixin:
             list[str]: A list of processed file paths, excluding JSON files.
         """
 
-        if not os.path.isdir(self.processed_dir):
+        if not Path(self.processed_dir).exists():
             return []
 
         return [
-            os.path.join(self.processed_dir, f)
-            for f in os.listdir(self.processed_dir)
-            if f.endswith(".json") is False
+            str(Path(self.processed_dir) / f)
+            for f in Path(self.processed_dir).iterdir()
+            if f.is_file() and f.suffix == ".pt"  # Only include .
         ]
 
     @property
@@ -118,7 +103,7 @@ class QGDatasetMixin:
         Returns:
             list[str]: A list of raw file names.
         """
-        return [os.path.basename(f) for f in self.input if Path(f).suffix == ".h5"]
+        return [Path(f).name for f in self.input if Path(f).suffix == ".h5"]
 
     @property
     def processed_file_names(self) -> list[str]:
@@ -127,42 +112,78 @@ class QGDatasetMixin:
         Returns:
             list[str]: A list of processed file names.
         """
-        if os.path.isdir(self.root) is False:
+        if not Path(self.root).exists():
             return []
 
-        return [f for f in os.listdir(self.root) if f.endswith(".pt")]
+        return [f for f in Path(self.root).iterdir() if f.suffix == ".pt"]
+
+    def write_data(self, data: list[Data]) -> None:
+        """Write the processed data to disk.
+
+        Args:
+            data (list[Data]): The list of Data objects to write to disk.
+        """
+        if not Path(self.processed_dir).exists():
+            Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
+
+        for i, d in enumerate(data):
+            if d is not None:
+                file_path = Path(self.processed_dir) / f"data_{i}.pt"
+                torch.save(d, file_path)
 
     def process_chunk(
         self,
         raw_file: h5py.File,
+        start: int,
+        chunksize: int,
+        n_processes: int = 1,
         pre_transform: Callable[[Data], Data] | None = None,
         pre_filter: Callable[[Data], bool] | None = None,
-    ) -> tuple[int, list[Data]]:
-        """Process a chunk of data from the raw HDF5 file.
+    ) -> Data | None:
+        """Process a chunk of data from the raw file.
 
         Args:
-            raw_file (h5py.File): The raw HDF5 file to process data from.
+            raw_file (h5py.File): _description_
+            start (int): _description_
+            chunksize (int): _description_
+            n_processes (int, optional): _description_. Defaults to 1.
+            pre_transform (Callable[[Data], Data] | None, optional): _description_. Defaults to None.
+            pre_filter (Callable[[Data], bool] | None, optional): _description_. Defaults to None.
 
         Returns:
-            list[Data]: A list of processed data items.
+            Data | None: _description_
         """
-        data_list = self.data_reader(
-            raw_file,
-            float_type=self.float_type,
-            int_type=self.int_type,
-            validate=self.validate_data,
-        )
-
-        if self.parallel_processing:
-            processed = Parallel(n_jobs=self.n_processes)(
-                delayed(pre_transform)(data_point)
-                for data_point in data_list
-                if delayed(pre_filter)(data_point)
+        data = [
+            self.data_reader(
+                raw_file,
+                i,
+                self.float_type,
+                self.int_type,
+                self.validate_data,
             )
+            for i in range(start, start + chunksize)
+        ]
+
+        if n_processes > 1:
+
+            def process_item(item):
+                if pre_filter is not None and not pre_filter(item):
+                    return None
+                if pre_transform is not None:
+                    return pre_transform(item)
+                return item
+
+            results = []
+            with Pool(n_processes) as pool:
+                # Process items as they complete, in any order
+                for result in pool.imap_unordered(process_item, data):
+                    if result is not None:
+                        results.append(result)
+            return results
         else:
-            processed = [
-                pre_transform(data_point)
-                for data_point in data_list
-                if pre_filter(data_point)
-            ]
-        return len(data_list), processed
+            for datapoint in data:
+                if pre_filter is not None and not pre_filter(datapoint):
+                    continue
+                if pre_transform is not None:
+                    datapoint = pre_transform(datapoint)
+            return data

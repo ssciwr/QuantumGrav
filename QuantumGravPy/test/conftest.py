@@ -7,7 +7,7 @@ from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def basic_transform():
     def transform(raw: jcall.DictValue) -> Data:
         # this function will transform the raw data dictionary from Julia into a PyTorch Geometric Data object. Hence, we have to deal with julia objects here
@@ -44,7 +44,7 @@ def basic_transform():
     return transform
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def basic_converter():
     def converter(raw: jcall.DictValue) -> dict:
         # convert the raw data dictionary from Julia into a standard Python dictionary
@@ -62,27 +62,60 @@ def basic_converter():
     return converter
 
 
-@pytest.fixture(scope="module")
-def create_data(tmp_path):
+@pytest.fixture(scope="session", autouse=True)
+def create_data(tmp_path_factory):
+    datafiles = []
+    tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav")
+
+    # make the julia module avaialble
     jl_module = jcall.newmodule("test_qg")
     jl_module.seval(
-        'using Pkg; Pkg.develop(path="../../QuantumGrav.jl")'
+        'using Pkg; Pkg.develop(path="./QuantumGrav.jl")'
     )  # only for now -> get from package index later
 
-    jl_module.seval('include("./julia_testmodule.jl")')
-    data = []
-    for _ in range(10):
-        datadict = jl_module.seval("create_datapoint(42)")
-        data.append(datadict)
+    jl_module.seval('include("./QuantumGravPy/test/julia_testmodule.jl")')
+    generator_constructor = getattr(jl_module, "Generator")
+    jl_generator = generator_constructor(
+        {
+            "seed": 42,
+        }
+    )
+    for i in range(3):
+        data = jl_generator(5)
+        # Save the data to an HDF5 file
+        hdf5_file = tmpdir / f"test_data_{i}.h5"
 
-    # Save the data to an HDF5 file
-    hdf5_file = tmp_path / "test_data.h5"
-    with h5py.File(hdf5_file, "w") as f:
-        for k in data[0].keys():
-            f.create_dataset(k, data=[d[k] for d in data], dtype="float32")
+        with h5py.File(hdf5_file, "w") as f:
+            f.create_dataset("adjacency_matrix", (len(data), 15, 15), dtype="float32")
+            f.create_dataset("link_matrix", (len(data), 15, 15), dtype="float32")
+            f.create_dataset("max_pathlen_future", (len(data), 15), dtype="float32")
+            f.create_dataset("max_pathlen_past", (len(data), 15), dtype="float32")
+            f.create_dataset("manifold", (len(data),), dtype="int32")
+            f.create_dataset("boundary", (len(data),), dtype="int32")
+            f.create_dataset("dimension", (len(data),), dtype="int32")
+            f.create_dataset("atomcount", (len(data),), dtype="int32")
+
+        with h5py.File(hdf5_file, "a") as f:
+            for j, d in enumerate(data):
+                adj = d["adjacency_matrix"].to_numpy()
+                link = d["link_matrix"].to_numpy()
+                max_path_f = d["max_pathlen_future"].to_numpy()
+                max_path_p = d["max_pathlen_past"].to_numpy()
+                f["adjacency_matrix"][j, 0 : adj.shape[0], 0 : adj.shape[1]] = adj
+                f["link_matrix"][j, 0 : link.shape[0], 0 : link.shape[1]] = link
+
+                f["max_pathlen_future"][j, 0 : max_path_f.shape[0]] = max_path_f
+                f["max_pathlen_past"][j, 0 : max_path_p.shape[0]] = max_path_p
+                f["manifold"][j] = d["manifold"]
+                f["boundary"][j] = d["boundary"]
+                f["dimension"][j] = d["dimension"]
+                f["atomcount"][j] = d["atomcount"]
+
+            datafiles.append(hdf5_file)
+    yield tmpdir, datafiles
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def ontheflyconfig():
     onthefly_config = {
         "seed": 42,
@@ -90,3 +123,16 @@ def ontheflyconfig():
         "batch_size": 5,
     }
     return onthefly_config
+
+
+@pytest.fixture
+def jl_vars():
+    return {
+        "jl_code_path": "./QuantumGravPy/test/julia_testmodule.jl",
+        "jl_func_name": "Generator",
+        "jl_base_module_path": "./QuantumGrav.jl",
+        "jl_dependencies": [
+            "Distributions",
+            "Random",
+        ],
+    }

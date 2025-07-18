@@ -16,7 +16,7 @@ function (gen::Generator)(batchsize::Int)
         ["Minkowski", "DeSitter", "AntiDeSitter", "HyperCylinder", "Torus", "Random"]
     boundaries = ["CausalDiamond", "TimeBoundary", "BoxBoundary"]
     min_atomcount = 5
-    max_atomcount = 12
+    max_atomcount = 15
     rng = Random.MersenneTwister(gen.seed)
     dim_distr = Distributions.DiscreteUniform(2, 4)
     manifold_distr = Distributions.DiscreteUniform(1, 6)
