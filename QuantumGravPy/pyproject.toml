@@ -35,11 +35,9 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-mock",
-    "ruff",
-    "mypy",
 ]
 
-
+# tooling. 
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
