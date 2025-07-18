@@ -1,11 +1,11 @@
-import QuantumGravPy as QG
+import QuantumGrav as QG
 import torch
 
 
 def test_ondisk_dataset_creation_works(create_data, tmp_path):
     datadir, datafiles = create_data
 
-    dataset = QG.QGDatasetOnDisk(
+    dataset = QG.QGDataset(
         input=datafiles,
         output=tmp_path,
         get_metadata=lambda x: {"num_samples": len(x)},
@@ -26,14 +26,17 @@ def test_ondisk_dataset_creation_works(create_data, tmp_path):
     assert dataset.float_type == torch.float32
     assert dataset.int_type == torch.int64
     assert dataset.validate_data is True
+    assert dataset.reader is not None
+    assert dataset.chunksize == 1100
+    assert dataset.n_processes == 3
 
 
 def test_ondisk_dataset_process_data():
-    pass
+    assert 3 == 6
 
 
 def test_ondisk_dataset_creation_fails_no_reader():
-    pass
+    assert 3 == 6
 
 
 def test_ondisk_dataset_processing(create_data):

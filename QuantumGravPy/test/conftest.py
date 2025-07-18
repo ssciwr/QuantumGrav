@@ -1,5 +1,6 @@
 import pytest
 import juliacall as jcall
+from pathlib import Path
 import h5py
 
 import torch
@@ -62,18 +63,61 @@ def basic_converter():
     return converter
 
 
+@pytest.fixture
+def jlcall_args():
+    onthefly_config = {
+        "seed": 42,
+        "n_processes": 1,
+        "batch_size": 5,
+    }
+    return onthefly_config
+
+
+@pytest.fixture(scope="session")
+def project_root():
+    """Return the project root directory as a Path object."""
+    test_dir = Path(__file__).parent
+    return test_dir.parent
+
+
+@pytest.fixture(scope="session")
+def test_dir(project_root):
+    """Return the test directory."""
+    return project_root / "test"
+
+
+@pytest.fixture(scope="session")
+def julia_paths(project_root, test_dir):
+    """Return paths to Julia code and dependencies."""
+    return {
+        "jl_code_path": test_dir / "julia_testmodule.jl",
+        "jl_base_module_path": project_root.parent / "QuantumGrav.jl",
+        "jl_constructor_name": "Generator",
+        "jl_dependencies": [
+            "Distributions",
+            "Random",
+        ],
+    }
+
+
+@pytest.fixture
+def jl_vars(julia_paths):
+    return julia_paths
+
+
 @pytest.fixture(scope="session", autouse=True)
-def create_data(tmp_path_factory):
+def create_data(tmp_path_factory, julia_paths):
     datafiles = []
     tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav")
 
-    # make the julia module avaialble
+    # make the julia module available
+    path = str(Path(__file__).parent.joinpath("julia_testmodule.jl"))
+
     jl_module = jcall.newmodule("test_qg")
     jl_module.seval(
-        'using Pkg; Pkg.develop(path="./QuantumGrav.jl")'
+        f'using Pkg; Pkg.develop(path="{modulepath}")'
     )  # only for now -> get from package index later
-
-    jl_module.seval('include("./QuantumGravPy/test/julia_testmodule.jl")')
+    jl_module.seval(f'include("{path}")')
     generator_constructor = getattr(jl_module, "Generator")
     jl_generator = generator_constructor(
         {
@@ -113,26 +157,3 @@ def create_data(tmp_path_factory):
 
             datafiles.append(hdf5_file)
     yield tmpdir, datafiles
-
-
-@pytest.fixture
-def ontheflyconfig():
-    onthefly_config = {
-        "seed": 42,
-        "n_processes": 1,
-        "batch_size": 5,
-    }
-    return onthefly_config
-
-
-@pytest.fixture
-def jl_vars():
-    return {
-        "jl_code_path": "./QuantumGravPy/test/julia_testmodule.jl",
-        "jl_func_name": "Generator",
-        "jl_base_module_path": "./QuantumGrav.jl",
-        "jl_dependencies": [
-            "Distributions",
-            "Random",
-        ],
-    }

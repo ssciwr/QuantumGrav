@@ -47,13 +47,15 @@ class QGDatasetMixin:
             raise ValueError("A metadata retrieval function must be provided.")
 
         self.input = input
-        self._num_samples = None
         self.data_reader = reader
         self.get_metadata = get_metadata
         self.metadata = {}
         self.float_type = float_type
         self.int_type = int_type
         self.validate_data = validate_data
+
+        self._num_samples = None
+
         # ensure the input is a list of paths
         if self.processed_dir is not None:
             with open(Path(self.processed_dir) / "metadata.json", "r") as f:
@@ -143,15 +145,15 @@ class QGDatasetMixin:
         """Process a chunk of data from the raw file.
 
         Args:
-            raw_file (h5py.File): _description_
-            start (int): _description_
-            chunksize (int): _description_
-            n_processes (int, optional): _description_. Defaults to 1.
-            pre_transform (Callable[[Data], Data] | None, optional): _description_. Defaults to None.
-            pre_filter (Callable[[Data], bool] | None, optional): _description_. Defaults to None.
+            raw_file (h5py.File): The raw HDF5 file to read from.
+            start (int): The starting index of the chunk.
+            chunksize (int): The size of the chunk.
+            n_processes (int, optional): The number of processes to use for parallel processing. Defaults to 1.
+            pre_transform (Callable[[Data], Data] | None, optional): Transformation that adds additional features to the data. Defaults to None.
+            pre_filter (Callable[[Data], bool] | None, optional): A function that filters the data. Defaults to None.
 
         Returns:
-            Data | None: _description_
+            Data | None: The processed data or None if the chunk is empty.
         """
 
         # we can't rely on being able to read from the raw_files in parallel, so we need to read the data sequentially
@@ -166,6 +168,7 @@ class QGDatasetMixin:
             for i in range(start, start + chunksize)
         ]
 
+        results = []
         if n_processes > 1:
 
             def process_item(item):
@@ -175,17 +178,15 @@ class QGDatasetMixin:
                     return pre_transform(item)
                 return item
 
-            results = []
             with Pool(n_processes) as pool:
                 # Process items as they complete, in any order
                 for result in pool.imap_unordered(process_item, data):
                     if result is not None:
                         results.append(result)
-            return results
         else:
             for datapoint in data:
                 if pre_filter is not None and not pre_filter(datapoint):
                     continue
                 if pre_transform is not None:
                     datapoint = pre_transform(datapoint)
-            return data
+        return results
