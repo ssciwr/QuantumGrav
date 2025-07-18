@@ -22,8 +22,7 @@ class QGDatasetOnthefly(Dataset):
         self,
         config: dict[str, Any],
         jl_code_path: str | Path | None = None,
-        jl_func_name: str | None = None,
-        jl_module_name: str | None = None,
+        jl_constructor_name: str | None = None,
         jl_base_module_path: str | Path | None = None,
         jl_dependencies: list[str] | None = None,
         transform: Callable[[dict[Any, Any]], Data] | None = None,
@@ -49,8 +48,7 @@ class QGDatasetOnthefly(Dataset):
             self.worker = jl_worker.JuliaWorker(
                 config,
                 jl_code_path,
-                jl_func_name,
-                jl_module_name,
+                jl_constructor_name,
                 jl_base_module_path,
                 jl_dependencies,
             )

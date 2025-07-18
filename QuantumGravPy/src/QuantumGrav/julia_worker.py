@@ -1,47 +1,45 @@
 from pathlib import Path
 from typing import Any
+import juliacall as jcall
 
 
 class JuliaWorker:
-    """_summary_"""
+    """This class runs a given Julia callable object from a given Julia code file. It additionally imports the QuantumGrav julia module and installs given dependencies if provided. After creation, the wrapped julia callable can be called via the __call__ method of this calls.
+    **Warning**: This class requires the juliacall package to be installed in the Python environment.
+    **Warning**: This class is in early development and may change in the future, be slow, or otherwis not ready for high performance production use.
+    """
 
     jl_code_path = None
-    jl_func_name = None
-    jl_module_name = None
+    jl_constructor_name = None
     jl_base_module_path = None
 
     def __init__(
         self,
-        config: dict[str, Any] | None = None,
+        jl_kwargs: dict[str, Any] | None = None,
         jl_code_path: str | Path | None = None,
-        jl_func_name: str | None = None,
-        jl_module_name: str | None = None,
+        jl_constructor_name: str | None = None,
         jl_base_module_path: str | Path | None = None,
         jl_dependencies: list[str] | None = None,
     ):
-        """_summary_
+        """Initializes the JuliaWorker with the given parameters.
 
         Args:
-            config (dict[str, Any] | None, optional): _description_. Defaults to None.
-            jl_code_path (str | Path | None, optional): _description_. Defaults to None.
-            jl_func_name (str | None, optional): _description_. Defaults to None.
-            jl_module_name (str | None, optional): _description_. Defaults to None.
-            jl_base_module_path (str | Path | None, optional): _description_. Defaults to None.
-            jl_dependencies (list[str] | None, optional): _description_. Defaults to None.
+            jl_kwargs (dict[str, Any] | None, optional): Keyword arguments to pass to the Julia callable object constructor. Defaults to None.
+            jl_code_path (str | Path | None, optional): Path to the Julia code file in which the callable object is defined. Defaults to None.
+            jl_constructor_name (str | None, optional): Name of the Julia constructor function. Defaults to None.
+            jl_base_module_path (str | Path | None, optional): Path to the base Julia module 'QuantumGrav.jl'. If not given, tries to load it via a default `using QuantumGrav` import. Defaults to None.
+            jl_dependencies (list[str] | None, optional): List of Julia package dependencies. Defaults to None. Will be installed via `Pkg.add` if provided upon first call.
 
         Raises:
-            ValueError: _description_
-            ValueError: _description_
-            FileNotFoundError: _description_
-            ValueError: _description_
-            NotImplementedError: _description_
-            RuntimeError: _description_
-            RuntimeError: _description_
-            RuntimeError: _description_
+            ValueError: If the Julia function name is not provided.
+            ValueError: If the Julia code path is not provided.
+            FileNotFoundError: If the Julia code path does not exist.
+            NotImplementedError: If the base module path is not provided.
+            RuntimeError: If there is an error loading the base module.
+            RuntimeError: If there is an error loading Julia dependencies.
+            RuntimeError: If there is an error loading the Julia code.
         """
-        import juliacall as jcall
-
-        if jl_func_name is None:
+        if jl_constructor_name is None:
             raise ValueError("Julia function name must be provided.")
 
         if jl_code_path is None:
@@ -51,25 +49,20 @@ class JuliaWorker:
         if not jl_code_path.exists():
             raise FileNotFoundError(f"Julia code path {jl_code_path} does not exist.")
 
-        if jl_module_name is None:
-            jl_module_name = jl_code_path.stem
-
         self.jl_code_path = str(jl_code_path)
-        self.jl_func_name = jl_func_name
-        self.jl_module_name = jl_module_name
+        self.jl_constructor_name = jl_constructor_name
+        self.jl_module_name = "QuantumGravPy2Jl"
         self.jl_base_module_path = str(Path(jl_base_module_path).resolve().absolute())
 
         try:
-            self.jl_module = jcall.newmodule(jl_module_name)
+            self.jl_module = jcall.newmodule("QuantumGravPy2Jl")
         except Exception as e:
             raise ValueError(
-                f"Error creating Julia module {jl_module_name}: {e}"
+                f"Error creating Julia module {self.jl_module_name}: {e}"
             ) from e
 
         # add base module for dependencies
-        if jl_base_module_path is None:
-            raise NotImplementedError("Base module path must be provided at the moment")
-        else:
+        if jl_base_module_path is not None:
             try:
                 self.jl_module.seval(
                     f'using Pkg; Pkg.develop(path="{jl_base_module_path}")'
@@ -81,7 +74,7 @@ class JuliaWorker:
                 ) from e
 
         try:
-            # add dependencies if provided\
+            # add dependencies if provided
             if jl_dependencies is not None:
                 for dep in jl_dependencies:
                     self.jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
@@ -94,24 +87,24 @@ class JuliaWorker:
             self.jl_module.seval("using QuantumGrav")
             self.jl_module.seval(f'include("{jl_code_path}")')
 
-            generator_constructor = getattr(self.jl_module, jl_func_name)
+            constructor_name = getattr(self.jl_module, jl_constructor_name)
 
-            self.jl_generator = generator_constructor(config)
+            self.jl_generator = constructor_name(jl_kwargs)
         except Exception as e:
-            raise RuntimeError(
-                f"Error loading Julia module {jl_module_name}: {e}"
-            ) from e
+            raise RuntimeError(f"Error loading Julia module QuantumGrav: {e}") from e
 
-    def __call__(self, n: int):
-        """_summary_
+    def __call__(self, *args, **kwargs) -> Any:
+        """Calls the wrapped Julia generator with the given arguments.
 
         Raises:
-            RuntimeError: _description_
-
+            RuntimeError: If the Julia module is not initialized.
+        Args:
+            *args: Positional arguments to pass to the Julia generator.
+            **kwargs: Keyword arguments to pass to the Julia generator.
         Returns:
-            _type_: _description_
+            Any: The raw data generated by the Julia generator.
         """
         if self.jl_module is None:
             raise RuntimeError("Julia module is not initialized.")
-        raw_data = self.jl_generator(n)
+        raw_data = self.jl_generator(*args, **kwargs)
         return raw_data
