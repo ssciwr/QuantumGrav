@@ -4,7 +4,7 @@ import torch
 
 # data handling
 import h5py
-import json
+import yaml
 
 # system imports and quality of life tools
 from pathlib import Path
@@ -25,6 +25,8 @@ class QGDatasetMixin:
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
         validate_data: bool = True,
+        n_processes: int = 1,
+        chunksize: int = 1000,
     ):
         """Initialize a DatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
@@ -36,6 +38,8 @@ class QGDatasetMixin:
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
+            n_processes (int, optional): The number of processes to use for parallel processing of read data. Defaults to 1.
+            chunksize (int, optional): The size of the chunks to process in parallel. Defaults to 1000.
 
         Raises:
             ValueError: If one of the input data files is not a valid HDF5 file
@@ -60,12 +64,9 @@ class QGDatasetMixin:
         self.float_type = float_type
         self.int_type = int_type
         self.validate_data = validate_data
+        self.n_processes = n_processes
+        self.chunksize = chunksize
         self._num_samples = None
-
-        # ensure the input is a list of paths
-        if Path(self.processed_dir).exists():
-            with open(Path(self.processed_dir) / "metadata.json", "r") as f:
-                self.metadata = json.load(f)
 
         # get the number of samples in the dataset
         self._num_samples = 0
@@ -74,6 +75,26 @@ class QGDatasetMixin:
                 raise FileNotFoundError(f"Input file {file} does not exist.")
             with h5py.File(file, "r") as f:
                 self._num_samples += f["num_causal_sets"][()]
+
+        # ensure the input is a list of paths
+        if Path(self.processed_dir).exists():
+            with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
+                self.metadata = yaml.load(f, Loader=yaml.FullLoader)
+        else:
+            Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
+            self.metadata = {
+                "num_samples": int(self._num_samples),
+                "input": [str(Path(f).resolve().absolute()) for f in self.input],
+                "output": str(Path(self.output).resolve().absolute()),
+                "float_type": str(self.float_type),
+                "int_type": str(self.int_type),
+                "validate_data": self.validate_data,
+                "n_processes": self.n_processes,
+                "chunksize": self.chunksize,
+            }
+
+            with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
+                yaml.dump(self.metadata, f)
 
     @property
     def processed_dir(self) -> str | None:
@@ -117,7 +138,7 @@ class QGDatasetMixin:
         ]
 
     def write_data(self, data: list[Data]) -> None:
-        """Write the processed data to disk.
+        """Write the processed data to disk using `torch.save`. This is a default implementation that can be overridden by subclasses, and is intended to be used in the data loading pipeline. Thus, is not intended to be called directly.
 
         Args:
             data (list[Data]): The list of Data objects to write to disk.
@@ -134,18 +155,14 @@ class QGDatasetMixin:
         self,
         raw_file: h5py.File,
         start: int,
-        chunksize: int,
-        n_processes: int = 1,
         pre_transform: Callable[[Data], Data] | None = None,
         pre_filter: Callable[[Data], bool] | None = None,
     ) -> Data | None:
-        """Process a chunk of data from the raw file.
+        """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 
         Args:
             raw_file (h5py.File): The raw HDF5 file to read from.
             start (int): The starting index of the chunk.
-            chunksize (int): The size of the chunk.
-            n_processes (int, optional): The number of processes to use for parallel processing. Defaults to 1.
             pre_transform (Callable[[Data], Data] | None, optional): Transformation that adds additional features to the data. Defaults to None.
             pre_filter (Callable[[Data], bool] | None, optional): A function that filters the data. Defaults to None.
 
@@ -162,11 +179,11 @@ class QGDatasetMixin:
                 self.int_type,
                 self.validate_data,
             )
-            for i in range(start, start + chunksize)
+            for i in range(start, start + self.chunksize)
         ]
 
         results = []
-        if n_processes > 1:
+        if self.n_processes > 1:
 
             def process_item(item):
                 if pre_filter is not None and not pre_filter(item):
@@ -175,7 +192,7 @@ class QGDatasetMixin:
                     return pre_transform(item)
                 return item
 
-            results = Parallel(n_jobs=n_processes)(
+            results = Parallel(n_jobs=self.n_processes)(
                 delayed(process_item)(datapoint) for datapoint in data
             )
             results = [res for res in results if res is not None]
