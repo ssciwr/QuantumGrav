@@ -1,3 +1,4 @@
+import juliacall as jcall
 from . import julia_worker as jl_worker
 
 # pytorch and torch geometric imports
@@ -68,9 +69,16 @@ class QGDatasetOnthefly(Dataset):
                 jl_base_module_path,
                 jl_dependencies,
             )
-            print("done")
+        except jcall.JuliaError as e:
+            raise RuntimeError(f"Error initializing Julia worker: {e}") from e
+        except (OSError, FileNotFoundError) as e:
+            raise RuntimeError(f"Path to file or directory not found: {e}") from e
+        except (KeyError, TypeError) as e:
+            raise RuntimeError(f"Invalid configuration for Julia worker: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Error initializing Julia process: {e}") from e
+            raise RuntimeError(
+                f"Unexpected exception while initializing Julia worker: {e}"
+            ) from e
 
         super().__init__(None, transform=transform, pre_transform=None, pre_filter=None)
 
@@ -114,11 +122,19 @@ class QGDatasetOnthefly(Dataset):
 
         if len(self.databatch) == 0:
             # Call the Julia function to get the data
-            raw_data = [
-                self.converter(x) for x in self.worker(self.config["batch_size"])
-            ]
+            try:
+                raw_data = [
+                    self.converter(x) for x in self.worker(self.config["batch_size"])
+                ]
+            except jcall.JuliaError as e:
+                raise RuntimeError(f"Julia worker failed to generate data: {e}") from e
+            except (KeyError, IndexError) as e:
+                raise RuntimeError(f"Invalid configuration or data access: {e}") from e
+
             if isinstance(raw_data, Exception):
-                raise raw_data
+                raise RuntimeError(
+                    "Unexpected error in data generation or conversion"
+                ) from raw_data
             try:
                 # parallel processing in Julia is handled on the Julia side
                 # use primitve indexing here to avoid issues with julia arrays
@@ -133,8 +149,10 @@ class QGDatasetOnthefly(Dataset):
                     self.databatch = [
                         self.transform(raw_data[i]) for i in range(len(raw_data))
                     ]
+            except (KeyError, TypeError, ValueError) as e:
+                raise RuntimeError(f"Data transformation failed: {e}") from e
             except Exception as e:
-                raise RuntimeError(f"Error transforming data: {e}") from e
+                raise RuntimeError(f"Unexpected error transforming data: {e}") from e
 
         datapoint = self.databatch.pop()
 
