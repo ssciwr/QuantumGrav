@@ -27,6 +27,7 @@ dependencies = [
     "matplotlib",
     "scikit-learn",
     "joblib",
+    "juliacall"
 ]
 
 # Optional dependencies
