@@ -4,12 +4,13 @@ from pathlib import Path
 import torch
 from typing import Callable
 from torch_geometric.data import Data
+import h5py
 
 
-def test_dataset_mixin_creation(create_data, tmp_path):
+def test_dataset_base_creation(create_data, tmp_path):
     _, datafiles = create_data
 
-    dataset = QG.dataset_mixin.QGDatasetMixin(
+    dataset = QG.dataset_base.QGDatasetBase(
         input=datafiles,
         output=tmp_path,
         get_metadata=lambda x: {"num_samples": len(x)},
@@ -43,12 +44,12 @@ def test_dataset_mixin_creation(create_data, tmp_path):
     assert dataset.metadata["chunksize"] == 300
 
 
-def test_dataset_mixin_creation_fails_bad_datafile(create_data, tmp_path):
+def test_dataset_base_creation_fails_bad_datafile(create_data, tmp_path):
     _, datafiles = create_data
     with pytest.raises(
         FileNotFoundError, match="Input file nonexistent_path does not exist."
     ):
-        QG.dataset_mixin.QGDatasetMixin(
+        QG.dataset_base.QGDatasetBase(
             input=datafiles
             + [
                 "nonexistent_path",
@@ -62,12 +63,12 @@ def test_dataset_mixin_creation_fails_bad_datafile(create_data, tmp_path):
         )
 
 
-def test_dataset_mixin_creation_fails_no_metadata_reader(create_data, tmp_path):
+def test_dataset_base_creation_fails_no_metadata_reader(create_data, tmp_path):
     datadir, datafiles = create_data
     with pytest.raises(
         ValueError, match="A reader function must be provided to load the data."
     ):
-        QG.dataset_mixin.QGDatasetMixin(
+        QG.dataset_base.QGDatasetBase(
             input=datafiles,
             output=tmp_path,
             get_metadata=None,
@@ -78,12 +79,12 @@ def test_dataset_mixin_creation_fails_no_metadata_reader(create_data, tmp_path):
         )
 
 
-def test_dataset_mixin_creation_fails_no_data_reader(create_data, tmp_path):
+def test_dataset_base_creation_fails_no_data_reader(create_data, tmp_path):
     _, datafiles = create_data
     with pytest.raises(
         ValueError, match="A reader function must be provided to load the data."
     ):
-        QG.dataset_mixin.QGDatasetMixin(
+        QG.dataset_base.QGDatasetBase(
             input=datafiles,
             output=tmp_path,
             get_metadata=lambda x: {"num_samples": len(x)},
@@ -94,10 +95,10 @@ def test_dataset_mixin_creation_fails_no_data_reader(create_data, tmp_path):
         )
 
 
-def test_dataset_mixin_process_chunk_sequential(create_data, read_data):
+def test_dataset_base_process_chunk_sequential(create_data, read_data):
     datadir, datafiles = create_data
 
-    dataset = QG.dataset_mixin.QGDatasetMixin(
+    dataset = QG.dataset_base.QGDatasetBase(
         input=datafiles,
         output=datadir,
         get_metadata=lambda x: {"num_samples": len(x)},
@@ -108,22 +109,22 @@ def test_dataset_mixin_process_chunk_sequential(create_data, read_data):
         n_processes=1,
         chunksize=4,
     )
-
-    results = dataset.process_chunk(
-        datafiles[0],
-        0,
-        pre_transform=lambda x: x,
-        pre_filter=lambda x: True,
-    )
+    with h5py.File(datafiles[0], "r") as raw_file:
+        results = dataset.process_chunk(
+            raw_file,
+            0,
+            pre_transform=lambda x: x,
+            pre_filter=lambda x: True,
+        )
 
     assert len(results) == 4
     assert all(isinstance(res, Data) for res in results)
 
 
-def test_dataset_mixin_process_chunk_parallel(create_data, read_data):
+def test_dataset_base_process_chunk_parallel(create_data, read_data):
     datadir, datafiles = create_data
 
-    dataset = QG.dataset_mixin.QGDatasetMixin(
+    dataset = QG.dataset_base.QGDatasetBase(
         input=datafiles,
         output=datadir,
         get_metadata=lambda x: {"num_samples": len(x)},
@@ -135,59 +136,13 @@ def test_dataset_mixin_process_chunk_parallel(create_data, read_data):
         chunksize=4,
     )
 
-    results = dataset.process_chunk(
-        datafiles[0],
-        0,
-        pre_transform=lambda x: x,
-        pre_filter=lambda x: True,
-    )
+    with h5py.File(datafiles[0], "r") as raw_file:
+        results = dataset.process_chunk(
+            raw_file,
+            0,
+            pre_transform=lambda x: x,
+            pre_filter=lambda x: True,
+        )
 
     assert len(results) == 4
     assert all(isinstance(res, Data) for res in results)
-
-
-def test_dataset_mixin_write_data(create_data, tmp_path, read_data):
-    _, datafiles = create_data
-
-    dataset = QG.dataset_mixin.QGDatasetMixin(
-        input=datafiles,
-        output=tmp_path,
-        get_metadata=lambda x: {"num_samples": len(x)},
-        reader=read_data,
-        float_type=torch.float32,
-        int_type=torch.int64,
-        validate_data=True,
-        n_processes=1,
-        chunksize=4,
-    )
-
-    results = dataset.process_chunk(
-        datafiles[0],
-        0,
-        pre_transform=lambda x: x,
-        pre_filter=lambda x: True,
-    )
-    dataset.write_data(results)
-    assert len(results) == 4
-    assert all(isinstance(res, Data) for res in results)
-    assert Path(dataset.processed_dir).exists()
-    assert len(dataset.processed_file_names) == 4
-
-    assert all(
-        f in dataset.processed_file_names for f in [f"data_{i}.pt" for i in range(4)]
-    )
-
-    new_dataset = QG.dataset_mixin.QGDatasetMixin(
-        input=datafiles,
-        output=tmp_path,
-        get_metadata=lambda x: {"num_samples": len(x)},
-        reader=read_data,
-        float_type=torch.float32,
-        int_type=torch.int64,
-        validate_data=True,
-        n_processes=1,
-        chunksize=4,
-    )
-
-    assert new_dataset.processed_file_names == dataset.processed_file_names
-    assert new_dataset.metadata == dataset.metadata

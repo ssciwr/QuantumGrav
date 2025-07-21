@@ -4,19 +4,17 @@ import torch
 
 # data handling
 import h5py
-import json
 
 # system imports and quality of life tools
 from pathlib import Path
-import os
 from collections.abc import Callable
 from typing import Any
 
 # internals
-from .dataset_mixin import QGDatasetMixin
+from .dataset_base import QGDatasetBase
 
 
-class QGDataset(QGDatasetMixin, Dataset):
+class QGDataset(QGDatasetBase, Dataset):
     """A dataset class for QuantumGrav data that is designed to handle large datasets stored on disk. This class provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
 
     def __init__(
@@ -51,14 +49,10 @@ class QGDataset(QGDatasetMixin, Dataset):
             pre_transform (Callable[[Data], Data] | None, optional): _description_. Defaults to None.
             pre_filter (Callable[[Data], bool] | None, optional): _description_. Defaults to None.
 
-        Raises:
-            ValueError: _description_
+
         """
-        if reader is None:
-            raise ValueError("A reader function must be provided to read the data.")
-        self.chunksize = chunksize
-        self.n_processes = n_processes
-        QGDatasetMixin.__init__(
+
+        QGDatasetBase.__init__(
             input,
             output,
             get_metadata,
@@ -66,6 +60,8 @@ class QGDataset(QGDatasetMixin, Dataset):
             float_type,
             int_type,
             validate_data,
+            chunksize=chunksize,
+            n_processes=n_processes,
         )
 
         Dataset.__init__(
@@ -75,20 +71,59 @@ class QGDataset(QGDatasetMixin, Dataset):
             pre_filter=pre_filter,
         )
 
+    @property
+    def raw_file_names(self) -> list[str]:
+        """Get the names of the raw files in the dataset.
+
+        Returns:
+            list[str]: A list of raw file names.
+        """
+        return super().raw_file_names
+
+    @property
+    def processed_paths(self) -> list[str]:
+        """Get the names of the processed files in the dataset.
+
+        Returns:
+            list[str]: A list of processed file names.
+        """
+        return super().processed_paths
+
+    def write_data(self, data: list[Data]) -> None:
+        """Write the processed data to disk using `torch.save`. This is a default implementation that can be overridden by subclasses, and is intended to be used in the data loading pipeline. Thus, is not intended to be called directly.
+
+        Args:
+            data (list[Data]): The list of Data objects to write to disk.
+        """
+        if not Path(self.processed_dir).exists():
+            Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
+
+        for i, d in enumerate(data):
+            if d is not None:
+                file_path = Path(self.processed_dir) / f"data_{i}.pt"
+                torch.save(d, file_path)
+
+    def load_data(self, indices) -> list[Data]:
+        """Load a list of Data objects from disk.
+
+        Args:
+            indices (list[int]): A list of indices to load.
+
+        Returns:
+            list[Data]: A list of loaded Data objects.
+        """
+        data = []
+        for i in indices:
+            file_path = Path(self.processed_dir) / f"data_{i}.pt"
+            if file_path.exists():
+                datapoint = torch.load(file_path, weights_only=False)
+                data.append(datapoint)
+        return data
+
     def process(self) -> None:
-        """_summary_"""
-        if (
-            not os.path.exists(self.processed_dir)
-            or len(self.processed_file_names) == 0
-        ):
-            os.makedirs(self.processed_dir, exist_ok=True)
-
-            self.metadata = self.get_metadata(self.input)
-            with open(os.path.join(self.processed_dir, "metadata.json"), "w") as f:
-                json.dump(self.metadata, f)
-
+        """Process the dataset from the read rawdata into its final form."""
         # process data files
-        for file in self.raw_paths:
+        for file in self.raw_file_names:
             with h5py.File(file, "r") as raw_file:
                 # read the data in chunks and process it parallelized or
                 # sequentially based on the parallel_processing flag
@@ -109,6 +144,7 @@ class QGDataset(QGDatasetMixin, Dataset):
 
                     self.write_data(data)
 
+                # final chunk processing
                 for i in range(
                     num_chunks * self.chunksize, final_chunk, self.chunksize
                 ):
@@ -124,26 +160,15 @@ class QGDataset(QGDatasetMixin, Dataset):
                     self.write_data(data)
 
     def len(self) -> int:
-        """_summary_
+        """Get the number of samples in the dataset.
 
         Returns:
-            int: _description_
+            int: The number of samples in the dataset.
         """
-        return self._num_samples
+        super().len()
 
     def get(self, idx: int) -> Data:
-        """_summary_
-
-        Args:
-            idx (int): _description_
-
-        Raises:
-            ValueError: _description_
-            IndexError: _description_
-
-        Returns:
-            Data: _description_
-        """
+        """Get a single data sample by index."""
         if self._num_samples is None:
             raise ValueError("Dataset has not been processed yet.")
 

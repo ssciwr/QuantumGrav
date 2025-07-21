@@ -12,7 +12,7 @@ from collections.abc import Callable
 from joblib import delayed, Parallel
 
 
-class QGDatasetMixin:
+class QGDatasetBase:
     """Mixin class that provides common functionality for the dataset classes. Works only for file-based datasets. Provides methods for processing data."""
 
     def __init__(
@@ -27,6 +27,7 @@ class QGDatasetMixin:
         validate_data: bool = True,
         n_processes: int = 1,
         chunksize: int = 1000,
+        **kwargs,
     ):
         """Initialize a DatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
@@ -108,10 +109,10 @@ class QGDatasetMixin:
 
     @property
     def raw_file_names(self) -> list[str]:
-        """Get the raw file names from the input list.
+        """Get the raw file paths from the input list.
 
         Returns:
-            list[str]: A list of raw file names.
+            list[str]: A list of raw file paths.
         """
         return [str(Path(f).name) for f in self.input if Path(f).suffix == ".h5"]
 
@@ -136,20 +137,6 @@ class QGDatasetMixin:
             for f in Path(self.processed_dir).iterdir()
             if f.is_file() and f.suffix == ".pt"  # Only include .
         ]
-
-    def write_data(self, data: list[Data]) -> None:
-        """Write the processed data to disk using `torch.save`. This is a default implementation that can be overridden by subclasses, and is intended to be used in the data loading pipeline. Thus, is not intended to be called directly.
-
-        Args:
-            data (list[Data]): The list of Data objects to write to disk.
-        """
-        if not Path(self.processed_dir).exists():
-            Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
-
-        for i, d in enumerate(data):
-            if d is not None:
-                file_path = Path(self.processed_dir) / f"data_{i}.pt"
-                torch.save(d, file_path)
 
     def process_chunk(
         self,
@@ -204,3 +191,11 @@ class QGDatasetMixin:
                     datapoint = pre_transform(datapoint)
                 results.append(datapoint)
         return results
+
+    def len(self) -> int:
+        """Get the number of samples in the dataset.
+
+        Returns:
+            int: The number of samples in the dataset.
+        """
+        return self._num_samples

@@ -1,10 +1,37 @@
-def test_inmemory_dataset_creation(create_data):
-    assert 3 == 6
+import QuantumGrav as QG
+from pathlib import Path
+import torch
 
 
-def test_inmemory_dataset_properties(create_data):
-    assert 3 == 6
+def test_inmemory_dataset_creation_and_process(create_data, read_data):
+    datadir, datafiles = create_data
 
+    dataset = QG.QGDatasetInMemory(
+        input=datafiles,
+        output=datadir,
+        get_metadata=lambda x: {"num_samples": len(x)},
+        reader=read_data,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=4,
+        transform=lambda x: x,
+        pre_transform=lambda x: x,
+        pre_filter=lambda x: True,
+    )
 
-def test_inmemory_dataset_processing(create_data):
-    assert 3 == 6
+    assert dataset.input == datafiles
+    assert dataset.raw_file_names == [f.name for f in datafiles]
+    assert "data.pt" in dataset.processed_file_names
+    assert dataset.root == datadir
+    assert dataset.output == datadir
+    assert dataset.get_metadata is not None
+    assert dataset.float_type == torch.float32
+    assert dataset.int_type == torch.int64
+    assert dataset.validate_data is True
+    assert dataset.chunksize == 4
+    assert dataset.n_processes == 1
+    assert Path(dataset.processed_dir).exists()
+    assert (Path(dataset.processed_dir) / "metadata.yaml").exists()
+    assert len(dataset) == 15  # Assuming 15 samples in the datafiles
