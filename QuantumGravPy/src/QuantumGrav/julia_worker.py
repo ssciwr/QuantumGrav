@@ -55,9 +55,12 @@ class JuliaWorker:
         # try to initialize the new Julia module,  the do every julia call through thisi module
         try:
             self.jl_module = jcall.newmodule("QuantumGravPy2Jl")
+
+        except jcall.JuliaError as e:
+            raise RuntimeError(f"Error creating new julia module: {e}") from e
         except Exception as e:
-            raise ValueError(
-                f"Error creating Julia module {self.jl_module_name}: {e}"
+            raise RuntimeError(
+                f"Unexpected exception while creating Julia module {self.jl_module_name}: {e}"
             ) from e
 
         # add base module for dependencies if exists
@@ -66,10 +69,13 @@ class JuliaWorker:
                 self.jl_module.seval(
                     f'using Pkg; Pkg.develop(path="{jl_base_module_path}")'
                 )  # only for now -> get from package index later
-
-            except Exception as e:
+            except jcall.JuliaError as e:
                 raise RuntimeError(
                     f"Error loading base module {jl_base_module_path}: {e}"
+                ) from e
+            except Exception as e:
+                raise RuntimeError(
+                    f"Unexpected exception while initializing julia base module: {e}"
                 ) from e
 
         try:
@@ -77,20 +83,28 @@ class JuliaWorker:
             if jl_dependencies is not None:
                 for dep in jl_dependencies:
                     self.jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
+        except jcall.JuliaError as e:
+            raise RuntimeError(f"Error processing Julia dependencies: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Error loading Julia dependencies: {e}") from e
+            raise RuntimeError(
+                f"Unexpected exception while processing Julia dependencies: {e}"
+            ) from e
 
         try:
             # load the julia data generation julia code
             self.jl_module.seval(f'push!(LOAD_PATH, "{jl_code_path}")')
             self.jl_module.seval("using QuantumGrav")
             self.jl_module.seval(f'include("{jl_code_path}")')
-
             constructor_name = getattr(self.jl_module, jl_constructor_name)
-
             self.jl_generator = constructor_name(jl_kwargs)
+        except jcall.JuliaError as e:
+            raise RuntimeError(
+                f"Error evaluating Julia code to activate base module: {e}"
+            ) from e
         except Exception as e:
-            raise RuntimeError(f"Error loading Julia module QuantumGrav: {e}") from e
+            raise RuntimeError(
+                f"Unexpected exception while loading Julia base module: {e}"
+            ) from e
 
     def __call__(self, *args, **kwargs) -> Any:
         """Calls the wrapped Julia generator with the given arguments.

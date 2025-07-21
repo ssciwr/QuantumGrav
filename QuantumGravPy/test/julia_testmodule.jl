@@ -2,8 +2,6 @@ import QuantumGrav as QG
 import Random
 import Distributions
 
-using AutomaticDocstrings
-
 """
 This is a dummy module only used for testing purposes. It shows how to create a Julia module that can be called from Python using the `jlcall` package. 
 In detail, this module defines a `Generator` struct and a call operator that generates a batch of data points for testing purposes.
@@ -33,81 +31,6 @@ Returns:
 """
 function Generator(config::AbstractDict)
     return Generator(config["seed"])
-end
-
-
-"""
-    create_causal_set(manifold_distr, boundary_distr, atomcount_distr, dim_distr, rng; type=Float32)
-Create a causal set with random parameters.
-Args:
-- `manifold_distr`: A distribution for the manifold type.
-- `boundary_distr`: A distribution for the boundary type.
-- `atomcount_distr`: A distribution for the number of atoms in the causal set.
-- `dim_distr`: A distribution for the dimension of the causal set.
-- `rng`: A random number generator.
-- `type`: The data type for the causal set (default is `Float32`).
-Returns:
-- `cset`: The created causal set.
-- `sprinkling`: The sprinkling of the causal set.
-"""
-function create_causal_set(
-    manifold_distr,
-    boundary_distr,
-    atomcount_distr,
-    dim_distr,
-    rng;
-    type = Float32,
-)
-    e = nothing
-    cset = nothing
-    sprinkling = nothing
-    dimension = nothing
-    manifold_id = nothing
-    boundary_id = nothing
-    atomcount = nothing
-
-    # try to create a valid causal set. Since not all combinations are valid, we try multiple times until we find a valid one. 
-    while ok == false && max_iter > 0
-        # decrement the max_iter counter
-        max_iter -= 1
-
-        # choose all the parameters randomly for the causal set
-        dimension = rand(rng, dim_distr)
-        manifold_id = Distributions.rand(rng, manifold_distr)
-        manifold = manifolds[manifold_id]
-        boundary_id = Distributions.rand(rng, boundary_distr)
-        boundary = boundaries[boundary_id]
-        atomcount = Distributions.rand(rng, atomcount_distr)
-
-        # make dataset 
-        try
-            # make data needed 
-            cset, sprinkling =
-                QG.make_cset(manifold, boundary, atomcount, dimension, rng; type = type)
-            ok = true
-            e = nothing
-        catch error
-            ok = false
-            e = error
-            cset = nothing
-            sprinkling = nothing
-        end
-
-        if max_iter <= 0
-            println("Max iterations reached, breaking out of loop.")
-            break
-        end
-    end
-
-    if e !== nothing
-        throw(
-            ErrorException(
-                "Failed to create a valid causal set after multiple attempts: $e",
-            ),
-        )
-    end
-
-    return cset, sprinkling
 end
 
 """
@@ -154,15 +77,48 @@ function (gen::Generator)(batchsize::Int)
         ok = false
         max_iter = 20
         type = Float32
+        e = nothing
+        cset = nothing
+        sprinkling = nothing
+        dimension = nothing
+        manifold_id = nothing
+        boundary_id = nothing
+        atomcount = nothing
 
-        cset, sprinkling = create_causal_set(
-            manifold_distr,
-            boundary_distr,
-            atomcount_distr,
-            dim_distr,
-            rng;
-            type = type,
-        )
+        # try to create a valid causal set. Since not all combinations are valid, we try multiple times until we find a valid one. 
+        while ok == false && max_iter > 0
+            # decrement the max_iter counter
+            max_iter -= 1
+
+            # choose all the parameters randomly for the causal set
+            dimension = rand(rng, dim_distr)
+            manifold_id = Distributions.rand(rng, manifold_distr)
+            manifold = manifolds[manifold_id]
+            boundary_id = Distributions.rand(rng, boundary_distr)
+            boundary = boundaries[boundary_id]
+            atomcount = Distributions.rand(rng, atomcount_distr)
+
+
+            # make dataset 
+            try
+                # make data needed 
+                cset, sprinkling =
+                    QG.make_cset(manifold, boundary, atomcount, dimension, rng; type = type)
+                ok = true
+                e = nothing
+            catch error
+                ok = false
+                e = error
+                cset = nothing
+                sprinkling = nothing
+            end
+
+
+            if max_iter <= 0
+                println("Max iterations reached, breaking out of loop.")
+                break
+            end
+        end
 
         # make the data: adjacency matrix and the other stuff
         link_matrix = QG.make_link_matrix(cset, type = type)

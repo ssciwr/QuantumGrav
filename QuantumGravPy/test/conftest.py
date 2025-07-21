@@ -153,6 +153,54 @@ def create_data(tmp_path_factory, julia_paths):
                 f["boundary"][j] = d["boundary"]
                 f["dimension"][j] = d["dimension"]
                 f["atomcount"][j] = d["atomcount"]
+            f["num_causal_sets"] = len(data)
 
             datafiles.append(hdf5_file)
-    yield tmpdir, datafiles
+    return tmpdir, datafiles
+
+
+@pytest.fixture(scope="session")
+def read_data():
+    def reader(file: str | Path, idx: int, float_dtype, int_dtype, validate) -> Data:
+        with h5py.File(file, "r") as f:
+            adj_raw = f["adjacency_matrix"][idx, :, :]
+            adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
+            edge_index, edge_weight = dense_to_sparse(adj_matrix)
+            adj_matrix = adj_matrix.to_sparse()
+            node_features = []
+
+            # Path lengths
+            max_path_future = torch.tensor(
+                f["max_pathlen_future"][idx, :], dtype=float_dtype
+            ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
+
+            max_path_past = torch.tensor(
+                f["max_pathlen_past"][idx, :], dtype=float_dtype
+            ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
+            node_features.extend([max_path_future, max_path_past])
+
+            x = torch.cat(node_features, dim=1)
+
+            manifold = f["manifold"][idx]
+            boundary = f["boundary"][idx]
+            dimension = f["dimension"][idx]
+
+            data = Data(
+                x=x,
+                edge_index=edge_index,
+                edge_attr=edge_weight.unsqueeze(1),
+                y=torch.stack(
+                    [
+                        torch.tensor(manifold),
+                        torch.tensor(boundary),
+                        torch.tensor(dimension),
+                    ],
+                    dim=0,
+                ),
+            )
+
+            if validate and not data.validate():
+                raise ValueError("Data validation failed.")
+            return data
+
+    return reader

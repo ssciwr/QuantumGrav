@@ -60,6 +60,7 @@ class QGDataset(QGDatasetMixin, Dataset):
         self.n_processes = n_processes
         QGDatasetMixin.__init__(
             input,
+            output,
             get_metadata,
             reader,
             float_type,

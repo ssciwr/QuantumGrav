@@ -9,7 +9,7 @@ import json
 # system imports and quality of life tools
 from pathlib import Path
 from collections.abc import Callable
-from multiprocessing import Pool
+from joblib import delayed, Parallel
 
 
 class QGDatasetMixin:
@@ -18,6 +18,7 @@ class QGDatasetMixin:
     def __init__(
         self,
         input: list[str | Path],
+        output: str | Path,
         get_metadata: Callable[[str | Path], dict] | None = None,
         reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
@@ -29,6 +30,7 @@ class QGDatasetMixin:
 
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
+            output (str | Path): The output directory where processed data will be stored.
             get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to retrieve metadata for the dataset. Defaults to None.
             reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
@@ -47,17 +49,21 @@ class QGDatasetMixin:
             raise ValueError("A metadata retrieval function must be provided.")
 
         self.input = input
+        for file in self.input:
+            if Path(file).exists() is False:
+                raise FileNotFoundError(f"Input file {file} does not exist.")
+
+        self.output = output
         self.data_reader = reader
         self.get_metadata = get_metadata
         self.metadata = {}
         self.float_type = float_type
         self.int_type = int_type
         self.validate_data = validate_data
-
         self._num_samples = None
 
         # ensure the input is a list of paths
-        if self.processed_dir is not None:
+        if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.json", "r") as f:
                 self.metadata = json.load(f)
 
@@ -76,13 +82,25 @@ class QGDatasetMixin:
         Returns:
             str: The path to the processed directory, or None if it doesn't exist.
         """
-        processed_path = Path(self.root) / "processed"
-        if not processed_path.exists():
-            return None
+        processed_path = Path(self.output).resolve().absolute() / "processed"
         return str(processed_path)
 
     @property
-    def processed_files(self) -> list[str]:
+    def raw_file_names(self) -> list[str]:
+        """Get the raw file names from the input list.
+
+        Returns:
+            list[str]: A list of raw file names.
+        """
+        return [str(Path(f).name) for f in self.input if Path(f).suffix == ".h5"]
+
+    @property
+    def processed_file_names(self) -> list[str]:
+        """Get the processed file names from the processed directory.
+
+        Returns:
+            list[str]: A list of processed file names.
+        """
         """Get a list of processed files in the processed directory.
 
         Returns:
@@ -93,31 +111,10 @@ class QGDatasetMixin:
             return []
 
         return [
-            str(Path(self.processed_dir) / f)
+            str(f.name)
             for f in Path(self.processed_dir).iterdir()
             if f.is_file() and f.suffix == ".pt"  # Only include .
         ]
-
-    @property
-    def raw_file_names(self) -> list[str]:
-        """Get the raw file names from the input list.
-
-        Returns:
-            list[str]: A list of raw file names.
-        """
-        return [Path(f).name for f in self.input if Path(f).suffix == ".h5"]
-
-    @property
-    def processed_file_names(self) -> list[str]:
-        """Get the processed file names from the processed directory.
-
-        Returns:
-            list[str]: A list of processed file names.
-        """
-        if not Path(self.root).exists():
-            return []
-
-        return [f for f in Path(self.root).iterdir() if f.suffix == ".pt"]
 
     def write_data(self, data: list[Data]) -> None:
         """Write the processed data to disk.
@@ -178,15 +175,15 @@ class QGDatasetMixin:
                     return pre_transform(item)
                 return item
 
-            with Pool(n_processes) as pool:
-                # Process items as they complete, in any order
-                for result in pool.imap_unordered(process_item, data):
-                    if result is not None:
-                        results.append(result)
+            results = Parallel(n_jobs=n_processes)(
+                delayed(process_item)(datapoint) for datapoint in data
+            )
+            results = [res for res in results if res is not None]
         else:
             for datapoint in data:
                 if pre_filter is not None and not pre_filter(datapoint):
                     continue
                 if pre_transform is not None:
                     datapoint = pre_transform(datapoint)
+                results.append(datapoint)
         return results

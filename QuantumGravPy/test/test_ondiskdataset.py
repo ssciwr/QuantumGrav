@@ -13,7 +13,7 @@ def test_ondisk_dataset_creation_works(create_data, tmp_path):
         float_type=torch.float32,
         int_type=torch.int64,
         validate_data=True,
-        chunk_size=1100,
+        chunksize=1100,
         n_processes=3,
         transform=lambda x: x,
         pre_transform=lambda x: x,

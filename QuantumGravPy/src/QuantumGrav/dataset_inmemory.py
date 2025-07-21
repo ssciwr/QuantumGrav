@@ -55,6 +55,7 @@ class QGDatasetInMemory(QGDatasetMixin, InMemoryDataset):
         """
         QGDatasetMixin.__init__(
             input,
+            output,
             get_metadata,
             loader,
             writer,
