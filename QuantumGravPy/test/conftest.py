@@ -115,7 +115,7 @@ def create_data(tmp_path_factory, julia_paths):
 
     jl_module = jcall.newmodule("test_qg")
     jl_module.seval(
-        f'using Pkg; Pkg.develop(path="{modulepath}")'
+        f'using Pkg; Pkg.develop(path="{julia_paths["jl_base_module_path"]}", name="QuantumGrav")'
     )  # only for now -> get from package index later
     jl_module.seval(f'include("{path}")')
     generator_constructor = getattr(jl_module, "Generator")
@@ -147,7 +147,6 @@ def create_data(tmp_path_factory, julia_paths):
                 max_path_p = d["max_pathlen_past"].to_numpy()
                 f["adjacency_matrix"][j, 0 : adj.shape[0], 0 : adj.shape[1]] = adj
                 f["link_matrix"][j, 0 : link.shape[0], 0 : link.shape[1]] = link
-
                 f["max_pathlen_future"][j, 0 : max_path_f.shape[0]] = max_path_f
                 f["max_pathlen_past"][j, 0 : max_path_p.shape[0]] = max_path_p
                 f["manifold"][j] = d["manifold"]
