@@ -105,7 +105,7 @@ def jl_vars(julia_paths):
     return julia_paths
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture
 def create_data(tmp_path_factory, julia_paths):
     datafiles = []
     tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav")
@@ -124,6 +124,7 @@ def create_data(tmp_path_factory, julia_paths):
             "seed": 42,
         }
     )
+
     for i in range(3):
         data = jl_generator(5)
         # Save the data to an HDF5 file
@@ -159,7 +160,7 @@ def create_data(tmp_path_factory, julia_paths):
     return tmpdir, datafiles
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def read_data():
     def reader(f: h5py.File, idx: int, float_dtype, int_dtype, validate) -> Data:
         adj_raw = f["adjacency_matrix"][idx, :, :]

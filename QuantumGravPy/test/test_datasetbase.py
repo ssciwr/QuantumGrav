@@ -2,7 +2,6 @@ import pytest
 import QuantumGrav as QG
 from pathlib import Path
 import torch
-from typing import Callable
 from torch_geometric.data import Data
 import h5py
 
@@ -13,7 +12,6 @@ def test_dataset_base_creation(create_data, tmp_path):
     dataset = QG.dataset_base.QGDatasetBase(
         input=datafiles,
         output=tmp_path,
-        get_metadata=lambda x: {"num_samples": len(x)},
         reader=lambda file: [],
         float_type=torch.float32,
         int_type=torch.int64,
@@ -24,7 +22,6 @@ def test_dataset_base_creation(create_data, tmp_path):
 
     assert dataset.input == datafiles
     assert dataset.output == tmp_path
-    assert isinstance(dataset.get_metadata, Callable)
     assert dataset.float_type == torch.float32
     assert dataset.int_type == torch.int64
     assert dataset.validate_data is True
@@ -55,24 +52,7 @@ def test_dataset_base_creation_fails_bad_datafile(create_data, tmp_path):
                 "nonexistent_path",
             ],
             output=tmp_path,
-            get_metadata=lambda x: {"num_samples": len(x)},
             reader=lambda file: [],
-            float_type=torch.float32,
-            int_type=torch.int64,
-            validate_data=True,
-        )
-
-
-def test_dataset_base_creation_fails_no_metadata_reader(create_data, tmp_path):
-    datadir, datafiles = create_data
-    with pytest.raises(
-        ValueError, match="A reader function must be provided to load the data."
-    ):
-        QG.dataset_base.QGDatasetBase(
-            input=datafiles,
-            output=tmp_path,
-            get_metadata=None,
-            reader=None,
             float_type=torch.float32,
             int_type=torch.int64,
             validate_data=True,
@@ -87,7 +67,6 @@ def test_dataset_base_creation_fails_no_data_reader(create_data, tmp_path):
         QG.dataset_base.QGDatasetBase(
             input=datafiles,
             output=tmp_path,
-            get_metadata=lambda x: {"num_samples": len(x)},
             reader=None,
             float_type=torch.float32,
             int_type=torch.int64,
@@ -95,47 +74,20 @@ def test_dataset_base_creation_fails_no_data_reader(create_data, tmp_path):
         )
 
 
-def test_dataset_base_process_chunk_sequential(create_data, read_data):
+@pytest.mark.parametrize("n", [1, 2], ids=["sequential", "parallel"])
+def test_dataset_base_process_chunk_sequential(create_data, read_data, n):
     datadir, datafiles = create_data
 
     dataset = QG.dataset_base.QGDatasetBase(
         input=datafiles,
         output=datadir,
-        get_metadata=lambda x: {"num_samples": len(x)},
         reader=read_data,
         float_type=torch.float32,
         int_type=torch.int64,
         validate_data=True,
-        n_processes=1,
+        n_processes=n,
         chunksize=4,
     )
-    with h5py.File(datafiles[0], "r") as raw_file:
-        results = dataset.process_chunk(
-            raw_file,
-            0,
-            pre_transform=lambda x: x,
-            pre_filter=lambda x: True,
-        )
-
-    assert len(results) == 4
-    assert all(isinstance(res, Data) for res in results)
-
-
-def test_dataset_base_process_chunk_parallel(create_data, read_data):
-    datadir, datafiles = create_data
-
-    dataset = QG.dataset_base.QGDatasetBase(
-        input=datafiles,
-        output=datadir,
-        get_metadata=lambda x: {"num_samples": len(x)},
-        reader=read_data,
-        float_type=torch.float32,
-        int_type=torch.int64,
-        validate_data=True,
-        n_processes=2,
-        chunksize=4,
-    )
-
     with h5py.File(datafiles[0], "r") as raw_file:
         results = dataset.process_chunk(
             raw_file,

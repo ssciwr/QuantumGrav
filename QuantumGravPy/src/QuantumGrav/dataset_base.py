@@ -19,7 +19,6 @@ class QGDatasetBase:
         self,
         input: list[str | Path],
         output: str | Path,
-        get_metadata: Callable[[str | Path], dict] | None = None,
         reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
         float_type: torch.dtype = torch.float32,
@@ -34,7 +33,6 @@ class QGDatasetBase:
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
             output (str | Path): The output directory where processed data will be stored.
-            get_metadata (Callable[[str  |  Path], dict] | None, optional): A function to retrieve metadata for the dataset. Defaults to None.
             reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
@@ -50,9 +48,6 @@ class QGDatasetBase:
         if reader is None:
             raise ValueError("A reader function must be provided to load the data.")
 
-        if get_metadata is None:
-            raise ValueError("A metadata retrieval function must be provided.")
-
         self.input = input
         for file in self.input:
             if Path(file).exists() is False:
@@ -60,7 +55,6 @@ class QGDatasetBase:
 
         self.output = output
         self.data_reader = reader
-        self.get_metadata = get_metadata
         self.metadata = {}
         self.float_type = float_type
         self.int_type = int_type
@@ -77,7 +71,7 @@ class QGDatasetBase:
             with h5py.File(file, "r") as f:
                 self._num_samples += f["num_causal_sets"][()]
 
-        # ensure the input is a list of paths
+        # ensure the input is a list of pathsr
         if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
                 self.metadata = yaml.load(f, Loader=yaml.FullLoader)
@@ -131,11 +125,10 @@ class QGDatasetBase:
 
         if not Path(self.processed_dir).exists():
             return []
-
         return [
             str(f.name)
             for f in Path(self.processed_dir).iterdir()
-            if f.is_file() and f.suffix == ".pt"  # Only include .
+            if f.is_file() and f.suffix == ".pt" and "data" in f.name
         ]
 
     def process_chunk(
@@ -166,7 +159,9 @@ class QGDatasetBase:
                 self.int_type,
                 self.validate_data,
             )
-            for i in range(start, start + self.chunksize)
+            for i in range(
+                start, min(start + self.chunksize, raw_file["num_causal_sets"][()])
+            )
         ]
 
         results = []
@@ -191,11 +186,3 @@ class QGDatasetBase:
                     datapoint = pre_transform(datapoint)
                 results.append(datapoint)
         return results
-
-    def len(self) -> int:
-        """Get the number of samples in the dataset.
-
-        Returns:
-            int: The number of samples in the dataset.
-        """
-        return self._num_samples
