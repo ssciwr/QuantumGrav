@@ -2,8 +2,6 @@ import QuantumGrav as QG
 import Random
 import Distributions
 
-using AutomaticDocstrings
-
 """
 This is a dummy module only used for testing purposes. It shows how to create a Julia module that can be called from Python using the `jlcall` package. 
 In detail, this module defines a `Generator` struct and a call operator that generates a batch of data points for testing purposes.
