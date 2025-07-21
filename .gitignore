@@ -40,3 +40,6 @@ data/
 *.pickle 
 *.pt 
 *.index
+
+# sweeps from weights and biases
+wandb/*

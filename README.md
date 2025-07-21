@@ -66,3 +66,16 @@ Pkg.add("CausalSets")
 - Alternatively, you can also type `test` in the package manager environment 
 to run the tests
 you can also use vscode to run the t
+
+## Hyperparamter optimization
+
+We currently use [Sweep](https://docs.wandb.ai/guides/sweeps/) from [Weights & Biases](https://wandb.ai/site) to handle hyperparameter tuning.
+
+First, you need to create a W&B account, then copy your API key from [wandb.ai/authorize](https://wandb.ai/authorize)
+
+The set the `WANDB_API_KEY` environment variable
+```
+export WANDB_API_KEY=<your_api_key>
+```
+
+To authenticate your machine with W&B, you can use command line or Python code as instructed in [W&B Docs](https://docs.wandb.ai/quickstart/#install-the-wandb-library-and-log-in)
