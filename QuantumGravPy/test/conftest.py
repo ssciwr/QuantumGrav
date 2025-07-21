@@ -125,6 +125,9 @@ def create_data(tmp_path_factory, julia_paths):
         }
     )
 
+    for dep in julia_paths["jl_dependencies"]:
+        jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
+
     for i in range(3):
         data = jl_generator(5)
         # Save the data to an HDF5 file
