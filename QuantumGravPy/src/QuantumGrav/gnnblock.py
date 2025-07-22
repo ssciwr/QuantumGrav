@@ -188,7 +188,12 @@ class GNNBlock(torch.nn.Module):
 
         x_res = x
         # convolution, then normalize and apply nonlinearity
-        x = self.conv(x, edge_index, edge_weight=edge_weight, **kwargs)
+        x = self.conv(
+            x,
+            edge_index,
+            edge_weight=edge_weight,
+            **(kwargs if kwargs is not None else {}),
+        )
         x = self.normalizer(x)
         x = self.activation(x)
 
@@ -218,5 +223,10 @@ class GNNBlock(torch.nn.Module):
             gcn_type=gnn_layers[config["gcn_type"]],
             normalizer=normalizer_layers[config["normalizer"]],
             activation=activation_layers[config["activation"]],
+            gcn_args=config.get("gcn_args", []),
             gcn_kwargs=config.get("gcn_kwargs", {}),
+            norm_args=config.get("norm_args", []),
+            norm_kwargs=config.get("norm_kwargs", {}),
+            activation_args=config.get("activation_args", []),
+            activation_kwargs=config.get("activation_kwargs", {}),
         )

@@ -1,4 +1,5 @@
 import QuantumGrav as QG
+import pytest
 import torch
 from torch_geometric.nn.conv import GCNConv
 
@@ -9,6 +10,9 @@ def test_register_gnn_layer():
     QG.register_gnn_layer("test_layer", layer)
     assert "test_layer" in QG.gnnblock.gnn_layers
 
+    with pytest.raises(ValueError):
+        QG.register_gnn_layer("test_layer", layer)
+
 
 def test_register_activation():
     """Test the registration of activation layers."""
@@ -16,12 +20,18 @@ def test_register_activation():
     QG.register_activation("test_activation", activation)
     assert "test_activation" in QG.gnnblock.activation_layers
 
+    with pytest.raises(ValueError):
+        QG.register_activation("test_activation", activation)
+
 
 def test_register_normalizer():
     """Test the registration of normalizer layers."""
     normalizer = torch.nn.BatchNorm1d
     QG.register_normalizer("test_normalizer", normalizer)
     assert "test_normalizer" in QG.gnnblock.normalizer_layers
+
+    with pytest.raises(ValueError):
+        QG.register_normalizer("test_normalizer", normalizer)
 
 
 def test_get_registered_gnn_layer():

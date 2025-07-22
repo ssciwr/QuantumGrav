@@ -16,7 +16,7 @@ def gnn_block_config():
         "normalizer": "batch_norm",
         "activation": "relu",
         "norm_args": [
-            16,
+            32,
         ],
         "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
         "gcn_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
@@ -35,7 +35,7 @@ def gnn_block():
         gcn_args=[],
         gcn_kwargs={"cached": False, "bias": True, "add_self_loops": True},
         norm_args=[
-            16,
+            32,
         ],
         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
     )
@@ -70,33 +70,44 @@ def test_gnn_block_initialization(gnn_block):
 
 def test_gnn_block_properties(gnn_block):
     x = torch.tensor(np.random.uniform(0, 1, (10, 16)), dtype=torch.float)
-
+    edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
     # run conv
-    y = gnn_block.conv(x)
+    y = gnn_block.conv(x, edge_index)
     assert y.shape == (10, 32)
+    assert torch.count_nonzero(x).item() > 0  # ensure input is not all zeros
 
     y_normalized = gnn_block.normalizer(y)
     assert y_normalized.shape == (10, 32)
+    assert torch.count_nonzero(x).item() > 0  # ensure input is not all zeros
+    assert not torch.isnan(y_normalized).any()
+    assert not torch.isinf(y_normalized).any()
 
     # run projection
     y_proj = gnn_block.projection(x)
     assert y_proj.shape == (10, 32)
+    assert torch.count_nonzero(x).item() > 0  # ensure input is not all zeros
+    assert not torch.isnan(y_proj).any()
+    assert not torch.isinf(y_proj).any()
 
     # run dropout
     y_dropout = gnn_block.dropout(y)
     assert y_dropout.shape == (10, 32)
-    assert 0 < torch.sum(y_dropout != 1.0) < 320  # some dropout should occur
-    # TODO: add some more stuff here
+
+    # Count number of zeroed elements (from dropout)
+    zeroed = (y_dropout == 0).sum().item()
+    # Verify some dropout occurred but not too much
+    assert 0 < zeroed < int(y_dropout.numel() * gnn_block.dropout_p)
 
 
 def test_gnn_block_forward(gnn_block):
     x = torch.tensor(np.random.uniform(0, 1, (10, 16)), dtype=torch.float)
-    y = gnn_block.forward(x)
+    edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
+
+    y = gnn_block.forward(x, edge_index)
     assert y.shape == (10, 32)
     assert isinstance(y, torch.Tensor)
     assert not torch.isnan(y).any()
     assert not torch.isinf(y).any()
-    # TODO: add some more stuff here
 
 
 def test_gnn_block_forward_with_edge_weight(gnn_block):
@@ -109,21 +120,19 @@ def test_gnn_block_forward_with_edge_weight(gnn_block):
     assert isinstance(y, torch.Tensor)
     assert not torch.isnan(y).any()
     assert not torch.isinf(y).any()
-    # TODO: add some more stuff here
 
 
 def test_gnn_block_backward(gnn_block):
     x = torch.tensor(np.random.uniform(0, 1, (10, 16)), dtype=torch.float)
+    edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
 
     gnn_block.train()
-    y = gnn_block.forward(x)
+    y = gnn_block.forward(x, edge_index)
     loss = y.sum()  # simple loss for testing
     loss.backward()
 
     assert not torch.isnan(loss).any()
     assert not torch.isinf(loss).any()
-
-    # TODO: add some more stuff here
 
 
 def test_gnn_block_from_config(gnn_block_config):
