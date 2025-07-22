@@ -52,8 +52,14 @@ end
     @test length(cset.past_relations) == 100
     @test size(sprinkling) == (100, 3)
 
-    @test_throws ArgumentError cset, sprinkling =
-        QuantumGrav.make_cset("Minkowski", "CausalDiamond", 0, 4, rng; type = type)
+    @test_throws ArgumentError QuantumGrav.make_cset(
+        "Minkowski",
+        "CausalDiamond",
+        0,
+        4,
+        rng;
+        type = type,
+    )
 end
 
 # Test makelink_matrix
@@ -252,7 +258,7 @@ end
             Float32,
             QuantumGrav.HDF5.dataspace((100, 100, 0), (100, 100, -1)),
             chunk = (100, 100, 1),
-            compress = 8,
+            deflate = 8,
         )
         close(dset)
 
@@ -262,7 +268,7 @@ end
             Float32,
             QuantumGrav.HDF5.dataspace((100, 2, 0), (100, 2, -1)),
             chunk = (100, 2, 1),
-            compress = 8,
+            deflate = 8,
         )
         close(dset)
     end
