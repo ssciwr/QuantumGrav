@@ -30,6 +30,9 @@ Manifest.toml
 __pycache__/
 .venv/
 
+# macOS specific files
+.DS_Store
+
 # data files 
 data/
 *.h5
