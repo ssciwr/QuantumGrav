@@ -43,3 +43,4 @@ data/
 
 # sweeps from weights and biases
 wandb/*
+py/notebooks/wandb/*
