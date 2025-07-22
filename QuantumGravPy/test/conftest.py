@@ -114,6 +114,10 @@ def create_data(tmp_path_factory, julia_paths):
     path = str(Path(__file__).parent.joinpath("julia_testmodule.jl"))
 
     jl_module = jcall.newmodule("test_qg")
+
+    for dep in julia_paths["jl_dependencies"]:
+        jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
+
     jl_module.seval(
         f'using Pkg; Pkg.develop(path="{julia_paths["jl_base_module_path"]}", name="QuantumGrav")'
     )  # only for now -> get from package index later
@@ -124,9 +128,6 @@ def create_data(tmp_path_factory, julia_paths):
             "seed": 42,
         }
     )
-
-    for dep in julia_paths["jl_dependencies"]:
-        jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
 
     for i in range(3):
         data = jl_generator(5)
