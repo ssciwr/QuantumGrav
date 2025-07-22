@@ -111,7 +111,7 @@ end
 
     chebyshev_coefs = [0.0 for i = 1:order, j = 1:order]
     for i = 1:order, j = 1:i
-        val = r^(-i - j) * randn(Random.GLOBAL_RNG)
+        val = r^(-i - j) * randn(rng)
         chebyshev_coefs[i, j] = val
         chebyshev_coefs[j, i] = val
     end
