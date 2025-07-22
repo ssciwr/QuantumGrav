@@ -10,7 +10,7 @@ import YAML
 import HDF5
 
 include("utils.jl")
+include("csetgeneration.jl")
 include("datageneration.jl")
-include("chebychev_causets.jl")
 
 end # module QuantumGrav

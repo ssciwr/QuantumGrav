@@ -33,31 +33,9 @@ end
     cset_links, sprinkling_links = MockData(100)
 end
 
-@testitem "test_make_csets" tags = [:datageneration] setup = [importModules] begin
-    rng = Random.MersenneTwister(42)
-    type = Float32
-    cset, sprinkling =
-        QuantumGrav.make_cset("Minkowski", "CausalDiamond", 100, 2, rng, type = type)
-
-    @test cset.atom_count == 100
-    @test length(cset.future_relations) == 100
-    @test length(cset.past_relations) == 100
-    @test size(sprinkling) == (100, 2)
-
-    cset, sprinkling =
-        QuantumGrav.make_cset("Random", "BoxBoundary", 100, 3, rng; type = type)
-
-    @test cset.atom_count == 100
-    @test length(cset.future_relations) == 100
-    @test length(cset.past_relations) == 100
-    @test size(sprinkling) == (100, 3)
-
-    @test_throws ArgumentError cset, sprinkling =
-        QuantumGrav.make_cset("Minkowski", "CausalDiamond", 0, 4, rng; type = type)
-end
 
 # Test makelink_matrix
-@testitem "test_make_link_matrix" tags = [:datageneration] setup = [makeData] begin
+@testitem "test_make_link_matrix" tags = [:featuregeneration] setup = [makeData] begin
     link_matrix_empty = QuantumGrav.make_link_matrix(cset_empty)
 
     @test link_matrix_empty == SparseArrays.spzeros(Float32, 0, 0)
@@ -75,7 +53,7 @@ end
 end
 
 
-@testitem "test_make_cardinality_matrix" tags = [:datageneration] setup = [makeData] begin
+@testitem "test_make_cardinality_matrix" tags = [:featuregeneration] setup = [makeData] begin
     @test_throws "The causal set must not be empty." QuantumGrav.make_cardinality_matrix(
         cset_empty,
     )
@@ -92,7 +70,7 @@ end
 end
 
 
-@testitem "make_adj" tags = [:datageneration] setup = [makeData] begin
+@testitem "make_adj" tags = [:featuregeneration] setup = [makeData] begin
     adj = QuantumGrav.make_adj(cset_links; type = Float32)
     @test size(adj) == (100, 100)
     @test all(adj .== 0.0) == false
@@ -113,7 +91,7 @@ end
     @test_throws ArgumentError QuantumGrav.make_adj(cset_empty; type = Float32)
 end
 
-@testitem "test_max_pathlen" tags = [:datageneration] setup = [makeData] begin
+@testitem "test_max_pathlen" tags = [:featuregeneration] setup = [makeData] begin
 
     adj =
         cset_links |>
@@ -134,7 +112,7 @@ end
     @test max_path <= length(max_path_expected)
 end
 
-@testitem "test_calculate_angles" tags = [:datageneration] setup = [makeData] begin
+@testitem "test_calculate_angles" tags = [:featuregeneration] setup = [makeData] begin
 
     sprinkling_links = Float32.(stack(collect.(sprinkling_links), dims = 1))
 
@@ -180,7 +158,7 @@ end
 end
 
 
-@testitem "test_calculate_distances" tags = [:datageneration] setup = [makeData] begin
+@testitem "test_calculate_distances" tags = [:featuregeneration] setup = [makeData] begin
     sprinkling_links = Float32.(stack(collect.(sprinkling_links), dims = 1))
 
     # sprinkling with 100 points
@@ -211,7 +189,7 @@ end
     @test SparseArrays.nnz(distances) == length(cset_links.future_relations[1]) - 1
 end
 
-@testitem "test_make_data" tags = [:datageneration] setup = [importModules] begin
+@testitem "test_make_data" tags = [:featuregeneration] setup = [importModules] begin
 
     bad_config = Dict(
         "num_datapoints" => 10,
@@ -238,8 +216,14 @@ end
 
     function transform(config, rng::Random.AbstractRNG)
 
-        cset, sprinkling =
-            QuantumGrav.make_cset("Minkowski", "CausalDiamond", 100, 2, rng; type = Float32)
+        cset, sprinkling = QuantumGrav.make_simple_cset(
+            "Minkowski",
+            "CausalDiamond",
+            100,
+            2,
+            rng;
+            type = Float32,
+        )
         adj = QuantumGrav.make_adj(cset; type = Float32)
 
         return Dict("adjacency_matrices" => Matrix(adj), "sprinkling" => sprinkling)
