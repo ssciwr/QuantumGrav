@@ -279,10 +279,8 @@ end
         write_data;
         config = wrong_config,
     )
-    println("path: ", joinpath(config["output"], "test_datageneration.jl"))
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
-    println("data dir: ", readdir(abspath(config["output"])))
     @test isfile(joinpath(config["output"], "data.h5"))
     @test isfile(joinpath(config["output"], "config.yaml"))
     @test isfile(joinpath(config["output"], "test_datageneration.jl"))

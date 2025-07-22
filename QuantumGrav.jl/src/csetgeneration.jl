@@ -99,7 +99,7 @@ function make_manifold_cset(
     chebyshev_coefs = zeros(Float64, order, order)
     for i = 1:order
         for j = 1:order
-            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng) # README: do we need normal distribution?
+            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
         end
     end
 
@@ -179,10 +179,6 @@ function make_general_cset(
     end
 
     sprinkling = type.(stack(collect.(sprinkling), dims = 1))
-
-    println("manifold like? ", manifold_like)
-    println("type of sprinkling: ", typeof(sprinkling))
-    println("type of chebyshev_coefs: ", typeof(chebyshev_coefs))
 
     return cset, sprinkling, chebyshev_coefs, manifold_like
 end
