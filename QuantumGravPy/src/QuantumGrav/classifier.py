@@ -35,20 +35,20 @@ class ClassifierBlock(torch.nn.Module):
         """
         super().__init__()
 
-        # build backbone mappings first
+        # validate input parameters
         if len(hidden_dims) == 0:
             raise ValueError("hidden_dims must be a non-empty list of integers")
 
         if not all(h > 0 for h in hidden_dims):
             raise ValueError("hidden_dims must be a list of positive integers")
 
-        # build backbone mappings first
         if len(output_dims) == 0:
             raise ValueError("output_dims must be a non-empty list of integers")
 
         if not all(o > 0 for o in output_dims):
             raise ValueError("output_dims must be a list of positive integers")
 
+        # build backbone
         layers = []
         in_dim = input_dim
         for i, hidden_dim in enumerate(hidden_dims):
@@ -76,7 +76,7 @@ class ClassifierBlock(torch.nn.Module):
 
         self.backbone = torch.nn.Sequential(*layers)
 
-        # take care of possible multi-objective classification
+        # build the final layers - take care of possible multi-objective classification
         output_layers = []
         for i, output_dim in enumerate(output_dims):
             output_layer = torch.nn.Linear(
@@ -89,12 +89,12 @@ class ClassifierBlock(torch.nn.Module):
 
     def forward(
         self,
-        x: torch.tensor,
+        x: torch.Tensor,
     ) -> list[torch.Tensor]:
         """Forward pass through the classifier block.
 
         Args:
-            x (torch.tensor): Input tensor.
+            x (torch.Tensor): Input tensor.
 
         Returns:
             list[torch.Tensor]: List of output tensors from each classifier layer.
