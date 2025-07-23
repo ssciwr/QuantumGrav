@@ -75,6 +75,8 @@ def register_activation(
 
 def get_registered_gnn_layer(name: str) -> torch.nn.Module | None:
     """Get a registered GNN layer by name.
+    Args:
+        name (str): The name of the GNN layer.
 
     Returns:
         torch.nn.Module | None: The registered GNN layer named `name`, or None if not found.
@@ -85,6 +87,9 @@ def get_registered_gnn_layer(name: str) -> torch.nn.Module | None:
 def get_registered_normalizer(name: str) -> torch.nn.Module | None:
     """Get a registered normalizer layer by name.
 
+    Args:
+        name (str): The name of the normalizer layer.
+
     Returns:
         torch.nn.Module | None: The registered normalizer layer named `name`, or None if not found.
     """
@@ -94,6 +99,9 @@ def get_registered_normalizer(name: str) -> torch.nn.Module | None:
 def get_registered_activation(name: str) -> torch.nn.Module | None:
     """Get a registered activation layer by name.
 
+    Args:
+        name (str): The name of the activation layer.
+
     Returns:
         torch.nn.Module | None: The registered activation layer named `name`, or None if not found.
     """
@@ -102,8 +110,7 @@ def get_registered_activation(name: str) -> torch.nn.Module | None:
 
 class GNNBlock(torch.nn.Module):
     """Graph Neural Network Block. Consists of a GNN layer, a normalizer, an activation function,
-    and a residual connection. The gcn-layer is applied first, followed by the normalizer and activation function. The result is then projected into the input space using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
-
+    and a residual connection. The gcn-layer is applied first, followed by the normalizer and activation function. The result is then projected from the input dimensions to the output dimensions using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
     """
 
     def __init__(
