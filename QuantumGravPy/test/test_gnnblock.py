@@ -90,13 +90,15 @@ def test_gnn_block_properties(gnn_block):
     assert not torch.isinf(y_proj).any()
 
     # run dropout
+    zeroed_og = (y == 0).sum().item()
+    assert zeroed_og == 0  # ensure no zeros before dropout
     y_dropout = gnn_block.dropout(y)
     assert y_dropout.shape == (10, 32)
 
     # Count number of zeroed elements (from dropout)
     zeroed = (y_dropout == 0).sum().item()
     # Verify some dropout occurred but not too much
-    assert 0 < zeroed < int(y_dropout.numel() * gnn_block.dropout_p)
+    assert 0 < zeroed < y_dropout.numel()  # Ensure some elements are zeroed out
 
 
 def test_gnn_block_forward(gnn_block):

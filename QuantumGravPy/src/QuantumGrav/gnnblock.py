@@ -42,7 +42,7 @@ def register_gnn_layer(gcn_layer_name: str, gcn_layer: torch.nn.Module) -> None:
 def register_normalizer(
     normalizer_name: str, normalizer_layer: torch.nn.Module
 ) -> None:
-    """_summary_
+    """Register a normalizer layer with the module
 
     Args:
         normalizer_name (str): The name of the normalizer.
@@ -140,9 +140,13 @@ class GNNBlock(torch.nn.Module):
             activation_kwargs (dict[str, Any], optional): Additional keyword arguments for the activation function.
         """
         super().__init__()
+
+        # save parameters
         self.dropout_p = dropout
         self.in_channels = in_channels
         self.out_channels = out_channels
+
+        # initialize layers
         self.dropout = torch.nn.Dropout(p=dropout, inplace=False)
 
         self.normalizer = normalizer(
@@ -175,7 +179,8 @@ class GNNBlock(torch.nn.Module):
         kwargs: dict[Any, Any] = None,
     ) -> torch.tensor:
         """Forward pass for the GNNBlock.
-
+        First apply the graph convolution layer, then normalize and apply the activation function.
+        Finally, apply a residual connection and dropout.
         Args:
             x (torch.tensor): The input node features.
             edge_index (torch.tensor): The graph connectivity information.
