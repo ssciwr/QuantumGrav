@@ -26,7 +26,9 @@ dependencies = [
     "seaborn",
     "matplotlib",
     "scikit-learn",
-    "juliacall"
+    "joblib",
+    "juliacall",
+    "PyYAML"
 ]
 
 # Optional dependencies
@@ -37,7 +39,6 @@ dev = [
     "pytest-mock",
 ]
 
-# tooling. 
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
