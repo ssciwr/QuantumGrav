@@ -71,8 +71,8 @@ function (gen::Generator)(batchsize::Int)
     atomcount_distr = Distributions.DiscreteUniform(min_atomcount, max_atomcount)
 
     # make a bunch of datapoints
-    batch = []
-    for _ = 1:batchsize
+    batch = Vector{Dict{String,Any}}(undef, batchsize)
+    for i = 1:batchsize
         data = Dict{String,Any}()
         ok = false
         max_iter = 20
@@ -132,6 +132,7 @@ function (gen::Generator)(batchsize::Int)
             for i = 1:cset.atom_count
         ]
 
+        # fill the data dictionary with the generated data
         data["manifold"] = manifold_id
         data["boundary"] = boundary_id
         data["dimension"] = dimension
@@ -149,7 +150,7 @@ function (gen::Generator)(batchsize::Int)
             )
         end
 
-        push!(batch, data)
+        batch[i] = data
     end
     return batch
 end

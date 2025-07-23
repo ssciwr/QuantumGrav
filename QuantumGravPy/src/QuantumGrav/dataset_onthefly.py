@@ -29,7 +29,7 @@ class QGDatasetOnthefly(Dataset):
         transform: Callable[[dict[Any, Any]], Data] | None = None,
         converter: Callable[[Any], Any] | None = None,
     ):
-        """Initialize the dataset.
+        """Initialize the dataset. This will initialize the Julia worker and set up the dataset. The julia worker must be callable with a single argument which is the number of samples to generate. The worker will return a list of raw data dictionaries which will be transformed into PyTorch Geometric Data objects using the provided transform function.
 
         Args:
             config (dict[str, Any]): Configuration dictionary.
@@ -102,7 +102,7 @@ class QGDatasetOnthefly(Dataset):
         return [self.get(i) for i in range(size)]
 
     def get(self, _: int) -> Data:
-        """Get a data point from the dataset.
+        """Get a data point from the dataset. This relies on the Julia worker accepting a single integer argument to its call operator, which is the number of samples to generate. The index is ignored since the dataset generates data on the fly.
 
         Args:
             _ (int): The index of the data point to retrieve. This is ignored since the dataset generates data on the fly.
@@ -118,7 +118,7 @@ class QGDatasetOnthefly(Dataset):
         # this breaks the contract of the 'get'method that the base class provides, but
         # it nevertheless is useful to generate training data
         if self.worker is None:
-            raise RuntimeError("Worker process is not initialized.")
+            raise RuntimeError("Worker attribute is not initialized.")
 
         if len(self.databatch) == 0:
             # Call the Julia function to get the data
