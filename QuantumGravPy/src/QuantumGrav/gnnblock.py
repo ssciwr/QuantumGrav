@@ -73,29 +73,29 @@ def register_activation(
     activation_layers[activation_name] = activation_layer
 
 
-def get_registered_gnn_layer(name: str) -> dict[str, torch.nn.Module]:
-    """Get the registered GNN layers.
+def get_registered_gnn_layer(name: str) -> torch.nn.Module | None:
+    """Get a registered GNN layer by name.
 
     Returns:
-        dict[str, torch.nn.Module]: The registered GNN layers.
+        torch.nn.Module | None: The registered GNN layer named `name`, or None if not found.
     """
     return gnn_layers[name] if name in gnn_layers else None
 
 
-def get_registered_normalizer(name: str) -> dict[str, torch.nn.Module]:
-    """Get the registered normalizer layers.
+def get_registered_normalizer(name: str) -> torch.nn.Module | None:
+    """Get a registered normalizer layer by name.
 
     Returns:
-        dict[str, torch.nn.Module]: The registered normalizer layers.
+        torch.nn.Module | None: The registered normalizer layer named `name`, or None if not found.
     """
     return normalizer_layers[name] if name in normalizer_layers else None
 
 
-def get_registered_activation(name: str) -> dict[str, torch.nn.Module]:
-    """Get the registered activation layers.
+def get_registered_activation(name: str) -> torch.nn.Module | None:
+    """Get a registered activation layer by name.
 
     Returns:
-        dict[str, torch.nn.Module]: The registered activation layers.
+        torch.nn.Module | None: The registered activation layer named `name`, or None if not found.
     """
     return activation_layers[name] if name in activation_layers else None
 
@@ -104,8 +104,6 @@ class GNNBlock(torch.nn.Module):
     """Graph Neural Network Block. Consists of a GNN layer, a normalizer, an activation function,
     and a residual connection. The gcn-layer is applied first, followed by the normalizer and activation function. The result is then projected into the input space using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
 
-    Args:
-        torch (torch.nn.Module): Derives from torch.nn.Module to create a neural network block.
     """
 
     def __init__(
@@ -172,19 +170,19 @@ class GNNBlock(torch.nn.Module):
             self.projection = torch.nn.Identity()
 
     def forward(
-        self, x: torch.tensor, edge_index: torch.tensor, **kwargs
-    ) -> torch.tensor:
+        self, x: torch.Tensor, edge_index: torch.Tensor, **kwargs
+    ) -> torch.Tensor:
         """Forward pass for the GNNBlock.
         First apply the graph convolution layer, then normalize and apply the activation function.
         Finally, apply a residual connection and dropout.
         Args:
-            x (torch.tensor): The input node features.
-            edge_index (torch.tensor): The graph connectivity information.
-            edge_weight (torch.tensor, optional): The edge weights. Defaults to None.
+            x (torch.Tensor): The input node features.
+            edge_index (torch.Tensor): The graph connectivity information.
+            edge_weight (torch.Tensor, optional): The edge weights. Defaults to None.
             kwargs (dict[Any, Any], optional): Additional keyword arguments for the GNN layer. Defaults to None.
 
         Returns:
-            torch.tensor: The output node features.
+            torch.Tensor: The output node features.
         """
 
         x_res = x
