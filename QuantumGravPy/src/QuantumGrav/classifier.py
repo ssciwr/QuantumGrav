@@ -2,7 +2,11 @@ import torch
 
 
 class ClassifierBlock(torch.nn.Module):
-    """Classifier Block for single- or multi-class classification.
+    """This class implements a neural network block consisting of a backbone
+    (a sequence of linear layers with activation functions) and multiple
+    output layers for classification tasks. It supports multi-objective
+    classification by allowing multiple output layers, each corresponding
+    to a different classification task.
 
     Args:
         torch (Module): PyTorch module.
@@ -18,7 +22,7 @@ class ClassifierBlock(torch.nn.Module):
         output_kwargs: list[dict] = None,
         activation_kwargs: list[dict] = None,
     ):
-        """create a classifier block with a backbone and multiple output layers.All are made up of linear layers with an activation function in between (the backbone) and a set of output layers for each classification task (output)
+        """Create a classifier block with a backbone and multiple output layers. All layers are of type `Linear` with an activation function in between (the backbone) and a set of output layers for each classification task (output)
 
         Args:
             input_dim (int): input dimension of the classifier block
@@ -76,15 +80,15 @@ class ClassifierBlock(torch.nn.Module):
         self.backbone = torch.nn.Sequential(*layers)
 
         # take care of possible multi-objective classification
-        self.output_layers = []
-
+        output_layers = []
         for i, output_dim in enumerate(output_dims):
             output_layer = torch.nn.Linear(
                 hidden_dims[-1],
                 output_dim,
                 **(output_kwargs[i] if output_kwargs and output_kwargs[i] else {}),
             )
-            self.output_layers.append(output_layer)
+            output_layers.append(output_layer)
+        self.output_layers = torch.nn.ModuleList(output_layers)
 
     def forward(
         self,
@@ -94,7 +98,6 @@ class ClassifierBlock(torch.nn.Module):
 
         Args:
             x (torch.tensor): Input tensor.
-            classifier_layer_kwargs (list[dict], optional): Additional arguments for each classifier layer. Defaults to None.
 
         Returns:
             list[torch.Tensor]: List of output tensors from each classifier layer.
