@@ -133,9 +133,9 @@ class GNNBlock(torch.nn.Module):
             gcn_args (list[Any], optional): Additional arguments for the GCN layer. Defaults to None.
             gcn_kwargs (dict[str, Any], optional): Additional keyword arguments for the GCN layer. Defaults to None.
             norm_args (list[Any], optional): Additional arguments for the normalizer layer. Defaults to None.
-            norm_kwargs (dict[str, Any], optional): Additional keyword arguments for the normalizer layer
+            norm_kwargs (dict[str, Any], optional): Additional keyword arguments for the normalizer layer. Defaults to None.
             activation_args (list[Any], optional): Additional arguments for the activation function. Defaults to None.
-            activation_kwargs (dict[str, Any], optional): Additional keyword arguments for the activation function.
+            activation_kwargs (dict[str, Any], optional): Additional keyword arguments for the activation function. Defaults to None.
         """
         super().__init__()
 

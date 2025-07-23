@@ -78,14 +78,12 @@ def test_gnn_block_properties(gnn_block):
 
     y_normalized = gnn_block.normalizer(y)
     assert y_normalized.shape == (10, 32)
-    assert torch.count_nonzero(x).item() > 0  # ensure input is not all zeros
     assert not torch.isnan(y_normalized).any()
     assert not torch.isinf(y_normalized).any()
 
     # run projection
     y_proj = gnn_block.projection(x)
     assert y_proj.shape == (10, 32)
-    assert torch.count_nonzero(x).item() > 0  # ensure input is not all zeros
     assert not torch.isnan(y_proj).any()
     assert not torch.isinf(y_proj).any()
 
