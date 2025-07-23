@@ -108,6 +108,8 @@ def test_gnn_block_forward(gnn_block):
     assert isinstance(y, torch.Tensor)
     assert not torch.isnan(y).any()
     assert not torch.isinf(y).any()
+    assert not torch.equal(y, x)  # Ensure output is not equal to input
+    assert torch.count_nonzero(y).item() > 0  # Ensure output is not all zeros
 
 
 def test_gnn_block_forward_with_edge_weight(gnn_block):
@@ -115,11 +117,15 @@ def test_gnn_block_forward_with_edge_weight(gnn_block):
     edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
     edge_weight = torch.tensor([0.5, 0.5], dtype=torch.float)
 
+    y_simple = gnn_block.forward(x, edge_index)
     y = gnn_block.forward(x, edge_index, edge_weight=edge_weight)
     assert y.shape == (10, 32)
     assert isinstance(y, torch.Tensor)
     assert not torch.isnan(y).any()
     assert not torch.isinf(y).any()
+    assert not torch.equal(y, y_simple)  # Ensure edge weights affect output
+    assert not torch.equal(y, x)  # Ensure output is not equal to input
+    assert torch.count_nonzero(y).item() > 0  # Ensure output is not all zeros
 
 
 def test_gnn_block_backward(gnn_block):
@@ -133,6 +139,11 @@ def test_gnn_block_backward(gnn_block):
 
     assert not torch.isnan(loss).any()
     assert not torch.isinf(loss).any()
+    assert not torch.equal(y, x)  # Ensure output is not equal to input
+    assert torch.count_nonzero(y).item() > 0  # Ensure output is not all zeros
+    assert gnn_block.projection.weight.grad is not None
+    assert gnn_block.conv.lin.weight.grad is not None
+    assert gnn_block.normalizer.weight.grad is not None
 
 
 def test_gnn_block_from_config(gnn_block_config):
