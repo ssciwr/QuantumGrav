@@ -27,16 +27,16 @@ activation_layers: dict[str, torch.nn.Module] = {
 }
 
 
-def register_gnn_layer(gcn_layer_name: str, gcn_layer: torch.nn.Module) -> None:
+def register_gnn_layer(gnn_layer_name: str, gnn_layer: torch.nn.Module) -> None:
     """Register a GNN layer with the module
 
     Args:
-        gcn_layer_name (str): The name of the GNN layer.
-        gcn_layer (torch.nn.Module): The GNN layer to register.
+        gnn_layer_name (str): The name of the GNN layer.
+        gnn_layer (torch.nn.Module): The GNN layer to register.
     """
-    if gcn_layer_name in gnn_layers:
-        raise ValueError(f"GNN layer '{gcn_layer_name}' is already registered.")
-    gnn_layers[gcn_layer_name] = gcn_layer
+    if gnn_layer_name in gnn_layers:
+        raise ValueError(f"GNN layer '{gnn_layer_name}' is already registered.")
+    gnn_layers[gnn_layer_name] = gnn_layer
 
 
 def register_normalizer(
@@ -110,7 +110,7 @@ def get_registered_activation(name: str) -> torch.nn.Module | None:
 
 class GNNBlock(torch.nn.Module):
     """Graph Neural Network Block. Consists of a GNN layer, a normalizer, an activation function,
-    and a residual connection. The gcn-layer is applied first, followed by the normalizer and activation function. The result is then projected from the input dimensions to the output dimensions using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
+    and a residual connection. The gnn-layer is applied first, followed by the normalizer and activation function. The result is then projected from the input dimensions to the output dimensions using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
     """
 
     def __init__(
@@ -118,11 +118,11 @@ class GNNBlock(torch.nn.Module):
         in_channels: int,
         out_channels: int,
         dropout: float = 0.3,
-        gcn_type: torch.nn.Module = tgnn.conv.GCNConv,
+        gnn_layer_type: torch.nn.Module = tgnn.conv.GCNConv,
         normalizer: torch.nn.Module = torch.nn.Identity,
         activation: torch.nn.Module = torch.nn.ReLU,
-        gcn_args: list[Any] = None,
-        gcn_kwargs: dict[str, Any] = None,
+        gnn_layer_args: list[Any] = None,
+        gnn_layer_kwargs: dict[str, Any] = None,
         norm_args: list[Any] = None,
         norm_kwargs: dict[str, Any] = None,
         activation_args: list[Any] = None,
@@ -134,11 +134,11 @@ class GNNBlock(torch.nn.Module):
             in_channels (int): The dimensions of the input features.
             out_channels (int): The dimensions of the output features.
             dropout (float, optional): The dropout probability. Defaults to 0.3.
-            gcn_type (torch.nn.Module, optional): The type of GCN-layer to use. Defaults to tgnn.conv.GCNConv.
+            gnn_layer_type (torch.nn.Module, optional): The type of GNN-layer to use. Defaults to tgnn.conv.GCNConv.
             normalizer (torch.nn.Module, optional): The normalizer layer to use. Defaults to torch.nn.Identity.
             activation (torch.nn.Module, optional): The activation function to use. Defaults to torch.nn.ReLU.
-            gcn_args (list[Any], optional): Additional arguments for the GCN layer. Defaults to None.
-            gcn_kwargs (dict[str, Any], optional): Additional keyword arguments for the GCN layer. Defaults to None.
+            gnn_layer_args (list[Any], optional): Additional arguments for the GNN layer. Defaults to None.
+            gnn_layer_kwargs (dict[str, Any], optional): Additional keyword arguments for the GNN layer. Defaults to None.
             norm_args (list[Any], optional): Additional arguments for the normalizer layer. Defaults to None.
             norm_kwargs (dict[str, Any], optional): Additional keyword arguments for the normalizer layer. Defaults to None.
             activation_args (list[Any], optional): Additional arguments for the activation function. Defaults to None.
@@ -164,11 +164,11 @@ class GNNBlock(torch.nn.Module):
             **(activation_kwargs if activation_kwargs is not None else {}),
         )
 
-        self.conv = gcn_type(
+        self.conv = gnn_layer_type(
             in_channels,
             out_channels,
-            *(gcn_args if gcn_args is not None else []),
-            **(gcn_kwargs if gcn_kwargs is not None else {}),
+            *(gnn_layer_args if gnn_layer_args is not None else []),
+            **(gnn_layer_kwargs if gnn_layer_kwargs is not None else {}),
         )
 
         if in_channels != out_channels:
@@ -221,11 +221,11 @@ class GNNBlock(torch.nn.Module):
             in_channels=config["in_channels"],
             out_channels=config["out_channels"],
             dropout=config.get("dropout", 0.3),
-            gcn_type=gnn_layers[config["gcn_type"]],
+            gnn_layer_type=gnn_layers[config["gnn_layer_type"]],
             normalizer=normalizer_layers[config["normalizer"]],
             activation=activation_layers[config["activation"]],
-            gcn_args=config.get("gcn_args", []),
-            gcn_kwargs=config.get("gcn_kwargs", {}),
+            gnn_layer_args=config.get("gnn_layer_args", []),
+            gnn_layer_kwargs=config.get("gnn_layer_kwargs", {}),
             norm_args=config.get("norm_args", []),
             norm_kwargs=config.get("norm_kwargs", {}),
             activation_args=config.get("activation_args", []),

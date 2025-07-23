@@ -12,14 +12,14 @@ def gnn_block_config():
         "in_channels": 16,
         "out_channels": 32,
         "dropout": 0.3,
-        "gcn_type": "gcn",
+        "gnn_layer_type": "gcn",
         "normalizer": "batch_norm",
         "activation": "relu",
         "norm_args": [
             32,
         ],
         "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-        "gcn_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
+        "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
     }
 
 
@@ -29,11 +29,11 @@ def gnn_block():
         in_channels=16,
         out_channels=32,
         dropout=0.3,
-        gcn_type=tgnn.conv.GCNConv,
+        gnn_layer_type=tgnn.conv.GCNConv,
         normalizer=torch.nn.BatchNorm1d,
         activation=torch.nn.ReLU,
-        gcn_args=[],
-        gcn_kwargs={"cached": False, "bias": True, "add_self_loops": True},
+        gnn_layer_args=[],
+        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
         norm_args=[
             32,
         ],
@@ -55,11 +55,11 @@ def test_gnn_block_initialization(gnn_block):
         in_channels=16,
         out_channels=16,
         dropout=0.3,
-        gcn_type=tgnn.conv.GCNConv,
+        gnn_layer_type=tgnn.conv.GCNConv,
         normalizer=torch.nn.BatchNorm1d,
         activation=torch.nn.ReLU,
-        gcn_args=[],
-        gcn_kwargs={"cached": False, "bias": True, "add_self_loops": True},
+        gnn_layer_args=[],
+        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
         norm_args=[
             16,
         ],
