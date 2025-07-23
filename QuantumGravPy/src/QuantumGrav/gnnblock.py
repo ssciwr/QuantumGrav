@@ -172,11 +172,7 @@ class GNNBlock(torch.nn.Module):
             self.projection = torch.nn.Identity()
 
     def forward(
-        self,
-        x: torch.tensor,
-        edge_index: torch.tensor,
-        edge_weight: torch.tensor = None,
-        kwargs: dict[Any, Any] = None,
+        self, x: torch.tensor, edge_index: torch.tensor, **kwargs
     ) -> torch.tensor:
         """Forward pass for the GNNBlock.
         First apply the graph convolution layer, then normalize and apply the activation function.
@@ -193,12 +189,7 @@ class GNNBlock(torch.nn.Module):
 
         x_res = x
         # convolution, then normalize and apply nonlinearity
-        x = self.conv(
-            x,
-            edge_index,
-            edge_weight=edge_weight,
-            **(kwargs if kwargs is not None else {}),
-        )
+        x = self.conv(x, edge_index, **kwargs)
         x = self.normalizer(x)
         x = self.activation(x)
 
