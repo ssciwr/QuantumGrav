@@ -120,6 +120,14 @@ function (gen::Generator)(batchsize::Int)
             end
         end
 
+        if e !== nothing
+            throw(
+                ErrorException(
+                    "Failed to create a valid causal set after multiple attempts: $e",
+                ),
+            )
+        end
+
         # make the data: adjacency matrix and the other stuff
         link_matrix = QG.make_link_matrix(cset, type = type)
         adjacency_matrix = QG.make_adj(cset, type = type)
