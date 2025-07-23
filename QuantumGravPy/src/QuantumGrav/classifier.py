@@ -7,9 +7,6 @@ class ClassifierBlock(torch.nn.Module):
     output layers for classification tasks. It supports multi-objective
     classification by allowing multiple output layers, each corresponding
     to a different classification task.
-
-    Args:
-        torch (Module): PyTorch module.
     """
 
     def __init__(
