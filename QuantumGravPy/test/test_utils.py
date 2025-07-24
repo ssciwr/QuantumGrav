@@ -8,7 +8,7 @@ def test_register_gnn_layer():
     """Test the registration of GNN layers."""
     layer = torch.nn.Linear
     QG.register_gnn_layer("test_layer", layer)
-    assert "test_layer" in QG.gnnblock.gnn_layers
+    assert "test_layer" in QG.gnnblock.utils.gnn_layers
 
     with pytest.raises(ValueError):
         QG.register_gnn_layer("test_layer", layer)
@@ -18,7 +18,7 @@ def test_register_activation():
     """Test the registration of activation layers."""
     activation = torch.nn.ReLU
     QG.register_activation("test_activation", activation)
-    assert "test_activation" in QG.gnnblock.activation_layers
+    assert "test_activation" in QG.gnnblock.utils.activation_layers
 
     with pytest.raises(ValueError):
         QG.register_activation("test_activation", activation)
@@ -28,7 +28,7 @@ def test_register_normalizer():
     """Test the registration of normalizer layers."""
     normalizer = torch.nn.BatchNorm1d
     QG.register_normalizer("test_normalizer", normalizer)
-    assert "test_normalizer" in QG.gnnblock.normalizer_layers
+    assert "test_normalizer" in QG.gnnblock.utils.normalizer_layers
 
     with pytest.raises(ValueError):
         QG.register_normalizer("test_normalizer", normalizer)

@@ -1,7 +1,11 @@
 import torch
 
+from . import utils
 
-class ClassifierBlock(torch.nn.Module):
+from . import linear_sequential as QGLS
+
+
+class ClassifierBlock(QGLS.LinearSequential):
     """This class implements a neural network block consisting of a backbone
     (a sequence of linear layers with activation functions) and multiple
     output layers for classification tasks. It supports multi-objective
@@ -13,94 +17,49 @@ class ClassifierBlock(torch.nn.Module):
         self,
         input_dim: int,
         output_dims: list[int],
-        hidden_dims: list[int],
+        hidden_dims: list[int] = None,
         activation: type[torch.nn.Module] = torch.nn.ReLU,
         backbone_kwargs: list[dict] = None,
         output_kwargs: list[dict] = None,
         activation_kwargs: list[dict] = None,
     ):
-        """Create a classifier block with a backbone and multiple output layers. All layers are of type `Linear` with an activation function in between (the backbone) and a set of output layers for each classification task (output)
+        """Instantiate a ClassifierBlock.
 
         Args:
-            input_dim (int): input dimension of the classifier block
-            output_dims (list[int]): list of output dimensions for each output layer, i.e., each classification task
-            hidden_dims (list[int]): list of hidden dimensions for the backbone
+            input_dim (int): input dimension of the ClassifierBlock
+            output_dims (list[int]): output dimensions for each classification task.
+            hidden_dims (list[int], optional): list of hidden dimensions for the backbone network. Defaults to None.
             activation (type[torch.nn.Module], optional): activation function to use. Defaults to torch.nn.ReLU.
-            backbone_kwargs (list[dict], optional): additional arguments for the backbone layers. Defaults to None.
-            output_kwargs (list[dict], optional): additional arguments for the output layers. Defaults to None.
-
-        Raises:
-            ValueError: If hidden_dims is empty or not a list of integers.
-            ValueError: If any output_dim is not a positive integer.
+            backbone_kwargs (list[dict], optional): keyword arguments for the backbone network. Defaults to None.
+            output_kwargs (list[dict], optional): keyword arguments for the output layers. Defaults to None.
+            activation_kwargs (list[dict], optional): keyword arguments for the activation functions. Defaults to None.
         """
-        super().__init__()
+        super().__init__(
+            input_dim=input_dim,
+            output_dims=output_dims,
+            hidden_dims=hidden_dims,
+            activation=activation,
+            backbone_kwargs=backbone_kwargs,
+            output_kwargs=output_kwargs,
+            activation_kwargs=activation_kwargs,
+        )
 
-        # validate input parameters
-        if len(hidden_dims) == 0:
-            raise ValueError("hidden_dims must be a non-empty list of integers")
-
-        if not all(h > 0 for h in hidden_dims):
-            raise ValueError("hidden_dims must be a list of positive integers")
-
-        if len(output_dims) == 0:
-            raise ValueError("output_dims must be a non-empty list of integers")
-
-        if not all(o > 0 for o in output_dims):
-            raise ValueError("output_dims must be a list of positive integers")
-
-        # build backbone
-        layers = []
-        in_dim = input_dim
-        for i, hidden_dim in enumerate(hidden_dims):
-            layers.append(
-                torch.nn.Linear(
-                    in_dim,
-                    hidden_dim,
-                    **(
-                        backbone_kwargs[i]
-                        if backbone_kwargs and backbone_kwargs[i]
-                        else {}
-                    ),
-                )
-            )
-            layers.append(
-                activation(
-                    **(
-                        activation_kwargs[i]
-                        if activation_kwargs and activation_kwargs[i]
-                        else {}
-                    ),
-                )
-            )
-            in_dim = hidden_dim
-
-        self.backbone = torch.nn.Sequential(*layers)
-
-        # build the final layers - take care of possible multi-objective classification
-        output_layers = []
-        for i, output_dim in enumerate(output_dims):
-            output_layer = torch.nn.Linear(
-                hidden_dims[-1],
-                output_dim,
-                **(output_kwargs[i] if output_kwargs and output_kwargs[i] else {}),
-            )
-            output_layers.append(output_layer)
-        self.output_layers = torch.nn.ModuleList(output_layers)
-
-    def forward(
-        self,
-        x: torch.Tensor,
-    ) -> list[torch.Tensor]:
-        """Forward pass through the classifier block.
+    @classmethod
+    def from_config(cls, config: dict) -> "ClassifierBlock":
+        """Create a ClassifierBlock from a configuration dictionary.
 
         Args:
-            x (torch.Tensor): Input tensor.
+            config (dict): Configuration dictionary containing parameters for the block.
 
         Returns:
-            list[torch.Tensor]: List of output tensors from each classifier layer.
+            ClassifierBlock: An instance of ClassifierBlock.
         """
-        x = self.backbone(x)
-
-        logits = [output_layer(x) for output_layer in self.output_layers]
-
-        return logits
+        return cls(
+            input_dim=config["input_dim"],
+            output_dims=config["output_dims"],
+            hidden_dims=config.get("hidden_dims", []),
+            activation=utils.activation_layers[config["activation"]],
+            backbone_kwargs=config.get("backbone_kwargs", []),
+            output_kwargs=config.get("output_kwargs", []),
+            activation_kwargs=config.get("activation_kwargs", {}),
+        )

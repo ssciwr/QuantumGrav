@@ -236,7 +236,7 @@ end
             Float32,
             QuantumGrav.HDF5.dataspace((100, 100, 0), (100, 100, -1)),
             chunk = (100, 100, 1),
-            compress = 8,
+            deflate = 8,
         )
         close(dset)
 
@@ -246,7 +246,7 @@ end
             Float32,
             QuantumGrav.HDF5.dataspace((100, 2, 0), (100, 2, -1)),
             chunk = (100, 2, 1),
-            compress = 8,
+            deflate = 8,
         )
         close(dset)
     end

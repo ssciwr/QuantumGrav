@@ -29,6 +29,7 @@ Manifest.toml
 *.pyc 
 __pycache__/
 .venv/
+settings.json
 
 # macOS specific files
 .DS_Store
@@ -47,3 +48,8 @@ data/
 # sweeps from weights and biases
 wandb/*
 py/notebooks/wandb/*
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# coverage files
+.coverage*
