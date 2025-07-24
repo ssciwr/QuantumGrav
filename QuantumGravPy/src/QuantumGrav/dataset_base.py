@@ -112,11 +112,6 @@ class QGDatasetBase:
 
     @property
     def processed_file_names(self) -> list[str]:
-        """Get the processed file names from the processed directory.
-
-        Returns:
-            list[str]: A list of processed file names.
-        """
         """Get a list of processed files in the processed directory.
 
         Returns:

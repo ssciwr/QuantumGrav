@@ -90,17 +90,12 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
                     data_list.extend(data)
 
                 # final chunk processing
-                for i in range(
+                data = self.process_chunk(
+                    raw_file,
                     num_chunks * self.chunksize,
-                    raw_file["num_causal_sets"][()],
-                    1,
-                ):
-                    data = self.process_chunk(
-                        raw_file,
-                        i,
-                        pre_transform=self.pre_transform,
-                        pre_filter=self.pre_filter,
-                    )
+                    pre_transform=self.pre_transform,
+                    pre_filter=self.pre_filter,
+                )
 
-                    data_list.extend(data)
+                data_list.extend(data)
         InMemoryDataset.save(data_list, Path(self.processed_dir) / "data.pt")
