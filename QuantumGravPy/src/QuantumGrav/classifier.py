@@ -26,13 +26,13 @@ class ClassifierBlock(QGLS.LinearSequential):
         """Instantiate a ClassifierBlock.
 
         Args:
-            input_dim (int): _description_
-            output_dims (list[int]): _description_
-            hidden_dims (list[int], optional): _description_. Defaults to None.
-            activation (type[torch.nn.Module], optional): _description_. Defaults to torch.nn.ReLU.
-            backbone_kwargs (list[dict], optional): _description_. Defaults to None.
-            output_kwargs (list[dict], optional): _description_. Defaults to None.
-            activation_kwargs (list[dict], optional): _description_. Defaults to None.
+            input_dim (int): input dimension of the ClassifierBlock
+            output_dims (list[int]): output dimensions for each classification task.
+            hidden_dims (list[int], optional): list of hidden dimensions for the backbone network. Defaults to None.
+            activation (type[torch.nn.Module], optional): activation function to use. Defaults to torch.nn.ReLU.
+            backbone_kwargs (list[dict], optional): keyword arguments for the backbone network. Defaults to None.
+            output_kwargs (list[dict], optional): keyword arguments for the output layers. Defaults to None.
+            activation_kwargs (list[dict], optional): keyword arguments for the activation functions. Defaults to None.
         """
         super().__init__(
             input_dim=input_dim,

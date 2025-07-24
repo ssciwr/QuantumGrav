@@ -55,15 +55,15 @@ class LinearSequential(torch.nn.Module):
 
         # manage kwargs for the different parts of the network
         processed_backbone_kwargs = self._handle_kwargs(
-            backbone_kwargs, "backbone_kwargs", hidden_dims
+            backbone_kwargs, "backbone_kwargs", len(hidden_dims)
         )
 
         processed_activation_kwargs = self._handle_kwargs(
-            activation_kwargs, "activation_kwargs", hidden_dims
+            activation_kwargs, "activation_kwargs", len(hidden_dims)
         )
 
         processed_output_kwargs = self._handle_kwargs(
-            output_kwargs, "output_kwargs", output_dims
+            output_kwargs, "output_kwargs", len(output_dims)
         )
 
         # build backbone with Sequential
@@ -102,16 +102,16 @@ class LinearSequential(torch.nn.Module):
         self.output_layers = torch.nn.ModuleList(output_layers)
 
     def _handle_kwargs(
-        self, kwarglist: list[dict], name: str, hidden_dims: int
+        self, kwarglist: list[dict], name: str, needed: int
     ) -> list[dict]:
         """
         handle kwargs for the backbone or activation functions.
         """
         if kwarglist is None:
-            kwarglist = [{}] * len(hidden_dims)
+            kwarglist = [{}] * needed
         elif len(kwarglist) == 1:
-            kwarglist = kwarglist * len(hidden_dims)
-        elif len(kwarglist) != len(hidden_dims):
+            kwarglist = kwarglist * needed
+        elif len(kwarglist) != needed:
             raise ValueError(
                 f"{name} must be a list of dictionaries with the same length as hidden_dims"
             )
