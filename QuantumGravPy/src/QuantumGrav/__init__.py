@@ -1,3 +1,6 @@
+from .julia_worker import JuliaWorker
+from .dataset_onthefly import QGDatasetOnthefly
+from .classifier import ClassifierBlock
 from .gnnblock import (
     GNNBlock,
     register_activation,
@@ -7,7 +10,6 @@ from .gnnblock import (
     get_registered_normalizer,
     get_registered_activation,
 )
-from .classifier import ClassifierBlock
 
 __all__ = [
     "GNNBlock",
@@ -18,4 +20,6 @@ __all__ = [
     "get_registered_normalizer",
     "get_registered_activation",
     "ClassifierBlock",
+    "QGDatasetOnthefly",
+    "JuliaWorker",
 ]
