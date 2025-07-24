@@ -16,7 +16,6 @@ from .gnnblock import GNNBlock
 from .gfeaturesblock import GraphFeaturesBlock
 
 __all__ = [
-=======
     "QGDataset",
     "QGDatasetInMemory",
     "QGDatasetOnthefly",
