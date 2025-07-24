@@ -32,6 +32,7 @@ dependencies = [
     "wandb",
     "nbformat",
     "optuna",
+    "ray[tune]",
 ]
 
 # Optional dependencies
