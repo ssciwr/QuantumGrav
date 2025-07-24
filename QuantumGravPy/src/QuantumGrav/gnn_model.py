@@ -9,7 +9,7 @@ from . import gfeaturesblock as QGF
 from . import gnnblock as QGGNN
 
 
-class GCNModel(torch.nn.Module):
+class GNNModel(torch.nn.Module):
     """Torch module for the full GCN model, which consists of a GCN backbone, a classifier, and a pooling layer, augmented with optional graph features network.
     Args:
         torch.nn.Module: base class
@@ -17,12 +17,12 @@ class GCNModel(torch.nn.Module):
 
     def __init__(
         self,
-        gcn_net: QGC.GNNBlock,
+        gcn_net: QGGNN.GNNBlock,
         classifier: QGC.ClassifierBlock,
         pooling_layer: torch.nn.Module,
         graph_features_net: torch.nn.Module = torch.nn.Identity,
     ):
-        """Initialize the GCNModel.
+        """Initialize the GNNModel.
 
         Args:
             gcn_net (GCNBackbone): GCN backbone network.
@@ -40,7 +40,7 @@ class GCNModel(torch.nn.Module):
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
-        batch: torch.Tensor,
+        batch: torch.Tensor = None,
         gcn_kwargs: dict = None,
     ):
         """Get embeddings from the GCN model.
@@ -84,35 +84,37 @@ class GCNModel(torch.nn.Module):
         """
 
         # apply the GCN backbone to the node features
-        x = self.get_embeddings(x, edge_index, batch, gcn_kwargs=gcn_kwargs)
+        embeddings = self.get_embeddings(x, edge_index, batch, gcn_kwargs=gcn_kwargs)
 
+        print("Graph embeddings shape:", embeddings.shape)
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
             graph_features = self.graph_features_net(graph_features)
-
-            x = torch.cat(
-                (x, graph_features), dim=-1
+            print("Graph features shape:", graph_features.shape, embeddings.shape)
+            embeddings = torch.cat(
+                (embeddings, graph_features), dim=-1
             )  # -1 -> last dim. This concatenates, but we also could sum them
+            print("Concatenated features shape:", embeddings.shape)
 
         # Classifier creates raw the logits
         # no softmax or sigmoid is applied here, as we want to keep the logits for loss calculation
-        class_predictions = self.classifier(x)
+        class_predictions = self.classifier(embeddings)
 
         return class_predictions
 
     @classmethod
-    def from_config(cls, config: dict) -> "GCNModel":
-        """Create a GCNModel from a configuration dictionary.
+    def from_config(cls, config: dict) -> "GNNModel":
+        """Create a GNNModel from a configuration dictionary.
 
         Args:
             config (dict): Configuration dictionary containing parameters for the model.
 
         Returns:
-            GCNModel: An instance of GCNModel.
+            GNNModel: An instance of GNNModel.
         """
         gcn_net = QGGNN.GNNBlock.from_config(config["gcn_net"])
         classifier = QGC.ClassifierBlock.from_config(config["classifier"])
-        pooling_layer = utils.get_pooling_layer(config["pooling_layer"])
+        pooling_layer = utils.get_registered_pooling_layer(config["pooling_layer"])
         graph_features_net = (
             QGF.GraphFeaturesBlock.from_config(config["graph_features_net"])
             if "graph_features_net" in config

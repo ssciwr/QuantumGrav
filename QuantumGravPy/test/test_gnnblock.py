@@ -9,8 +9,8 @@ import numpy as np
 def gnn_block_config():
     """Fixture to provide configuration for GNNBlock."""
     return {
-        "in_channels": 16,
-        "out_channels": 32,
+        "in_dim": 16,
+        "out_dim": 32,
         "dropout": 0.3,
         "gnn_layer_type": "gcn",
         "normalizer": "batch_norm",
@@ -26,8 +26,8 @@ def gnn_block_config():
 @pytest.fixture
 def gnn_block():
     return QG.GNNBlock(
-        in_channels=16,
-        out_channels=32,
+        in_dim=16,
+        out_dim=32,
         dropout=0.3,
         gnn_layer_type=tgnn.conv.GCNConv,
         normalizer=torch.nn.BatchNorm1d,
@@ -43,8 +43,8 @@ def gnn_block():
 
 def test_gnn_block_initialization(gnn_block):
     assert gnn_block.dropout_p == 0.3
-    assert gnn_block.in_channels == 16
-    assert gnn_block.out_channels == 32
+    assert gnn_block.in_dim == 16
+    assert gnn_block.out_dim == 32
     assert isinstance(gnn_block.dropout, torch.nn.Dropout)
     assert isinstance(gnn_block.conv, tgnn.conv.GCNConv)
     assert isinstance(gnn_block.normalizer, torch.nn.BatchNorm1d)
@@ -52,8 +52,8 @@ def test_gnn_block_initialization(gnn_block):
     assert isinstance(gnn_block.projection, torch.nn.Linear)
 
     test_gnnblock_flat = QG.GNNBlock(
-        in_channels=16,
-        out_channels=16,
+        in_dim=16,
+        out_dim=16,
         dropout=0.3,
         gnn_layer_type=tgnn.conv.GCNConv,
         normalizer=torch.nn.BatchNorm1d,
@@ -148,8 +148,8 @@ def test_gnn_block_backward(gnn_block):
 
 def test_gnn_block_from_config(gnn_block_config):
     gnn_block = QG.GNNBlock.from_config(gnn_block_config)
-    assert gnn_block.in_channels == gnn_block_config["in_channels"]
-    assert gnn_block.out_channels == gnn_block_config["out_channels"]
+    assert gnn_block.in_dim == gnn_block_config["in_dim"]
+    assert gnn_block.out_dim == gnn_block_config["out_dim"]
     assert gnn_block.dropout_p == gnn_block_config["dropout"]
     assert isinstance(gnn_block.conv, tgnn.conv.GCNConv)
     assert isinstance(gnn_block.normalizer, torch.nn.BatchNorm1d)

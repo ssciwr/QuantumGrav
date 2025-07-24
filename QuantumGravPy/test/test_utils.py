@@ -19,7 +19,7 @@ def test_get_registered_pooling_layer():
     """Test retrieval of registered pooling layers."""
     layer = QG.get_registered_pooling_layer("mean")
     assert layer is not None
-    assert isinstance(layer, global_mean_pool)
+    assert layer is global_mean_pool
 
     not_registered_layer = QG.get_registered_pooling_layer("non_existent")
     assert not_registered_layer is None
@@ -32,7 +32,6 @@ def test_list_registered_pooling_layers():
     assert "mean" in layers
     assert "max" in layers
     assert "sum" in layers
-    assert "attention" in layers
     assert len(layers) > 0  # Ensure there are some registered layers
 
 

@@ -39,6 +39,16 @@ class GraphFeaturesBlock(QGLS.LinearSequential):
             activation_kwargs=activation_kwargs,
         )
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the GraphFeaturesBlock.
+        Args:
+            x (torch.Tensor): Input tensor with shape (batch_size, input_dim).
+        Returns:
+            torch.Tensor: Output tensor with shape (batch_size, output_dim).
+        """
+        x = super().forward(x)
+        return x[0] if isinstance(x, list) else x
+
     @classmethod
     def from_config(cls, config: dict) -> "GraphFeaturesBlock":
         """Create a GraphFeaturesBlock from a configuration dictionary.

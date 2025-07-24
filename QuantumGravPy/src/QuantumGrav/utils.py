@@ -27,7 +27,6 @@ pooling_layers: dict[str, torch.nn.Module] = {
     "mean": tgnn.global_mean_pool,
     "max": tgnn.global_max_pool,
     "sum": tgnn.global_add_pool,
-    "attention": tgnn.global_attention_pool,
 }
 
 
