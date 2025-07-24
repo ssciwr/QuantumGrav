@@ -202,7 +202,7 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
     assert output[1].shape == (2, 3)
 
 
-def test_gnn_model_creation_from_config(gnn_model_configs):
+def test_gnn_model_creation_from_config(gnn_model_config):
     model = QG.GNNModel.from_config(gnn_model_config)
     assert isinstance(model.gcn_net, QG.GNNBlock)
     assert isinstance(model.classifier, QG.ClassifierBlock)

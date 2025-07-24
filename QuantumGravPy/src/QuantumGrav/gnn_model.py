@@ -86,15 +86,12 @@ class GNNModel(torch.nn.Module):
         # apply the GCN backbone to the node features
         embeddings = self.get_embeddings(x, edge_index, batch, gcn_kwargs=gcn_kwargs)
 
-        print("Graph embeddings shape:", embeddings.shape)
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
             graph_features = self.graph_features_net(graph_features)
-            print("Graph features shape:", graph_features.shape, embeddings.shape)
             embeddings = torch.cat(
                 (embeddings, graph_features), dim=-1
             )  # -1 -> last dim. This concatenates, but we also could sum them
-            print("Concatenated features shape:", embeddings.shape)
 
         # Classifier creates raw the logits
         # no softmax or sigmoid is applied here, as we want to keep the logits for loss calculation
