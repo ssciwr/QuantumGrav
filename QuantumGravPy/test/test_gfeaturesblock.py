@@ -9,7 +9,7 @@ def g_params():
     return {
         "input_dim": 10,
         "hidden_dims": [20, 30],
-        "output_dims": [2, 3],
+        "output_dims": 2,
         "activation": torch.nn.ReLU,
         "layer_kwargs": [{}, {}],
         "activation_kwargs": [
@@ -22,7 +22,7 @@ def g_params():
 def g_block_config(g_params):
     return {
         "input_dim": g_params["input_dim"],
-        "output_dim": g_params["output_dims"][0],
+        "output_dim": g_params["output_dims"],
         "hidden_dims": g_params["hidden_dims"],
         "activation": "relu",
         "layer_kwargs": g_params["layer_kwargs"],
@@ -33,7 +33,7 @@ def g_block_config(g_params):
 def test_graph_features_block_creation(g_params):
     gblock = QG.GraphFeaturesBlock(
         input_dim=g_params["input_dim"],
-        output_dim=g_params["output_dims"][0],
+        output_dim=g_params["output_dims"],
         hidden_dims=g_params["hidden_dims"],
         activation=g_params["activation"],
         layer_kwargs=g_params["layer_kwargs"],

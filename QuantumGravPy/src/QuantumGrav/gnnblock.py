@@ -14,8 +14,8 @@ class GNNBlock(torch.nn.Module):
 
     def __init__(
         self,
-        in_channels: int,
-        out_channels: int,
+        in_dim: int,
+        out_dim: int,
         dropout: float = 0.3,
         gnn_layer_type: torch.nn.Module = tgnn.conv.GCNConv,
         normalizer: torch.nn.Module = torch.nn.Identity,
@@ -30,8 +30,8 @@ class GNNBlock(torch.nn.Module):
         """Create a GNNBlock instance.
 
         Args:
-            in_channels (int): The dimensions of the input features.
-            out_channels (int): The dimensions of the output features.
+            in_dim (int): The dimensions of the input features.
+            out_dim (int): The dimensions of the output features.
             dropout (float, optional): The dropout probability. Defaults to 0.3.
             gnn_layer_type (torch.nn.Module, optional): The type of GNN-layer to use. Defaults to tgnn.conv.GCNConv.
             normalizer (torch.nn.Module, optional): The normalizer layer to use. Defaults to torch.nn.Identity.
@@ -47,8 +47,8 @@ class GNNBlock(torch.nn.Module):
 
         # save parameters
         self.dropout_p = dropout
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.in_dim = in_dim
+        self.out_dim = out_dim
 
         # initialize layers
         self.dropout = torch.nn.Dropout(p=dropout, inplace=False)
@@ -64,14 +64,14 @@ class GNNBlock(torch.nn.Module):
         )
 
         self.conv = gnn_layer_type(
-            in_channels,
-            out_channels,
+            in_dim,
+            out_dim,
             *(gnn_layer_args if gnn_layer_args is not None else []),
             **(gnn_layer_kwargs if gnn_layer_kwargs is not None else {}),
         )
 
-        if in_channels != out_channels:
-            self.projection = torch.nn.Linear(in_channels, out_channels)
+        if in_dim != out_dim:
+            self.projection = torch.nn.Linear(in_dim, out_dim)
         else:
             self.projection = torch.nn.Identity()
 
@@ -117,8 +117,8 @@ class GNNBlock(torch.nn.Module):
             GNNBlock: An instance of GNNBlock initialized with the provided configuration.
         """
         return cls(
-            in_channels=config["in_channels"],
-            out_channels=config["out_channels"],
+            in_dim=config["in_dim"],
+            out_dim=config["out_dim"],
             dropout=config.get("dropout", 0.3),
             gnn_layer_type=utils.gnn_layers[config["gnn_layer_type"]],
             normalizer=utils.normalizer_layers[config["normalizer"]],

@@ -23,6 +23,18 @@ activation_layers: dict[str, torch.nn.Module] = {
 }
 
 
+pooling_layers: dict[str, torch.nn.Module] = {
+    "mean": tgnn.global_mean_pool,
+    "max": tgnn.global_max_pool,
+    "sum": tgnn.global_add_pool,
+}
+
+
+def list_registered_pooling_layers() -> list[str]:
+    """List all registered pooling layers."""
+    return list(pooling_layers.keys())
+
+
 def list_registered_gnn_layers() -> list[str]:
     """List all registered GNN layers."""
     return list(gnn_layers.keys())
@@ -36,6 +48,20 @@ def list_registered_normalizers() -> list[str]:
 def list_registered_activations() -> list[str]:
     """List all registered activation layers."""
     return list(activation_layers.keys())
+
+
+def register_pooling_layer(
+    pooling_layer_name: str, pooling_layer: torch.nn.Module
+) -> None:
+    """Register a pooling layer with the module
+
+    Args:
+        pooling_layer_name (str): The name of the pooling layer.
+        pooling_layer (torch.nn.Module): The pooling layer to register.
+    """
+    if pooling_layer_name in pooling_layers:
+        raise ValueError(f"Pooling layer '{pooling_layer_name}' is already registered.")
+    pooling_layers[pooling_layer_name] = pooling_layer
 
 
 def register_gnn_layer(gnn_layer_name: str, gnn_layer: torch.nn.Module) -> None:
@@ -82,6 +108,18 @@ def register_activation(
     if activation_name in activation_layers:
         raise ValueError(f"Activation '{activation_name}' is already registered.")
     activation_layers[activation_name] = activation_layer
+
+
+def get_registered_pooling_layer(name: str) -> torch.nn.Module | None:
+    """Get a registered pooling layer by name.
+
+    Args:
+        name (str): The name of the pooling layer.
+
+    Returns:
+        torch.nn.Module | None: The registered pooling layer named `name`, or None if not found.
+    """
+    return pooling_layers[name] if name in pooling_layers else None
 
 
 def get_registered_gnn_layer(name: str) -> torch.nn.Module | None:
