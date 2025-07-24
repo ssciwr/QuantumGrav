@@ -43,3 +43,6 @@ data/
 *.pickle 
 *.pt 
 *.index
+
+# coverage files
+.cov*
