@@ -98,8 +98,8 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
                     data = self.process_chunk(
                         raw_file,
                         i,
-                        self.pre_transform,
-                        self.pre_filter,
+                        pre_transform=self.pre_transform,
+                        pre_filter=self.pre_filter,
                     )
 
                     data_list.extend(data)

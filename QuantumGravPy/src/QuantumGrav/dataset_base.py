@@ -137,7 +137,7 @@ class QGDatasetBase:
         start: int,
         pre_transform: Callable[[Data], Data] | None = None,
         pre_filter: Callable[[Data], bool] | None = None,
-    ) -> Data | None:
+    ) -> list[Data]:
         """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 
         Args:
