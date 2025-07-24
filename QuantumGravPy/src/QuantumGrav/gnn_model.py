@@ -46,13 +46,13 @@ class GCNModel(torch.nn.Module):
         """Get embeddings from the GCN model.
 
         Args:
-            x (torch.Tensor): _description_
-            edge_index (torch.Tensor): _description_
-            batch (torch.Tensor): _description_
-            gcn_kwargs (dict, optional): _description_. Defaults to None.
+            x (torch.Tensor): Input node features.
+            edge_index (torch.Tensor): Graph connectivity information.
+            batch (torch.Tensor): Batch vector for pooling.
+            gcn_kwargs (dict, optional): Additional arguments for the GCN. Defaults to None.
 
         Returns:
-            _type_: _description_
+            torch.Tensor: Embedding vector for the graph features.
         """
         # apply the GCN backbone to the node features
         x = self.gcn_net(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
@@ -69,17 +69,18 @@ class GCNModel(torch.nn.Module):
         graph_features: torch.Tensor = None,
         gcn_kwargs: dict[Any, Any] = None,
     ) -> torch.Tensor | Collection[torch.Tensor]:
-        """_summary_
+        """Forward run of the gnn model with optional graph features.
+        First execute the graph-neural network backbone, then process the graph features, and finally apply the classifier.
 
         Args:
-            x (torch.Tensor): _description_
-            edge_index (torch.Tensor): _description_
-            batch (torch.Tensor): _description_
-            graph_features (torch.Tensor, optional): _description_. Defaults to None.
-            gcn_kwargs (dict[Any, Any], optional): _description_. Defaults to None.
+            x (torch.Tensor): Input node features.
+            edge_index (torch.Tensor): Graph connectivity information.
+            batch (torch.Tensor): Batch vector for pooling.
+            graph_features (torch.Tensor, optional): Additional graph features. Defaults to None.
+            gcn_kwargs (dict[Any, Any], optional): Additional arguments for the GCN. Defaults to None.
 
         Returns:
-            torch.Tensor | Collection[torch.Tensor]: _description_
+            torch.Tensor | Collection[torch.Tensor]: Class predictions.
         """
 
         # apply the GCN backbone to the node features
