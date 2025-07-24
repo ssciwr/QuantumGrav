@@ -7,7 +7,6 @@ from .utils import (
     get_registered_activation,
 )
 from .gnnblock import GNNBlock
-from . import linear_sequential
 from .gfeaturesblock import GraphFeaturesBlock
 from .classifier import ClassifierBlock
 

@@ -1,8 +1,6 @@
 import torch
-import torch_geometric
 
 from . import utils
-from typing import Any
 
 from . import linear_sequential as QGLS
 
