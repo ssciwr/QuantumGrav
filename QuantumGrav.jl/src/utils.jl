@@ -94,6 +94,8 @@ get_manifold_encoding = Dict(
     "Random" => 6,
 )
 
+get_boundary_encoding = Dict("CausalDiamond" => 1, "TimeBoundary" => 2, "BoxBoundary" => 3)
+
 """
     make_manifold(i::Int, d::Int) -> CausalSets.AbstractManifold
 
@@ -156,6 +158,34 @@ function make_boundary(name::String, d::Int)::CausalSets.AbstractBoundary
         )),
     )[name]
 end
+
+"""
+    make_boundary(i::Int, d::Int) -> CausalSets.AbstractBoundary
+Creates a boundary object based on an integer encoding and dimension.
+# Arguments
+- `i`: Integer encoding of the boundary type (1-3)
+- `d`: Dimension of the boundary (2, 3, or 4)
+# Returns
+- `CausalSets.AbstractBoundary`: The constructed boundary object
+"""
+function make_boundary(i::Int, d::Int)::CausalSets.AbstractBoundary
+    if d < 2 || d > 4
+        throw(ArgumentError("Unsupported boundary dimension: $d"))
+    end
+
+    Dict(
+        1 => CausalSets.CausalDiamondBoundary{d}(1.0),
+        2 => CausalSets.TimeBoundary{d}(-1.0, 1.0), # check if this makes sense
+        3 => CausalSets.BoxBoundary{d}((
+            ([-0.49 for i = 1:d]...,),
+            ([0.49 for i = 1:d]...,),
+        )),
+    )[i]
+end
+
+
+
+
 
 """
     resize(m::AbstractArray{T}, new_size::Tuple) -> AbstractArray{T}

@@ -29,6 +29,7 @@ Manifest.toml
 *.pyc 
 __pycache__/
 .venv/
+settings.json
 
 # macOS specific files
 .DS_Store
@@ -44,5 +45,8 @@ data/
 *.pt 
 *.index
 
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
 # coverage files
-.cov*
+.coverage*

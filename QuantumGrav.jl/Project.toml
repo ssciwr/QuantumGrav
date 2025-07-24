@@ -4,10 +4,8 @@ authors = ["""Harald  Mack <harald.mack@protonmail.com\n>"""]
 version = "0.1.0"
 
 [deps]
-CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 CausalSets = "2cd3ca5d-4cd6-4e37-88b9-1a897f702e70"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
-GraphMakie = "1ecd5474-83a3-4783-bb4f-06765db800d2"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -20,10 +18,8 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 CausalSets = {url = "https://codeberg.org/cyclopentane/CausalSets.jl"}
 
 [compat]
-CairoMakie = "0.14.0"
 CausalSets = "1.0.1"
 Distributions = "0.25.120"
-GraphMakie = "0.5.15"
 Graphs = "1.13.0"
 HDF5 = "0.17.2"
 LinearAlgebra = "1.11.0"
