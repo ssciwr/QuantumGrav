@@ -2,6 +2,38 @@ import QuantumGrav as QG
 import pytest
 import torch
 from torch_geometric.nn.conv import GCNConv
+from torch_geometric.nn import global_mean_pool
+
+
+def test_register_pooling_layer():
+    """Test the registration of pooling layers."""
+    layer = torch.nn.MaxPool1d(2)
+    QG.register_pooling_layer("test_pooling", layer)
+    assert "test_pooling" in QG.gnnblock.utils.pooling_layers
+
+    with pytest.raises(ValueError):
+        QG.register_pooling_layer("test_pooling", layer)
+
+
+def test_get_registered_pooling_layer():
+    """Test retrieval of registered pooling layers."""
+    layer = QG.get_registered_pooling_layer("mean")
+    assert layer is not None
+    assert isinstance(layer, global_mean_pool)
+
+    not_registered_layer = QG.get_registered_pooling_layer("non_existent")
+    assert not_registered_layer is None
+
+
+def test_list_registered_pooling_layers():
+    """Test listing of registered pooling layers."""
+    layers = QG.list_registered_pooling_layers()
+    assert isinstance(layers, list)
+    assert "mean" in layers
+    assert "max" in layers
+    assert "sum" in layers
+    assert "attention" in layers
+    assert len(layers) > 0  # Ensure there are some registered layers
 
 
 def test_register_gnn_layer():
