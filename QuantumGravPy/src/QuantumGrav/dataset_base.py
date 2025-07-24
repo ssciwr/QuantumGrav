@@ -71,7 +71,7 @@ class QGDatasetBase:
             with h5py.File(file, "r") as f:
                 self._num_samples += f["num_causal_sets"][()]
 
-        # ensure the input is a list of pathsr
+        # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
                 self.metadata = yaml.load(f, Loader=yaml.FullLoader)

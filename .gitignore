@@ -49,4 +49,4 @@ data/
 .ipynb_checkpoints
 
 # coverage files
-.coverage
+.coverage*

@@ -36,9 +36,9 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         """Initialize a QGDatasetInMemory instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that can be loaded into memory completely.
 
         Args:
-            input (list[str  |  Path] | Callable[[Any], dict]): _description_
-            output (str | Path): _description_
-            reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): _description_. Defaults to None.
+            input (list[str  |  Path] | Callable[[Any], dict]): A list of file paths (as strings or Path objects) to the input data files, or a callable that returns a dictionary containing the input data.
+            output (str | Path): A file path (as a string or Path object) to the output data file.
+            reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to read the data from the input files. Defaults to None.
             float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
             int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data. Defaults to True.
