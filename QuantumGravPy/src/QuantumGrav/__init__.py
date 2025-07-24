@@ -1,5 +1,4 @@
-from .gnnblock import (
-    GNNBlock,
+from .utils import (
     register_activation,
     register_gnn_layer,
     register_normalizer,
@@ -7,7 +6,11 @@ from .gnnblock import (
     get_registered_normalizer,
     get_registered_activation,
 )
+from .gnnblock import GNNBlock
+from . import linear_sequential
+from .gfeaturesblock import GraphFeaturesBlock
 from .classifier import ClassifierBlock
+
 
 __all__ = [
     "GNNBlock",
@@ -18,4 +21,5 @@ __all__ = [
     "get_registered_normalizer",
     "get_registered_activation",
     "ClassifierBlock",
+    "GraphFeaturesBlock",
 ]
