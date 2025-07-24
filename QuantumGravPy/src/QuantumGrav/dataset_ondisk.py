@@ -72,6 +72,7 @@ class QGDataset(QGDatasetBase, Dataset):
 
         Args:
             data (list[Data]): The list of Data objects to write to disk.
+            idx (int): The index to use for naming the files.
         """
         if not Path(self.processed_dir).exists():
             Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
@@ -86,12 +87,12 @@ class QGDataset(QGDatasetBase, Dataset):
     def process(self) -> None:
         """Process the dataset from the read rawdata into its final form."""
         # process data files
-        k = 0
+        k = 0  # index to create the filenames for the processed data
         for file in self.input:
             with (
                 h5py.File(str(Path(file).resolve().absolute()), "r") as raw_file
             ):  # read the data in chunks and process it parallelized or sequentially based on the parallel_processing flag
-                num_chunks = raw_file["num_causal_sets"][()] % self.chunksize
+                num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
 
                 for i in range(0, num_chunks * self.chunksize, self.chunksize):
                     data = self.process_chunk(
@@ -102,20 +103,17 @@ class QGDataset(QGDatasetBase, Dataset):
                     )
 
                     k = self.write_data(data, k)
-                # final chunk processing
-                for i in range(
-                    num_chunks * self.chunksize,
-                    raw_file["num_causal_sets"][()],
-                    self.chunksize,
-                ):
-                    data = self.process_chunk(
-                        raw_file,
-                        i,
-                        self.pre_transform,
-                        self.pre_filter,
-                    )
 
-                    k = self.write_data(data, k)
+                # final chunk processing
+
+                data = self.process_chunk(
+                    raw_file,
+                    num_chunks * self.chunksize,
+                    pre_transform=self.pre_transform,
+                    pre_filter=self.pre_filter,
+                )
+
+                k = self.write_data(data, k)
 
     def get(self, idx: int) -> Data:
         """Get a single data sample by index."""

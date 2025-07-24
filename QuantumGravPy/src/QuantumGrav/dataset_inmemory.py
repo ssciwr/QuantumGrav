@@ -77,7 +77,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
             with h5py.File(str(Path(file).resolve().absolute()), "r") as raw_file:
                 # read the data in chunks and process it parallelized or
                 # sequentially based on the parallel_processing flag
-                num_chunks = raw_file["num_causal_sets"][()] % self.chunksize
+                num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
 
                 for i in range(0, num_chunks * self.chunksize, self.chunksize):
                     data = self.process_chunk(
@@ -93,7 +93,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
                 for i in range(
                     num_chunks * self.chunksize,
                     raw_file["num_causal_sets"][()],
-                    self.chunksize,
+                    1,
                 ):
                     data = self.process_chunk(
                         raw_file,
