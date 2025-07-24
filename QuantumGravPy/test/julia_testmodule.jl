@@ -121,7 +121,6 @@ function (gen::Generator)(batchsize::Int)
 
 
             if max_iter <= 0
-                println("Max iterations reached, breaking out of loop.")
                 break
             end
         end

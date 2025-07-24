@@ -1,4 +1,6 @@
 from .julia_worker import JuliaWorker
+from .dataset_ondisk import QGDataset
+from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly
 from .classifier import ClassifierBlock
 from .gnnblock import (
@@ -12,6 +14,8 @@ from .gnnblock import (
 )
 
 __all__ = [
+    "QGDataset",
+    "QGDatasetInMemory",
     "GNNBlock",
     "register_activation",
     "register_gnn_layer",
