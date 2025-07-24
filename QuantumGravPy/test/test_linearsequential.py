@@ -73,6 +73,24 @@ def test_linseq_no_hidden_dims():
         )
 
 
+def test_linseq_empty_hidden_dims():
+    linseq = QG.linear_sequential.LinearSequential(
+        input_dim=10,
+        hidden_dims=[],
+        output_dims=[2, 3],
+        activation=torch.nn.ReLU,
+        backbone_kwargs=None,
+        output_kwargs=[{}, {}],
+    )
+
+    assert isinstance(linseq.backbone, torch.nn.Identity)
+    assert len(linseq.output_layers) == 2
+    assert linseq.output_layers[0].in_channels == 10
+    assert linseq.output_layers[0].out_channels == 2
+    assert linseq.output_layers[1].in_channels == 10
+    assert linseq.output_layers[1].out_channels == 3
+
+
 def test_linseq_invalid_hidden_dims(linseq_params):
     with pytest.raises(
         ValueError, match="hidden_dims must be a list of positive integers"

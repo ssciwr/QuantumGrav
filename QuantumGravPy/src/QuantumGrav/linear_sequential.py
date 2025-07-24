@@ -84,13 +84,21 @@ class LinearSequential(torch.nn.Module):
             )
             in_dim = hidden_dim
 
-        self.backbone = torch.nn.Sequential(*layers)
+        if len(layers) > 0:
+            self.backbone = torch.nn.Sequential(*layers)
+        else:
+            self.backbone = torch.nn.Identity()
 
         # build the final layers - take care of possible multi-objective classification
         output_layers = []
+
+        final_in_dim = (
+            hidden_dims[-1] if hidden_dims and len(hidden_dims) > 0 else input_dim
+        )
+
         for i, output_dim in enumerate(output_dims):
             output_layer = torch_geometric.nn.dense.Linear(
-                hidden_dims[-1],
+                final_in_dim,
                 output_dim,
                 **(
                     processed_output_kwargs[i]

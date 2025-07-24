@@ -15,7 +15,7 @@ class GraphFeaturesBlock(QGLS.LinearSequential):
         layer_kwargs: list[dict] = None,
         activation_kwargs: dict = None,
     ):
-        """Create a GraphFeaturesBlock instance.
+        """Create a GraphFeaturesBlock instance. This will create at least one hidden layer and one output layer, with the specified input and output dimensions.
 
         Args:
             input_dim (int): input dimension of the GraphFeaturesBlock
