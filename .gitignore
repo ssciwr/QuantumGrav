@@ -30,6 +30,10 @@ Manifest.toml
 __pycache__/
 .venv/
 settings.json
+
+# macOS specific files
+.DS_Store
+
 # data files 
 data/
 *.h5
@@ -40,3 +44,9 @@ data/
 *.pickle 
 *.pt 
 *.index
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# coverage files
+.coverage

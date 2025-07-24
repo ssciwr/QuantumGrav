@@ -10,6 +10,7 @@ import YAML
 import HDF5
 
 include("utils.jl")
+include("csetgeneration.jl")
 include("datageneration.jl")
 
 export make_cset,

@@ -6,7 +6,7 @@ import juliacall as jcall
 class JuliaWorker:
     """This class runs a given Julia callable object from a given Julia code file. It additionally imports the QuantumGrav julia module and installs given dependencies if provided. After creation, the wrapped julia callable can be called via the __call__ method of this calls.
     **Warning**: This class requires the juliacall package to be installed in the Python environment.
-    **Warning**: This class is in early development and may change in the future, be slow, or otherwis not ready for high performance production use.
+    **Warning**: This class is in early development and may change in the future, be slow, or otherwise not ready for high performance production use.
     """
 
     jl_constructor_name = None
@@ -52,9 +52,9 @@ class JuliaWorker:
         self.jl_constructor_name = jl_constructor_name
         self.jl_module_name = "QuantumGravPy2Jl"  # the module name is hardcoded here
 
-        # try to initialize the new Julia module,  the do every julia call through thisi module
+        # try to initialize the new Julia module, then later do every julia call through this module
         try:
-            self.jl_module = jcall.newmodule("QuantumGravPy2Jl")
+            self.jl_module = jcall.newmodule(self.jl_module_name)
 
         except jcall.JuliaError as e:
             raise RuntimeError(f"Error creating new julia module: {e}") from e
@@ -65,13 +65,14 @@ class JuliaWorker:
 
         # add base module for dependencies if exists
         if jl_base_module_path is not None:
+            jl_base_module_path = Path(jl_base_module_path).resolve().absolute()
             try:
                 self.jl_module.seval(
-                    f'using Pkg; Pkg.develop(path="{jl_base_module_path}")'
+                    f'using Pkg; Pkg.develop(path="{str(jl_base_module_path)}")'
                 )  # only for now -> get from package index later
             except jcall.JuliaError as e:
                 raise RuntimeError(
-                    f"Error loading base module {jl_base_module_path}: {e}"
+                    f"Error loading base module {str(jl_base_module_path)}: {e}"
                 ) from e
             except Exception as e:
                 raise RuntimeError(

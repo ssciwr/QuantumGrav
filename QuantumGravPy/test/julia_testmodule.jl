@@ -71,8 +71,8 @@ function (gen::Generator)(batchsize::Int)
     atomcount_distr = Distributions.DiscreteUniform(min_atomcount, max_atomcount)
 
     # make a bunch of datapoints
-    batch = []
-    for _ = 1:batchsize
+    batch = Vector{Dict{String,Any}}(undef, batchsize)
+    for i = 1:batchsize
         data = Dict{String,Any}()
         ok = false
         max_iter = 20
@@ -102,8 +102,14 @@ function (gen::Generator)(batchsize::Int)
             # make dataset 
             try
                 # make data needed 
-                cset, sprinkling =
-                    QG.make_cset(manifold, boundary, atomcount, dimension, rng; type = type)
+                cset, sprinkling = QG.make_simple_cset(
+                    manifold,
+                    boundary,
+                    atomcount,
+                    dimension,
+                    rng;
+                    type = type,
+                )
                 ok = true
                 e = nothing
             catch error
@@ -120,6 +126,14 @@ function (gen::Generator)(batchsize::Int)
             end
         end
 
+        if e !== nothing
+            throw(
+                ErrorException(
+                    "Failed to create a valid causal set after multiple attempts: $e",
+                ),
+            )
+        end
+
         # make the data: adjacency matrix and the other stuff
         link_matrix = QG.make_link_matrix(cset, type = type)
         adjacency_matrix = QG.make_adj(cset, type = type)
@@ -132,6 +146,7 @@ function (gen::Generator)(batchsize::Int)
             for i = 1:cset.atom_count
         ]
 
+        # fill the data dictionary with the generated data
         data["manifold"] = manifold_id
         data["boundary"] = boundary_id
         data["dimension"] = dimension
@@ -149,7 +164,7 @@ function (gen::Generator)(batchsize::Int)
             )
         end
 
-        push!(batch, data)
+        batch[i] = data
     end
     return batch
 end

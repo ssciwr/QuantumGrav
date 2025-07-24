@@ -1,47 +1,5 @@
 
 """
-    make_cset(manifold, boundary, n, d, rng, type) -> (cset, coordinates)
-
-Creates a causet and its coordinate representation from a manifold and boundary.
-
-# Arguments
-- `manifold::String`: The spacetime manifold
-- `boundary::String`: The boundary type  
-- `n::Int64`: Number of points in the causet
-- `d::Int`: Dimension of the spacetime
-- `rng::Random.AbstractRNG`: Random number generator
-- `type::Type{T}`: Numeric type for coordinates
-
-# Returns
-- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
-
-# Notes
-Special handling for PseudoManifold which generates random causets,
-while other manifolds use CausalSets sprinkling generation.
-"""
-function make_cset(
-    manifold::String,
-    boundary::String,
-    n::Int64,
-    d::Int,
-    rng::Random.AbstractRNG;
-    type::Type{T} = Float32,
-) where {T<:Number}
-    manifold = make_manifold(manifold, d)
-    boundary = make_boundary(boundary, d)
-
-    if manifold isa PseudoManifold
-        # create a pseudosprinkling in a n-d euclidean space for a non-manifold like causalset
-        return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
-        stack(make_pseudosprinkling(n, d, -0.49, 0.49, type; rng = rng), dims = 1)
-    else
-        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng = rng)
-        cset = CausalSets.BitArrayCauset(manifold, sprinkling)
-        return cset, type.(stack(collect.(sprinkling), dims = 1))
-    end
-end
-
-"""
     make_link_matrix(cset::AbstractCauset) -> SparseMatrixCSC{Float32}
 
 Generates a sparse link matrix for the given causal set (`cset`). The link matrix
