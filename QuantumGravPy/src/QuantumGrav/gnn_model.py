@@ -4,9 +4,9 @@ from collections.abc import Collection
 import torch
 
 from . import utils
-from . import classifier as QGC
-from . import gfeaturesblock as QGF
-from . import gnnblock as QGGNN
+from . import classifier_block as QGC
+from . import graphfeatures_block as QGF
+from . import gnn_block as QGGNN
 
 
 class GNNModel(torch.nn.Module):

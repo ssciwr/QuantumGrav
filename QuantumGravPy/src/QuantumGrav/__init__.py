@@ -17,9 +17,9 @@ from .dataset_ondisk import QGDataset
 from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly
 from .gnn_model import GNNModel
-from .classifier import ClassifierBlock
-from .gnnblock import GNNBlock
-from .gfeaturesblock import GraphFeaturesBlock
+from .classifier_block import ClassifierBlock
+from .gnn_block import GNNBlock
+from .graphfeatures_block import GraphFeaturesBlock
 
 __all__ = [
     "QGDataset",
