@@ -102,8 +102,14 @@ function (gen::Generator)(batchsize::Int)
             # make dataset 
             try
                 # make data needed 
-                cset, sprinkling =
-                    QG.make_cset(manifold, boundary, atomcount, dimension, rng; type = type)
+                cset, sprinkling = QG.make_simple_cset(
+                    manifold,
+                    boundary,
+                    atomcount,
+                    dimension,
+                    rng;
+                    type = type,
+                )
                 ok = true
                 e = nothing
             catch error
