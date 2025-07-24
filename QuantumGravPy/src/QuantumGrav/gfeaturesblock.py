@@ -33,7 +33,9 @@ class GraphFeaturesBlock(QGLS.LinearSequential):
             hidden_dims=hidden_dims,
             activation=activation,
             backbone_kwargs=layer_kwargs,
-            output_kwargs=[layer_kwargs[-1]] if layer_kwargs else None,
+            output_kwargs=[layer_kwargs[-1]]
+            if layer_kwargs and len(layer_kwargs) > 0
+            else None,
             activation_kwargs=activation_kwargs,
         )
 
