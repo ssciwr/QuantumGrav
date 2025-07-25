@@ -197,14 +197,7 @@ def read_data():
             x=x,
             edge_index=edge_index,
             edge_attr=edge_weight.unsqueeze(1),
-            y=torch.stack(
-                [
-                    torch.tensor(manifold),
-                    torch.tensor(boundary),
-                    torch.tensor(dimension),
-                ],
-                dim=0,
-            ),
+            y=torch.tensor([[manifold, boundary, dimension]], dtype=int_dtype),
         )
 
         if validate and not data.validate():
@@ -282,65 +275,3 @@ def graph_features_net():
             {"inplace": False},
         ],
     )
-
-
-@pytest.fixture
-def gnn_model(gnn_block, classifier_block, pooling_layer, graph_features_net):
-    return QG.GNNModel(
-        gcn_net=gnn_block,
-        classifier=classifier_block,
-        pooling_layer=pooling_layer,
-        graph_features_net=graph_features_net,
-    )
-
-
-@pytest.fixture
-def gnn_model_with_graph_features(
-    gnn_block, classifier_block_graphfeatures, pooling_layer, graph_features_net
-):
-    return QG.GNNModel(
-        gcn_net=gnn_block,
-        classifier=classifier_block_graphfeatures,
-        pooling_layer=pooling_layer,
-        graph_features_net=graph_features_net,
-    )
-
-
-@pytest.fixture
-def gnn_model_config():
-    config = {
-        "gcn_net": {
-            "in_dim": 16,
-            "out_dim": 32,
-            "dropout": 0.3,
-            "gnn_layer_type": "gcn",
-            "normalizer": "batch_norm",
-            "activation": "relu",
-            "norm_args": [
-                32,
-            ],
-            "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-            "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
-        },
-        "classifier": {
-            "input_dim": 32,
-            "output_dims": [2, 3],
-            "hidden_dims": [24, 12],
-            "activation": "relu",
-            "backbone_kwargs": [{}, {}],
-            "output_kwargs": [{}],
-            "activation_kwargs": [{"inplace": False}],
-        },
-        "pooling_layer": "mean",
-        "graph_features_net": {
-            "input_dim": 10,
-            "hidden_dims": [24, 8],
-            "output_dim": 32,
-            "activation": "relu",
-            "layer_kwargs": [{}, {}],
-            "activation_kwargs": [
-                {"inplace": False},
-            ],
-        },
-    }
-    return config
