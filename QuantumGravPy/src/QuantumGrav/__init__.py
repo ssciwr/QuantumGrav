@@ -20,12 +20,15 @@ from .gnn_model import GNNModel
 from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
 from .graphfeatures_block import GraphFeaturesBlock
+from .evaluate import train_epoch, validate_epoch, test_epoch
 
 __all__ = [
+    # datasets
     "QGDataset",
     "QGDatasetInMemory",
     "QGDatasetOnthefly",
     "JuliaWorker",
+    # module registration
     "register_activation",
     "register_gnn_layer",
     "register_normalizer",
@@ -38,8 +41,13 @@ __all__ = [
     "list_registered_normalizers",
     "list_registered_activations",
     "list_registered_gnn_layers",
+    # training
     "GNNBlock",
     "ClassifierBlock",
     "GraphFeaturesBlock",
     "GNNModel",
+    # evaluation
+    "train_epoch",
+    "validate_epoch",
+    "test_epoch",
 ]
