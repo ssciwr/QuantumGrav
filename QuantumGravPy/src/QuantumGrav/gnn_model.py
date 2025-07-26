@@ -4,9 +4,9 @@ from collections.abc import Collection
 import torch
 
 from . import utils
-from . import classifier as QGC
-from . import gfeaturesblock as QGF
-from . import gnnblock as QGGNN
+from . import classifier_block as QGC
+from . import graphfeatures_block as QGF
+from . import gnn_block as QGGNN
 
 
 class GNNModel(torch.nn.Module):
@@ -17,7 +17,7 @@ class GNNModel(torch.nn.Module):
 
     def __init__(
         self,
-        gcn_net: QGGNN.GNNBlock,
+        gcn_net: list[QGGNN.GNNBlock],
         classifier: QGC.ClassifierBlock,
         pooling_layer: torch.nn.Module,
         graph_features_net: torch.nn.Module = torch.nn.Identity,
@@ -31,10 +31,36 @@ class GNNModel(torch.nn.Module):
             graph_features_net (torch.nn.Module, optional): Graph features network. Defaults to torch.nn.Identity.
         """
         super().__init__()
-        self.gcn_net = gcn_net
+        self.gcn_net = torch.nn.ModuleList(gcn_net)
         self.classifier = classifier
         self.graph_features_net = graph_features_net
         self.pooling_layer = pooling_layer
+
+    def _eval_gcn_net(
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        gcn_kwargs: dict[Any, Any] = None,
+    ) -> torch.Tensor:
+        """Evaluate the GCN network on the input data.
+
+        Args:
+            x (torch.Tensor): Input node features.
+            edge_index (torch.Tensor): Graph connectivity information.
+            gcn_kwargs (dict[Any, Any], optional): Additional arguments for the GCN. Defaults to None.
+
+        Returns:
+            torch.Tensor: Output of the GCN network.
+        """
+        features = (
+            x.clone()
+        )  # Clone the input features to avoid modifying the original tensor
+        # Apply each GCN layer to the input features
+        for gnn_layer in self.gcn_net:
+            features = gnn_layer(
+                features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
+            )
+        return features
 
     def get_embeddings(
         self,
@@ -55,11 +81,13 @@ class GNNModel(torch.nn.Module):
             torch.Tensor: Embedding vector for the graph features.
         """
         # apply the GCN backbone to the node features
-        x = self.gcn_net(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
+        embeddings = self._eval_gcn_net(
+            x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
+        )
 
         # pool everything together into a single graph representation
-        x = self.pooling_layer(x, batch)
-        return x
+        embeddings = self.pooling_layer(embeddings, batch)
+        return embeddings
 
     def forward(
         self,
@@ -109,13 +137,13 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: An instance of GNNModel.
         """
-        gcn_net = QGGNN.GNNBlock.from_config(config["gcn_net"])
+        gcn_net = [QGGNN.GNNBlock.from_config(cfg) for cfg in config["gcn_net"]]
         classifier = QGC.ClassifierBlock.from_config(config["classifier"])
         pooling_layer = utils.get_registered_pooling_layer(config["pooling_layer"])
         graph_features_net = (
             QGF.GraphFeaturesBlock.from_config(config["graph_features_net"])
             if "graph_features_net" in config
-            else torch.nn.Identity()
+            else None
         )
 
         return cls(
