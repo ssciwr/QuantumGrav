@@ -71,7 +71,9 @@ def train_epoch(
     model: torch.nn.Module,
     data_loader: torch_geometric.data.DataLoader,
     optimizer: torch.optim.Optimizer,
-    criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor | float],
+    criterion: Callable[
+        [torch.Tensor, torch.Tensor | torch_geometric.data.Data], torch.Tensor | float
+    ],
     loss_data: list[dict[str, Any]],
     process_loss: Callable[
         [
@@ -97,7 +99,7 @@ def train_epoch(
         device (torch.device, optional): Device to run the training on. Defaults to torch.device("cpu").
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): Function to apply the model to the data. Defaults to None.
     """
-    if model.training is False:
+    if not model.training:
         raise RuntimeError(
             "Model should be in training mode before training. Use model.train() to set it to training mode."
         )
@@ -125,10 +127,17 @@ def train_epoch(
 def test_epoch(
     model: torch.nn.Module,
     data_loader: torch_geometric.data.DataLoader,
-    criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor | float],
+    criterion: Callable[
+        [torch.Tensor, torch.Tensor | torch_geometric.data.Data], torch.Tensor | float
+    ],
     loss_data: list[dict[str, Any]],
     process_loss: Callable[
-        [torch.Tensor | float, Collection[float], Collection[torch.Tensor]],
+        [
+            list[dict[str, Any]],
+            torch.Tensor | float,
+            Collection[float],
+            Collection[torch.Tensor],
+        ],
         list[dict[str, Any]],
     ] = make_loss_statistics,
     device: torch.device = torch.device("cpu"),
