@@ -54,7 +54,6 @@ def evaluate_batch(
     Args:
         model (torch.nn.Module): The model to evaluate.
         data (torch_geometric.data.Data): The input data for the model.
-        device (torch.device, optional): The device to run the evaluation on. Defaults to torch.device("cpu").
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): A function to apply the model to the data. Defaults to None.
 
     Returns:
