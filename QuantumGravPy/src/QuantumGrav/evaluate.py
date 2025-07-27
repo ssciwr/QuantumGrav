@@ -10,7 +10,7 @@ def make_loss_statistics(
     list_of_loss_values: list[Any],
     _: Collection[float] | None = None,
 ) -> None:
-    """Generate loss statistics for a training epoch.
+    """Generate loss statistics for a training/evaluation epoch.
 
     Args:
         loss_data (list[dict[str, Any]]): list to store loss statistics.
@@ -31,7 +31,7 @@ def make_loss_statistics(
     q25_loss = torch.quantile(epoch_loss_data, 0.25).item()
     q75_loss = torch.quantile(epoch_loss_data, 0.75).item()
 
-    loss_data = loss_data.append(
+    loss_data.append(
         {
             "mean": mean_loss,
             "std": std_loss,
@@ -78,7 +78,7 @@ def train_epoch(
             list[dict[str, Any]],
             torch.Tensor | float,
             Collection[float],
-            Collection[torch.tensor],
+            Collection[torch.Tensor],
         ],
         list[dict[str, Any]],
     ] = make_loss_statistics,
@@ -93,7 +93,7 @@ def train_epoch(
         optimizer (torch.optim.Optimizer): Optimizer for updating the model parameters
         criterion (Callable[[torch.Tensor, torch.Tensor], torch.Tensor  |  float]): Loss function to compute the loss
         loss_data (list[dict[str, Any]]): list to store loss statistics
-        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to None.
+        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to None.
         device (torch.device, optional): Device to run the training on. Defaults to torch.device("cpu").
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): Function to apply the model to the data. Defaults to None.
     """
@@ -110,10 +110,12 @@ def train_epoch(
         loss = criterion(outputs, data)
         loss.backward()
         optimizer.step()
+        if isinstance(loss, torch.Tensor):
+            epoch_loss_data.append(loss.item())
+        else:
+            epoch_loss_data.append(loss)
 
-        epoch_loss_data.append(loss)
-
-    loss_data = process_loss(
+    process_loss(
         loss_data,
         epoch_loss_data,
         data_loader.dataset.data.y if hasattr(data_loader.dataset, "data") else None,
@@ -126,7 +128,7 @@ def test_epoch(
     criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor | float],
     loss_data: list[dict[str, Any]],
     process_loss: Callable[
-        [torch.Tensor | float, Collection[float], Collection[torch.tensor]],
+        [torch.Tensor | float, Collection[float], Collection[torch.Tensor]],
         list[dict[str, Any]],
     ] = make_loss_statistics,
     device: torch.device = torch.device("cpu"),
@@ -139,7 +141,7 @@ def test_epoch(
         data_loader (torch_geometric.data.DataLoader): The data loader for the test data.
         criterion (Callable[[torch.Tensor, torch.Tensor], torch.Tensor  |  float]): The loss function.
         loss_data (list[dict[str, Any]]): list to store loss statistics.
-        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to make_loss_statistics.
+        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to make_loss_statistics.
         device (torch.device, optional): The device to run the evaluation on. Defaults to torch.device("cpu").
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): A function to apply the model to the data. Defaults to None.
     """
@@ -151,7 +153,10 @@ def test_epoch(
             data = batch.to(device)
             outputs = evaluate_batch(model, data, apply_model)
             loss = criterion(outputs, data)
-            epoch_loss_data.append(loss)
+            if isinstance(loss, torch.Tensor):
+                epoch_loss_data.append(loss.item())
+            else:
+                epoch_loss_data.append(loss)
 
     process_loss(
         loss_data,
