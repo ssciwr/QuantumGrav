@@ -48,7 +48,7 @@ def evaluate_batch(
     model: torch.nn.Module,
     data: torch_geometric.data.Data,
     apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any] = None,
-) -> Any:
+) -> torch.Tensor | tuple[torch.Tensor, ...]:
     """Evaluate a single batch of data using the model.
 
     Args:
@@ -57,7 +57,7 @@ def evaluate_batch(
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): A function to apply the model to the data. Defaults to None.
 
     Returns:
-        Any: The output of the model.
+        torch.Tensor | tuple[torch.Tensor, ...]: The output of the model.
     """
     if apply_model:
         outputs = apply_model(model, data)
