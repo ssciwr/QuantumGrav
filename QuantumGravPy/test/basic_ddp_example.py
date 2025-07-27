@@ -44,10 +44,11 @@ def train(rank, world_size, data_dir):
     print(f"[Rank {rank}] Starting training process...")
 
     # Set environment variables for torch.distributed
-    os.environ["MASTER_ADDR"] = "127.0.0.1"
-    os.environ["MASTER_PORT"] = "29500"
+    os.environ["MASTER_ADDR"] = "127.0.0.1"  # what are these?
+    os.environ["MASTER_PORT"] = "29500"  # what is this?
 
     # Use NCCL for GPU (fastest, but not fork-safe → all init must happen inside this function)
+    # something is fishy here, does this have to be called in every process?
     dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
     # Pin this process to its GPU
@@ -112,7 +113,7 @@ def main():
 
     # Safety: only call torch.multiprocessing.spawn from __main__
     world_size = torch.cuda.device_count()
-
+    # this spawns only one process?
     mp.spawn(
         fn=train,  # the function to run
         args=(world_size, data_dir),  # arguments passed to `train`

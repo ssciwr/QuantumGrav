@@ -116,11 +116,14 @@ def train_epoch(
         else:
             epoch_loss_data.append(loss)
 
-    process_loss(
-        loss_data,
-        epoch_loss_data,
-        data_loader.dataset.data.y if hasattr(data_loader.dataset, "data") else None,
-    )
+    if process_loss is not None and epoch_loss_data is not None:
+        process_loss(
+            loss_data,
+            epoch_loss_data,
+            data_loader.dataset.data.y
+            if hasattr(data_loader.dataset, "data")
+            else None,
+        )
 
 
 def test_epoch(
@@ -158,7 +161,7 @@ def test_epoch(
     epoch_loss_data = []
     with torch.no_grad():
         for batch in tqdm.tqdm(data_loader, desc="Evaluating epoch"):
-            data = batch.to(device)
+            data = batch.to(device, non_blocking=True)
             outputs = evaluate_batch(model, data, apply_model)
             loss = criterion(outputs, data)
             if isinstance(loss, torch.Tensor):
@@ -166,11 +169,14 @@ def test_epoch(
             else:
                 epoch_loss_data.append(loss)
 
-    process_loss(
-        loss_data,
-        epoch_loss_data,
-        data_loader.dataset.data.y if hasattr(data_loader.dataset, "data") else None,
-    )
+    if process_loss is not None and epoch_loss_data is not None:
+        process_loss(
+            loss_data,
+            epoch_loss_data,
+            data_loader.dataset.data.y
+            if hasattr(data_loader.dataset, "data")
+            else None,
+        )
 
 
 validate_epoch = test_epoch  # Re-use test_epoch logic for validation
