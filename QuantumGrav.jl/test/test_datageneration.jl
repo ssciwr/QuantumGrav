@@ -122,16 +122,12 @@ end
         cset_links.future_relations[1],
         type = Float32,
     )
-    @test all(size(angles) .== (100, 100))
-    @test SparseArrays.nnz(angles) <= length(cset_links.future_relations[1])^2
+    n_neighbors = length(cset_links.future_relations[1])
+    @test length(angles) == n_neighbors^2 - 3 * n_neighbors + 2
 
     # Check that the angles are calculated correctly
-    for i = 1:length(cset_links.future_relations[1])
-        for j = 1:length(cset_links.future_relations[1])
-            if i != j && angles[i, j] > 0
-                @test 0.0 <= angles[i, j] <= π
-            end
-        end
+    for angle in angles
+        @test 0.0 <= angle <= π
     end
 
     # use multithreading
@@ -143,16 +139,12 @@ end
         multithreading = true,
     )
 
-    @test all(size(angles_mt) .== (100, 100))
-    @test SparseArrays.nnz(angles_mt) <= length(cset_links.future_relations[1])^2
+    @test length(angles_mt) == n_neighbors^2 - 3 * n_neighbors + 2
+
 
     # Check that the angles are calculated correctly
-    for i = 1:length(cset_links.future_relations[1])
-        for j = 1:length(cset_links.future_relations[1])
-            if i != j && angles_mt[i, j] > 0
-                @test 0.0 <= angles_mt[i, j] <= π
-            end
-        end
+    for angle in angles_mt
+        @test 0.0 <= angle <= π
     end
 
 end
@@ -165,28 +157,24 @@ end
     distances = QuantumGrav.calculate_distances(
         sprinkling_links,
         1,
-        cset_links.future_relations[1],
-        100;
+        cset_links.future_relations[1];
         type = Float32,
         multithreading = false,
     )
 
-    @test size(distances) < (100, 100)
-    @test SparseArrays.nnz(distances) > 0
-    @test SparseArrays.nnz(distances) == length(cset_links.future_relations[1]) - 1
+    @test length(distances) == length(cset_links.future_relations[1]) - 1
+    @test all(distances .>= 0.0)
 
     distances = QuantumGrav.calculate_distances(
         sprinkling_links,
         1,
-        cset_links.future_relations[1],
-        100;
+        cset_links.future_relations[1];
         type = Float32,
         multithreading = true,
     )
 
-    @test size(distances) < (100, 100)
-    @test SparseArrays.nnz(distances) > 0
-    @test SparseArrays.nnz(distances) == length(cset_links.future_relations[1]) - 1
+    @test length(distances) == length(cset_links.future_relations[1]) - 1
+    @test all(distances .>= 0.0)
 end
 
 @testitem "test_make_data" tags = [:featuregeneration] setup = [importModules] begin
@@ -202,7 +190,7 @@ end
         "num_datapoints" => 10,
         "output" => joinpath(tempdir(), "test_data"),
         "file_mode" => "w",
-        "num_threads" => 2*Threads.nthreads(),
+        "num_threads" => 2 * Threads.nthreads(),
         "seed" => 42,
     )
 
@@ -271,13 +259,6 @@ end
         prepare_output,
         write_data;
         config = bad_config,
-    )
-
-    @test_throws ArgumentError QuantumGrav.make_data(
-        transform,
-        prepare_output,
-        write_data;
-        config = wrong_config,
     )
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)

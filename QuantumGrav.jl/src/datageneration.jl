@@ -38,7 +38,7 @@ function make_link_matrix(
 end
 
 """
-    calculate_angles(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseMatrix
+    calculate_angles(sprinkling, node_idx, neighbors, type, multithreading) -> SparseMatrix
 
 Calculates angles between vectors from a central node given by `node_idx` to its neighbors in a sprinkling. This uses a euclidean metric to compute angles between pairs of neighbors relative to the node given by `node_idx`. It thus assumes that the manifold is represented as a `point cloud` in a euclidean space. 
 
@@ -46,12 +46,10 @@ Calculates angles between vectors from a central node given by `node_idx` to its
 - `sprinkling::AbstractMatrix`: Matrix where each row represents a point's coordinates
 - `node_idx::Int`: Index of the central node
 - `neighbors::AbstractVector`: Vector of neighbor node indices
-- `num_nodes::Int`: Total number of nodes
 - `type::Type{T}`: Numeric type for the angle values
-
+- `multithreading::Bool`: Whether to use multithreading for angle calculations
 # Returns
-- `SparseMatrix{T}`: Sparse matrix of angles between neighbor pairs, where entry (i,j) 
-  contains the angle between vectors from the central node to neighbors i and j
+- `Vector{Vector{T}}`: Sparse matrix of angles between neighbor pairs, where entry [i][j]  contains the angle between vectors from the central node to neighbors i and j
 
 # Notes
 - Returns angles in radians using acos function
@@ -65,7 +63,7 @@ function calculate_angles(
     neighbors::AbstractVector;
     type::Type{T} = Float32,
     multithreading::Bool = false,
-) where {T<:Number}
+)::Vector{T} where {T<:Number}
 
     # actual angle calculation function for two neighbors i and j
     # in euclidean space with respect to the node given by node_idx
@@ -82,60 +80,54 @@ function calculate_angles(
                 1.0,
             ),
         )
+        if isnan(angle)
+            println("angle is nan")
+            println("i: $i, j: $j, n: $n")
+            println("v_i: $v_i")
+            println("v_j: $v_j")
+            println("norm(v_i): $(LinearAlgebra.norm(v_i))")
+            println("norm(v_j): $(LinearAlgebra.norm(v_j))")
+            throw(ArgumentError("Angle is NaN. This should not happen."))
+        end
         return type(angle)
     end
 
-    idxs = findall(x -> x > 0, neighbors)
+    idxs = findall(x -> length(x) > 0, neighbors)
 
     if multithreading
         # to avoid race conditions and locking with multithreading, have a separate target 
         # vector for each thread and later concatenate them. Not needed for the 
         # non-multithreading branch
-        Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
-        Js = [Vector{Int}() for _ = 1:Threads.nthreads()]
         angles = [Vector{type}() for _ = 1:Threads.nthreads()]
 
         # preallocate vectors to avoid data copying due to reallocation
-        sizehint!.(Is, length(neighbors))
-        sizehint!.(Js, length(neighbors))
         sizehint!.(angles, length(neighbors))
 
         Threads.@threads for (i, j) in collect(Iterators.product(idxs, idxs))
-            if i != j
+            if i != j && i != node_idx && j != node_idx
                 angle = inner(sprinkling, i, j, node_idx)
-                push!(Is[Threads.threadid()], i)
-                push!(Js[Threads.threadid()], j)
                 push!(angles[Threads.threadid()], angle)
             end
         end
-
-        Is = vcat(Is...)
-        Js = vcat(Js...)
         angles = vcat(angles...)
     else
-        Is = Vector{Int}()
-        Js = Vector{Int}()
         angles = Vector{type}()
 
         # preallocate vectors to avoid data copying due to reallocation
-        sizehint!(Is, length(neighbors))
-        sizehint!(Js, length(neighbors))
         sizehint!(angles, length(neighbors))
 
         for (i, j) in collect(Iterators.product(idxs, idxs))
-            if i != j
+            if i != j && i != node_idx && j != node_idx
                 angle = inner(sprinkling, i, j, node_idx)
-                push!(Is, i)
-                push!(Js, j)
                 push!(angles, angle)
             end
         end
     end
-    return SparseArrays.sparse(Is, Js, angles, length(neighbors), length(neighbors), type)
+    return angles
 end
 
 """
-    calculate_distances(sprinkling, node_idx, neighbors, num_nodes, type) -> SparseVector
+    calculate_distances(sprinkling, node_idx, neighbors; type, multithreading) -> Vector{T}
 
 Calculates Euclidean distances from a central node to its neighbors in a sprinkling. Since this uses a euclidean metric, it assumes that the manifold is represented as a `point cloud` in a euclidean space.
 
@@ -143,11 +135,10 @@ Calculates Euclidean distances from a central node to its neighbors in a sprinkl
 - `sprinkling::AbstractMatrix`: Matrix where each row represents a point's coordinates
 - `node_idx::Int`: Index of the central node
 - `neighbors::AbstractVector`: Vector of neighbor node indices  
-- `num_nodes::Int`: Total number of nodes
 - `type::Type{T}`: Numeric type for the distance values
-
+- `multithreading::Bool`: Whether to use multithreading for distance calculations
 # Returns
-- `SparseVector{T}`: Sparse vector where entry i contains the Euclidean distance 
+- `Vector{T}`: Vector where entry i contains the Euclidean distance 
   from the central node to neighbor i
 
 # Notes
@@ -159,30 +150,26 @@ Calculates Euclidean distances from a central node to its neighbors in a sprinkl
 function calculate_distances(
     sprinkling::AbstractMatrix,
     node_idx::Int,
-    neighbors::AbstractVector,
-    num_nodes::Int;
+    neighbors::AbstractVector;
     type::Type{T} = Float32,
     multithreading::Bool = false,
-) where {T<:Number}
+)::Vector{T} where {T<:Number}
 
     if isempty(neighbors)
-        return SparseArrays.spzeros(type, num_nodes)
+        return T[]
     end
 
     if multithreading
         # to avoid race conditions and locking with multithreading, have a separate target 
         # vector for each thread and later concatenate them. Not needed for the 
         # non-multithreading branch
-        Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
         distances = [Vector{type}() for _ = 1:Threads.nthreads()]
 
         # preallocate vectors to avoid data copying due to reallocation
-        sizehint!.(Is, num_nodes)
-        sizehint!.(distances, num_nodes)
+        sizehint!.(distances, length(neighbors))
 
         Threads.@threads for (i, _) in collect(enumerate(neighbors))
             if i != node_idx
-                push!(Is[Threads.threadid()], i)
                 push!(
                     distances[Threads.threadid()],
                     LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]),
@@ -190,20 +177,16 @@ function calculate_distances(
             end
         end
 
-        Is = vcat(Is...)
         distances = vcat(distances...)
     else
 
-        Is = Vector{Int}()
         distances = Vector{type}()
 
         # preallocate vectors to avoid data copying due to reallocation
-        sizehint!(Is, num_nodes)
-        sizehint!(distances, num_nodes)
+        sizehint!(distances, length(neighbors))
 
         for (i, _) in enumerate(neighbors)
             if i != node_idx
-                push!(Is, i)
                 push!(
                     distances,
                     LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]),
@@ -211,7 +194,7 @@ function calculate_distances(
             end
         end
     end
-    return SparseArrays.sparsevec(Is, type.(distances), num_nodes)
+    return type.(distances)
 end
 
 """
@@ -377,8 +360,8 @@ In order to work, transform must return a `Dict{String, Any}` containing the nam
 The write_data function must accept the HDF5 file and the data dictionary to be written as arguments.
 
 # Arguments:
-- `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)`
-- `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})``
+- `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
+- `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
 - `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
 - `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
@@ -426,7 +409,7 @@ function make_data(
         # get the source code of the transform/prepare/write functions and write them to the data folder 
         # to document how the data has been created
         for func in [transform, prepare_output, write_data]
-            funcdata = first(methods(func))
+            funcdata = first(methods(func)) # this assumes that the function is not overloaded -> don't do that!
             filepath = String(funcdata.file)
 
             if isfile(
@@ -464,19 +447,10 @@ function make_data(
             num_chunks = 1
         end
 
-        # create data either single-threaded or multi-threaded 
-        if Threads.nthreads() != config["num_threads"]
-            throw(
-                ArgumentError(
-                    "Number of available threads does not match the configuration.",
-                ),
-            )
-        end
-
         # Multithreading enabled by default, use Threads.@threads for parallel data generation
         rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
         for _ = 1:num_chunks
-            data = [[] for _ = 1:Threads.nthreads()] # vector of vectors of dictionaries. 
+            data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # vector of vectors of dictionaries. 
 
             Threads.@threads for _ = 1:num_datapoints
                 t = Threads.threadid()
