@@ -49,7 +49,7 @@ Calculates angles between vectors from a central node given by `node_idx` to its
 - `type::Type{T}`: Numeric type for the angle values
 - `multithreading::Bool`: Whether to use multithreading for angle calculations
 # Returns
-- `Vector{Vector{T}}`: Sparse matrix of angles between neighbor pairs, where entry [i][j]  contains the angle between vectors from the central node to neighbors i and j
+- `Vector{T}`: Flat vector of angles between neighbor pairs, where each entry corresponds to the angle between vectors from the central node to a pair of neighbors.
 
 # Notes
 - Returns angles in radians using acos function
