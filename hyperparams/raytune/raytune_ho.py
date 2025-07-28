@@ -1,5 +1,4 @@
 # refer to https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py
-# TODO: adapt ray tun to this optuna example
 
 """
 Optuna example with Ray Tune that optimizes multi-layer perceptrons using PyTorch.
@@ -12,9 +11,6 @@ we here use a small subset of it.
 """
 
 import os
-
-import optuna
-from optuna.trial import TrialState
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,6 +20,7 @@ from torchvision import datasets
 from torchvision import transforms
 
 from ray import tune
+from ray.tune.search.optuna import OptunaSearch
 from ray.tune.schedulers import ASHAScheduler
 
 
@@ -34,19 +31,53 @@ DIR = os.getcwd() + "/data"  # Directory to save FashionMNIST dataset.
 EPOCHS = 10
 N_TRAIN_EXAMPLES = BATCHSIZE * 30
 N_VALID_EXAMPLES = BATCHSIZE * 10
+MAX_LAYERS = 3  # Maximum number of layers to optimize
 
 
-def define_model(trial):
+def define_search_space():
+    """Define the search space for hyperparameters."""
+
+    search_space = {
+        "n_layers": tune.randint(1, MAX_LAYERS + 1),  # 1 to 3 layers
+        "optimizer": tune.choice(["Adam", "RMSprop", "SGD"]),
+        "lr": tune.loguniform(1e-5, 1e-1),
+    }
+
+    # Dynamically add Tune distributions based on n_layers
+    for i in range(MAX_LAYERS):
+        search_space[f"n_units_l{i}"] = tune.sample_from(
+            lambda config, idx=i: (
+                tune.randint(4, 129).sample(config)
+                if idx < config["n_layers"]
+                else None
+            )
+        )
+        search_space[f"dropout_l{i}"] = tune.sample_from(
+            lambda config, idx=i: (
+                tune.uniform(0.2, 0.51).sample(config)
+                if idx < config["n_layers"]
+                else None
+            )
+        )
+
+    return search_space
+
+
+def define_algorithm():
+    return OptunaSearch()
+
+
+def define_model(config):
     # We optimize the number of layers, hidden units and dropout ratio in each layer.
-    n_layers = trial.suggest_int("n_layers", 1, 3)
+    n_layers = config["n_layers"]
     layers = []
 
     in_features = 28 * 28
     for i in range(n_layers):
-        out_features = trial.suggest_int("n_units_l{}".format(i), 4, 128)
+        out_features = config[f"n_units_l{i}"]
         layers.append(nn.Linear(in_features, out_features))
         layers.append(nn.ReLU())
-        p = trial.suggest_float("dropout_l{}".format(i), 0.2, 0.5)
+        p = config[f"dropout_l{i}"]
         layers.append(nn.Dropout(p))
 
         in_features = out_features
@@ -74,13 +105,13 @@ def get_mnist():
     return train_loader, valid_loader
 
 
-def objective(trial):
+def objective(config):
     # Generate the model.
-    model = define_model(trial).to(DEVICE)
+    model = define_model(config).to(DEVICE)
 
     # Generate the optimizers.
-    optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "RMSprop", "SGD"])
-    lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
+    optimizer_name = config["optimizer"]
+    lr = config["lr"]
     optimizer = getattr(optim, optimizer_name)(model.parameters(), lr=lr)
 
     # Get the FashionMNIST dataset.
@@ -118,32 +149,49 @@ def objective(trial):
 
         accuracy = correct / min(len(valid_loader.dataset), N_VALID_EXAMPLES)
 
-        trial.report(accuracy, epoch)
-
-        # Handle pruning based on the intermediate value.
-        if trial.should_prune():
-            raise optuna.exceptions.TrialPruned()
+        tune.report(
+            {
+                "accuracy": accuracy,
+                "epoch": epoch,
+            }
+        )
 
     return accuracy
 
 
 if __name__ == "__main__":
-    study = optuna.create_study(study_name="optuna_pytorch_test", direction="maximize")
-    study.optimize(objective, n_trials=100, timeout=600)
+    search_space = define_search_space()
+    algorithm = define_algorithm()
 
-    pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    scheduler = ASHAScheduler(
+        max_t=EPOCHS,
+        grace_period=1,
+        reduction_factor=2,
+    )
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
-    print("  Number of pruned trials: ", len(pruned_trials))
-    print("  Number of complete trials: ", len(complete_trials))
+    tuner = tune.Tuner(
+        objective,
+        tune_config=tune.TuneConfig(
+            num_samples=10,
+            search_alg=algorithm,
+            scheduler=scheduler,
+            metric="accuracy",
+            mode="max",
+        ),
+        param_space=search_space,
+        run_config=tune.RunConfig(
+            name="raytune_pytorch_test",
+            storage_path=os.getcwd() + "/ray_results",
+            stop={"training_iteration": EPOCHS},
+        ),
+    )
 
-    print("Best trial:")
-    trial = study.best_trial
+    results = tuner.fit()
 
-    print("  Value: ", trial.value)
-
-    print("  Params: ")
-    for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
+    best_result = results.get_best_result(metric="accuracy", mode="max")
+    print(f"Best trial config: {best_result.config}")
+    print(f"Best trial final validation accuracy: {best_result.metrics['accuracy']}")
+    print(
+        f"Best trial final training iteration: {best_result.metrics['training_iteration']}"
+    )
+    print(f"Best trial final epoch: {best_result.metrics['epoch']}")

@@ -53,3 +53,6 @@ py/notebooks/wandb/*
 
 # coverage files
 .coverage*
+
+# ray tune results
+ray_results/*
