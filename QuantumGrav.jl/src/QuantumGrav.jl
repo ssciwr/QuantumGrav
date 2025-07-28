@@ -9,7 +9,6 @@ import Distributions
 import YAML
 import HDF5
 import ProgressMeter
-import StaticArrays
 
 include("utils.jl")
 include("csetgeneration.jl")
