@@ -81,12 +81,6 @@ function calculate_angles(
             ),
         )
         if isnan(angle)
-            println("angle is nan")
-            println("i: $i, j: $j, n: $n")
-            println("v_i: $v_i")
-            println("v_j: $v_j")
-            println("norm(v_i): $(LinearAlgebra.norm(v_i))")
-            println("norm(v_j): $(LinearAlgebra.norm(v_j))")
             throw(ArgumentError("Angle is NaN. This should not happen."))
         end
         return type(angle)
