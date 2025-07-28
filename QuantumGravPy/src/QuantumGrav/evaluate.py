@@ -2,7 +2,6 @@ from typing import Callable, Any
 import torch
 import torch_geometric
 from collections.abc import Collection
-import tqdm
 
 
 def make_loss_statistics(
@@ -74,17 +73,19 @@ def train_epoch(
         [torch.Tensor, torch.Tensor | torch_geometric.data.Data], torch.Tensor | float
     ],
     loss_data: list[dict[str, Any]],
-    process_loss: Callable[
+    evaluate_result: Callable[
         [
             list[dict[str, Any]],
             torch.Tensor | float,
-            Collection[float],
-            Collection[torch.Tensor],
+            Collection[float] | Collection[torch.Tensor],
         ],
         list[dict[str, Any]],
     ] = make_loss_statistics,
+    report_result: Callable[[list[dict[str, Any]]], None] = print,
     device: torch.device = torch.device("cpu"),
     apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any] = None,
+    parallel: bool = False,
+    rank: int = 0,  # Only used if parallel is True
 ) -> None:
     """Train the model for one epoch. This will put the model into training mode, iterate over the data loader, compute the loss, and update the model parameters. It also processes the loss data if a processing function is provided or computes statistics on the loss data if not. Either output will be appended to the loss_data list.
 
@@ -94,17 +95,35 @@ def train_epoch(
         optimizer (torch.optim.Optimizer): Optimizer for updating the model parameters
         criterion (Callable[[torch.Tensor, torch.Tensor], torch.Tensor  |  float]): Loss function to compute the loss
         loss_data (list[dict[str, Any]]): list to store loss statistics
-        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to None.
+        evaluate_result (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to None.
         device (torch.device, optional): Device to run the training on. Defaults to torch.device("cpu").
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): Function to apply the model to the data. Defaults to None.
+        parallel (bool, optional): Whether to use distributed training. Defaults to False.
+        rank (int, optional): Rank of the current process in distributed training. Defaults to 0. Only used if parallel is True.
     """
+    if torch.distributed.is_initialized() is False and parallel:
+        raise RuntimeError(
+            "Distributed training is enabled, but torch.distributed is not initialized. "
+            "Make sure to initialize the distributed environment before training."
+        )
+
     if not model.training:
         raise RuntimeError(
             "Model should be in training mode before training. Use model.train() to set it to training mode."
         )
-    # actual training loop
+
+    # either both of evaluate_result and report_result must be provided or none
+    if any(x is None for x in [evaluate_result, report_result]) and any(
+        x is not None for x in [evaluate_result, report_result]
+    ):
+        raise ValueError(
+            "evaluate_result and report_result must be provided for training."
+        )
+
     epoch_loss_data = []
-    for batch in tqdm.tqdm(data_loader, desc="Training epoch"):
+
+    # actual training loop
+    for batch in data_loader:
         optimizer.zero_grad()
         data = batch.to(device)
         outputs = evaluate_batch(model, data, apply_model)
@@ -116,14 +135,20 @@ def train_epoch(
         else:
             epoch_loss_data.append(loss)
 
-    if process_loss is not None and epoch_loss_data is not None:
-        process_loss(
-            loss_data,
-            epoch_loss_data,
-            data_loader.dataset.data.y
-            if hasattr(data_loader.dataset, "data")
-            else None,
-        )
+    if evaluate_result is not None and epoch_loss_data is not None:
+        if parallel and rank == 0:
+            torch.dist.barrier()  # Ensure all processes reach this point before proceeding
+
+            result = evaluate_result(
+                loss_data, epoch_loss_data, data_loader.dataset.data.y
+            )
+            report_result(result)
+            torch.dist.barrier()  # Ensure all processes complete before returning
+        else:
+            result = evaluate_result(
+                loss_data, epoch_loss_data, data_loader.dataset.data.y
+            )
+            report_result(result)
 
 
 def test_epoch(
@@ -133,17 +158,19 @@ def test_epoch(
         [torch.Tensor, torch.Tensor | torch_geometric.data.Data], torch.Tensor | float
     ],
     loss_data: list[dict[str, Any]],
-    process_loss: Callable[
+    evaluate_result: Callable[
         [
             list[dict[str, Any]],
             torch.Tensor | float,
-            Collection[float],
-            Collection[torch.Tensor],
+            Collection[float] | Collection[torch.Tensor],
         ],
         list[dict[str, Any]],
     ] = make_loss_statistics,
+    report_result: Callable[[list[dict[str, Any]]], None] = print,
     device: torch.device = torch.device("cpu"),
     apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any] = None,
+    parallel: bool = False,
+    rank: int = 0,  # Only used if parallel is True
 ) -> None:
     """Test the model for one epoch.
 
@@ -152,31 +179,77 @@ def test_epoch(
         data_loader (torch_geometric.data.DataLoader): The data loader for the test data.
         criterion (Callable[[torch.Tensor, torch.Tensor], torch.Tensor  |  float]): The loss function.
         loss_data (list[dict[str, Any]]): list to store loss statistics.
-        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to make_loss_statistics.
+        evaluate_result (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to make_loss_statistics.
         device (torch.device, optional): The device to run the evaluation on. Defaults to torch.device("cpu").
         apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): A function to apply the model to the data. Defaults to None.
+        parallel (bool, optional): Whether to use distributed evaluation. Defaults to False.
+        rank (int, optional): Rank of the current process in distributed evaluation. Defaults to 0. Only used if parallel is True.
     """
-    model.eval()
+    if torch.distributed.is_initialized() is False and parallel:
+        raise RuntimeError(
+            "Distributed training is enabled, but torch.distributed is not initialized. "
+            "Make sure to initialize the distributed environment before training."
+        )
 
-    epoch_loss_data = []
-    with torch.no_grad():
-        for batch in tqdm.tqdm(data_loader, desc="Evaluating epoch"):
-            data = batch.to(device, non_blocking=True)
-            outputs = evaluate_batch(model, data, apply_model)
-            loss = criterion(outputs, data)
-            if isinstance(loss, torch.Tensor):
-                epoch_loss_data.append(loss.item())
-            else:
-                epoch_loss_data.append(loss)
+    def run_on_data(
+        model: torch.nn.Module,
+        data_loader: torch_geometric.data.DataLoader,
+        criterion: Callable[
+            [torch.Tensor, torch.Tensor | torch_geometric.data.Data],
+            torch.Tensor | float,
+        ],
+        device: torch.device,
+        evaluate_result: Callable[
+            [
+                list[dict[str, Any]],
+                torch.Tensor | float,
+                Collection[float] | Collection[torch.Tensor],
+            ],
+            list[dict[str, Any]],
+        ],
+        report_result: Callable[[list[dict[str, Any]]], None],
+    ) -> None:
+        """Evaluate the model on a given data loader. This function abstracts away the logic of evaluating the model on a data loader between parallel and non-parallel execution.
 
-    if process_loss is not None and epoch_loss_data is not None:
-        process_loss(
-            loss_data,
-            epoch_loss_data,
-            data_loader.dataset.data.y
-            if hasattr(data_loader.dataset, "data")
-            else None,
+        Args:
+            model (torch.nn.Module): The model to evaluate.
+            data_loader (torch_geometric.data.DataLoader): The data loader for the evaluation data.
+            criterion (Callable[ [torch.Tensor, torch.Tensor  |  torch_geometric.data.Data], torch.Tensor  |  float, ]): The loss function.
+            device (torch.device): The device to run the evaluation on.
+            evaluate_result (Callable[ [ list[dict[str, Any]], torch.Tensor  |  float, Collection[float]  |  Collection[torch.Tensor], ], list[dict[str, Any]], ]): A function to process the evaluation results.
+            report_result (Callable[[list[dict[str, Any]]], None]): A function to report the evaluation results.
+        """
+        model.eval()
+        epoch_loss_data = []
+        with torch.no_grad():
+            for batch in data_loader:
+                data = batch.to(device, non_blocking=True)
+                outputs = evaluate_batch(model, data, apply_model)
+                loss = criterion(outputs, data)
+                if isinstance(loss, torch.Tensor):
+                    epoch_loss_data.append(loss.item())
+                else:
+                    epoch_loss_data.append(loss)
+
+        if evaluate_result is not None and epoch_loss_data is not None:
+            result = evaluate_result(
+                loss_data, epoch_loss_data, data_loader.dataset.data.y
+            )
+            report_result(result)
+
+    if parallel and rank == 0:
+        torch.distributed.barrier()
+        run_on_data(
+            model, data_loader, criterion, device, evaluate_result, report_result
+        )
+        torch.distributed.barrier()
+    else:
+        run_on_data(
+            model, data_loader, criterion, device, evaluate_result, report_result
         )
 
 
+"""
+Validate an epoch using the same logic as test_epoch.
+"""
 validate_epoch = test_epoch  # Re-use test_epoch logic for validation
