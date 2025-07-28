@@ -11,7 +11,7 @@ using TestItems
     import YAML
 
     Random.seed!(42)  # Set a seed for reproducibility
-    rng = Random.MersenneTwister(42)
+    rng = Random.Xoshiro(42)
     npoint_distribution = Distributions.DiscreteUniform(2, 1000)
     order_distribution = Distributions.DiscreteUniform(2, 9)
     r_distribution = Distributions.Uniform(1.0, 2.0)
@@ -127,7 +127,7 @@ end
 
 
 @testitem "make_general_cset_works" tags = [:csetgeneration] setup = [setupTests] begin
-    rng = Random.MersenneTwister(42)
+    rng = Random.Xoshiro(42)
     npoints = 100
     order = 3
     r = 1.5

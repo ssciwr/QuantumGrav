@@ -87,7 +87,8 @@ function calculate_angles(
     end
 
     idxs = findall(x -> length(x) > 0, neighbors)
-
+    n = length(idxs)
+    num_pairs = div(n * (n - 1), 2)
     if multithreading
         # to avoid race conditions and locking with multithreading, have a separate target 
         # vector for each thread and later concatenate them. Not needed for the 
@@ -97,23 +98,29 @@ function calculate_angles(
         # preallocate vectors to avoid data copying due to reallocation
         sizehint!.(angles, length(neighbors))
 
-        Threads.@threads for (i, j) in collect(Iterators.product(idxs, idxs))
-            if i != j && i != node_idx && j != node_idx
-                angle = inner(sprinkling, i, j, node_idx)
-                push!(angles[Threads.threadid()], angle)
+        Threads.@threads for idx1 = 1:length(idxs)
+            for idx2 = (idx1+1):length(idxs)
+                i = idxs[idx1]
+                j = idxs[idx2]
+                if i != j && i != node_idx && j != node_idx
+                    angle = inner(sprinkling, i, j, node_idx)
+                    push!(angles[Threads.threadid()], angle)
+                end
             end
         end
         angles = vcat(angles...)
     else
-        angles = Vector{type}()
-
-        # preallocate vectors to avoid data copying due to reallocation
-        sizehint!(angles, length(neighbors))
-
-        for (i, j) in collect(Iterators.product(idxs, idxs))
-            if i != j && i != node_idx && j != node_idx
-                angle = inner(sprinkling, i, j, node_idx)
-                push!(angles, angle)
+        angles = Vector{type}(undef, num_pairs)
+        k = 1
+        for idx1 = 1:length(idxs)
+            for idx2 = (idx1+1):length(idxs)
+                i = idxs[idx1]
+                j = idxs[idx2]
+                if i != j && i != node_idx && j != node_idx
+                    angle = inner(sprinkling, i, j, node_idx)
+                    angles[k] = angle
+                    k += 1
+                end
             end
         end
     end
@@ -357,7 +364,7 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
 - `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
 - `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
-- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
+- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
 function make_data(
     transform::Function,
@@ -367,22 +374,19 @@ function make_data(
         "num_datapoints" => 1000,
         "output" => "~/QuantumGrav/data",
         "file_mode" => "w",
-        "num_threads" => Threads.nthreads(),
         "seed" => 42,
     ),
 )
     # TODO: enforce signature of functions programmatically
     # consistency checks
-    for key in ["num_datapoints", "output", "file_mode", "num_threads", "seed"]
+    for key in ["num_datapoints", "output", "file_mode", "seed"]
         if !haskey(config, key)
             throw(ArgumentError("Configuration must contain the key: $key"))
         end
     end
 
     # check return type 
-    if Dict in
-       Base.return_types(transform, (Dict{String,Any}, Random.MersenneTwister)) ==
-       false
+    if Dict in Base.return_types(transform, (Dict{String,Any}, Random.Xoshiro)) == false
         throw(
             ArgumentError(
                 "The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values.",
@@ -393,6 +397,43 @@ function make_data(
     # make directory to put data into
     if !isdir(abspath(expanduser(config["output"])))
         mkpath(abspath(expanduser(config["output"])))
+    end
+
+    function make_data_chunk(file, num_datapoints_chunks::Int64)
+        rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
+
+        data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
+        p = ProgressMeter.Progress(num_datapoints_chunks)
+        Threads.@threads for _ = 1:num_datapoints_chunks
+            t = Threads.threadid()
+            rng = rngs[t]
+            data_point = transform(config, rng)
+            # Store or process the generated data point as needed
+            push!(data[t], data_point)
+            ProgressMeter.next!(p) # Update the progress meter
+        end
+        ProgressMeter.finish!(p)
+
+        @info "Aggregating data from $(Threads.nthreads()) threads"
+        # aggregate everything int one big dictionary
+        final_data = Dict{String,Any}()
+        for thread_local_data in data
+            for datapoint in thread_local_data
+                for (key, value) in datapoint
+                    if haskey(final_data, key) == false
+                        final_data[key] = []
+                    end
+                    push!(final_data[key], value)
+                    value = nothing # clear the value to reduce memory usage
+                end
+            end
+        end
+
+        @info "Writing data chunk with $(num_datapoints_chunks) datapoints to file"
+        # ... then write to file with the supplied write_data function
+        write_data(file, config, final_data)
+        final_data = nothing # clear the final_data to reduce memory usage
+        GC.gc() # run garbage collector to free memory
     end
 
     HDF5.h5open(
@@ -419,6 +460,7 @@ function make_data(
 
         # get the current commit hash of the QuantumGrav package and put it into the config
         # also get the current branch name. 
+        # TODO: make this work for arbitrary paths or delete
         config["commit_hash"] = read(`git rev-parse HEAD`, String)
 
         config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
@@ -436,41 +478,24 @@ function make_data(
         # check if the data generation should be chunked
         if "chunks" in keys(config)
             num_chunks = config["chunks"]
-            num_datapoints = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
+            num_datapoints_chunks = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
+            final_chunksize = num_datapoints - num_chunks * num_datapoints_chunks # Computes the remaining number of datapoints that do not fit into a full chunk.
         else
             num_chunks = 1
+            final_chunksize = 0
         end
 
         # Multithreading enabled by default, use Threads.@threads for parallel data generation
-        rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
-        for _ = 1:num_chunks
-            data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
-
-            Threads.@threads for _ = 1:num_datapoints
-                t = Threads.threadid()
-                rng = rngs[t]
-                data_point = transform(config, rng)
-                # Store or process the generated data point as needed
-                push!(data[t], data_point)
-            end
-
-            # aggregate everything int one big dictionary
-            final_data = Dict{String,Any}()
-            for thread_local_data in data
-                for datapoint in thread_local_data
-                    for (key, value) in datapoint
-                        if haskey(final_data, key)
-                            final_data[key] =
-                                cat(final_data[key], value; dims = ndims(value) + 1)
-                        else
-                            final_data[key] = value
-                        end
-                    end
-                end
-            end
-
-            # ... then write to file with the supplied write_data function
-            write_data(file, config, final_data)
+        for c = 1:num_chunks
+            @info "Generating data chunk $(c)/$(num_chunks) with $num_datapoints_chunks datapoints"
+            make_data_chunk(file, num_datapoints_chunks)
         end
+
+        if final_chunksize > 0
+            @info "Generating final data chunk with $final_chunksize datapoints"
+            # handle the final chunk with the remaining datapoints
+            make_data_chunk(file, final_chunksize)
+        end
+
     end
 end

@@ -69,7 +69,7 @@ function make_manifold_cset(
     npoints::Int64,
     rng::Random.AbstractRNG,
     order::Int64,
-    r::Float64,
+    r::Float64;
     d::Int64 = 2,
     type::Type{T} = Float32,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T,Vararg{T}}},Matrix{T}} where {T<:Number}
@@ -169,8 +169,7 @@ function make_general_cset(
     if manifold_like == 1
         # create a simple causet with a Minkowski manifold and a causal diamond boundary
         cset, sprinkling, chebyshev_coefs =
-            make_manifold_cset(npoints, rng, order, r, d, type)
-        return cset, sprinkling, chebyshev_coefs
+            make_manifold_cset(npoints, rng, order, r; d = d, type = type)
 
     else
         cset = CausalSets.sample_random_causet(CausalSets.BitArrayCauset, npoints, 300, rng) # markov expansion big enough?

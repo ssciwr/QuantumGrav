@@ -236,7 +236,7 @@ Generates random points uniformly distributed in a d-dimensional box.
 - `box_min::Float64`: Minimum coordinate value
 - `box_max::Float64`: Maximum coordinate value
 - `type::Type{T}`: Numeric type for coordinates
-- `rng`: Random number generator (default: MersenneTwister(1234))
+- `rng`: Random number generator (default: Xoshiro(1234))
 
 # Returns
 - `Vector{Vector{T}}`: Vector of n points, each point is a d-dimensional vector
@@ -251,7 +251,7 @@ function make_pseudosprinkling(
     box_min::Float64,
     box_max::Float64,
     type::Type{T};
-    rng = Random.MersenneTwister(1234),
+    rng = Random.Xoshiro(1234),
 )::Vector{Vector{T}} where {T<:Number}
     if box_min >= box_max
         throw(ArgumentError("box_min must be less than box_max"))

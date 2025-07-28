@@ -64,7 +64,7 @@ function (gen::Generator)(batchsize::Int)
     max_atomcount = 15
 
     # rng and distributions for the random generation
-    rng = Random.MersenneTwister(gen.seed)
+    rng = Random.Xoshiro(gen.seed)
     dim_distr = Distributions.DiscreteUniform(2, 4)
     manifold_distr = Distributions.DiscreteUniform(1, 6)
     boundary_distr = Distributions.DiscreteUniform(1, 3)
