@@ -13,7 +13,13 @@ include("utils.jl")
 include("csetgeneration.jl")
 include("datageneration.jl")
 
-export make_cset,
-    make_link_matrix, make_adj, max_pathlen, calculate_angles, calculate_distances
+export make_simple_cset,
+    make_manifold_cset,
+    make_general_cset,
+    make_link_matrix,
+    make_adj,
+    max_pathlen,
+    calculate_angles,
+    calculate_distances
 
 end # module QuantumGrav
