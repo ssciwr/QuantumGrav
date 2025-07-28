@@ -450,7 +450,7 @@ function make_data(
         # Multithreading enabled by default, use Threads.@threads for parallel data generation
         rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
         for _ = 1:num_chunks
-            data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # vector of vectors of dictionaries. 
+            data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
 
             Threads.@threads for _ = 1:num_datapoints
                 t = Threads.threadid()
