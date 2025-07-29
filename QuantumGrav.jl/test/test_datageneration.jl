@@ -262,16 +262,17 @@ end
     )
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
-    @test isfile(joinpath(config["output"], "data.h5"))
-    @test isfile(joinpath(config["output"], "config.yaml"))
-    @test isfile(joinpath(config["output"], "test_datageneration.jl"))
+    outputcontent = readdir(config["output"])
 
-    QuantumGrav.HDF5.h5open(joinpath(config["output"], "data.h5"), "r") do file
+    @test [occursin(".h5", file) for file in outputcontent] == [true]
+    @test [occursin(".yaml", file) for file in outputcontent] == [true]
+    @test [occursin(".jl", file) for file in outputcontent] == [true]
+
+    file = [f for f in outputcontent if occursin(".h5", f)][1]
+
+    QuantumGrav.HDF5.h5open(file, "r") do file
         @test haskey(file, "/adjacency_matrices")
         @test size(file["/adjacency_matrices"]) == (100, 100, 10)
     end
-
-    @test isfile(joinpath(config["output"], "data.h5"))
-    @test isfile(joinpath(config["output"], "config.yaml"))
 
 end
