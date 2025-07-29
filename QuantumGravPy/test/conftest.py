@@ -4,10 +4,14 @@ from pathlib import Path
 import h5py
 
 import torch
+import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 
+import QuantumGrav as QG
 
+
+# data
 @pytest.fixture
 def basic_transform():
     def transform(raw: jcall.DictValue) -> Data:
@@ -193,14 +197,7 @@ def read_data():
             x=x,
             edge_index=edge_index,
             edge_attr=edge_weight.unsqueeze(1),
-            y=torch.stack(
-                [
-                    torch.tensor(manifold),
-                    torch.tensor(boundary),
-                    torch.tensor(dimension),
-                ],
-                dim=0,
-            ),
+            y=torch.tensor([[manifold, boundary, dimension]], dtype=int_dtype),
         )
 
         if validate and not data.validate():
@@ -208,3 +205,73 @@ def read_data():
         return data
 
     return reader
+
+
+# models
+
+
+@pytest.fixture
+def gnn_block():
+    return QG.GNNBlock(
+        in_dim=16,
+        out_dim=32,
+        dropout=0.3,
+        gnn_layer_type=torch_geometric.nn.conv.GCNConv,
+        normalizer=torch.nn.BatchNorm1d,
+        activation=torch.nn.ReLU,
+        gnn_layer_args=[],
+        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
+        norm_args=[
+            32,
+        ],
+        norm_kwargs={"eps": 1e-5, "momentum": 0.2},
+    )
+
+
+@pytest.fixture
+def classifier_block():
+    return QG.ClassifierBlock(
+        input_dim=32,
+        hidden_dims=[24, 12],
+        output_dims=[2, 3],
+        activation=torch.nn.ReLU,
+        backbone_kwargs=[{}, {}],
+        activation_kwargs=[{"inplace": False}],
+        output_kwargs=[
+            {},
+        ],
+    )
+
+
+@pytest.fixture
+def classifier_block_graphfeatures():
+    return QG.ClassifierBlock(
+        input_dim=64,
+        hidden_dims=[24, 12],
+        output_dims=[2, 3],
+        activation=torch.nn.ReLU,
+        backbone_kwargs=[{}, {}],
+        activation_kwargs=[{"inplace": False}],
+        output_kwargs=[
+            {},
+        ],
+    )
+
+
+@pytest.fixture
+def pooling_layer():
+    return torch_geometric.nn.global_mean_pool
+
+
+@pytest.fixture
+def graph_features_net():
+    return QG.GraphFeaturesBlock(
+        input_dim=10,
+        output_dim=32,
+        hidden_dims=[24, 8],
+        activation=torch.nn.ReLU,
+        layer_kwargs=[{}, {}],
+        activation_kwargs=[
+            {"inplace": False},
+        ],
+    )

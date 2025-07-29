@@ -23,24 +23,6 @@ def gnn_block_config():
     }
 
 
-@pytest.fixture
-def gnn_block():
-    return QG.GNNBlock(
-        in_dim=16,
-        out_dim=32,
-        dropout=0.3,
-        gnn_layer_type=tgnn.conv.GCNConv,
-        normalizer=torch.nn.BatchNorm1d,
-        activation=torch.nn.ReLU,
-        gnn_layer_args=[],
-        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
-        norm_args=[
-            32,
-        ],
-        norm_kwargs={"eps": 1e-5, "momentum": 0.2},
-    )
-
-
 def test_gnn_block_initialization(gnn_block):
     assert gnn_block.dropout_p == 0.3
     assert gnn_block.in_dim == 16

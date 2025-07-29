@@ -1,80 +1,15 @@
 import QuantumGrav as QG
-import pytest
 import torch
 import torch_geometric
-
-
-@pytest.fixture
-def gnn_block():
-    return QG.GNNBlock(
-        in_dim=16,
-        out_dim=32,
-        dropout=0.3,
-        gnn_layer_type=torch_geometric.nn.conv.GCNConv,
-        normalizer=torch.nn.BatchNorm1d,
-        activation=torch.nn.ReLU,
-        gnn_layer_args=[],
-        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
-        norm_args=[
-            32,
-        ],
-        norm_kwargs={"eps": 1e-5, "momentum": 0.2},
-    )
-
-
-@pytest.fixture
-def classifier_block():
-    return QG.ClassifierBlock(
-        input_dim=32,
-        hidden_dims=[24, 12],
-        output_dims=[2, 3],
-        activation=torch.nn.ReLU,
-        backbone_kwargs=[{}, {}],
-        activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
-    )
-
-
-@pytest.fixture
-def classifier_block_graphfeatures():
-    return QG.ClassifierBlock(
-        input_dim=64,
-        hidden_dims=[24, 12],
-        output_dims=[2, 3],
-        activation=torch.nn.ReLU,
-        backbone_kwargs=[{}, {}],
-        activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
-    )
-
-
-@pytest.fixture
-def pooling_layer():
-    return torch_geometric.nn.global_mean_pool
-
-
-@pytest.fixture
-def graph_features_net():
-    return QG.GraphFeaturesBlock(
-        input_dim=10,
-        output_dim=32,
-        hidden_dims=[24, 8],
-        activation=torch.nn.ReLU,
-        layer_kwargs=[{}, {}],
-        activation_kwargs=[
-            {"inplace": False},
-        ],
-    )
+import pytest
 
 
 @pytest.fixture
 def gnn_model(gnn_block, classifier_block, pooling_layer, graph_features_net):
     return QG.GNNModel(
-        gcn_net=gnn_block,
+        gcn_net=[
+            gnn_block,
+        ],
         classifier=classifier_block,
         pooling_layer=pooling_layer,
         graph_features_net=graph_features_net,
@@ -86,7 +21,9 @@ def gnn_model_with_graph_features(
     gnn_block, classifier_block_graphfeatures, pooling_layer, graph_features_net
 ):
     return QG.GNNModel(
-        gcn_net=gnn_block,
+        gcn_net=[
+            gnn_block,
+        ],
         classifier=classifier_block_graphfeatures,
         pooling_layer=pooling_layer,
         graph_features_net=graph_features_net,
@@ -96,23 +33,46 @@ def gnn_model_with_graph_features(
 @pytest.fixture
 def gnn_model_config():
     config = {
-        "gcn_net": {
-            "in_dim": 16,
-            "out_dim": 32,
-            "dropout": 0.3,
-            "gnn_layer_type": "gcn",
-            "normalizer": "batch_norm",
-            "activation": "relu",
-            "norm_args": [
-                32,
-            ],
-            "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-            "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
-        },
+        "gcn_net": [
+            {
+                "in_dim": 16,
+                "out_dim": 32,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    32,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+            {
+                "in_dim": 32,
+                "out_dim": 16,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    16,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+        ],
         "classifier": {
-            "input_dim": 32,
+            "input_dim": 16,
             "output_dims": [2, 3],
-            "hidden_dims": [24, 12],
+            "hidden_dims": [24, 18],
             "activation": "relu",
             "backbone_kwargs": [{}, {}],
             "output_kwargs": [{}],
@@ -136,14 +96,16 @@ def gnn_model_config():
 def test_gnn_model_creation(gnn_model):
     """Test the creation of GNNModel with required components."""
 
-    assert isinstance(gnn_model.gcn_net, QG.GNNBlock)
+    assert isinstance(gnn_model.gcn_net, torch.nn.ModuleList)
+    assert len(gnn_model.gcn_net) == 1  # Assuming one GNN block
+    assert isinstance(gnn_model.gcn_net[0], QG.GNNBlock)
     assert isinstance(gnn_model.classifier, QG.ClassifierBlock)
     assert gnn_model.pooling_layer == torch_geometric.nn.global_mean_pool
     assert isinstance(gnn_model.graph_features_net, QG.GraphFeaturesBlock)
 
     # assert sizes and properties of the components
-    assert gnn_model.gcn_net.in_dim == 16
-    assert gnn_model.gcn_net.out_dim == 32
+    assert gnn_model.gcn_net[0].in_dim == 16
+    assert gnn_model.gcn_net[0].out_dim == 32
     assert gnn_model.classifier.output_layers[0].in_channels == 12
     assert gnn_model.classifier.output_layers[1].in_channels == 12
     assert gnn_model.classifier.output_layers[0].out_channels == 2
@@ -204,7 +166,8 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
 
 def test_gnn_model_creation_from_config(gnn_model_config):
     model = QG.GNNModel.from_config(gnn_model_config)
-    assert isinstance(model.gcn_net, QG.GNNBlock)
+    assert isinstance(model.gcn_net, torch.nn.ModuleList)
+    assert len(model.gcn_net) == 2  # Assuming two GNN blocks
     assert isinstance(model.classifier, QG.ClassifierBlock)
     assert model.pooling_layer == torch_geometric.nn.global_mean_pool
     assert isinstance(model.graph_features_net, QG.GraphFeaturesBlock)
