@@ -155,7 +155,7 @@ def train_epoch(
             report_result(result)
 
 
-def test_epoch(
+def validate_epoch(
     model: torch.nn.Module,
     data_loader: torch_geometric.data.DataLoader,
     criterion: Callable[
@@ -254,9 +254,9 @@ def test_epoch(
 
 
 """
-Validate an epoch using the same logic as test_epoch.
+test an epoch using the same logic as test_epoch.
 """
-validate_epoch = test_epoch  # Re-use test_epoch logic for validation
+test_epoch = validate_epoch  # Re-use test_epoch logic for validation
 
 
 class Trainer:
@@ -308,40 +308,12 @@ class Trainer:
         self.model = None
         self.optimizer = None
 
-    def _init_sequential(self):
+    def _initialize_model(self):
         if self.model is not None:
             raise RuntimeError("Model is already initialized.")
         self.model = gnn_model.GNNModel.from_config(self.config["model"])
 
-    def _init_parallel(self):
-        if self.model is not None:
-            raise RuntimeError("Model is already initialized.")
-
-        if self.initialized_parallel:
-            raise RuntimeError("Parallel training is already initialized.")
-
-        if not self.parallel:
-            raise RuntimeError("Parallel training is not enabled.")
-        model = gnn_model.GNNModel.from_config(self.config["model"])
-
-        ddp.initialize(
-            rank=self.rank,
-            worldsize=self.world_size,
-            master_addr=self.config["parallel"].get("master_addr", "localhost"),
-            master_port=self.config["parallel"].get("master_port", "12345"),
-            backend=self.config["parallel"].get("backend", "nccl"),
-        )
-
-        self.model = ddp.DistributedModel(
-            model,
-            rank=self.rank,
-            worldsize=self.world_size,
-            output_device=self.config.get("output_device", None),
-        )
-
-        self.initialize_parallel = True
-
-    def _init_optimizer(self):
+    def _initialize_optimizer(self):
         if self.model is None:
             raise RuntimeError("Model must be initialized before optimizer.")
 
@@ -354,7 +326,7 @@ class Trainer:
             weight_decay=self.config["training"].get("weight_decay", 0),
         )
 
-    def run_training_sequential(
+    def run_training(
         self,
         train_loader: torch_geometric.data.DataLoader,
         val_loader: torch_geometric.data.DataLoader,
@@ -377,8 +349,8 @@ class Trainer:
         report_training_result=print,
         report_validation_result=print,
     ):
-        self._init_sequential()
-        self._init_optimizer()
+        self._initialize_model()
+        self._initialize_optimizer()
 
         if self.model is None:
             raise RuntimeError("Model must be initialized before training.")
@@ -428,6 +400,64 @@ class Trainer:
             parallel=False,
         )
 
+    def save_checkpoint(self):
+        pass
+
+    def load_checkpoint(self):
+        pass
+
+    def run_test(self):
+        pass
+
+
+class TrainerDDP(Trainer):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        # training and evaluation functions
+        criterion: Callable[
+            [torch.Tensor, torch.Tensor | torch_geometric.data.Data],
+            torch.Tensor | float,
+        ],
+        apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any]
+        | None = None,
+        # training evaluation and reporting
+        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+    ):
+        super().__init__(config, criterion, apply_model, early_stopping)
+        self.parallel = True
+        self.rank = config["parallel"].get("rank", 0)
+        self.world_size = config["parallel"].get("world_size", 1)
+        self.initialized_parallel = False
+
+    def _initialize_model(self):
+        if self.model is not None:
+            raise RuntimeError("Model is already initialized.")
+
+        if self.initialized_parallel:
+            raise RuntimeError("Parallel training is already initialized.")
+
+        if not self.parallel:
+            raise RuntimeError("Parallel training is not enabled.")
+        model = gnn_model.GNNModel.from_config(self.config["model"])
+
+        ddp.initialize(
+            rank=self.rank,
+            worldsize=self.world_size,
+            master_addr=self.config["parallel"].get("master_addr", "localhost"),
+            master_port=self.config["parallel"].get("master_port", "12345"),
+            backend=self.config["parallel"].get("backend", "nccl"),
+        )
+
+        self.model = ddp.DistributedModel(
+            model,
+            rank=self.rank,
+            worldsize=self.world_size,
+            output_device=self.config.get("output_device", None),
+        )
+
+        self.initialize_parallel = True
+
     def run_training_ddp(
         self,
         train_loader: torch_geometric.data.DataLoader,
@@ -451,8 +481,8 @@ class Trainer:
         report_training_result=print,
         report_validation_result=print,
     ):
-        self._init_parallel()
-        self._init_optimizer()
+        self._initialize_model()
+        self._initialize_optimizer()
         if self.model is None:
             raise RuntimeError("Model must be initialized before training.")
 
@@ -508,19 +538,6 @@ class Trainer:
             torch.distributed.barrier()
 
         self.cleanup()
-
-    def save_checkpoint(self):
-        pass
-
-    def load_checkpoint(self):
-        pass
-
-    def run_test(self):
-        if self.parallel:
-            if self.rank == 0:
-                pass
-        else:
-            pass
 
     def cleanup(self):
         if self.initialize_parallel:
