@@ -4,6 +4,10 @@ import torch_geometric
 from collections.abc import Collection
 
 
+from . import ddp
+from . import gnn_model
+
+
 def make_loss_statistics(
     loss_data: list[dict[str, Any]],
     list_of_loss_values: list[Any],
@@ -125,7 +129,7 @@ def train_epoch(
     # actual training loop
     for batch in data_loader:
         optimizer.zero_grad()
-        data = batch.to(device)
+        data = batch.to(rank if parallel else device, non_blocking=True)
         outputs = evaluate_batch(model, data, apply_model)
         loss = criterion(outputs, data)
         loss.backward()
@@ -137,13 +141,13 @@ def train_epoch(
 
     if evaluate_result is not None and epoch_loss_data is not None:
         if parallel and rank == 0:
-            torch.dist.barrier()  # Ensure all processes reach this point before proceeding
+            torch.distributed.barrier()  # Ensure all processes reach this point before proceeding
 
             result = evaluate_result(
                 loss_data, epoch_loss_data, data_loader.dataset.data.y
             )
             report_result(result)
-            torch.dist.barrier()  # Ensure all processes complete before returning
+            torch.distributed.barrier()  # Ensure all processes complete before returning
         else:
             result = evaluate_result(
                 loss_data, epoch_loss_data, data_loader.dataset.data.y
@@ -253,3 +257,273 @@ def test_epoch(
 Validate an epoch using the same logic as test_epoch.
 """
 validate_epoch = test_epoch  # Re-use test_epoch logic for validation
+
+
+class Trainer:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        # training and evaluation functions
+        criterion: Callable[
+            [torch.Tensor, torch.Tensor | torch_geometric.data.Data],
+            torch.Tensor | float,
+        ],
+        apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any]
+        | None = None,
+        # training evaluation and reporting
+        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+    ):
+        self.config = config
+
+        # functions for executing training and evaluation
+        self.criterion = criterion
+        self.apply_model = apply_model
+        self.early_stopping = early_stopping
+        self.seed = config.get("seed", 42)
+
+        torch.manual_seed(self.seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(self.seed)
+
+        # parallel training
+        self.parallel = config["training"].get("parallel", False)
+        self.rank = config["parallel"].get("rank", 0)
+        self.world_size = config["parallel"].get("world_size", 1)
+
+        # early stopping parameters
+        self.early_stopping_patience = config["training"].get(
+            "early_stopping_patience", 10
+        )
+        self.early_stopping_counter = 0
+
+        # parameters for finding out which model is best
+        self.best_score = -float("inf")
+        self.best_epoch = 0
+        self.epoch = 0
+        self.checkpoint_at = config["training"].get("checkpoint_at", None)
+
+        self.initialized_parallel = False
+
+        self.model = None
+        self.optimizer = None
+
+    def _init_sequential(self):
+        if self.model is not None:
+            raise RuntimeError("Model is already initialized.")
+        self.model = gnn_model.GNNModel.from_config(self.config["model"])
+
+    def _init_parallel(self):
+        if self.model is not None:
+            raise RuntimeError("Model is already initialized.")
+
+        if self.initialized_parallel:
+            raise RuntimeError("Parallel training is already initialized.")
+
+        if not self.parallel:
+            raise RuntimeError("Parallel training is not enabled.")
+        model = gnn_model.GNNModel.from_config(self.config["model"])
+
+        ddp.initialize(
+            rank=self.rank,
+            worldsize=self.world_size,
+            master_addr=self.config["parallel"].get("master_addr", "localhost"),
+            master_port=self.config["parallel"].get("master_port", "12345"),
+            backend=self.config["parallel"].get("backend", "nccl"),
+        )
+
+        self.model = ddp.DistributedModel(
+            model,
+            rank=self.rank,
+            worldsize=self.world_size,
+            output_device=self.config.get("output_device", None),
+        )
+
+        self.initialize_parallel = True
+
+    def _init_optimizer(self):
+        if self.model is None:
+            raise RuntimeError("Model must be initialized before optimizer.")
+
+        if self.optimizer is not None:
+            raise RuntimeError("Optimizer is already initialized.")
+
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.config["training"].get("lr", 1e-3),
+            weight_decay=self.config["training"].get("weight_decay", 0),
+        )
+
+    def run_training_sequential(
+        self,
+        train_loader: torch_geometric.data.DataLoader,
+        val_loader: torch_geometric.data.DataLoader,
+        evaluate_training: Callable[
+            [
+                list[dict[str, Any]],
+                torch.Tensor | float,
+                Collection[float] | Collection[torch.Tensor],
+            ],
+            list[dict[str, Any]],
+        ] = make_loss_statistics,
+        evaluate_validation: Callable[
+            [
+                list[dict[str, Any]],
+                torch.Tensor | float,
+                Collection[float] | Collection[torch.Tensor],
+            ],
+            list[dict[str, Any]],
+        ] = make_loss_statistics,
+        report_training_result=print,
+        report_validation_result=print,
+    ):
+        self._init_sequential()
+        self._init_optimizer()
+
+        if self.model is None:
+            raise RuntimeError("Model must be initialized before training.")
+
+        if self.optimizer is None:
+            raise RuntimeError("Optimizer must be initialized before training.")
+
+        num_epochs = self.config["training"].get("num_epochs", 100)
+        self.model.train()
+        total_eval_data = []
+        for epoch in range(0, num_epochs):
+            eval_data = []
+            train_epoch(
+                self.model,
+                train_loader,
+                self.optimizer,
+                self.criterion,
+                eval_data,
+                device=self.config.get("device", torch.device("cpu")),
+                apply_model=self.apply_model,
+                evaluate_result=evaluate_training,
+                report_result=report_training_result,
+                parallel=False,
+            )
+            self.epoch += 1
+            total_eval_data.append(eval_data)
+            if self.checkpoint_at is not None and epoch % self.checkpoint_at == 0:
+                self.save_checkpoint()
+
+            if self.early_stopping is not None:
+                if self.early_stopping(eval_data):
+                    print(f"Early stopping at epoch {epoch}.")
+                    self.save_checkpoint()
+                    break
+
+        self.model.eval()
+        eval_val_data = []
+        validate_epoch(
+            self.model,
+            val_loader,
+            self.criterion,
+            eval_val_data,
+            evaluate_result=evaluate_validation,
+            report_result=report_validation_result,
+            device=self.config.get("device", torch.device("cpu")),
+            apply_model=self.apply_model,
+            parallel=False,
+        )
+
+    def run_training_ddp(
+        self,
+        train_loader: torch_geometric.data.DataLoader,
+        val_loader: torch_geometric.data.DataLoader,
+        evaluate_training: Callable[
+            [
+                list[dict[str, Any]],
+                torch.Tensor | float,
+                Collection[float] | Collection[torch.Tensor],
+            ],
+            list[dict[str, Any]],
+        ] = make_loss_statistics,
+        evaluate_validation: Callable[
+            [
+                list[dict[str, Any]],
+                torch.Tensor | float,
+                Collection[float] | Collection[torch.Tensor],
+            ],
+            list[dict[str, Any]],
+        ] = make_loss_statistics,
+        report_training_result=print,
+        report_validation_result=print,
+    ):
+        self._init_parallel()
+        self._init_optimizer()
+        if self.model is None:
+            raise RuntimeError("Model must be initialized before training.")
+
+        if self.optimizer is None:
+            raise RuntimeError("Optimizer must be initialized before training.")
+
+        num_epochs = self.config["training"].get("num_epochs", 100)
+        for epoch in range(0, num_epochs):
+            eval_data = []
+            train_epoch(
+                self.model,
+                train_loader,
+                self.optimizer,
+                self.criterion,
+                eval_data,
+                device=self.config.get("device", torch.device("cpu")),
+                apply_model=self.apply_model,
+                evaluate_result=evaluate_training,
+                report_result=report_training_result,
+                parallel=False,
+            )
+            self.epoch += 1
+
+            torch.distributed.barrier()  # Ensure all processes reach this point before saving
+            if self.checkpoint_at is not None and epoch % self.checkpoint_at == 0:
+                if self.rank == 0:
+                    self.save_checkpoint()
+
+            torch.distributed.barrier()  # Ensure all processes complete the epoch before proceeding
+
+            if self.rank == 0:
+                self.model.eval()
+                eval_val_data = []
+                validate_epoch(
+                    self.model,
+                    val_loader,
+                    self.criterion,
+                    eval_val_data,
+                    evaluate_result=evaluate_validation,
+                    report_result=report_validation_result,
+                    device=self.config.get("device", torch.device("cpu")),
+                    apply_model=self.apply_model,
+                    parallel=False,
+                )
+                torch.distributed.barrier()  # Ensure all processes complete the epoch before proceeding
+
+            if self.early_stopping is not None:
+                if self.early_stopping(eval_data):
+                    print(f"Early stopping at epoch {epoch}.")
+                    self.save_checkpoint()
+                    break
+
+            torch.distributed.barrier()
+
+        self.cleanup()
+
+    def save_checkpoint(self):
+        pass
+
+    def load_checkpoint(self):
+        pass
+
+    def run_test(self):
+        if self.parallel:
+            if self.rank == 0:
+                pass
+        else:
+            pass
+
+    def cleanup(self):
+        if self.initialize_parallel:
+            ddp.cleanup()
+        else:
+            pass

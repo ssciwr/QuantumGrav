@@ -42,7 +42,9 @@ def initialize(
 
 # this function behaves like a factory function, which is why it is capitalized
 def DistributedDataLoader(
-    dataset: torch.utils.data.Dataset,
+    dataset: torch.utils.data.Dataset
+    | torch_geometric.data.Dataset
+    | list[torch_geometric.data.Data],
     batch_size: int,
     num_workers: int = 0,
     pin_memory: bool = True,
