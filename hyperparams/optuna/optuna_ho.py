@@ -1,4 +1,5 @@
 # refer to https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py
+# TODO: how to use optuna with config dict of QuantumGrav?
 
 """
 Optuna example that optimizes multi-layer perceptrons using PyTorch.
