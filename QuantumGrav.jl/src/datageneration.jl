@@ -22,13 +22,11 @@ causal set, so its complexity is quadratic in the number of elements.
 - The sparse matrix representation is used to save memory, as most entries
 are expected to be zero in typical causal sets.
 """
-function make_link_matrix(
-    cset::CausalSets.AbstractCauset;
-    type::Type{T} = Float32,
-) where {T<:Number}
+function make_link_matrix(cset::CausalSets.AbstractCauset;
+                          type::Type{T}=Float32,) where {T<:Number}
     link_matrix = SparseArrays.spzeros(type, cset.atom_count, cset.atom_count)
-    for i = 1:(cset.atom_count)
-        for j = 1:(cset.atom_count)
+    for i in 1:(cset.atom_count)
+        for j in 1:(cset.atom_count)
             if CausalSets.is_link(cset, i, j)
                 link_matrix[i, j] = 1
             end
@@ -57,63 +55,62 @@ Calculates angles between vectors from a central node given by `node_idx` to its
 - Diagonal entries (same neighbor) are zero
 - Empty neighbor list returns zero matrix
 """
-function calculate_angles(
-    sprinkling::AbstractMatrix,
-    node_idx::Int,
-    neighbors::AbstractVector;
-    type::Type{T} = Float32,
-    multithreading::Bool = false,
-)::Vector{T} where {T<:Number}
+function calculate_angles(sprinkling::AbstractMatrix,
+                          node_idx::Int,
+                          neighbors::AbstractVector;
+                          type::Type{T}=Float32,
+                          multithreading::Bool=false,)::Vector{T} where {T<:Number}
 
     # actual angle calculation function for two neighbors i and j
     # in euclidean space with respect to the node given by node_idx
     function inner(sprinkling, i, j, n)
         @inbounds v_i = sprinkling[i, :] - sprinkling[n, :]
         @inbounds v_j = sprinkling[j, :] - sprinkling[n, :]
-        angle = acos(
-            clamp(
-                LinearAlgebra.dot(
-                    v_i / LinearAlgebra.norm(v_i),
-                    v_j / LinearAlgebra.norm(v_j),
-                ),
-                -1.0,
-                1.0,
-            ),
-        )
-        if isnan(angle)
-            throw(ArgumentError("Angle is NaN. This should not happen."))
+        angle = type(acos(clamp(LinearAlgebra.dot(v_i / LinearAlgebra.norm(v_i),
+                                                  v_j / LinearAlgebra.norm(v_j)),
+                                -1.0,
+                                1.0)))
+        if isnan(angle) || isinf(angle)
+            throw(ArgumentError("Angle is NaN or Inf. This should not happen."))
         end
-        return type(angle)
+        return angle
     end
 
-    idxs = findall(x -> length(x) > 0, neighbors)
-
+    idxs = findall(x -> x > 0, neighbors)
+    n = length(idxs)
+    num_pairs = div(n * (n - 1), 2)
     if multithreading
         # to avoid race conditions and locking with multithreading, have a separate target 
         # vector for each thread and later concatenate them. Not needed for the 
         # non-multithreading branch
-        angles = [Vector{type}() for _ = 1:Threads.nthreads()]
+        angles = [Vector{type}() for _ in 1:Threads.nthreads()]
 
         # preallocate vectors to avoid data copying due to reallocation
         sizehint!.(angles, length(neighbors))
 
-        Threads.@threads for (i, j) in collect(Iterators.product(idxs, idxs))
-            if i != j && i != node_idx && j != node_idx
-                angle = inner(sprinkling, i, j, node_idx)
-                push!(angles[Threads.threadid()], angle)
+        Threads.@threads for idx1 in 1:length(idxs)
+            for idx2 in (idx1 + 1):length(idxs)
+                i = idxs[idx1]
+                j = idxs[idx2]
+                if i != j && i != node_idx && j != node_idx
+                    angle = inner(sprinkling, i, j, node_idx)
+                    push!(angles[Threads.threadid()], angle)
+                end
             end
         end
         angles = vcat(angles...)
     else
-        angles = Vector{type}()
-
-        # preallocate vectors to avoid data copying due to reallocation
-        sizehint!(angles, length(neighbors))
-
-        for (i, j) in collect(Iterators.product(idxs, idxs))
-            if i != j && i != node_idx && j != node_idx
-                angle = inner(sprinkling, i, j, node_idx)
-                push!(angles, angle)
+        angles = Vector{type}(undef, num_pairs)
+        k = 1
+        for idx1 in 1:length(idxs)
+            for idx2 in (idx1 + 1):length(idxs)
+                i = idxs[idx1]
+                j = idxs[idx2]
+                if i != j && i != node_idx && j != node_idx
+                    angle = inner(sprinkling, i, j, node_idx)
+                    angles[k] = angle
+                    k += 1
+                end
             end
         end
     end
@@ -141,14 +138,11 @@ Calculates Euclidean distances from a central node to its neighbors in a sprinkl
 - Empty neighbor list returns zero vector
 - Distances are always non-negative
 """
-function calculate_distances(
-    sprinkling::AbstractMatrix,
-    node_idx::Int,
-    neighbors::AbstractVector;
-    type::Type{T} = Float32,
-    multithreading::Bool = false,
-)::Vector{T} where {T<:Number}
-
+function calculate_distances(sprinkling::AbstractMatrix,
+                             node_idx::Int,
+                             neighbors::AbstractVector;
+                             type::Type{T}=Float32,
+                             multithreading::Bool=false,)::Vector{T} where {T<:Number}
     if isempty(neighbors)
         return T[]
     end
@@ -157,23 +151,20 @@ function calculate_distances(
         # to avoid race conditions and locking with multithreading, have a separate target 
         # vector for each thread and later concatenate them. Not needed for the 
         # non-multithreading branch
-        distances = [Vector{type}() for _ = 1:Threads.nthreads()]
+        distances = [Vector{type}() for _ in 1:Threads.nthreads()]
 
         # preallocate vectors to avoid data copying due to reallocation
         sizehint!.(distances, length(neighbors))
 
         Threads.@threads for (i, _) in collect(enumerate(neighbors))
             if i != node_idx
-                push!(
-                    distances[Threads.threadid()],
-                    LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]),
-                )
+                push!(distances[Threads.threadid()],
+                      LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]))
             end
         end
 
         distances = vcat(distances...)
     else
-
         distances = Vector{type}()
 
         # preallocate vectors to avoid data copying due to reallocation
@@ -181,10 +172,8 @@ function calculate_distances(
 
         for (i, _) in enumerate(neighbors)
             if i != node_idx
-                push!(
-                    distances,
-                    LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]),
-                )
+                push!(distances,
+                      LinearAlgebra.norm(sprinkling[i, :] - sprinkling[node_idx, :]))
             end
         end
     end
@@ -215,11 +204,10 @@ in the causal set.
 - The `cardinality_of` function is expected to return `nothing` if no 
   cardinality value exists for a given pair `(i, j)`.
 """
-function make_cardinality_matrix(
-    cset::CausalSets.AbstractCauset;
-    type::Type{T} = Float32,
-    multithreading::Bool = false,
-)::SparseArrays.SparseMatrixCSC{T,Int} where {T<:Number}
+function make_cardinality_matrix(cset::CausalSets.AbstractCauset;
+                                 type::Type{T}=Float32,
+                                 multithreading::Bool=false,)::SparseArrays.SparseMatrixCSC{T,
+                                                                                            Int} where {T<:Number}
     if cset.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
@@ -228,17 +216,17 @@ function make_cardinality_matrix(
         # to avoid race conditions and locking with multithreading, have a separate target 
         # vector for each thread and later concatenate them. Not needed for the 
         # non-multithreading branch
-        Is = [Vector{Int}() for _ = 1:Threads.nthreads()]
-        Js = [Vector{Int}() for _ = 1:Threads.nthreads()]
-        Vs = [Vector{type}() for _ = 1:Threads.nthreads()]
+        Is = [Vector{Int}() for _ in 1:Threads.nthreads()]
+        Js = [Vector{Int}() for _ in 1:Threads.nthreads()]
+        Vs = [Vector{type}() for _ in 1:Threads.nthreads()]
 
         # preallocate vectors to avoid data copying due to reallocation
         sizehint!.(Is, cset.atom_count)
         sizehint!.(Js, cset.atom_count)
         sizehint!.(Vs, cset.atom_count)
 
-        Threads.@threads for i in collect(1:cset.atom_count)
-            for j = 1:cset.atom_count
+        Threads.@threads for i in collect(1:(cset.atom_count))
+            for j in 1:(cset.atom_count)
                 ca = CausalSets.cardinality_of(cset, i, j)
                 if isnothing(ca) == false
                     push!(Is[Threads.threadid()], i)
@@ -252,7 +240,6 @@ function make_cardinality_matrix(
         Js = vcat(Js...)
         Vs = vcat(Vs...)
     else
-
         Is = Vector{Int}()
         Js = Vector{Int}()
         Vs = Vector{type}()
@@ -262,8 +249,8 @@ function make_cardinality_matrix(
         sizehint!(Js, cset.atom_count)
         sizehint!(Vs, cset.atom_count)
 
-        for i = 1:cset.atom_count
-            for j = 1:cset.atom_count
+        for i in 1:(cset.atom_count)
+            for j in 1:(cset.atom_count)
                 ca = CausalSets.cardinality_of(cset, i, j)
                 if isnothing(ca) == false
                     push!(Is, i)
@@ -275,7 +262,6 @@ function make_cardinality_matrix(
     end
     return SparseArrays.sparse(Is, Js, Vs, cset.atom_count, cset.atom_count, type)
 end
-
 
 """
     make_adj(c::CausalSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
@@ -293,12 +279,12 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets.AbstractCauset; type::Type{T} = Float32) where {T<:Number}
+function make_adj(c::CausalSets.AbstractCauset; type::Type{T}=Float32) where {T<:Number}
     if c.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
 
-    c.future_relations |> x -> hcat(x...) |> transpose |> SparseArrays.SparseMatrixCSC{type}
+    return (x -> SparseArrays.SparseMatrixCSC{type}(transpose(hcat(x...))))(c.future_relations)
 end
 
 """
@@ -332,7 +318,7 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
             if adj_matrix isa SparseArrays.AbstractSparseMatrix
                 indices = SparseArrays.findnz(adj_matrix[u, :])[1]
             else
-                indices = [v for v = 1:n if adj_matrix[u, v] != 0]
+                indices = [v for v in 1:n if adj_matrix[u, v] != 0]
             end
 
             for v in indices
@@ -357,37 +343,26 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
 - `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
 - `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
-- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`, and the number of threads to use as a node `num_threads`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
+- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
-function make_data(
-    transform::Function,
-    prepare_output::Function,
-    write_data::Function;
-    config::Dict{String,Any} = Dict{String,Any}(
-        "num_datapoints" => 1000,
-        "output" => "~/QuantumGrav/data",
-        "file_mode" => "w",
-        "num_threads" => Threads.nthreads(),
-        "seed" => 42,
-    ),
-)
+function make_data(transform::Function,
+                   prepare_output::Function,
+                   write_data::Function;
+                   config::Dict{String,Any}=Dict{String,Any}("num_datapoints" => 1000,
+                                                             "output" => "~/QuantumGrav/data",
+                                                             "file_mode" => "w",
+                                                             "seed" => 42),)
     # TODO: enforce signature of functions programmatically
     # consistency checks
-    for key in ["num_datapoints", "output", "file_mode", "num_threads", "seed"]
+    for key in ["num_datapoints", "output", "file_mode", "seed"]
         if !haskey(config, key)
             throw(ArgumentError("Configuration must contain the key: $key"))
         end
     end
 
     # check return type 
-    if Dict in
-       Base.return_types(transform, (Dict{String,Any}, Random.MersenneTwister)) ==
-       false
-        throw(
-            ArgumentError(
-                "The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values.",
-            ),
-        )
+    if Dict in Base.return_types(transform, (Dict{String,Any}, Random.Xoshiro)) == false
+        throw(ArgumentError("The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values."))
     end
 
     # make directory to put data into
@@ -395,82 +370,99 @@ function make_data(
         mkpath(abspath(expanduser(config["output"])))
     end
 
-    HDF5.h5open(
-        joinpath(abspath(expanduser(config["output"])), "data.h5"),
-        config["file_mode"],
-    ) do file
+    function make_data_chunk(file, num_datapoints_chunks::Int64)
+        rngs = [Random.Xoshiro(config["seed"] + i) for i in 1:Threads.nthreads()]
+        data = [Dict{String,Any}[] for _ in 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
+
+        @info "    Generating data on $(Threads.nthreads()) threads"
+        p = ProgressMeter.Progress(num_datapoints_chunks)
+        Threads.@threads for _ in 1:num_datapoints_chunks
+            t = Threads.threadid()
+            rng = rngs[t]
+            data_point = transform(config, rng)
+            # Store or process the generated data point as needed
+            push!(data[t], data_point)
+            ProgressMeter.next!(p) # Update the progress meter
+        end
+        ProgressMeter.finish!(p)
+
+        @info " Aggregating data from $(Threads.nthreads()) threads"
+        # aggregate everything int one big dictionary
+        final_data = Dict{String,Any}()
+        for thread_local_data in data
+            for datapoint in thread_local_data
+                for (key, value) in datapoint
+                    if haskey(final_data, key) == false
+                        final_data[key] = []
+                    end
+                    push!(final_data[key], value)
+                    value = nothing # clear the value to reduce memory usage
+                end
+            end
+        end
+
+        @info "Writing data chunk with $(num_datapoints_chunks) datapoints to file"
+        # ... then write to file with the supplied write_data function
+        write_data(file, config, final_data)
+        final_data = nothing # clear the final_data to reduce memory usage
+        return GC.gc() # run garbage collector to free memory
+    end
+
+    datetime = Dates.now()
+    datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
+    HDF5.h5open(joinpath(abspath(expanduser(config["output"])),
+                         "data_$(getpid())_$(datetime).h5"),
+                config["file_mode"]) do file
 
         # get the source code of the transform/prepare/write functions and write them to the data folder 
         # to document how the data has been created
         for func in [transform, prepare_output, write_data]
-            funcdata = first(methods(func)) # this assumes that the function is not overloaded -> don't do that!
+            funcdata = first(methods(func)) # this assumes that the function is not overloaded since we use this to determine the file path it's not a problem
             filepath = String(funcdata.file)
-
-            if isfile(
-                joinpath(abspath(expanduser(config["output"])), basename(filepath)),
-            ) == false
-
-                cp(
-                    filepath,
-                    joinpath(abspath(expanduser(config["output"])), basename(filepath)),
-                )
+            targetpath = joinpath(abspath(expanduser(config["output"])),
+                                  splitext(basename(filepath))[1] * "_$(getpid()).jl")
+            if isfile(targetpath) == false
+                cp(filepath, targetpath)
             end
         end
 
-        # get the current commit hash of the QuantumGrav package and put it into the config
-        # also get the current branch name. 
-        config["commit_hash"] = read(`git rev-parse HEAD`, String)
+        # # get the current commit hash of the QuantumGrav package and put it into the config
+        # # also get the current branch name. 
+        # # TODO: make this work for arbitrary paths or delete
+        # config["commit_hash"] = read(`git rev-parse HEAD`, String)
 
-        config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
+        # config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
 
-        YAML.write_file(
-            joinpath(abspath(expanduser(config["output"])), "config.yaml"),
-            config,
-        )
+        YAML.write_file(joinpath(abspath(expanduser(config["output"])),
+                                 "config_$(getpid()).yaml"),
+                        config)
 
         # prepare the file: generate datasets, attributes, dataspaces... 
+        @info "Preparing output file"
         prepare_output(file, config)
 
         num_datapoints = config["num_datapoints"]
-
+        num_datapoints_chunks = num_datapoints
         # check if the data generation should be chunked
         if "chunks" in keys(config)
             num_chunks = config["chunks"]
-            num_datapoints = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
+            num_datapoints_chunks = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
+            final_chunksize = num_datapoints - num_chunks * num_datapoints_chunks # Computes the remaining number of datapoints that do not fit into a full chunk.
         else
             num_chunks = 1
+            final_chunksize = 0
         end
 
         # Multithreading enabled by default, use Threads.@threads for parallel data generation
-        rngs = [Random.MersenneTwister(config["seed"] + i) for i = 1:Threads.nthreads()]
-        for _ = 1:num_chunks
-            data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
+        for c in 1:num_chunks
+            @info "Generating data chunk $(c)/$(num_chunks) with $num_datapoints_chunks datapoints"
+            make_data_chunk(file, num_datapoints_chunks)
+        end
 
-            Threads.@threads for _ = 1:num_datapoints
-                t = Threads.threadid()
-                rng = rngs[t]
-                data_point = transform(config, rng)
-                # Store or process the generated data point as needed
-                push!(data[t], data_point)
-            end
-
-            # aggregate everything int one big dictionary
-            final_data = Dict{String,Any}()
-            for thread_local_data in data
-                for datapoint in thread_local_data
-                    for (key, value) in datapoint
-                        if haskey(final_data, key)
-                            final_data[key] =
-                                cat(final_data[key], value; dims = ndims(value) + 1)
-                        else
-                            final_data[key] = value
-                        end
-                    end
-                end
-            end
-
-            # ... then write to file with the supplied write_data function
-            write_data(file, config, final_data)
+        if final_chunksize > 0
+            @info "Generating final data chunk with $final_chunksize datapoints"
+            # handle the final chunk with the remaining datapoints
+            make_data_chunk(file, final_chunksize)
         end
     end
 end
