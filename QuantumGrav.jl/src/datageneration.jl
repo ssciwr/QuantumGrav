@@ -401,8 +401,9 @@ function make_data(
 
     function make_data_chunk(file, num_datapoints_chunks::Int64)
         rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
-
         data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
+
+        @info "    Generating data on $(Threads.nthreads()) threads"
         p = ProgressMeter.Progress(num_datapoints_chunks)
         Threads.@threads for _ = 1:num_datapoints_chunks
             t = Threads.threadid()
@@ -414,7 +415,7 @@ function make_data(
         end
         ProgressMeter.finish!(p)
 
-        @info "Aggregating data from $(Threads.nthreads()) threads"
+        @info " Aggregating data from $(Threads.nthreads()) threads"
         # aggregate everything int one big dictionary
         final_data = Dict{String,Any}()
         for thread_local_data in data
@@ -436,41 +437,41 @@ function make_data(
         GC.gc() # run garbage collector to free memory
     end
 
+    datetime = Dates.now()
+    datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
     HDF5.h5open(
-        joinpath(abspath(expanduser(config["output"])), "data.h5"),
+        joinpath(abspath(expanduser(config["output"])), "data_$(getpid())_$(datetime).h5"),
         config["file_mode"],
     ) do file
 
         # get the source code of the transform/prepare/write functions and write them to the data folder 
         # to document how the data has been created
         for func in [transform, prepare_output, write_data]
-            funcdata = first(methods(func)) # this assumes that the function is not overloaded -> don't do that!
+            funcdata = first(methods(func)) # this assumes that the function is not overloaded since we use this to determine the file path it's not a problem
             filepath = String(funcdata.file)
-
-            if isfile(
-                joinpath(abspath(expanduser(config["output"])), basename(filepath)),
-            ) == false
-
-                cp(
-                    filepath,
-                    joinpath(abspath(expanduser(config["output"])), basename(filepath)),
-                )
+            targetpath = joinpath(
+                abspath(expanduser(config["output"])),
+                splitext(basename(filepath))[1] * "_$(getpid()).jl",
+            )
+            if isfile(targetpath) == false
+                cp(filepath, targetpath)
             end
         end
 
-        # get the current commit hash of the QuantumGrav package and put it into the config
-        # also get the current branch name. 
-        # TODO: make this work for arbitrary paths or delete
-        config["commit_hash"] = read(`git rev-parse HEAD`, String)
+        # # get the current commit hash of the QuantumGrav package and put it into the config
+        # # also get the current branch name. 
+        # # TODO: make this work for arbitrary paths or delete
+        # config["commit_hash"] = read(`git rev-parse HEAD`, String)
 
-        config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
+        # config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
 
         YAML.write_file(
-            joinpath(abspath(expanduser(config["output"])), "config.yaml"),
+            joinpath(abspath(expanduser(config["output"])), "config_$(getpid()).yaml"),
             config,
         )
 
         # prepare the file: generate datasets, attributes, dataspaces... 
+        @info "Preparing output file"
         prepare_output(file, config)
 
         num_datapoints = config["num_datapoints"]
