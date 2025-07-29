@@ -18,13 +18,13 @@ def initialize(
     master_port: str = "12345",
     backend: str = "nccl",
 ) -> None:
-    """Initialize the distributed process group.
+    """Initialize the distributed process group. This assumes one process per GPU.
 
     Args:
         rank (int): The rank of the current process.
         worldsize (int): The total number of processes.
-        master_addr (str, optional): The address of the master process. Defaults to "localhost".
-        master_port (str, optional): The port of the master process. Defaults to "12345".
+        master_addr (str, optional): The address of the master process. Defaults to "localhost". This needs to be the ip of the master node if you are running on a cluster.
+        master_port (str, optional): The port of the master process. Defaults to "12345". Choose a high port if you are running multiple jobs on the same machine to avoid conflicts. If running on a cluster, this should be the port that the master node is listening on.
         backend (str, optional): The backend to use for distributed training. Defaults to "nccl".
 
     Raises:
