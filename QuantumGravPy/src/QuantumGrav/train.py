@@ -1,6 +1,5 @@
 from typing import Callable, Any, Tuple
 import torch
-from torch.optim.optimizer import Optimizer as Optimizer
 import torch.multiprocessing as mp
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
@@ -10,6 +9,7 @@ import torch.distributed as dist
 
 from collections.abc import Collection
 import os
+import numpy as np
 
 from . import gnn_model
 from .evaluate import DefaultValidator, DefaultTester
@@ -222,6 +222,11 @@ class Trainer:
         train_size = int(len(dataset) * split[0])
         val_size = int(len(dataset) * split[1])
         test_size = len(dataset) - train_size - val_size
+
+        if np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
+            raise ValueError(
+                "Split ratios must sum to 1.0. Provided split: {}".format(split)
+            )
 
         train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
             dataset, [train_size, val_size, test_size]
@@ -513,6 +518,11 @@ class TrainerDDP(Trainer):
         train_size = int(len(dataset) * split[0])
         val_size = int(len(dataset) * split[1])
         test_size = len(dataset) - train_size - val_size
+
+        if np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
+            raise ValueError(
+                "Split ratios must sum to 1.0. Provided split: {}".format(split)
+            )
 
         self.train_dataset, self.val_dataset, self.test_dataset = (
             torch.utils.data.random_split(dataset, [train_size, val_size, test_size])

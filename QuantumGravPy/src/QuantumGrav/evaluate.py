@@ -5,7 +5,9 @@ from numpy import mean, std
 
 
 class DefaultEvaluator:
-    def __init__(self, device, criterion: Callable, apply_model: Callable):
+    def __init__(
+        self, device, criterion: Callable, apply_model: Callable | None = None
+    ):
         """Default evaluator for model evaluation.
 
         Args:
@@ -54,7 +56,9 @@ class DefaultEvaluator:
 
 
 class DefaultTester(DefaultEvaluator):
-    def __init__(self, device, criterion: Callable, apply_model: Callable):
+    def __init__(
+        self, device, criterion: Callable, apply_model: Callable | None = None
+    ):
         """Default tester for model testing.
 
         Args:
@@ -80,7 +84,9 @@ class DefaultTester(DefaultEvaluator):
 
 
 class DefaultValidator(DefaultEvaluator):
-    def __init__(self, device, criterion: Callable, apply_model: Callable):
+    def __init__(
+        self, device, criterion: Callable, apply_model: Callable | None = None
+    ):
         super().__init__(device, criterion, apply_model)
 
     def validate(
