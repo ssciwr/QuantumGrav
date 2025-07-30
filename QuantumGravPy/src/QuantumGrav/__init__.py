@@ -20,7 +20,7 @@ from .gnn_model import GNNModel
 from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
 from .graphfeatures_block import GraphFeaturesBlock
-
+from .evaluate import DefaultTester, DefaultValidator
 from .train import Trainer, TrainerDDP, train_parallel
 
 __all__ = [
@@ -51,4 +51,7 @@ __all__ = [
     "Trainer",
     "TrainerDDP",
     "train_parallel",
+    # evaluation
+    "DefaultValidator",
+    "DefaultTester",
 ]
