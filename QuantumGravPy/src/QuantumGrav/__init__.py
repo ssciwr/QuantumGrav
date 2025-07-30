@@ -20,7 +20,8 @@ from .gnn_model import GNNModel
 from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
 from .graphfeatures_block import GraphFeaturesBlock
-from .evaluate import train_epoch, validate_epoch, test_epoch
+
+from .train import Trainer, TrainerDDP, train_parallel
 
 __all__ = [
     # datasets
@@ -46,8 +47,8 @@ __all__ = [
     "ClassifierBlock",
     "GraphFeaturesBlock",
     "GNNModel",
-    # evaluation
-    "train_epoch",
-    "validate_epoch",
-    "test_epoch",
+    # training
+    "Trainer",
+    "TrainerDDP",
+    "train_parallel",
 ]

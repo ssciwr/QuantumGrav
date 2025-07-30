@@ -1,7 +1,7 @@
 from typing import Callable, Any, Tuple
 import torch
 from torch.optim.optimizer import Optimizer as Optimizer
-
+import torch.multiprocessing as mp
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 from torch.utils.data import DistributedSampler
@@ -9,47 +9,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 from collections.abc import Collection
-import logging
 import os
 
 from . import gnn_model
-
-
-def make_loss_statistics(
-    list_of_loss_values: Collection[torch.Tensor | float],
-    _: Collection[float] | None = None,
-) -> dict[str, Any]:
-    """Generate loss statistics for a training/evaluation epoch.
-
-    Args:
-        list_of_loss_values (list[Any]): List of loss values for the epoch.
-        y (Collection[float] | None, optional): Ground truth values. Defaults to None.
-
-    Returns:
-        list[dict[str, Any]]: Updated list with loss statistics.
-    """
-
-    # make statistics
-    epoch_loss_data = torch.tensor(list_of_loss_values, dtype=torch.float32)
-    mean_loss = torch.mean(epoch_loss_data).item()
-    std_loss = torch.std(epoch_loss_data).item()
-    min_loss = torch.min(epoch_loss_data).item()
-    max_loss = torch.max(epoch_loss_data).item()
-    median_loss = torch.median(epoch_loss_data).item()
-    q25_loss = torch.quantile(epoch_loss_data, 0.25).item()
-    q75_loss = torch.quantile(epoch_loss_data, 0.75).item()
-
-    return dict(
-        {
-            "mean": mean_loss,
-            "std": std_loss,
-            "min": min_loss,
-            "max": max_loss,
-            "median": median_loss,
-            "q25": q25_loss,
-            "q75": q75_loss,
-        }
-    )
+from .evaluate import DefaultValidator, DefaultTester
 
 
 def initialize_ddp(
@@ -75,10 +38,14 @@ def initialize_ddp(
         raise RuntimeError(
             "Environment variables MASTER_ADDR and MASTER_PORT are already set. Please unset them before initializing."
         )
-    torch.cuda.set_device(rank)  # Set the device for this process
     os.environ["MASTER_ADDR"] = master_addr
     os.environ["MASTER_PORT"] = master_port
     dist.init_process_group(backend=backend, rank=rank, world_size=worldsize)
+
+
+def cleanup_ddp() -> None:
+    """Clean up the distributed process group."""
+    dist.destroy_process_group()
 
 
 # this function behaves like a factory function, which is why it is capitalized
@@ -143,7 +110,6 @@ def DistributedModel(
     Returns:
         torch.nn.Module: The distributed data parallel model.
     """
-    model = model.to(rank)
     ddp_model = DDP(model, device_ids=[rank], output_device=output_device, **ddp_kwargs)
     return ddp_model
 
@@ -157,20 +123,18 @@ class Trainer:
         apply_model: Callable | None = None,
         # training evaluation and reporting
         early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
-        evaluate_training: Callable | None = None,
-        evaluate_validation: Callable | None = None,
-        evaluate_test: Callable | None = None,
-        report_training_result: Callable | None = None,
-        report_validation_result: Callable | None = None,
-        report_test: Callable | None = None,
+        validator: DefaultValidator | None = None,
+        tester: DefaultTester | None = None,
     ):
-        if all(x in config for x in ["training", "data", "model"]) is False:
+        if (
+            all(x in config for x in ["training", "data", "model", "val", "test"])
+            is False
+        ):
             raise ValueError(
                 "Configuration must contain 'training' and 'data' sections."
             )
 
         self.config = config
-        self.logger = logging.getLogger(__name__)
         # functions for executing training and evaluation
         self.criterion = criterion
         self.apply_model = apply_model
@@ -192,33 +156,30 @@ class Trainer:
         self.epoch = 0
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
 
-        self.initialized_parallel = False
-
         # training and evaluation functions
-        self.evaluate_training = evaluate_training
-        self.evaluate_validation = evaluate_validation
-        self.report_training_result = report_training_result
-        self.report_validation_result = report_validation_result
-        self.evaluate_test = evaluate_test
-        self.report_test = report_test
+        self.validator = validator
+        self.tester = tester
+        self.model = None
+        self.optimizer = None
 
-    def initialize_model(self):
+    def initialize_model(self) -> Any:
         """_summary_
 
         Returns:
             _type_: _description_
         """
         model = gnn_model.GNNModel.from_config(self.config["model"])
+        model = model.to(self.device)
         return model
 
-    def initialize_optimizer(self):
-        """_summary_
+    def initialize_optimizer(self) -> torch.optim.Optimizer:
+        if self.model is None:
+            raise RuntimeError(
+                "Model must be initialized before initializing optimizer."
+            )
 
-        Returns:
-            _type_: _description_
-        """
         optimizer = torch.optim.Adam(
-            model.parameters(),
+            self.model.parameters(),
             lr=self.config["training"]["learning_rate"],
             weight_decay=self.config["training"]["weight_decay"],
         )
@@ -286,8 +247,7 @@ class Trainer:
         model: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         train_loader: DataLoader,
-        data_sink: list[Any],
-    ) -> None:
+    ) -> list[Any]:
         if model is None:
             raise RuntimeError("Model must be initialized before training.")
 
@@ -307,138 +267,79 @@ class Trainer:
                 eval_data.append(loss.item())
             else:
                 eval_data.append(loss)
+        return eval_data
 
-        if self.evaluate_training is not None:
-            result = self.evaluate_training(eval_data, train_loader.dataset.data.y)
-            if self.report_training_result is not None:
-                self.report_training_result(result)
-
-            data_sink.append(result)
-        else:
-            data_sink.append(eval_data)
-
-    def _run_validation(
-        self,
-        model: torch.nn.Module,
-        val_loader: DataLoader,
-        data_sink: list[Any],
-        evaluate_fn: Callable[
-            [
-                Collection[dict[str, Any]],
-                Collection[float] | None,
-            ],
-            None,
-        ]
-        | None = None,
-        report_fn: Callable[[Any], None] | None = None,
-    ) -> None:
-        if model is None:
-            raise RuntimeError("Model must be initialized before validation.")
-
-        val_loss_data = []
-        for batch in val_loader:
-            data = batch.to(self.device, non_blocking=True)
-            outputs = self._evaluate_batch(
-                model,
-                data,
-            )
-            loss = self.criterion(outputs, data)
-            if isinstance(loss, torch.Tensor):
-                val_loss_data.append(loss.item())
-            else:
-                val_loss_data.append(loss)
-
-        if evaluate_fn is not None:
-            result = evaluate_fn(val_loss_data, val_loader.dataset.data.y)
-            if report_fn is not None:
-                report_fn(result)
-            data_sink.append(result)
-        else:
-            data_sink.append(val_loss_data)
-
-    def _check_model_status(
-        self, model: torch.nn.Module, val_loader: DataLoader, eval_data: list[Any]
-    ) -> bool:
-        # evaluation run on validation set
-        with torch.no_grad():
-            self._run_validation(
-                model,
-                val_loader,
-                eval_data,
-                evaluate_fn=self.evaluate_validation,
-                report_fn=self.report_validation_result,
-            )
-
+    def _check_model_status(self, eval_data: list[Any]) -> bool:
         if self.checkpoint_at is not None and self.epoch % self.checkpoint_at == 0:
-            self.save_checkpoint(model)
+            self.save_checkpoint()
 
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
                 print(f"Early stopping at epoch {self.epoch}.")
-                self.save_checkpoint(model)
+                self.save_checkpoint()
                 return True
 
         return False
 
     def run_training(
         self,
-        model: torch.nn.Module,
-        optimizer: torch.optim.Optimizer,
         train_loader: DataLoader,
         val_loader: DataLoader,
     ) -> Tuple[list[Any], list[Any]]:
         # training loop
         num_epochs = self.config["training"].get("num_epochs", 100)
-
+        self.model = self.initialize_model()
+        optimizer = self.initialize_optimizer()
         total_training_data = []
-        total_validation_data = []
-        model = model.to(self.device)
         for _ in range(0, num_epochs):
-            model.train()
-            self._run_train_epoch(model, optimizer, train_loader, total_training_data)
+            self.model.train()
+            epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
+            total_training_data.append(epoch_data)
 
             # evaluation run on validation set
-            model.eval()
+            if self.validator is not None:
+                validation_result = self.validator.validate(self.model, val_loader)
+                self.validator.report(*validation_result)
+
             should_stop = self._check_model_status(
-                model, val_loader, total_validation_data
+                self.validator.data if self.validator else total_training_data,
             )
             if should_stop:
                 break
 
             self.epoch += 1
 
-        return total_training_data, total_validation_data
+        return total_training_data, self.validator.data if self.validator else []
 
     def run_test(
         self,
-        model: torch.nn.Module,
         test_loader: DataLoader,
     ):
-        eval_test_data = []
-        model.eval()
-        with torch.no_grad():
-            self._run_validation(
-                model,
-                test_loader,
-                eval_test_data,
-                evaluate_fn=self.evaluate_test,
-                report_fn=self.report_test,
-            )
+        if self.model is None:
+            raise RuntimeError("Model must be initialized before testing.")
+        self.model.eval()
+        if self.tester is None:
+            raise RuntimeError("Tester must be initialized before testing.")
+        test_result = self.tester.test(self.model, test_loader)
+        self.tester.report(*test_result)
+        return test_result
 
-        return eval_test_data
+    def save_checkpoint(self):
+        if self.model is None:
+            raise RuntimeError("Model must be initialized before saving checkpoint.")
 
-    def save_checkpoint(self, model: torch.nn.Module):
         torch.save(
-            model.state_dict(),
+            self.model.state_dict(),
             self.config["training"].get(
-                "checkpoint_path", f"checkpoint_{self.epoch}.pth"
+                "checkpoint_path",
+                f"{self.config['model']['name']}_epoch{self.epoch}.pt",
             ),
         )
 
-    def load_checkpoint(self, model: torch.nn.Module, epoch: int):
-        if model is None:
+    def load_checkpoint(self, epoch: int):
+        if self.model is None:
             raise RuntimeError("Model must be initialized before saving checkpoint.")
-        model.load_state_dict(
+        self.model.load_state_dict(
             torch.load(
                 self.config["training"].get(
                     "checkpoint_path", f"checkpoint_{epoch}.pth"
@@ -446,74 +347,43 @@ class Trainer:
             )
         )
 
-    def __call__(
-        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
-    ) -> Tuple[list[Any], list[Any], list[Any]]:
-        """Run the training and evaluation process.
-
-        Args:
-            dataset (Dataset): The dataset to use for training and evaluation.
-            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
-        """
-        model = self.initialize_model()
-        optimizer = self.initialize_optimizer()
-
-        train_loader, val_loader, test_loader = self.prepare_dataloaders(dataset, split)
-
-        traindata, validdata = self.run_training(
-            model, optimizer, train_loader, val_loader
-        )
-        testdata = self.run_test(model, test_loader)
-        return traindata, validdata, testdata
-
 
 class TrainerDDP(Trainer):
     def __init__(
         self,
+        rank: int,
         config: dict[str, Any],
         # training and evaluation functions
         criterion: Callable,
         apply_model: Callable | None = None,
         # training evaluation and reporting
         early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
-        evaluate_training: Callable | None = None,
-        evaluate_validation: Callable | None = None,
-        evaluate_test: Callable | None = None,
-        report_training_result: Callable | None = None,
-        report_validation_result: Callable | None = None,
-        report_test: Callable | None = None,
+        validator: DefaultValidator | None = None,
+        tester: DefaultTester | None = None,
     ):
         super().__init__(
             config,
             criterion,
             apply_model,
             early_stopping,
-            evaluate_training,
-            evaluate_validation,
-            report_training_result,
-            report_validation_result,
-            evaluate_test,
-            report_test,
+            validator,
+            tester,
         )
 
         if "parallel" not in config:
             raise ValueError("Configuration must contain 'parallel' section for DDP.")
 
-        self.parallel = True
-        self.rank = config["parallel"].get("rank", 0)
+        if torch.cuda.is_available():
+            torch.cuda.set_device(rank)
+
+        self.rank = rank
+        self.device = rank  # Set the device to the rank for DDP
         self.world_size = config["parallel"].get("world_size", 1)
-        self.initialized_parallel = False
         self.device = self.rank  # Set the device to the rank for DDP
 
-        if torch.cuda.is_available():
-            torch.cuda.set_device(self.rank)
-
-    def _initialize_model(self):
-        if self.initialized_parallel:
-            raise RuntimeError("Parallel training is already initialized.")
-
+    def initialize_model(self) -> Any:
         model = gnn_model.GNNModel.from_config(self.config["model"])
-        model = model.to(self.device)
+        model = model.to(self.rank)
         model = DDP(
             model,
             device_ids=[self.device],
@@ -522,8 +392,7 @@ class TrainerDDP(Trainer):
                 "find_unused_parameters", False
             ),
         )
-
-        self.initialize_parallel = True
+        return model
 
     def prepare_dataloaders(
         self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
@@ -577,91 +446,150 @@ class TrainerDDP(Trainer):
 
         return train_loader, val_loader, test_loader
 
-    def _check_model_status(
-        self, model: torch.nn.Module, val_loader: DataLoader, eval_data: list[Any]
-    ) -> bool:
+    def _check_model_status(self, eval_data: list[Any]) -> bool:
         should_stop = False
         if self.rank == 0:
-            torch.distributed.barrier()  # Ensure all processes are synced
-            should_stop = super()._check_model_status(model, val_loader, eval_data)
-            torch.distributed.barrier()  # Ensure all processes are synced
+            should_stop = super()._check_model_status(eval_data)
         return should_stop
 
-    def cleanup(self):
-        """Clean up the distributed process group."""
-
-        if self.initialized_parallel:
-            dist.destroy_process_group()
-            self.initialized_parallel = False
-
     def run_training(
-        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
-    ) -> None:
-        model = self.initialize_model()
-        optimizer = self.initialize_optimizer()
+        self,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+    ) -> Tuple[list[Any], list[Any]]:
+        initialize_ddp(
+            self.rank,
+            self.config["parallel"]["world_size"],
+            master_addr=self.config["parallel"].get("master_addr", "localhost"),
+            master_port=self.config["parallel"].get("master_port", "12345"),
+            backend=self.config["parallel"].get("backend", "nccl"),
+        )
 
-        train_loader, val_loader, test_loader = self.prepare_dataloaders(dataset, split)
+        self.model = self.initialize_model()
+        self.optimizer = self.initialize_optimizer()
 
         num_epochs = self.config["training"].get("num_epochs", 100)
 
         total_training_data = []
-        total_validation_data = []
-        model = model.to(self.device)
+        all_training_data = [None for _ in range(self.world_size)]
+        all_validation_data = [None for _ in range(self.world_size)]
         for _ in range(0, num_epochs):
-            model.train()
+            self.model.train()
             train_loader.sampler.set_epoch(self.epoch)
-            self._run_train_epoch(model, optimizer, train_loader, total_training_data)
+            self._run_train_epoch(self.model, self.optimizer, train_loader)
 
             # evaluation run on validation set
-            torch.distributed.barrier()  # Ensure all processes are synced
-            model.eval()
+            self.model.eval()
+            if self.validator is not None:
+                validation_result = self.validator.validate(self.model, val_loader)
+                if self.rank == 0:
+                    self.validator.report(*validation_result)
+
             should_stop = self._check_model_status(
-                model, val_loader, total_validation_data
+                self.validator.data if self.validator else total_training_data,
             )
             if should_stop:
                 break
-            torch.distributed.barrier()  # Ensure all processes are synced
 
             self.epoch += 1
 
-    def __call__(
-        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
-    ) -> Tuple[list[Any], list[Any], list[Any]]:
-        """Run the training and evaluation process in a distributed manner.
+        dist.barrier()
+        dist.all_gather_object(all_training_data, total_training_data)
+        dist.all_gather_object(
+            all_validation_data, self.validator.data if self.validator else []
+        )
+        cleanup_ddp()
+        return all_training_data, all_validation_data
 
-        Args:
-            dataset (Dataset): The dataset to use for training and evaluation.
-            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
-        """
 
-        def run_training(dataset, split):
-            initialize_ddp(
-                self.rank,
-                self.world_size,
-                master_addr=self.config["parallel"].get("master_addr", "localhost"),
-                master_port=self.config["parallel"].get("master_port", "12345"),
-                backend=self.config["parallel"].get("backend", "nccl"),
+def train_parallel(
+    config: dict[str, Any],
+    dataset: Dataset,
+    split: list[float],
+    # training and evaluation functions
+    criterion: Callable,
+    apply_model: Callable | None = None,
+    # training evaluation and reporting
+    early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+    validator: DefaultValidator | None = None,
+    tester: DefaultTester | None = None,
+) -> Tuple[list[Any], list[Any], list[Any]]:
+    manager = mp.Manager()
+    result_queue = manager.Queue()
+
+    def run_training_ddp(
+        rank,
+        config,
+        dataset,
+        split,
+        result_queue: mp.Queue,
+        # training and evaluation functions
+        criterion: Callable,
+        apply_model: Callable | None = None,
+        # training evaluation and reporting
+        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        validator: DefaultValidator | None = None,
+        tester: DefaultTester | None = None,
+    ):
+        try:
+            trainer = TrainerDDP(
+                rank,
+                config,
+                criterion,
+                apply_model=apply_model,
+                early_stopping=early_stopping,
+                validator=validator,
+                tester=tester,
+            )
+            train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+                dataset, split=split
             )
 
-            model = self.initialize_model()
-            optimizer = self.initialize_optimizer()
-            train_loader, val_loader, test_loader = self.prepare_dataloaders(
-                dataset, split
+            train_data, val_data = trainer.run_training(
+                train_loader,
+                val_loader,
             )
-            num_epochs = self.config["training"].get("num_epochs", 100)
-            total_training_data = [None for _ in range(self.world_size)]
-            total_validation_data = [None for _ in range(self.world_size)]
-            for epoch in range(num_epochs):
-                model.train()
-                train_loader.sampler.set_epoch(epoch)
-                self._run_train_epoch(
-                    model, optimizer, train_loader, total_training_data
+            test_data = None
+            if rank == 0:
+                test_data = trainer.run_test(test_loader)
+                result_queue.put(
+                    {
+                        "training_data": train_data,
+                        "validation_data": val_data,
+                        "test_data": test_data,
+                    }
                 )
+        except Exception as e:
+            print(f"Rank {rank} crashed: {e}", flush=True)
+            result_queue.put(None)
+        finally:
+            cleanup_ddp()
 
-                # evaluation run on validation set
-                model.eval()
-                should_stop = self._check_model_status(
-                    model, val_loader, total_validation_data
-                )
-                if should_stop:
-                    break
+    # we have the thing to run in paralle now
+    mp.spawn(
+        run_training_ddp,
+        args=(
+            config,
+            dataset,
+            split,
+            result_queue,
+            criterion,
+            apply_model,
+            early_stopping,
+            validator,
+            tester,
+        ),
+        nprocs=config["parallel"]["world_size"],
+        join=True,
+    )
+
+    # Get results from queue
+    if not result_queue.empty():
+        results = result_queue.get()
+        return (
+            results["training_data"],
+            results["validation_data"],
+            results["test_data"],
+        )
+    else:
+        return [], [], []
