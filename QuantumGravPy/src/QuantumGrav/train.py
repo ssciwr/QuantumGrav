@@ -1,0 +1,667 @@
+from typing import Callable, Any, Tuple
+import torch
+from torch.optim.optimizer import Optimizer as Optimizer
+
+from torch_geometric.data import Data, Dataset
+from torch_geometric.loader import DataLoader
+from torch.utils.data import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
+
+from collections.abc import Collection
+import logging
+import os
+
+from . import gnn_model
+
+
+def make_loss_statistics(
+    list_of_loss_values: Collection[torch.Tensor | float],
+    _: Collection[float] | None = None,
+) -> dict[str, Any]:
+    """Generate loss statistics for a training/evaluation epoch.
+
+    Args:
+        list_of_loss_values (list[Any]): List of loss values for the epoch.
+        y (Collection[float] | None, optional): Ground truth values. Defaults to None.
+
+    Returns:
+        list[dict[str, Any]]: Updated list with loss statistics.
+    """
+
+    # make statistics
+    epoch_loss_data = torch.tensor(list_of_loss_values, dtype=torch.float32)
+    mean_loss = torch.mean(epoch_loss_data).item()
+    std_loss = torch.std(epoch_loss_data).item()
+    min_loss = torch.min(epoch_loss_data).item()
+    max_loss = torch.max(epoch_loss_data).item()
+    median_loss = torch.median(epoch_loss_data).item()
+    q25_loss = torch.quantile(epoch_loss_data, 0.25).item()
+    q75_loss = torch.quantile(epoch_loss_data, 0.75).item()
+
+    return dict(
+        {
+            "mean": mean_loss,
+            "std": std_loss,
+            "min": min_loss,
+            "max": max_loss,
+            "median": median_loss,
+            "q25": q25_loss,
+            "q75": q75_loss,
+        }
+    )
+
+
+def initialize_ddp(
+    rank: int,
+    worldsize: int,
+    master_addr: str = "localhost",
+    master_port: str = "12345",
+    backend: str = "nccl",
+) -> None:
+    """Initialize the distributed process group. This assumes one process per GPU.
+
+    Args:
+        rank (int): The rank of the current process.
+        worldsize (int): The total number of processes.
+        master_addr (str, optional): The address of the master process. Defaults to "localhost". This needs to be the ip of the master node if you are running on a cluster.
+        master_port (str, optional): The port of the master process. Defaults to "12345". Choose a high port if you are running multiple jobs on the same machine to avoid conflicts. If running on a cluster, this should be the port that the master node is listening on.
+        backend (str, optional): The backend to use for distributed training. Defaults to "nccl".
+
+    Raises:
+        RuntimeError: If the environment variables MASTER_ADDR and MASTER_PORT are already set.
+    """
+    if "MASTER_ADDR" in os.environ or "MASTER_PORT" in os.environ:
+        raise RuntimeError(
+            "Environment variables MASTER_ADDR and MASTER_PORT are already set. Please unset them before initializing."
+        )
+    torch.cuda.set_device(rank)  # Set the device for this process
+    os.environ["MASTER_ADDR"] = master_addr
+    os.environ["MASTER_PORT"] = master_port
+    dist.init_process_group(backend=backend, rank=rank, world_size=worldsize)
+
+
+# this function behaves like a factory function, which is why it is capitalized
+def DistributedDataLoader(
+    dataset: Dataset,
+    batch_size: int,
+    num_workers: int = 0,
+    pin_memory: bool = True,
+    rank: int = 0,
+    world_size: int = 1,
+    shuffle: bool = True,
+    drop_last: bool = False,
+    seed: int = 42,
+) -> Tuple[DataLoader, DistributedSampler]:
+    """Create a distributed data loader for training.
+
+    Args:
+        dataset (torch.utils.data.Dataset): The dataset to load.
+        batch_size (int): The batch size to use.
+        num_workers (int, optional): The number of worker processes to use for data loading. Defaults to 0.
+        pin_memory (bool, optional): Whether to pin memory for the data loader. Defaults to True.
+        rank (int, optional): The rank of the current process. Defaults to 0.
+        world_size (int, optional): The total number of processes. Defaults to 1.
+        shuffle (bool, optional): Whether to shuffle the data. Defaults to True.
+        drop_last (bool, optional): Whether to drop the last incomplete batch. Defaults to False.
+        seed (int, optional): The random seed for shuffling. Defaults to 42.
+
+    Returns:
+        DataLoader: The data loader for the distributed training.
+    """
+
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=shuffle,
+        drop_last=drop_last,
+        seed=seed,
+    )
+
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        sampler=sampler,
+    )
+
+    return dataloader, sampler
+
+
+def DistributedModel(
+    model: torch.nn.Module, rank: int, output_device: int | None = None, **ddp_kwargs
+) -> torch.nn.Module:
+    """Create a distributed data parallel model for training.
+
+    Args:
+        model (torch.nn.Module): The model to train.
+        rank (int): The rank of the current process.
+        output_device (int | None, optional): The device to output results to. Defaults to None.
+
+    Returns:
+        torch.nn.Module: The distributed data parallel model.
+    """
+    model = model.to(rank)
+    ddp_model = DDP(model, device_ids=[rank], output_device=output_device, **ddp_kwargs)
+    return ddp_model
+
+
+class Trainer:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        # training and evaluation functions
+        criterion: Callable,
+        apply_model: Callable | None = None,
+        # training evaluation and reporting
+        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        evaluate_training: Callable | None = None,
+        evaluate_validation: Callable | None = None,
+        evaluate_test: Callable | None = None,
+        report_training_result: Callable | None = None,
+        report_validation_result: Callable | None = None,
+        report_test: Callable | None = None,
+    ):
+        if all(x in config for x in ["training", "data", "model"]) is False:
+            raise ValueError(
+                "Configuration must contain 'training' and 'data' sections."
+            )
+
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        # functions for executing training and evaluation
+        self.criterion = criterion
+        self.apply_model = apply_model
+        self.early_stopping = early_stopping
+        self.seed = config["training"]["seed"]
+        self.device = torch.device(config["training"]["device"])
+
+        torch.manual_seed(self.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(self.seed)
+
+        # early stopping parameters
+        self.early_stopping_patience = config["training"]["early_stopping_patience"]
+        self.early_stopping_counter = 0
+
+        # parameters for finding out which model is best
+        self.best_score = -float("inf")
+        self.best_epoch = 0
+        self.epoch = 0
+        self.checkpoint_at = config["training"].get("checkpoint_at", None)
+
+        self.initialized_parallel = False
+
+        # training and evaluation functions
+        self.evaluate_training = evaluate_training
+        self.evaluate_validation = evaluate_validation
+        self.report_training_result = report_training_result
+        self.report_validation_result = report_validation_result
+        self.evaluate_test = evaluate_test
+        self.report_test = report_test
+
+    def initialize_model(self):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
+        model = gnn_model.GNNModel.from_config(self.config["model"])
+        return model
+
+    def initialize_optimizer(self):
+        """_summary_
+
+        Returns:
+            _type_: _description_
+        """
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=self.config["training"]["learning_rate"],
+            weight_decay=self.config["training"]["weight_decay"],
+        )
+        return optimizer
+
+    def prepare_dataloaders(
+        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+    ) -> Tuple[DataLoader, DataLoader, DataLoader]:
+        """Prepare the data loaders for training, validation, and testing.
+
+        Args:
+            dataset (Dataset): The dataset to prepare.
+            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
+
+        Returns:
+            Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
+        """
+        train_size = int(len(dataset) * split[0])
+        val_size = int(len(dataset) * split[1])
+        test_size = len(dataset) - train_size - val_size
+
+        train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
+            dataset, [train_size, val_size, test_size]
+        )
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.config["training"]["batch_size"],
+            shuffle=True,
+        )
+        val_loader = DataLoader(
+            val_dataset, batch_size=self.config["training"]["batch_size"], shuffle=False
+        )
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=self.config["training"]["batch_size"],
+            shuffle=False,
+        )
+
+        return train_loader, val_loader, test_loader
+
+    # training helper functions
+    def _evaluate_batch(
+        self,
+        model: torch.nn.Module,
+        data: Data,
+    ) -> torch.Tensor | Collection[torch.Tensor]:
+        """Evaluate a single batch of data using the model.
+
+        Args:
+            model (torch.nn.Module): The model to evaluate.
+            data (Data): The input data for the model.
+
+        Returns:
+            torch.Tensor | Collection[torch.Tensor]: The output of the model.
+        """
+        if self.apply_model:
+            outputs = self.apply_model(model, data)
+        else:
+            outputs = model(data.x, data.edge_index, data.batch)
+        return outputs
+
+    def _run_train_epoch(
+        self,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        train_loader: DataLoader,
+        data_sink: list[Any],
+    ) -> None:
+        if model is None:
+            raise RuntimeError("Model must be initialized before training.")
+
+        if optimizer is None:
+            raise RuntimeError("Optimizer must be initialized before training.")
+
+        eval_data = []
+        # training run
+        for batch in train_loader:
+            optimizer.zero_grad()
+            data = batch.to(self.device, non_blocking=True)
+            outputs = self._evaluate_batch(model, data)
+            loss = self.criterion(outputs, data)
+            loss.backward()
+            optimizer.step()
+            if isinstance(loss, torch.Tensor):
+                eval_data.append(loss.item())
+            else:
+                eval_data.append(loss)
+
+        if self.evaluate_training is not None:
+            result = self.evaluate_training(eval_data, train_loader.dataset.data.y)
+            if self.report_training_result is not None:
+                self.report_training_result(result)
+
+            data_sink.append(result)
+        else:
+            data_sink.append(eval_data)
+
+    def _run_validation(
+        self,
+        model: torch.nn.Module,
+        val_loader: DataLoader,
+        data_sink: list[Any],
+        evaluate_fn: Callable[
+            [
+                Collection[dict[str, Any]],
+                Collection[float] | None,
+            ],
+            None,
+        ]
+        | None = None,
+        report_fn: Callable[[Any], None] | None = None,
+    ) -> None:
+        if model is None:
+            raise RuntimeError("Model must be initialized before validation.")
+
+        val_loss_data = []
+        for batch in val_loader:
+            data = batch.to(self.device, non_blocking=True)
+            outputs = self._evaluate_batch(
+                model,
+                data,
+            )
+            loss = self.criterion(outputs, data)
+            if isinstance(loss, torch.Tensor):
+                val_loss_data.append(loss.item())
+            else:
+                val_loss_data.append(loss)
+
+        if evaluate_fn is not None:
+            result = evaluate_fn(val_loss_data, val_loader.dataset.data.y)
+            if report_fn is not None:
+                report_fn(result)
+            data_sink.append(result)
+        else:
+            data_sink.append(val_loss_data)
+
+    def _check_model_status(
+        self, model: torch.nn.Module, val_loader: DataLoader, eval_data: list[Any]
+    ) -> bool:
+        # evaluation run on validation set
+        with torch.no_grad():
+            self._run_validation(
+                model,
+                val_loader,
+                eval_data,
+                evaluate_fn=self.evaluate_validation,
+                report_fn=self.report_validation_result,
+            )
+
+        if self.checkpoint_at is not None and self.epoch % self.checkpoint_at == 0:
+            self.save_checkpoint(model)
+
+        if self.early_stopping is not None:
+            if self.early_stopping(eval_data):
+                print(f"Early stopping at epoch {self.epoch}.")
+                self.save_checkpoint(model)
+                return True
+
+        return False
+
+    def run_training(
+        self,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+    ) -> Tuple[list[Any], list[Any]]:
+        # training loop
+        num_epochs = self.config["training"].get("num_epochs", 100)
+
+        total_training_data = []
+        total_validation_data = []
+        model = model.to(self.device)
+        for _ in range(0, num_epochs):
+            model.train()
+            self._run_train_epoch(model, optimizer, train_loader, total_training_data)
+
+            # evaluation run on validation set
+            model.eval()
+            should_stop = self._check_model_status(
+                model, val_loader, total_validation_data
+            )
+            if should_stop:
+                break
+
+            self.epoch += 1
+
+        return total_training_data, total_validation_data
+
+    def run_test(
+        self,
+        model: torch.nn.Module,
+        test_loader: DataLoader,
+    ):
+        eval_test_data = []
+        model.eval()
+        with torch.no_grad():
+            self._run_validation(
+                model,
+                test_loader,
+                eval_test_data,
+                evaluate_fn=self.evaluate_test,
+                report_fn=self.report_test,
+            )
+
+        return eval_test_data
+
+    def save_checkpoint(self, model: torch.nn.Module):
+        torch.save(
+            model.state_dict(),
+            self.config["training"].get(
+                "checkpoint_path", f"checkpoint_{self.epoch}.pth"
+            ),
+        )
+
+    def load_checkpoint(self, model: torch.nn.Module, epoch: int):
+        if model is None:
+            raise RuntimeError("Model must be initialized before saving checkpoint.")
+        model.load_state_dict(
+            torch.load(
+                self.config["training"].get(
+                    "checkpoint_path", f"checkpoint_{epoch}.pth"
+                )
+            )
+        )
+
+    def __call__(
+        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+    ) -> Tuple[list[Any], list[Any], list[Any]]:
+        """Run the training and evaluation process.
+
+        Args:
+            dataset (Dataset): The dataset to use for training and evaluation.
+            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
+        """
+        model = self.initialize_model()
+        optimizer = self.initialize_optimizer()
+
+        train_loader, val_loader, test_loader = self.prepare_dataloaders(dataset, split)
+
+        traindata, validdata = self.run_training(
+            model, optimizer, train_loader, val_loader
+        )
+        testdata = self.run_test(model, test_loader)
+        return traindata, validdata, testdata
+
+
+class TrainerDDP(Trainer):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        # training and evaluation functions
+        criterion: Callable,
+        apply_model: Callable | None = None,
+        # training evaluation and reporting
+        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        evaluate_training: Callable | None = None,
+        evaluate_validation: Callable | None = None,
+        evaluate_test: Callable | None = None,
+        report_training_result: Callable | None = None,
+        report_validation_result: Callable | None = None,
+        report_test: Callable | None = None,
+    ):
+        super().__init__(
+            config,
+            criterion,
+            apply_model,
+            early_stopping,
+            evaluate_training,
+            evaluate_validation,
+            report_training_result,
+            report_validation_result,
+            evaluate_test,
+            report_test,
+        )
+
+        if "parallel" not in config:
+            raise ValueError("Configuration must contain 'parallel' section for DDP.")
+
+        self.parallel = True
+        self.rank = config["parallel"].get("rank", 0)
+        self.world_size = config["parallel"].get("world_size", 1)
+        self.initialized_parallel = False
+        self.device = self.rank  # Set the device to the rank for DDP
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(self.rank)
+
+    def _initialize_model(self):
+        if self.initialized_parallel:
+            raise RuntimeError("Parallel training is already initialized.")
+
+        model = gnn_model.GNNModel.from_config(self.config["model"])
+        model = model.to(self.device)
+        model = DDP(
+            model,
+            device_ids=[self.device],
+            output_device=self.config["parallel"].get("output_device", None),
+            find_unused_parameters=self.config["parallel"].get(
+                "find_unused_parameters", False
+            ),
+        )
+
+        self.initialize_parallel = True
+
+    def prepare_dataloaders(
+        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+    ) -> Tuple[
+        DataLoader,
+        DataLoader,
+        DataLoader,
+    ]:
+        train_size = int(len(dataset) * split[0])
+        val_size = int(len(dataset) * split[1])
+        test_size = len(dataset) - train_size - val_size
+
+        self.train_dataset, self.val_dataset, self.test_dataset = (
+            torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
+        )
+
+        self.train_sampler = torch.utils.data.DistributedSampler(
+            self.train_dataset,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True,
+        )
+
+        train_loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.config["train"]["batch_size"],
+            sampler=self.train_sampler,
+            num_workers=self.config["train"].get("data_num_workers", 0),
+            pin_memory=self.config["train"].get("pin_memory", True),
+            drop_last=self.config["train"].get("drop_last", False),
+            prefetch_factor=self.config["train"].get("prefetch_factor", 2),
+        )
+
+        val_loader = DataLoader(
+            self.val_dataset,
+            batch_size=self.config["val"]["batch_size"],
+            num_workers=self.config["val"].get("data_num_workers", 0),
+            pin_memory=self.config["val"].get("pin_memory", True),
+            drop_last=self.config["val"].get("drop_last", False),
+            prefetch_factor=self.config["val"].get("prefetch_factor", 2),
+        )
+
+        test_loader = DataLoader(
+            self.test_dataset,
+            batch_size=self.config["test"]["batch_size"],
+            num_workers=self.config["test"].get("data_num_workers", 0),
+            pin_memory=self.config["test"].get("pin_memory", True),
+            drop_last=self.config["test"].get("drop_last", False),
+            prefetch_factor=self.config["test"].get("prefetch_factor", 2),
+        )
+
+        return train_loader, val_loader, test_loader
+
+    def _check_model_status(
+        self, model: torch.nn.Module, val_loader: DataLoader, eval_data: list[Any]
+    ) -> bool:
+        should_stop = False
+        if self.rank == 0:
+            torch.distributed.barrier()  # Ensure all processes are synced
+            should_stop = super()._check_model_status(model, val_loader, eval_data)
+            torch.distributed.barrier()  # Ensure all processes are synced
+        return should_stop
+
+    def cleanup(self):
+        """Clean up the distributed process group."""
+
+        if self.initialized_parallel:
+            dist.destroy_process_group()
+            self.initialized_parallel = False
+
+    def run_training(
+        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+    ) -> None:
+        model = self.initialize_model()
+        optimizer = self.initialize_optimizer()
+
+        train_loader, val_loader, test_loader = self.prepare_dataloaders(dataset, split)
+
+        num_epochs = self.config["training"].get("num_epochs", 100)
+
+        total_training_data = []
+        total_validation_data = []
+        model = model.to(self.device)
+        for _ in range(0, num_epochs):
+            model.train()
+            train_loader.sampler.set_epoch(self.epoch)
+            self._run_train_epoch(model, optimizer, train_loader, total_training_data)
+
+            # evaluation run on validation set
+            torch.distributed.barrier()  # Ensure all processes are synced
+            model.eval()
+            should_stop = self._check_model_status(
+                model, val_loader, total_validation_data
+            )
+            if should_stop:
+                break
+            torch.distributed.barrier()  # Ensure all processes are synced
+
+            self.epoch += 1
+
+    def __call__(
+        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+    ) -> Tuple[list[Any], list[Any], list[Any]]:
+        """Run the training and evaluation process in a distributed manner.
+
+        Args:
+            dataset (Dataset): The dataset to use for training and evaluation.
+            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
+        """
+
+        def run_training(dataset, split):
+            initialize_ddp(
+                self.rank,
+                self.world_size,
+                master_addr=self.config["parallel"].get("master_addr", "localhost"),
+                master_port=self.config["parallel"].get("master_port", "12345"),
+                backend=self.config["parallel"].get("backend", "nccl"),
+            )
+
+            model = self.initialize_model()
+            optimizer = self.initialize_optimizer()
+            train_loader, val_loader, test_loader = self.prepare_dataloaders(
+                dataset, split
+            )
+            num_epochs = self.config["training"].get("num_epochs", 100)
+            total_training_data = [None for _ in range(self.world_size)]
+            total_validation_data = [None for _ in range(self.world_size)]
+            for epoch in range(num_epochs):
+                model.train()
+                train_loader.sampler.set_epoch(epoch)
+                self._run_train_epoch(
+                    model, optimizer, train_loader, total_training_data
+                )
+
+                # evaluation run on validation set
+                model.eval()
+                should_stop = self._check_model_status(
+                    model, val_loader, total_validation_data
+                )
+                if should_stop:
+                    break
