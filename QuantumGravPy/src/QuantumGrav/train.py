@@ -126,6 +126,19 @@ class Trainer:
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
+        """Initialize the trainer.
+
+        Args:
+            config (dict[str, Any]): The configuration dictionary.
+            criterion (Callable): The loss function to use.
+            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
+            early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): A function for early stopping. Defaults to None.
+            validator (DefaultValidator | None, optional): A validator for model evaluation. Defaults to None.
+            tester (DefaultTester | None, optional): A tester for model evaluation. Defaults to None.
+
+        Raises:
+            ValueError: If the configuration is invalid.
+        """
         if (
             all(x in config for x in ["training", "data", "model", "val", "test"])
             is False
@@ -163,16 +176,25 @@ class Trainer:
         self.optimizer = None
 
     def initialize_model(self) -> Any:
-        """_summary_
+        """Initialize the model for training.
 
         Returns:
-            _type_: _description_
+            Any: The initialized model.
         """
         model = gnn_model.GNNModel.from_config(self.config["model"])
         model = model.to(self.device)
         return model
 
     def initialize_optimizer(self) -> torch.optim.Optimizer:
+        """Initialize the optimizer for training.
+
+        Raises:
+            RuntimeError: If the model is not initialized.
+
+        Returns:
+            torch.optim.Optimizer: The initialized optimizer.
+        """
+
         if self.model is None:
             raise RuntimeError(
                 "Model must be initialized before initializing optimizer."
@@ -248,6 +270,20 @@ class Trainer:
         optimizer: torch.optim.Optimizer,
         train_loader: DataLoader,
     ) -> list[Any]:
+        """Run a single training epoch.
+
+        Args:
+            model (torch.nn.Module): The model to train.
+            optimizer (torch.optim.Optimizer): The optimizer for the model.
+            train_loader (DataLoader): The data loader for the training set.
+        Raises:
+            RuntimeError: If the model is not initialized.
+            RuntimeError: If the optimizer is not initialized.
+
+        Returns:
+            list[Any]: The training loss for each batch.
+        """
+
         if model is None:
             raise RuntimeError("Model must be initialized before training.")
 
@@ -270,6 +306,15 @@ class Trainer:
         return eval_data
 
     def _check_model_status(self, eval_data: list[Any]) -> bool:
+        """Check the status of the model during training.
+
+        Args:
+            eval_data (list[Any]): The evaluation data from the training epoch.
+
+        Returns:
+            bool: Whether the training should stop early.
+        """
+
         if self.checkpoint_at is not None and self.epoch % self.checkpoint_at == 0:
             self.save_checkpoint()
 
@@ -285,7 +330,17 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
-    ) -> Tuple[list[Any], list[Any]]:
+    ) -> Tuple[Collection[Any], Collection[Any]]:
+        """Run the training process.
+
+        Args:
+            train_loader (DataLoader): The data loader for the training set.
+            val_loader (DataLoader): The data loader for the validation set.
+
+        Returns:
+            Tuple[Collection[Any], Collection[Any]]: The training and validation results.
+        """
+
         # training loop
         num_epochs = self.config["training"].get("num_epochs", 100)
         self.model = self.initialize_model()
@@ -314,7 +369,19 @@ class Trainer:
     def run_test(
         self,
         test_loader: DataLoader,
-    ):
+    ) -> Collection[Any]:
+        """Run testing phase.
+
+        Args:
+            test_loader (DataLoader): The data loader for the test set.
+
+        Raises:
+            RuntimeError: If the model is not initialized.
+            RuntimeError: If the test data is not available.
+
+        Returns:
+            Collection[Any]: A collection of test results that can be scalars, tensors, lists, dictionaries or any other data type that the tester might return.
+        """
         if self.model is None:
             raise RuntimeError("Model must be initialized before testing.")
         self.model.eval()
@@ -325,6 +392,11 @@ class Trainer:
         return test_result
 
     def save_checkpoint(self):
+        """Save model checkpoint.
+
+        Raises:
+            RuntimeError: If the model is not initialized.
+        """
         if self.model is None:
             raise RuntimeError("Model must be initialized before saving checkpoint.")
 
@@ -336,7 +408,16 @@ class Trainer:
             ),
         )
 
-    def load_checkpoint(self, epoch: int):
+    def load_checkpoint(self, epoch: int) -> None:
+        """Load model checkpoint.
+
+        Args:
+            epoch (int): The epoch number to load.
+
+        Raises:
+            RuntimeError: If the model is not initialized.
+        """
+
         if self.model is None:
             raise RuntimeError("Model must be initialized before saving checkpoint.")
         self.model.load_state_dict(
@@ -361,6 +442,20 @@ class TrainerDDP(Trainer):
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
+        """Initialize the distributed data parallel (DDP) trainer.
+
+        Args:
+            rank (int): The rank of the current process.
+            config (dict[str, Any]): The configuration dictionary.
+            criterion (Callable): The loss function.
+            apply_model (Callable | None, optional): The function to apply the model. Defaults to None.
+            early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): The early stopping function. Defaults to None.
+            validator (DefaultValidator | None, optional): The validator for model evaluation. Defaults to None.
+            tester (DefaultTester | None, optional): The tester for model testing. Defaults to None.
+
+        Raises:
+            ValueError: If the configuration is invalid.
+        """
         super().__init__(
             config,
             criterion,
@@ -382,6 +477,11 @@ class TrainerDDP(Trainer):
         self.device = self.rank  # Set the device to the rank for DDP
 
     def initialize_model(self) -> Any:
+        """Initialize the model for training.
+
+        Returns:
+            Any: The initialized model.
+        """
         model = gnn_model.GNNModel.from_config(self.config["model"])
         model = model.to(self.rank)
         model = DDP(
@@ -401,6 +501,15 @@ class TrainerDDP(Trainer):
         DataLoader,
         DataLoader,
     ]:
+        """Prepare the data loaders for training, validation, and testing.
+
+        Args:
+            dataset (Dataset): The dataset to split.
+            split (list[float], optional): The proportions for train/val/test split. Defaults to [0.8, 0.1, 0.1].
+
+        Returns:
+            Tuple[ DataLoader, DataLoader, DataLoader, ]: The data loaders for training, validation, and testing.
+        """
         train_size = int(len(dataset) * split[0])
         val_size = int(len(dataset) * split[1])
         test_size = len(dataset) - train_size - val_size
@@ -409,6 +518,7 @@ class TrainerDDP(Trainer):
             torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
         )
 
+        # samplers are needed to distribute the data across processes in such a way that each process gets a unique subset of the data
         self.train_sampler = torch.utils.data.DistributedSampler(
             self.train_dataset,
             num_replicas=self.world_size,
@@ -416,6 +526,21 @@ class TrainerDDP(Trainer):
             shuffle=True,
         )
 
+        self.val_sampler = torch.utils.data.DistributedSampler(
+            self.val_dataset,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+
+        self.test_sampler = torch.utils.data.DistributedSampler(
+            self.test_dataset,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+
+        # make the data loaders
         train_loader = DataLoader(
             self.train_dataset,
             batch_size=self.config["train"]["batch_size"],
@@ -428,6 +553,7 @@ class TrainerDDP(Trainer):
 
         val_loader = DataLoader(
             self.val_dataset,
+            sampler=self.val_sampler,
             batch_size=self.config["val"]["batch_size"],
             num_workers=self.config["val"].get("data_num_workers", 0),
             pin_memory=self.config["val"].get("pin_memory", True),
@@ -437,6 +563,7 @@ class TrainerDDP(Trainer):
 
         test_loader = DataLoader(
             self.test_dataset,
+            sampler=self.test_sampler,
             batch_size=self.config["test"]["batch_size"],
             num_workers=self.config["test"].get("data_num_workers", 0),
             pin_memory=self.config["test"].get("pin_memory", True),
@@ -447,6 +574,14 @@ class TrainerDDP(Trainer):
         return train_loader, val_loader, test_loader
 
     def _check_model_status(self, eval_data: list[Any]) -> bool:
+        """Check the status of the model during evaluation.
+
+        Args:
+            eval_data (list[Any]): The evaluation data to check.
+
+        Returns:
+            bool: Whether the model training should stop.
+        """
         should_stop = False
         if self.rank == 0:
             should_stop = super()._check_model_status(eval_data)
@@ -457,6 +592,16 @@ class TrainerDDP(Trainer):
         train_loader: DataLoader,
         val_loader: DataLoader,
     ) -> Tuple[list[Any], list[Any]]:
+        """
+        Run the training loop for the distributed model. This will synchronize for validation. No testing is performed in this function. The model will only be checkpointed and early stopped on the 'rank' 0 process.
+
+        Args:
+            train_loader (DataLoader): The training data loader.
+            val_loader (DataLoader): The validation data loader.
+
+        Returns:
+            Tuple[list[Any], list[Any]]: The training and validation results.
+        """
         initialize_ddp(
             self.rank,
             self.config["parallel"]["world_size"],
@@ -485,6 +630,7 @@ class TrainerDDP(Trainer):
                 if self.rank == 0:
                     self.validator.report(*validation_result)
 
+            dist.barrier()  # Ensure all processes have completed the epoch before checking status
             should_stop = self._check_model_status(
                 self.validator.data if self.validator else total_training_data,
             )
@@ -514,6 +660,22 @@ def train_parallel(
     validator: DefaultValidator | None = None,
     tester: DefaultTester | None = None,
 ) -> Tuple[list[Any], list[Any], list[Any]]:
+    """Train a model in a parallel fashion using DDP.
+
+    Args:
+        config (dict[str, Any]): Configuration dictionary.
+        dataset (Dataset): The dataset to train on.
+        split (list[float]): The train/validation/test split ratios.
+        criterion (Callable): The loss function.
+        apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
+        early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): Early stopping criteria. Defaults to None.
+        validator (DefaultValidator | None, optional): Validator class instance for model evaluation. Defaults to None.
+        tester (DefaultTester | None, optional): Tester class instance for model evaluation. Defaults to None.
+
+    Returns:
+        Tuple[list[Any], list[Any], list[Any]]: Training, validation, and test results.
+    """
+
     manager = mp.Manager()
     result_queue = manager.Queue()
 
@@ -531,6 +693,20 @@ def train_parallel(
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
+        """Train a single model on a single process.
+
+        Args:
+            rank (int): The rank of the process.
+            config (dict[str, Any]): Configuration dictionary.
+            dataset (Dataset): The dataset to train on.
+            split (list[float]): The train/validation/test split ratios.
+            result_queue (mp.Queue): Queue to collect results.
+            criterion (Callable): The loss function.
+            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
+            early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): Early stopping criteria. Defaults to None.
+            validator (DefaultValidator | None, optional): Validator class instance for model evaluation. Defaults to None.
+            tester (DefaultTester | None, optional): Tester class instance for model evaluation. Defaults to None.
+        """
         try:
             trainer = TrainerDDP(
                 rank,
@@ -565,7 +741,8 @@ def train_parallel(
         finally:
             cleanup_ddp()
 
-    # we have the thing to run in paralle now
+    # We have a function to run in parallel now for each process.
+    # We send one for each device in our 'world' to a process to run now
     mp.spawn(
         run_training_ddp,
         args=(
