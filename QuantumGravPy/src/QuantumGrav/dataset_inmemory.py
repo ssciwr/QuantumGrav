@@ -14,6 +14,9 @@ from typing import Any
 from .dataset_base import QGDatasetBase
 
 
+NUM_CAUSAL_SETS = 1000  # hardcoded as "num_causal_sets" is not in the h5 files
+
+
 class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
     """A dataset class for QuantumGrav data that can be loaded into memory."""
 
@@ -21,8 +24,9 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         self,
         input: list[str | Path] | Callable[[Any], dict],
         output: str | Path,
-        reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
-        | None = None,
+        reader: (
+            Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None
+        ) = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
         validate_data: bool = True,
@@ -77,7 +81,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
             with h5py.File(str(Path(file).resolve().absolute()), "r") as raw_file:
                 # read the data in chunks and process it parallelized or
                 # sequentially based on the parallel_processing flag
-                num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
+                num_chunks = NUM_CAUSAL_SETS // self.chunksize
 
                 for i in range(0, num_chunks * self.chunksize, self.chunksize):
                     data = self.process_chunk(

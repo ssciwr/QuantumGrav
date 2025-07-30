@@ -13,6 +13,9 @@ from collections.abc import Callable
 from .dataset_base import QGDatasetBase
 
 
+NUM_CAUSAL_SETS = 1000  # hardcoded as "num_causal_sets" is not in the h5 files
+
+
 class QGDataset(QGDatasetBase, Dataset):
     """A dataset class for QuantumGrav data that is designed to handle large datasets stored on disk. This class provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
 
@@ -89,10 +92,10 @@ class QGDataset(QGDatasetBase, Dataset):
         # process data files
         k = 0  # index to create the filenames for the processed data
         for file in self.input:
-            with (
-                h5py.File(str(Path(file).resolve().absolute()), "r") as raw_file
-            ):  # read the data in chunks and process it parallelized or sequentially based on the parallel_processing flag
-                num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
+            with h5py.File(
+                str(Path(file).resolve().absolute()), "r"
+            ) as raw_file:  # read the data in chunks and process it parallelized or sequentially based on the parallel_processing flag
+                num_chunks = NUM_CAUSAL_SETS // self.chunksize
 
                 for i in range(0, num_chunks * self.chunksize, self.chunksize):
                     data = self.process_chunk(

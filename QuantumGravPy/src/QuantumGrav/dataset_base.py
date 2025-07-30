@@ -12,6 +12,9 @@ from collections.abc import Callable
 from joblib import delayed, Parallel
 
 
+NUM_CAUSAL_SETS = 1000  # hardcoded as "num_causal_sets" is not in the h5 files
+
+
 class QGDatasetBase:
     """Mixin class that provides common functionality for the dataset classes. Works only for file-based datasets. Provides methods for processing data."""
 
@@ -19,8 +22,9 @@ class QGDatasetBase:
         self,
         input: list[str | Path],
         output: str | Path,
-        reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
-        | None = None,
+        reader: (
+            Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None
+        ) = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
         validate_data: bool = True,
@@ -69,7 +73,7 @@ class QGDatasetBase:
             if not Path(file).exists():
                 raise FileNotFoundError(f"Input file {file} does not exist.")
             with h5py.File(file, "r") as f:
-                self._num_samples += f["num_causal_sets"][()]
+                self._num_samples += NUM_CAUSAL_SETS
 
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
@@ -154,9 +158,7 @@ class QGDatasetBase:
                 self.int_type,
                 self.validate_data,
             )
-            for i in range(
-                start, min(start + self.chunksize, raw_file["num_causal_sets"][()])
-            )
+            for i in range(start, min(start + self.chunksize, NUM_CAUSAL_SETS))
         ]
 
         results = []
