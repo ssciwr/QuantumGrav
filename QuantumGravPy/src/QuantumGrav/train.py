@@ -182,6 +182,8 @@ class Trainer:
         Returns:
             Any: The initialized model.
         """
+        if self.model is not None:
+            return self.model
         model = gnn_model.GNNModel.from_config(self.config["model"])
         model = model.to(self.device)
         self.model = model
@@ -201,6 +203,9 @@ class Trainer:
             raise RuntimeError(
                 "Model must be initialized before initializing optimizer."
             )
+
+        if self.optimizer is not None:
+            return self.optimizer
 
         optimizer = torch.optim.Adam(
             self.model.parameters(),
@@ -412,7 +417,7 @@ class Trainer:
         if self.tester is None:
             raise RuntimeError("Tester must be initialized before testing.")
         test_result = self.tester.test(self.model, test_loader)
-        self.tester.report(*test_result)
+        self.tester.report(test_result)
         return test_result
 
     def save_checkpoint(self):

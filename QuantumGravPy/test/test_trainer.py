@@ -92,12 +92,16 @@ def broken_config(model_config_eval):
     }
 
 
-class DummyValidator(QG.DefaultEvaluator):
+class DummyEvaluator:
     def __init__(self):
         self.data = []
 
     def validate(self, model, data_loader):
         # Dummy validation logic
+        return [torch.rand(1)]
+
+    def test(self, model, data_loader):
+        # Dummy test logic
         return [torch.rand(1)]
 
     def report(self, losses: list):  # type: ignore
@@ -309,7 +313,7 @@ def test_trainer_check_model_status(config):
     assert path_to_file.exists()
 
 
-def test_trainer_load_checkpoint(config, tmppath):
+def test_trainer_load_checkpoint(config):
     trainer = QG.Trainer(
         config,
         compute_loss,
@@ -402,9 +406,11 @@ def test_trainer_run_training(make_dataset, config):
         compute_loss,
         apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
         early_stopping=lambda x: False,
-        validator=DummyValidator(),  # type: ignore
+        validator=DummyEvaluator(),  # type: ignore
         tester=None,
     )
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
 
     test_loader, validation_loader, _ = trainer.prepare_dataloaders(
         make_dataset, split=[0.8, 0.1, 0.1]
@@ -427,7 +433,25 @@ def test_trainer_run_training(make_dataset, config):
     assert valid_data is not None  # has no validator
     assert len(valid_data) == config["training"]["num_epochs"]
     assert len(training_data) == config["training"]["num_epochs"]
+    assert len(trainer.validator.data) == config["training"]["num_epochs"]
 
 
-def test_trainer_run_test(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+def test_trainer_run_test(make_dataset, config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=DummyEvaluator(),  # type: ignore
+    )
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+
+    test_loader, _, _ = trainer.prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
+
+    test_data = trainer.run_test(test_loader)
+
+    assert test_data is not None
+    assert len(test_data) == 1  # DummyEvaluator returns a single loss value
+    assert len(trainer.tester.data) == 1
