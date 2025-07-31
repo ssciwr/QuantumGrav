@@ -10,6 +10,7 @@ import torch.distributed as dist
 from collections.abc import Collection
 import os
 import numpy as np
+from pathlib import Path
 
 from . import gnn_model
 from .evaluate import DefaultValidator, DefaultTester
@@ -140,7 +141,7 @@ class Trainer:
             ValueError: If the configuration is invalid.
         """
         if (
-            all(x in config for x in ["training", "data", "model", "val", "test"])
+            all(x in config for x in ["training", "model", "validation", "testing"])
             is False
         ):
             raise ValueError(
@@ -164,7 +165,7 @@ class Trainer:
         self.early_stopping_counter = 0
 
         # parameters for finding out which model is best
-        self.best_score = -float("inf")
+        self.best_score = None
         self.best_epoch = 0
         self.epoch = 0
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
@@ -183,7 +184,8 @@ class Trainer:
         """
         model = gnn_model.GNNModel.from_config(self.config["model"])
         model = model.to(self.device)
-        return model
+        self.model = model
+        return self.model
 
     def initialize_optimizer(self) -> torch.optim.Optimizer:
         """Initialize the optimizer for training.
@@ -202,10 +204,12 @@ class Trainer:
 
         optimizer = torch.optim.Adam(
             self.model.parameters(),
-            lr=self.config["training"]["learning_rate"],
-            weight_decay=self.config["training"]["weight_decay"],
+            lr=self.config["training"].get("learning_rate", 0.001),
+            weight_decay=self.config["training"].get("weight_decay", 0.0001),
         )
-        return optimizer
+        self.optimizer = optimizer
+
+        return self.optimizer
 
     def prepare_dataloaders(
         self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
@@ -223,27 +227,38 @@ class Trainer:
         val_size = int(len(dataset) * split[1])
         test_size = len(dataset) - train_size - val_size
 
-        if np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
-            raise ValueError(
-                "Split ratios must sum to 1.0. Provided split: {}".format(split)
-            )
+        if not np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
+            raise ValueError(f"Split ratios must sum to 1.0. Provided split: {split}")
 
-        train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
-            dataset, [train_size, val_size, test_size]
+        self.train_dataset, self.val_dataset, self.test_dataset = (
+            torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
         )
 
         train_loader = DataLoader(
-            train_dataset,
+            self.train_dataset,
             batch_size=self.config["training"]["batch_size"],
-            shuffle=True,
+            num_workers=self.config["training"].get("data_num_workers", 0),
+            pin_memory=self.config["training"].get("pin_memory", True),
+            drop_last=self.config["training"].get("drop_last", False),
+            prefetch_factor=self.config["training"].get("prefetch_factor", None),
         )
+
         val_loader = DataLoader(
-            val_dataset, batch_size=self.config["training"]["batch_size"], shuffle=False
+            self.val_dataset,
+            batch_size=self.config["validation"]["batch_size"],
+            num_workers=self.config["validation"].get("data_num_workers", 0),
+            pin_memory=self.config["validation"].get("pin_memory", True),
+            drop_last=self.config["validation"].get("drop_last", False),
+            prefetch_factor=self.config["validation"].get("prefetch_factor", None),
         )
+
         test_loader = DataLoader(
-            test_dataset,
-            batch_size=self.config["training"]["batch_size"],
-            shuffle=False,
+            self.test_dataset,
+            batch_size=self.config["testing"]["batch_size"],
+            num_workers=self.config["testing"].get("data_num_workers", 0),
+            pin_memory=self.config["testing"].get("pin_memory", True),
+            drop_last=self.config["testing"].get("drop_last", False),
+            prefetch_factor=self.config["testing"].get("prefetch_factor", None),
         )
 
         return train_loader, val_loader, test_loader
@@ -319,17 +334,17 @@ class Trainer:
         Returns:
             bool: Whether the training should stop early.
         """
-
+        saved = False
         if self.checkpoint_at is not None and self.epoch % self.checkpoint_at == 0:
             self.save_checkpoint()
-
+            saved = True
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
                 print(f"Early stopping at epoch {self.epoch}.")
                 self.save_checkpoint()
-                return True
+                saved = True
 
-        return False
+        return saved
 
     def run_training(
         self,
@@ -400,18 +415,28 @@ class Trainer:
         """Save model checkpoint.
 
         Raises:
-            RuntimeError: If the model is not initialized.
+            ValueError: If the model is not initialized.
+            ValueError: If the model configuration does not contain 'name'.
+            ValueError: If the training configuration does not contain 'checkpoint_path'.
         """
         if self.model is None:
-            raise RuntimeError("Model must be initialized before saving checkpoint.")
+            raise ValueError("Model must be initialized before saving checkpoint.")
 
-        torch.save(
-            self.model.state_dict(),
-            self.config["training"].get(
-                "checkpoint_path",
-                f"{self.config['model']['name']}_epoch{self.epoch}.pt",
-            ),
+        if "name" not in self.config["model"]:
+            raise ValueError(
+                "Model configuration must contain 'name' to save checkpoint."
+            )
+
+        if "checkpoint_path" not in self.config["training"]:
+            raise ValueError(
+                "Training configuration must contain 'checkpoint_path' to save checkpoint."
+            )
+
+        outpath = (
+            Path(self.config["training"]["checkpoint_path"])
+            / f"{self.config['model']['name']}_epoch_{self.epoch}.pt"
         )
+        torch.save(self.model.state_dict(), outpath)
 
     def load_checkpoint(self, epoch: int) -> None:
         """Load model checkpoint.
@@ -497,7 +522,8 @@ class TrainerDDP(Trainer):
                 "find_unused_parameters", False
             ),
         )
-        return model
+        self.model = model
+        return self.model
 
     def prepare_dataloaders(
         self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
@@ -519,7 +545,10 @@ class TrainerDDP(Trainer):
         val_size = int(len(dataset) * split[1])
         test_size = len(dataset) - train_size - val_size
 
-        if np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
+        if (
+            np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False)
+            is False
+        ):
             raise ValueError(
                 "Split ratios must sum to 1.0. Provided split: {}".format(split)
             )
@@ -553,22 +582,22 @@ class TrainerDDP(Trainer):
         # make the data loaders
         train_loader = DataLoader(
             self.train_dataset,
-            batch_size=self.config["train"]["batch_size"],
+            batch_size=self.config["training"]["batch_size"],
             sampler=self.train_sampler,
-            num_workers=self.config["train"].get("data_num_workers", 0),
-            pin_memory=self.config["train"].get("pin_memory", True),
-            drop_last=self.config["train"].get("drop_last", False),
-            prefetch_factor=self.config["train"].get("prefetch_factor", 2),
+            num_workers=self.config["training"].get("data_num_workers", 0),
+            pin_memory=self.config["training"].get("pin_memory", True),
+            drop_last=self.config["training"].get("drop_last", False),
+            prefetch_factor=self.config["training"].get("prefetch_factor", 2),
         )
 
         val_loader = DataLoader(
             self.val_dataset,
             sampler=self.val_sampler,
-            batch_size=self.config["val"]["batch_size"],
-            num_workers=self.config["val"].get("data_num_workers", 0),
-            pin_memory=self.config["val"].get("pin_memory", True),
-            drop_last=self.config["val"].get("drop_last", False),
-            prefetch_factor=self.config["val"].get("prefetch_factor", 2),
+            batch_size=self.config["validation"]["batch_size"],
+            num_workers=self.config["validation"].get("data_num_workers", 0),
+            pin_memory=self.config["validation"].get("pin_memory", True),
+            drop_last=self.config["validation"].get("drop_last", False),
+            prefetch_factor=self.config["validation"].get("prefetch_factor", 2),
         )
 
         test_loader = DataLoader(

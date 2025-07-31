@@ -2,6 +2,7 @@ import torch
 from typing import Callable, Any
 import torch_geometric
 from numpy import mean, std
+from collections.abc import Iterable
 
 
 class DefaultEvaluator:
@@ -39,15 +40,15 @@ class DefaultEvaluator:
             for i, batch in enumerate(data_loader):
                 data = batch.to(self.device)
                 if self.apply_model:
-                    outputs = self.apply_model(data)
+                    outputs = self.apply_model(model, data)
                 else:
-                    outputs = model(data)
+                    outputs = model(data.x, data.edge_index, data.batch)
                 loss = self.criterion(outputs, data)
                 current_data.append(loss)
 
         return current_data
 
-    def report(self, losses):
+    def report(self, losses: Iterable[Any]) -> None:
         """Report the evaluation results to stdout"""
         avg = mean(losses)
         sigma = std(losses)

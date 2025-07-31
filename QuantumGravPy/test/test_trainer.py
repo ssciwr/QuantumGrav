@@ -1,67 +1,363 @@
 import pytest
+import torch
+
+torch.multiprocessing.set_start_method("spawn", force=True)
+from torch_geometric.data import Data
+import QuantumGrav as QG
+import numpy as np
+from pathlib import Path
+import re
 
 
 @pytest.fixture
-def config():
-    return {}
+def tmppath(tmp_path_factory):
+    checkpoint_path = tmp_path_factory.mktemp("checkpoints")
+    return checkpoint_path
 
 
 @pytest.fixture
-def broken_config():
-    return {}
+def config(model_config_eval, tmppath):
+    cfg = {
+        "training": {
+            "seed": 42,
+            # training loop
+            "device": "cpu",
+            "early_stopping_patience": 10,
+            "checkpoint_at": 20,
+            "checkpoint_path": tmppath,
+            # optimizer
+            "learning_rate": 0.001,
+            "weight_decay": 0.0001,
+            # training loader
+            "batch_size": 4,
+            "data_num_workers": 0,
+            "pin_memory": True,
+            "drop_last": True,
+            # "prefetch_factor": 2,
+        },
+        "model": model_config_eval,
+        "validation": {
+            "batch_size": 1,
+            "data_num_workers": 0,
+            "pin_memory": False,
+            "drop_last": False,
+            "shuffle": True,
+        },
+        "testing": {
+            "batch_size": 1,
+            "data_num_workers": 0,
+            "pin_memory": False,
+            "drop_last": False,
+            "shuffle": False,
+        },
+    }
+
+    cfg["model"]["name"] = "GNNModel"
+
+    return cfg
 
 
-def test_distributed_dataloader(make_dataset):
-    assert 3 == 6  # Placeholder for actual test logic
+@pytest.fixture
+def broken_config(model_config_eval):
+    return {
+        "training": {
+            "seed": 42,
+            # training loop
+            "device": "cpu",
+            "early_stopping_patience": 10,
+            "checkpoint_at": 10,
+            # optimizer
+            "learning_rate": 0.001,
+            "weight_decay": 0.0001,
+            # training loader
+            "batch_size": 4,
+            "data_num_workers": 4,
+            "pin_memory": True,
+            "drop_last": True,
+            "prefetch_factor": 2,
+        },
+        "model": model_config_eval,
+        # validation is missing -> broken
+        "testing": {
+            "batch_size": 1,
+            "data_num_workers": 0,
+            "pin_memory": False,
+            "drop_last": False,
+            "prefetch_factor": 1,
+            "shuffle": False,
+        },
+    }
 
 
-def test_trainer_creation_works(make_dataset, config):
-    assert 3 == 6
+def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
+    """Compute the loss between predictions and targets."""
+    loss = torch.nn.MSELoss()(x[0], data.y.to(torch.float32))
+    return loss
 
 
-def test_trainer_creation_broken(make_dataset, broken_config):
-    assert 3 == 6
+def test_trainer_creation_works(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    assert trainer.config == config
+    assert trainer.criterion is compute_loss
+    assert trainer.apply_model is not None
+    assert trainer.early_stopping is None
+    assert trainer.validator is None
+    assert trainer.tester is None
+
+    assert trainer.device == torch.device("cpu")
+    assert trainer.seed == config["training"]["seed"]
+    assert (
+        trainer.early_stopping_patience == config["training"]["early_stopping_patience"]
+    )
+    assert trainer.early_stopping_counter == 0
+    assert trainer.best_score is None
+    assert trainer.best_epoch == 0
+    assert trainer.epoch == 0
+    assert trainer.checkpoint_at == config["training"].get("checkpoint_at", None)
+
+    assert trainer.optimizer is None
+    assert trainer.model is None
 
 
-def test_trainer_init_model(make_dataset, config):
-    assert 3 == 6
+def test_trainer_creation_broken(broken_config):
+    with pytest.raises(
+        ValueError, match="Configuration must contain 'training' and 'data' sections."
+    ):
+        QG.Trainer(
+            broken_config,
+            compute_loss,
+            apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+            early_stopping=None,
+            validator=None,
+            tester=None,
+        )
 
 
-def test_trainer_init_optimizer(make_dataset, config):
-    assert 3 == 6
+def test_trainer_init_model(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+    model = trainer.initialize_model()
+    assert model is not None
+    assert isinstance(model, QG.GNNModel)
+
+
+def test_trainer_init_optimizer(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+    model = trainer.initialize_model()
+    assert model is not None
+    assert isinstance(model, QG.GNNModel)
+
+    optimizer = trainer.initialize_optimizer()
+    assert optimizer is not None
+    assert isinstance(optimizer, torch.optim.Optimizer)
 
 
 def test_trainer_prepare_dataloader(make_dataset, config):
-    assert 3 == 6
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
+
+    assert len(train_loader) == 3
+    assert len(val_loader) == 1
+    assert len(test_loader) == 2
+
+    for batch in train_loader:
+        assert isinstance(batch, Data)
+        assert batch.x.shape == (60, 2)
+
+    for batch in val_loader:
+        assert isinstance(batch, Data)
+        assert batch.x.shape == (15, 2)
+
+    for batch in test_loader:
+        assert isinstance(batch, Data)
+        assert batch.x.shape == (15, 2)
 
 
-def test_trainer_prepare_dataloader_broken(make_dataset, broken_config):
-    assert 3 == 6
+def test_trainer_prepare_dataloader_broken(make_dataset, config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Split ratios must sum to 1.0. Provided split: [0.9, 0.2, 0.1]"
+        ),
+    ):
+        trainer.prepare_dataloaders(make_dataset, split=[0.9, 0.2, 0.1])
 
 
-def test_trainer_train_epoch(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+def test_trainer_train_epoch(make_dataset, config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+
+    train_loader, _, _ = trainer.prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
+    trainer.model.train()
+
+    eval_data = trainer._run_train_epoch(trainer.model, trainer.optimizer, train_loader)
+
+    assert trainer.model.training is True
+    assert len(eval_data) == len(train_loader)
 
 
-def test_trainer_train_epoch_broken(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+def test_trainer_check_model_status(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=lambda x: False,
+        validator=None,
+        tester=None,
+    )
+
+    trainer.initialize_model()
+
+    trainer.epoch = 20
+    loss = np.random.rand(10).tolist()
+    saved = trainer._check_model_status(loss)
+
+    assert saved is True
+    path_to_file = Path(
+        config["training"].get(
+            "checkpoint_path",
+            f"{config['model']['name']}_epoch_20.pt",
+        )
+    )
+    assert path_to_file.exists()
+
+    trainer.epoch = 1
+    saved = trainer._check_model_status(loss)
+    assert saved is False
+
+    trainer.early_stopping = lambda x: True
+
+    loss = np.random.rand(10).tolist()
+    saved = trainer._check_model_status(loss)
+
+    saved = trainer._check_model_status(loss)
+
+    assert saved is True
+    path_to_file = (
+        Path(config["training"]["checkpoint_path"])
+        / f"{config['model']['name']}_epoch_1.pt"
+    )
+
+    assert path_to_file.exists()
 
 
-def test_trainer_check_model_status(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+def test_trainer_check_model_status_no_checkpoint_path(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=lambda x: False,
+        validator=None,
+        tester=None,
+    )
+
+    trainer.initialize_model()
+    del trainer.config["training"]["checkpoint_path"]
+
+    with pytest.raises(
+        ValueError,
+        match="Training configuration must contain 'checkpoint_path' to save checkpoint.",
+    ):
+        trainer.save_checkpoint()
 
 
-def test_trainer_run_training(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+def test_trainer_check_model_status_no_model(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=lambda x: False,
+        validator=None,
+        tester=None,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Model must be initialized before saving checkpoint.",
+    ):
+        trainer.save_checkpoint()
 
 
-def test_trainer_run_test(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+def test_trainer_check_model_status_no_modelname(config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=lambda x: False,
+        validator=None,
+        tester=None,
+    )
+    trainer.initialize_model()
+    del trainer.config["model"]["name"]
+
+    with pytest.raises(
+        ValueError,
+        match="Model configuration must contain 'name' to save checkpoint.",
+    ):
+        trainer.save_checkpoint()
 
 
-def test_trainer_save_checkpoint(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+# def test_trainer_run_training(make_dataloader, gnn_model_eval):
+#     assert 3 == 6
 
 
-def test_trainer_load_checkpoint(make_dataloader, gnn_model_eval):
-    assert 3 == 6
+# def test_trainer_run_test(make_dataloader, gnn_model_eval):
+#     assert 3 == 6
+
+
+# def test_trainer_save_checkpoint(make_dataloader, gnn_model_eval):
+#     assert 3 == 6
+
+
+# def test_trainer_load_checkpoint(make_dataloader, gnn_model_eval):
+#     assert 3 == 6

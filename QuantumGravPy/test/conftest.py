@@ -298,11 +298,10 @@ def make_dataset(create_data, read_data):
 
 
 @pytest.fixture
-def make_dataloader(create_data, read_data, make_dataset):
-    datadir, datafiles = create_data
+def make_dataloader(create_data, make_dataset):
+    _, __ = create_data
 
-    dataset = make_dataset(create_data, read_data)
-
+    dataset = make_dataset
     dataloader = DataLoader(
         dataset,
         batch_size=4,

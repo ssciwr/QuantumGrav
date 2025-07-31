@@ -21,6 +21,10 @@ def make_tester():
     pass
 
 
+def test_distributed_dataloader(make_dataset):
+    assert 3 == 6  # Placeholder for actual test logic
+
+
 def test_trainer_ddp_creation_works(make_dataset, make_validator, make_tester, config):
     """Test the creation of a TrainerDDP instance."""
     assert 3 == 6  # Placeholder for actual test logic
