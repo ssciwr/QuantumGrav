@@ -3,7 +3,6 @@ import torch
 import torch.multiprocessing as mp
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
-from torch.utils.data import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
@@ -47,72 +46,8 @@ def initialize_ddp(
 def cleanup_ddp() -> None:
     """Clean up the distributed process group."""
     dist.destroy_process_group()
-
-
-# this function behaves like a factory function, which is why it is capitalized
-def DistributedDataLoader(
-    dataset: Dataset,
-    batch_size: int,
-    num_workers: int = 0,
-    pin_memory: bool = True,
-    rank: int = 0,
-    world_size: int = 1,
-    shuffle: bool = True,
-    drop_last: bool = False,
-    seed: int = 42,
-) -> Tuple[DataLoader, DistributedSampler]:
-    """Create a distributed data loader for training.
-
-    Args:
-        dataset (torch.utils.data.Dataset): The dataset to load.
-        batch_size (int): The batch size to use.
-        num_workers (int, optional): The number of worker processes to use for data loading. Defaults to 0.
-        pin_memory (bool, optional): Whether to pin memory for the data loader. Defaults to True.
-        rank (int, optional): The rank of the current process. Defaults to 0.
-        world_size (int, optional): The total number of processes. Defaults to 1.
-        shuffle (bool, optional): Whether to shuffle the data. Defaults to True.
-        drop_last (bool, optional): Whether to drop the last incomplete batch. Defaults to False.
-        seed (int, optional): The random seed for shuffling. Defaults to 42.
-
-    Returns:
-        DataLoader: The data loader for the distributed training.
-    """
-
-    sampler = DistributedSampler(
-        dataset,
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=shuffle,
-        drop_last=drop_last,
-        seed=seed,
-    )
-
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        sampler=sampler,
-    )
-
-    return dataloader, sampler
-
-
-def DistributedModel(
-    model: torch.nn.Module, rank: int, output_device: int | None = None, **ddp_kwargs
-) -> torch.nn.Module:
-    """Create a distributed data parallel model for training.
-
-    Args:
-        model (torch.nn.Module): The model to train.
-        rank (int): The rank of the current process.
-        output_device (int | None, optional): The device to output results to. Defaults to None.
-
-    Returns:
-        torch.nn.Module: The distributed data parallel model.
-    """
-    ddp_model = DDP(model, device_ids=[rank], output_device=output_device, **ddp_kwargs)
-    return ddp_model
+    del os.environ["MASTER_ADDR"]
+    del os.environ["MASTER_PORT"]
 
 
 class Trainer:
@@ -499,6 +434,9 @@ class TrainerDDP(Trainer):
         Raises:
             ValueError: If the configuration is invalid.
         """
+        if "parallel" not in config:
+            raise ValueError("Configuration must contain 'parallel' section for DDP.")
+
         super().__init__(
             config,
             criterion,
@@ -508,34 +446,48 @@ class TrainerDDP(Trainer):
             tester,
         )
 
-        if "parallel" not in config:
-            raise ValueError("Configuration must contain 'parallel' section for DDP.")
-
+        # initialize the systems differently on each process/rank
+        torch.manual_seed(self.seed + rank)
         if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(self.seed + rank)
+
+        if torch.cuda.is_available() and config["training"]["device"] != "cpu":
             torch.cuda.set_device(rank)
+            self.device = torch.device(f"cuda:{rank}")
+        else:
+            self.device = torch.device("cpu")
 
         self.rank = rank
-        self.device = rank  # Set the device to the rank for DDP
-        self.world_size = config["parallel"].get("world_size", 1)
-        self.device = self.rank  # Set the device to the rank for DDP
+        self.world_size = config["parallel"]["world_size"]
 
-    def initialize_model(self) -> Any:
+    def initialize_model(self) -> DDP:
         """Initialize the model for training.
 
         Returns:
-            Any: The initialized model.
+            DDP: The initialized model.
         """
         model = gnn_model.GNNModel.from_config(self.config["model"])
-        model = model.to(self.rank)
+
+        if self.device == "cpu" or (
+            isinstance(self.device, torch.device) and self.device.type == "cpu"
+        ):
+            d_id = None
+            o_id = None
+        else:
+            d_id = [
+                self.device,
+            ]
+            o_id = self.config["parallel"].get("output_device", None)
         model = DDP(
             model,
-            device_ids=[self.device],
-            output_device=self.config["parallel"].get("output_device", None),
+            device_ids=d_id,
+            output_device=o_id,
             find_unused_parameters=self.config["parallel"].get(
                 "find_unused_parameters", False
             ),
         )
-        self.model = model
+
+        self.model = model.to(self.device, non_blocking=True)
         return self.model
 
     def prepare_dataloaders(
@@ -600,7 +552,7 @@ class TrainerDDP(Trainer):
             num_workers=self.config["training"].get("data_num_workers", 0),
             pin_memory=self.config["training"].get("pin_memory", True),
             drop_last=self.config["training"].get("drop_last", False),
-            prefetch_factor=self.config["training"].get("prefetch_factor", 2),
+            prefetch_factor=self.config["training"].get("prefetch_factor", None),
         )
 
         val_loader = DataLoader(
@@ -610,17 +562,17 @@ class TrainerDDP(Trainer):
             num_workers=self.config["validation"].get("data_num_workers", 0),
             pin_memory=self.config["validation"].get("pin_memory", True),
             drop_last=self.config["validation"].get("drop_last", False),
-            prefetch_factor=self.config["validation"].get("prefetch_factor", 2),
+            prefetch_factor=self.config["validation"].get("prefetch_factor", None),
         )
 
         test_loader = DataLoader(
             self.test_dataset,
             sampler=self.test_sampler,
-            batch_size=self.config["test"]["batch_size"],
-            num_workers=self.config["test"].get("data_num_workers", 0),
-            pin_memory=self.config["test"].get("pin_memory", True),
-            drop_last=self.config["test"].get("drop_last", False),
-            prefetch_factor=self.config["test"].get("prefetch_factor", 2),
+            batch_size=self.config["testing"]["batch_size"],
+            num_workers=self.config["testing"].get("data_num_workers", 0),
+            pin_memory=self.config["testing"].get("pin_memory", True),
+            drop_last=self.config["testing"].get("drop_last", False),
+            prefetch_factor=self.config["testing"].get("prefetch_factor", None),
         )
 
         return train_loader, val_loader, test_loader
@@ -654,18 +606,11 @@ class TrainerDDP(Trainer):
         Returns:
             Tuple[list[Any], list[Any]]: The training and validation results.
         """
-        initialize_ddp(
-            self.rank,
-            self.config["parallel"]["world_size"],
-            master_addr=self.config["parallel"].get("master_addr", "localhost"),
-            master_port=self.config["parallel"].get("master_port", "12345"),
-            backend=self.config["parallel"].get("backend", "nccl"),
-        )
 
         self.model = self.initialize_model()
         self.optimizer = self.initialize_optimizer()
 
-        num_epochs = self.config["training"].get("num_epochs", 100)
+        num_epochs = self.config["training"]["num_epochs"]
 
         total_training_data = []
         all_training_data = [None for _ in range(self.world_size)]
@@ -673,14 +618,15 @@ class TrainerDDP(Trainer):
         for _ in range(0, num_epochs):
             self.model.train()
             train_loader.sampler.set_epoch(self.epoch)
-            self._run_train_epoch(self.model, self.optimizer, train_loader)
+            epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
+            total_training_data.append(epoch_data)  # TODO: check if this works in DDP
 
             # evaluation run on validation set
             self.model.eval()
             if self.validator is not None:
                 validation_result = self.validator.validate(self.model, val_loader)
                 if self.rank == 0:
-                    self.validator.report(*validation_result)
+                    self.validator.report(validation_result)
 
             dist.barrier()  # Ensure all processes have completed the epoch before checking status
             should_stop = self._check_model_status(
@@ -696,8 +642,80 @@ class TrainerDDP(Trainer):
         dist.all_gather_object(
             all_validation_data, self.validator.data if self.validator else []
         )
-        cleanup_ddp()
         return all_training_data, all_validation_data
+
+
+def __run_training_loop_ddp__(
+    rank,
+    config,
+    dataset,
+    split,
+    result_queue: mp.Queue,
+    # training and evaluation functions
+    criterion: Callable,
+    apply_model: Callable | None = None,
+    # training evaluation and reporting
+    early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+    validator: DefaultValidator | None = None,
+    tester: DefaultTester | None = None,
+):
+    """Train a single model on a single process.
+
+    Args:
+        rank (int): The rank of the process.
+        config (dict[str, Any]): Configuration dictionary.
+        dataset (Dataset): The dataset to train on.
+        split (list[float]): The train/validation/test split ratios.
+        result_queue (mp.Queue): Queue to collect results.
+        criterion (Callable): The loss function.
+        apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
+        early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): Early stopping criteria. Defaults to None.
+        validator (DefaultValidator | None, optional): Validator class instance for model evaluation. Defaults to None.
+        tester (DefaultTester | None, optional): Tester class instance for model evaluation. Defaults to None.
+    """
+    try:
+        initialize_ddp(
+            rank,
+            config["parallel"]["world_size"],
+            master_addr=config["parallel"].get("master_addr", "localhost"),
+            master_port=config["parallel"].get("master_port", "12345"),
+            backend=config["parallel"].get("backend", "nccl"),
+        )
+
+        trainer = TrainerDDP(
+            rank,
+            config,
+            criterion,
+            apply_model=apply_model,
+            early_stopping=early_stopping,
+            validator=validator,
+            tester=tester,
+        )
+        train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+            dataset, split=split
+        )
+
+        train_data, val_data = trainer.run_training(
+            train_loader,
+            val_loader,
+        )
+        test_data = None
+        test_data = trainer.run_test(test_loader)
+
+        result_queue.put(
+            {
+                "training_data": train_data,
+                "validation_data": val_data,
+                "test_data": test_data,
+            }
+        )
+
+        cleanup_ddp()
+    except Exception as e:
+        print(f"Rank {rank} crashed: {e}", flush=True)
+        result_queue.put(None)
+        if dist.is_initialized():
+            cleanup_ddp()
 
 
 def train_parallel(
@@ -731,72 +749,10 @@ def train_parallel(
     manager = mp.Manager()
     result_queue = manager.Queue()
 
-    def run_training_ddp(
-        rank,
-        config,
-        dataset,
-        split,
-        result_queue: mp.Queue,
-        # training and evaluation functions
-        criterion: Callable,
-        apply_model: Callable | None = None,
-        # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
-    ):
-        """Train a single model on a single process.
-
-        Args:
-            rank (int): The rank of the process.
-            config (dict[str, Any]): Configuration dictionary.
-            dataset (Dataset): The dataset to train on.
-            split (list[float]): The train/validation/test split ratios.
-            result_queue (mp.Queue): Queue to collect results.
-            criterion (Callable): The loss function.
-            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
-            early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): Early stopping criteria. Defaults to None.
-            validator (DefaultValidator | None, optional): Validator class instance for model evaluation. Defaults to None.
-            tester (DefaultTester | None, optional): Tester class instance for model evaluation. Defaults to None.
-        """
-        try:
-            trainer = TrainerDDP(
-                rank,
-                config,
-                criterion,
-                apply_model=apply_model,
-                early_stopping=early_stopping,
-                validator=validator,
-                tester=tester,
-            )
-            train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
-                dataset, split=split
-            )
-
-            train_data, val_data = trainer.run_training(
-                train_loader,
-                val_loader,
-            )
-            test_data = None
-            if rank == 0:
-                test_data = trainer.run_test(test_loader)
-                result_queue.put(
-                    {
-                        "training_data": train_data,
-                        "validation_data": val_data,
-                        "test_data": test_data,
-                    }
-                )
-        except Exception as e:
-            print(f"Rank {rank} crashed: {e}", flush=True)
-            result_queue.put(None)
-        finally:
-            cleanup_ddp()
-
     # We have a function to run in parallel now for each process.
     # We send one for each device in our 'world' to a process to run now
     mp.spawn(
-        run_training_ddp,
+        __run_training_loop_ddp__,
         args=(
             config,
             dataset,

@@ -22,7 +22,7 @@ from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
 from .graphfeatures_block import GraphFeaturesBlock
 from .evaluate import DefaultTester, DefaultValidator, DefaultEvaluator
-from .train import Trainer, TrainerDDP, train_parallel
+from .train import Trainer, TrainerDDP, train_parallel, initialize_ddp, cleanup_ddp
 
 __all__ = [
     # datasets
@@ -52,6 +52,8 @@ __all__ = [
     "Trainer",
     "TrainerDDP",
     "train_parallel",
+    "initialize_ddp",
+    "cleanup_ddp",
     # evaluation
     "DefaultValidator",
     "DefaultTester",

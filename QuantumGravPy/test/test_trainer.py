@@ -375,7 +375,7 @@ def test_trainer_check_model_status_no_model(config):
     )
 
     with pytest.raises(
-        RuntimeError,
+        ValueError,
         match="Model must be initialized before saving checkpoint.",
     ):
         trainer.save_checkpoint()
