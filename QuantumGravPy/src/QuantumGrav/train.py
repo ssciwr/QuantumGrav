@@ -169,7 +169,7 @@ class Trainer:
         self.best_epoch = 0
         self.epoch = 0
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
-
+        self.latest_checkpoint = None
         # training and evaluation functions
         self.validator = validator
         self.tester = tester
@@ -335,7 +335,11 @@ class Trainer:
             bool: Whether the training should stop early.
         """
         saved = False
-        if self.checkpoint_at is not None and self.epoch % self.checkpoint_at == 0:
+        if (
+            self.checkpoint_at is not None
+            and self.epoch % self.checkpoint_at == 0
+            and self.epoch > 0
+        ):
             self.save_checkpoint()
             saved = True
         if self.early_stopping is not None:
@@ -362,7 +366,7 @@ class Trainer:
         """
 
         # training loop
-        num_epochs = self.config["training"].get("num_epochs", 100)
+        num_epochs = self.config["training"]["num_epochs"]
         self.model = self.initialize_model()
         optimizer = self.initialize_optimizer()
         total_training_data = []
@@ -374,7 +378,7 @@ class Trainer:
             # evaluation run on validation set
             if self.validator is not None:
                 validation_result = self.validator.validate(self.model, val_loader)
-                self.validator.report(*validation_result)
+                self.validator.report(validation_result)
 
             should_stop = self._check_model_status(
                 self.validator.data if self.validator else total_training_data,
@@ -436,10 +440,11 @@ class Trainer:
             Path(self.config["training"]["checkpoint_path"])
             / f"{self.config['model']['name']}_epoch_{self.epoch}.pt"
         )
+        self.latest_checkpoint = outpath
         torch.save(self.model.state_dict(), outpath)
 
     def load_checkpoint(self, epoch: int) -> None:
-        """Load model checkpoint.
+        """Load model checkpoint to the device given
 
         Args:
             epoch (int): The epoch number to load.
@@ -450,13 +455,16 @@ class Trainer:
 
         if self.model is None:
             raise RuntimeError("Model must be initialized before saving checkpoint.")
-        self.model.load_state_dict(
-            torch.load(
-                self.config["training"].get(
-                    "checkpoint_path", f"checkpoint_{epoch}.pth"
-                )
-            )
+
+        loadpath = (
+            Path(self.config["training"]["checkpoint_path"])
+            / f"{self.config['model']['name']}_epoch_{epoch}.pt"
         )
+
+        if not loadpath.exists():
+            raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
+
+        self.model.load_state_dict(torch.load(loadpath, map_location=self.device))
 
 
 class TrainerDDP(Trainer):

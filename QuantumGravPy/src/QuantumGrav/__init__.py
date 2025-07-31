@@ -1,3 +1,5 @@
+from .julia_worker import JuliaWorker
+
 from .utils import (
     register_activation,
     register_gnn_layer,
@@ -12,7 +14,6 @@ from .utils import (
     list_registered_activations,
     list_registered_gnn_layers,
 )
-from .julia_worker import JuliaWorker
 from .dataset_ondisk import QGDataset
 from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly

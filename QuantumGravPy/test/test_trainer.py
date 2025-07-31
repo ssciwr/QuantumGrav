@@ -1,12 +1,14 @@
 import pytest
 import torch
 
-torch.multiprocessing.set_start_method("spawn", force=True)
+
 from torch_geometric.data import Data
 import QuantumGrav as QG
 import numpy as np
 from pathlib import Path
 import re
+
+torch.multiprocessing.set_start_method("spawn", force=True)
 
 
 @pytest.fixture
@@ -33,6 +35,7 @@ def config(model_config_eval, tmppath):
             "data_num_workers": 0,
             "pin_memory": True,
             "drop_last": True,
+            "num_epochs": 13,
             # "prefetch_factor": 2,
         },
         "model": model_config_eval,
@@ -87,6 +90,21 @@ def broken_config(model_config_eval):
             "shuffle": False,
         },
     }
+
+
+class DummyValidator(QG.DefaultEvaluator):
+    def __init__(self):
+        self.data = []
+
+    def validate(self, model, data_loader):
+        # Dummy validation logic
+        return [torch.rand(1)]
+
+    def report(self, losses: list):  # type: ignore
+        avg = np.mean(losses)
+        sigma = np.std(losses)
+        print(f"Validation average loss: {avg}, Standard deviation: {sigma}")
+        self.data.append((avg, sigma))
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
@@ -291,6 +309,34 @@ def test_trainer_check_model_status(config):
     assert path_to_file.exists()
 
 
+def test_trainer_load_checkpoint(config, tmppath):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    trainer.initialize_model()
+    trainer.save_checkpoint()
+
+    original_weights = [param.clone() for param in trainer.model.parameters()]
+
+    # set all the params to zero
+    for param in trainer.model.parameters():
+        param.data.zero_()
+
+    # Load the checkpoint
+    trainer.load_checkpoint(0)
+
+    # Check if the model parameters are restored
+    for orig, loaded in zip(original_weights, trainer.model.parameters()):
+        assert torch.all(torch.eq(orig, loaded.data))
+    assert trainer.epoch == 0
+
+
 def test_trainer_check_model_status_no_checkpoint_path(config):
     trainer = QG.Trainer(
         config,
@@ -309,6 +355,9 @@ def test_trainer_check_model_status_no_checkpoint_path(config):
         match="Training configuration must contain 'checkpoint_path' to save checkpoint.",
     ):
         trainer.save_checkpoint()
+
+
+# there is no test for the working 'save_checkpoint' method, as it is tested in the _check_model_status method above
 
 
 def test_trainer_check_model_status_no_model(config):
@@ -347,17 +396,38 @@ def test_trainer_check_model_status_no_modelname(config):
         trainer.save_checkpoint()
 
 
-# def test_trainer_run_training(make_dataloader, gnn_model_eval):
-#     assert 3 == 6
+def test_trainer_run_training(make_dataset, config):
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=lambda x: False,
+        validator=DummyValidator(),  # type: ignore
+        tester=None,
+    )
+
+    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
+
+    original_weights = [param.clone() for param in trainer.model.parameters()]
+
+    training_data, valid_data = trainer.run_training(
+        test_loader,
+        validation_loader,
+    )
+    trained_weights = [param.clone() for param in trainer.model.parameters()]
+
+    # Check if the model parameters have changed after training
+    for orig, trained in zip(original_weights, trained_weights):
+        assert not torch.all(torch.eq(orig, trained.data)), (
+            "Model parameters did not change after training."
+        )
+
+    assert valid_data is not None  # has no validator
+    assert len(valid_data) == config["training"]["num_epochs"]
+    assert len(training_data) == config["training"]["num_epochs"]
 
 
-# def test_trainer_run_test(make_dataloader, gnn_model_eval):
-#     assert 3 == 6
-
-
-# def test_trainer_save_checkpoint(make_dataloader, gnn_model_eval):
-#     assert 3 == 6
-
-
-# def test_trainer_load_checkpoint(make_dataloader, gnn_model_eval):
-#     assert 3 == 6
+def test_trainer_run_test(make_dataloader, gnn_model_eval):
+    assert 3 == 6
