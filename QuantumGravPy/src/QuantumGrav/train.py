@@ -14,6 +14,8 @@ import logging
 from . import gnn_model
 from .evaluate import DefaultValidator, DefaultTester
 import tqdm
+import yaml
+from datetime import datetime
 
 
 def initialize_ddp(
@@ -108,6 +110,16 @@ class Trainer:
         self.best_score = None
         self.best_epoch = 0
         self.epoch = 0
+
+        # date and time of run:
+        run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.data_path = Path(self.config["training"]["path"]) / run_date
+
+        if not self.data_path.exists():
+            self.data_path.mkdir(parents=True)
+        self.logger.info(f"Data path set to: {self.data_path}")
+
+        self.checkpoint_path = self.data_path / "model_checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.latest_checkpoint = None
         # training and evaluation functions
@@ -115,6 +127,9 @@ class Trainer:
         self.tester = tester
         self.model = None
         self.optimizer = None
+
+        with open(self.data_path / "config.yaml", "w") as f:
+            yaml.dump(self.config, f)
 
         self.logger.info("Trainer initialized")
         self.logger.debug(f"Configuration: {self.config}")
@@ -305,21 +320,20 @@ class Trainer:
         Returns:
             bool: Whether the training should stop early.
         """
-        saved = False
         if (
             self.checkpoint_at is not None
             and self.epoch % self.checkpoint_at == 0
             and self.epoch > 0
         ):
             self.save_checkpoint()
-            saved = True
+
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
                 self.logger.info(f"Early stopping at epoch {self.epoch}.")
                 self.save_checkpoint()
-                saved = True
+                return True
 
-        return saved
+        return False
 
     def run_training(
         self,
@@ -365,11 +379,16 @@ class Trainer:
                 self.validator.data if self.validator else total_training_data,
             )
             if should_stop:
+                self.logger.info("Stopping training early.")
                 break
-
             self.epoch += 1
 
         self.logger.info("Training process completed.")
+        self.logger.info("Saving model")
+
+        outpath = self.data_path / f"final_model_epoch={self.epoch}.pt"
+        torch.save(self.model.state_dict(), outpath)
+
         return total_training_data, self.validator.data if self.validator else []
 
     def run_test(
@@ -415,16 +434,11 @@ class Trainer:
                 "Model configuration must contain 'name' to save checkpoint."
             )
 
-        if "checkpoint_path" not in self.config["training"]:
-            raise ValueError(
-                "Training configuration must contain 'checkpoint_path' to save checkpoint."
-            )
-
         self.logger.info(
-            f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.config['training']['checkpoint_path']}"
+            f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.checkpoint_path}"
         )
         outpath = (
-            Path(self.config["training"]["checkpoint_path"])
+            self.checkpoint_path
             / f"{self.config['model']['name']}_epoch_{self.epoch}.pt"
         )
 
