@@ -20,7 +20,7 @@ class GNNModel(torch.nn.Module):
         gcn_net: list[QGGNN.GNNBlock],
         classifier: QGC.ClassifierBlock,
         pooling_layer: torch.nn.Module,
-        graph_features_net: torch.nn.Module = torch.nn.Identity,
+        graph_features_net: torch.nn.Module = torch.nn.Identity(),
     ):
         """Initialize the GNNModel.
 
@@ -52,10 +52,7 @@ class GNNModel(torch.nn.Module):
         Returns:
             torch.Tensor: Output of the GCN network.
         """
-        features = (
-            x.clone()
-        )  # Clone the input features to avoid modifying the original tensor
-        # Apply each GCN layer to the input features
+        features = x
         for gnn_layer in self.gcn_net:
             features = gnn_layer(
                 features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
@@ -81,9 +78,7 @@ class GNNModel(torch.nn.Module):
             torch.Tensor: Embedding vector for the graph features.
         """
         # apply the GCN backbone to the node features
-        embeddings = self._eval_gcn_net(
-            x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
-        )
+        embeddings = self._eval_gcn_net(x, edge_index, gcn_kwargs=gcn_kwargs)
 
         # pool everything together into a single graph representation
         embeddings = self.pooling_layer(embeddings, batch)

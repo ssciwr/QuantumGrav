@@ -1,3 +1,5 @@
+from .julia_worker import JuliaWorker
+
 from .utils import (
     register_activation,
     register_gnn_layer,
@@ -12,7 +14,6 @@ from .utils import (
     list_registered_activations,
     list_registered_gnn_layers,
 )
-from .julia_worker import JuliaWorker
 from .dataset_ondisk import QGDataset
 from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly
@@ -20,7 +21,8 @@ from .gnn_model import GNNModel
 from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
 from .graphfeatures_block import GraphFeaturesBlock
-from .evaluate import train_epoch, validate_epoch, test_epoch
+from .evaluate import DefaultTester, DefaultValidator, DefaultEvaluator
+from .train import Trainer, TrainerDDP, train_parallel, initialize_ddp, cleanup_ddp
 
 __all__ = [
     # datasets
@@ -46,8 +48,14 @@ __all__ = [
     "ClassifierBlock",
     "GraphFeaturesBlock",
     "GNNModel",
+    # training
+    "Trainer",
+    "TrainerDDP",
+    "train_parallel",
+    "initialize_ddp",
+    "cleanup_ddp",
     # evaluation
-    "train_epoch",
-    "validate_epoch",
-    "test_epoch",
+    "DefaultValidator",
+    "DefaultTester",
+    "DefaultEvaluator",
 ]
