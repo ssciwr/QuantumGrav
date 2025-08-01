@@ -1,8 +1,9 @@
 import torch
 from typing import Callable, Any
 import torch_geometric
-from numpy import mean, std
-from collections.abc import Iterable
+import numpy as np
+import pandas as pd
+import logging
 
 
 class DefaultEvaluator:
@@ -20,10 +21,11 @@ class DefaultEvaluator:
         self.apply_model = apply_model
         self.device = device
         self.data = []
+        self.logger = logging.getLogger(__name__)
 
     def evaluate(
         self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
-    ) -> list[Any]:
+    ) -> Any:
         """Evaluate the model on the given data loader.
 
         Args:
@@ -48,11 +50,21 @@ class DefaultEvaluator:
 
         return current_data
 
-    def report(self, losses: Iterable[Any]) -> None:
+    def report(self, data: list | pd.Series | torch.Tensor) -> None:
         """Report the evaluation results to stdout"""
-        avg = mean(losses)
-        sigma = std(losses)
-        print(f"Average loss: {avg}, Standard deviation: {sigma}")
+
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+
+        if isinstance(data, list):
+            for i, d in enumerate(data):
+                if isinstance(d, torch.Tensor):
+                    data[i] = d.cpu().numpy()
+                    data[i] = d.to_numpy()
+
+        avg = np.mean(data)
+        sigma = np.std(data)
+        self.logger.info(f"Average loss: {avg}, Standard deviation: {sigma}")
         self.data.append((avg, sigma))
 
 
@@ -102,3 +114,43 @@ class DefaultValidator(DefaultEvaluator):
             list[Any]: A list of validation results.
         """
         return self.evaluate(model, data_loader)
+
+
+class DefaultEarlyStopping:
+    """Early stopping based on a validation metric."""
+
+    def __init__(
+        self, patience: int, delta: float = 1e-4, window=7, metric: str = "loss"
+    ):
+        """Early stopping initialization.
+
+        Args:
+            patience (int): Number of epochs with no improvement after which training will be stopped.
+            delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
+            window (int, optional): Size of the moving window for smoothing. Defaults to 7.
+        """
+        self.patience = patience
+        self.current_patience = patience
+        self.delta = delta
+        self.best_score = np.inf
+        self.window = window
+
+    def __call__(self, data: list) -> bool:
+        """Check if early stopping criteria are met.
+
+        Args:
+            data (list): List of validation metrics.
+
+        Returns:
+            bool: True if training should be stopped, False otherwise.
+        """
+        window = min(self.window, len(data))
+        smoothed = pd.Series(data).rolling(window=window, min_periods=1).mean()
+
+        if smoothed[-1] < self.best_score - self.delta:
+            self.best_score = smoothed[-1]
+            self.current_patience = self.patience
+        else:
+            self.current_patience -= 1
+
+        return self.current_patience <= 0

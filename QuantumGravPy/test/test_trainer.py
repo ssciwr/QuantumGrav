@@ -32,7 +32,7 @@ def config(model_config_eval, tmppath):
             "weight_decay": 0.0001,
             # training loader
             "batch_size": 4,
-            "data_num_workers": 0,
+            "num_workers": 0,
             "pin_memory": True,
             "drop_last": True,
             "num_epochs": 13,
@@ -41,14 +41,14 @@ def config(model_config_eval, tmppath):
         "model": model_config_eval,
         "validation": {
             "batch_size": 1,
-            "data_num_workers": 0,
+            "num_workers": 0,
             "pin_memory": False,
             "drop_last": False,
             "shuffle": True,
         },
         "testing": {
             "batch_size": 1,
-            "data_num_workers": 0,
+            "num_workers": 0,
             "pin_memory": False,
             "drop_last": False,
             "shuffle": False,
@@ -74,7 +74,7 @@ def broken_config(model_config_eval):
             "weight_decay": 0.0001,
             # training loader
             "batch_size": 4,
-            "data_num_workers": 4,
+            "num_workers": 4,
             "pin_memory": True,
             "drop_last": True,
             "prefetch_factor": 2,
@@ -83,7 +83,7 @@ def broken_config(model_config_eval):
         # validation is missing -> broken
         "testing": {
             "batch_size": 1,
-            "data_num_workers": 0,
+            "num_workers": 0,
             "pin_memory": False,
             "drop_last": False,
             "prefetch_factor": 1,

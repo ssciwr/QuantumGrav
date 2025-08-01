@@ -10,9 +10,10 @@ from collections.abc import Collection
 import os
 import numpy as np
 from pathlib import Path
-
+import logging
 from . import gnn_model
 from .evaluate import DefaultValidator, DefaultTester
+import tqdm
 
 
 def initialize_ddp(
@@ -80,10 +81,14 @@ class Trainer:
             is False
         ):
             raise ValueError(
-                "Configuration must contain 'training' and 'data' sections."
+                "Configuration must contain 'training', 'model', 'validatino' and 'testing' sections."
             )
 
         self.config = config
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(config.get("log_level", logging.INFO))
+        self.logger.info("Initializing Trainer instance")
+
         # functions for executing training and evaluation
         self.criterion = criterion
         self.apply_model = apply_model
@@ -111,6 +116,9 @@ class Trainer:
         self.model = None
         self.optimizer = None
 
+        self.logger.info("Trainer initialized")
+        self.logger.debug(f"Configuration: {self.config}")
+
     def initialize_model(self) -> Any:
         """Initialize the model for training.
 
@@ -119,10 +127,15 @@ class Trainer:
         """
         if self.model is not None:
             return self.model
+        # try:
         model = gnn_model.GNNModel.from_config(self.config["model"])
         model = model.to(self.device)
         self.model = model
+        self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
+        # except Exception as e:
+        #     self.logger.error(f"Error initializing model: {e}")
+        #     return None
 
     def initialize_optimizer(self) -> torch.optim.Optimizer:
         """Initialize the optimizer for training.
@@ -142,13 +155,20 @@ class Trainer:
         if self.optimizer is not None:
             return self.optimizer
 
-        optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.config["training"].get("learning_rate", 0.001),
-            weight_decay=self.config["training"].get("weight_decay", 0.0001),
-        )
-        self.optimizer = optimizer
-
+        try:
+            lr = self.config["training"].get("learning_rate", 0.001)
+            weight_decay = self.config["training"].get("weight_decay", 0.0001)
+            optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=lr,
+                weight_decay=weight_decay,
+            )
+            self.optimizer = optimizer
+            self.logger.info(
+                f"Optimizer initialized with learning rate: {lr} and weight decay: {weight_decay}"
+            )
+        except Exception as e:
+            self.logger.error(f"Error initializing optimizer: {e}")
         return self.optimizer
 
     def prepare_dataloaders(
@@ -177,7 +197,7 @@ class Trainer:
         train_loader = DataLoader(
             self.train_dataset,
             batch_size=self.config["training"]["batch_size"],
-            num_workers=self.config["training"].get("data_num_workers", 0),
+            num_workers=self.config["training"].get("num_workers", 0),
             pin_memory=self.config["training"].get("pin_memory", True),
             drop_last=self.config["training"].get("drop_last", False),
             prefetch_factor=self.config["training"].get("prefetch_factor", None),
@@ -186,7 +206,7 @@ class Trainer:
         val_loader = DataLoader(
             self.val_dataset,
             batch_size=self.config["validation"]["batch_size"],
-            num_workers=self.config["validation"].get("data_num_workers", 0),
+            num_workers=self.config["validation"].get("num_workers", 0),
             pin_memory=self.config["validation"].get("pin_memory", True),
             drop_last=self.config["validation"].get("drop_last", False),
             prefetch_factor=self.config["validation"].get("prefetch_factor", None),
@@ -195,12 +215,14 @@ class Trainer:
         test_loader = DataLoader(
             self.test_dataset,
             batch_size=self.config["testing"]["batch_size"],
-            num_workers=self.config["testing"].get("data_num_workers", 0),
+            num_workers=self.config["testing"].get("num_workers", 0),
             pin_memory=self.config["testing"].get("pin_memory", True),
             drop_last=self.config["testing"].get("drop_last", False),
             prefetch_factor=self.config["testing"].get("prefetch_factor", None),
         )
-
+        self.logger.info(
+            f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
+        )
         return train_loader, val_loader, test_loader
 
     # training helper functions
@@ -218,10 +240,14 @@ class Trainer:
         Returns:
             torch.Tensor | Collection[torch.Tensor]: The output of the model.
         """
+        self.logger.debug(f"  Evaluating batch on device: {self.device}")
         if self.apply_model:
             outputs = self.apply_model(model, data)
         else:
             outputs = model(data.x, data.edge_index, data.batch)
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         return outputs
 
     def _run_train_epoch(
@@ -250,20 +276,25 @@ class Trainer:
         if optimizer is None:
             raise RuntimeError("Optimizer must be initialized before training.")
 
-        eval_data = []
+        output_size = len(self.config["model"]["classifier"]["output_dims"])
+        losses = torch.zeros(
+            len(train_loader), output_size, dtype=torch.float32, device=self.device
+        )
         # training run
-        for batch in train_loader:
+        for i, batch in enumerate(
+            tqdm.tqdm(train_loader, desc=f"Training Epoch {self.epoch}")
+        ):
             optimizer.zero_grad()
-            data = batch.to(self.device, non_blocking=True)
+            self.logger.debug(f"  Moving batch to device: {self.device}")
+            data = batch.to(self.device)
             outputs = self._evaluate_batch(model, data)
+            self.logger.debug("  Computing loss")
             loss = self.criterion(outputs, data)
+            self.logger.debug(f"  Backpropagating loss: {loss.item()}")
             loss.backward()
             optimizer.step()
-            if isinstance(loss, torch.Tensor):
-                eval_data.append(loss.item())
-            else:
-                eval_data.append(loss)
-        return eval_data
+            losses[i, :] = loss
+        return losses
 
     def _check_model_status(self, eval_data: list[Any]) -> bool:
         """Check the status of the model during training.
@@ -284,7 +315,7 @@ class Trainer:
             saved = True
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
-                print(f"Early stopping at epoch {self.epoch}.")
+                self.logger.info(f"Early stopping at epoch {self.epoch}.")
                 self.save_checkpoint()
                 saved = True
 
@@ -304,16 +335,26 @@ class Trainer:
         Returns:
             Tuple[Collection[Any], Collection[Any]]: The training and validation results.
         """
-
+        self.logger.info("Starting training process.")
         # training loop
         num_epochs = self.config["training"]["num_epochs"]
+
         self.model = self.initialize_model()
         optimizer = self.initialize_optimizer()
-        total_training_data = []
-        for _ in range(0, num_epochs):
+        total_training_data = torch.zeros(num_epochs, 2, dtype=torch.float32)
+        for epoch in range(0, num_epochs):
+            self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
             epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
-            total_training_data.append(epoch_data)
+
+            # collect mean and std for each epoch
+            total_training_data[epoch, :] = torch.Tensor(
+                [epoch_data.mean(dim=0), epoch_data.std(dim=0)]
+            )
+
+            self.logger.info(
+                f"  Completed epoch {self.epoch}. training loss: {total_training_data[self.epoch, 0]} +/- {total_training_data[self.epoch, 1]}."
+            )
 
             # evaluation run on validation set
             if self.validator is not None:
@@ -328,6 +369,7 @@ class Trainer:
 
             self.epoch += 1
 
+        self.logger.info("Training process completed.")
         return total_training_data, self.validator.data if self.validator else []
 
     def run_test(
@@ -346,6 +388,7 @@ class Trainer:
         Returns:
             Collection[Any]: A collection of test results that can be scalars, tensors, lists, dictionaries or any other data type that the tester might return.
         """
+        self.logger.info("Starting testing process.")
         if self.model is None:
             raise RuntimeError("Model must be initialized before testing.")
         self.model.eval()
@@ -353,6 +396,7 @@ class Trainer:
             raise RuntimeError("Tester must be initialized before testing.")
         test_result = self.tester.test(self.model, test_loader)
         self.tester.report(test_result)
+        self.logger.info("Testing process completed.")
         return test_result
 
     def save_checkpoint(self):
@@ -376,10 +420,18 @@ class Trainer:
                 "Training configuration must contain 'checkpoint_path' to save checkpoint."
             )
 
+        self.logger.info(
+            f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.config['training']['checkpoint_path']}"
+        )
         outpath = (
             Path(self.config["training"]["checkpoint_path"])
             / f"{self.config['model']['name']}_epoch_{self.epoch}.pt"
         )
+
+        if outpath.exists() is False:
+            outpath.parent.mkdir(parents=True, exist_ok=True)
+            self.logger.info(f"Created directory {outpath.parent} for checkpoint.")
+
         self.latest_checkpoint = outpath
         torch.save(self.model.state_dict(), outpath)
 
@@ -445,7 +497,6 @@ class TrainerDDP(Trainer):
             validator,
             tester,
         )
-
         # initialize the systems differently on each process/rank
         torch.manual_seed(self.seed + rank)
         if torch.cuda.is_available():
@@ -459,6 +510,7 @@ class TrainerDDP(Trainer):
 
         self.rank = rank
         self.world_size = config["parallel"]["world_size"]
+        self.logger.info("Initialized DDP trainer")
 
     def initialize_model(self) -> DDP:
         """Initialize the model for training.
@@ -486,8 +538,8 @@ class TrainerDDP(Trainer):
                 "find_unused_parameters", False
             ),
         )
-
         self.model = model.to(self.device, non_blocking=True)
+        self.logger.info(f"Model initialized on device: {self.device}")
         return self.model
 
     def prepare_dataloaders(
@@ -509,7 +561,9 @@ class TrainerDDP(Trainer):
         train_size = int(len(dataset) * split[0])
         val_size = int(len(dataset) * split[1])
         test_size = len(dataset) - train_size - val_size
-
+        self.logger.info(
+            f"Preparing data loaders with split: {split}, train size: {train_size}, val size: {val_size}, test size: {test_size}"
+        )
         if (
             np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False)
             is False
@@ -549,7 +603,7 @@ class TrainerDDP(Trainer):
             self.train_dataset,
             batch_size=self.config["training"]["batch_size"],
             sampler=self.train_sampler,
-            num_workers=self.config["training"].get("data_num_workers", 0),
+            num_workers=self.config["training"].get("num_workers", 0),
             pin_memory=self.config["training"].get("pin_memory", True),
             drop_last=self.config["training"].get("drop_last", False),
             prefetch_factor=self.config["training"].get("prefetch_factor", None),
@@ -559,7 +613,7 @@ class TrainerDDP(Trainer):
             self.val_dataset,
             sampler=self.val_sampler,
             batch_size=self.config["validation"]["batch_size"],
-            num_workers=self.config["validation"].get("data_num_workers", 0),
+            num_workers=self.config["validation"].get("num_workers", 0),
             pin_memory=self.config["validation"].get("pin_memory", True),
             drop_last=self.config["validation"].get("drop_last", False),
             prefetch_factor=self.config["validation"].get("prefetch_factor", None),
@@ -569,12 +623,14 @@ class TrainerDDP(Trainer):
             self.test_dataset,
             sampler=self.test_sampler,
             batch_size=self.config["testing"]["batch_size"],
-            num_workers=self.config["testing"].get("data_num_workers", 0),
+            num_workers=self.config["testing"].get("num_workers", 0),
             pin_memory=self.config["testing"].get("pin_memory", True),
             drop_last=self.config["testing"].get("drop_last", False),
             prefetch_factor=self.config["testing"].get("prefetch_factor", None),
         )
-
+        self.logger.info(
+            f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
+        )
         return train_loader, val_loader, test_loader
 
     def _check_model_status(self, eval_data: list[Any]) -> bool:
@@ -611,11 +667,13 @@ class TrainerDDP(Trainer):
         self.optimizer = self.initialize_optimizer()
 
         num_epochs = self.config["training"]["num_epochs"]
+        self.logger.info("Starting training process.")
 
         total_training_data = []
         all_training_data = [None for _ in range(self.world_size)]
         all_validation_data = [None for _ in range(self.world_size)]
         for _ in range(0, num_epochs):
+            self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
             train_loader.sampler.set_epoch(self.epoch)
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
@@ -642,6 +700,7 @@ class TrainerDDP(Trainer):
         dist.all_gather_object(
             all_validation_data, self.validator.data if self.validator else []
         )
+        self.logger.info("Training process completed.")
         return all_training_data, all_validation_data
 
 
