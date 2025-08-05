@@ -20,8 +20,7 @@ class QGDataset(QGDatasetBase, Dataset):
         self,
         input: list[str | Path],
         output: str | Path,
-        reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], Data]
-        | None = None,
+        reader: Callable[[h5py.File, int], list[Data]] | None = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
         validate_data: bool = True,
@@ -37,7 +36,7 @@ class QGDataset(QGDatasetBase, Dataset):
         Args:
             input (list[str  |  Path] | Callable[[Any], dict]): List of input hdf5 file paths.
             output (str | Path): Output directory where processed data will be stored.
-            reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], Data] | None, optional): Function to read data from the hdf5 file. Defaults to None.
+            reader (Callable[[h5py.File, int], list[Data]] | None, optional): Function to read data from the hdf5 file. Defaults to None.
             float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
             int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data. Defaults to True.
@@ -89,9 +88,7 @@ class QGDataset(QGDatasetBase, Dataset):
         """Process the dataset from the read rawdata into its final form."""
         # process data files
         k = 0  # index to create the filenames for the processed data
-        print("length of input files:", len(self.input))
-        for i, file in enumerate(self.input):
-            print(f"Processing file: {file}, {i}/ {len(self.input)}")
+        for file in self.input:
             with (
                 h5py.File(str(Path(file).resolve().absolute()), "r") as raw_file
             ):  # read the data in chunks and process it parallelized or sequentially based on the parallel_processing flag
