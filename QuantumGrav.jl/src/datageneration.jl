@@ -85,9 +85,7 @@ function calculate_angles(
         )
         return angle
     end
-    println("Calculating angles for node $(node_idx) with neighbors $(neighbors)")
     idxs = findall(x -> x > 0, neighbors)
-    println("Found $(length(idxs)) neighbors for node $(node_idx): $(idxs)")
     n = length(idxs)
     num_pairs = div(n * (n - 1), 2)
     if multithreading

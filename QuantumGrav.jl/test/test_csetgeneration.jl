@@ -35,7 +35,7 @@ end
     @test size(sprinkling) == (100, 2)
 
     cset, sprinkling =
-        QuantumGrav.make_simple_cset("Random", "BoxBoundary", 100, 3, rng; type = type)
+        QuantumGrav.make_simple_cset("Random", "BoxBoundary", 100, 3, 300, rng; type = type)
 
     @test cset.atom_count == 100
     @test length(cset.future_relations) == 100
@@ -47,6 +47,7 @@ end
         "CausalDiamond",
         0,
         4,
+        300,
         rng;
         type = type,
     )
