@@ -70,9 +70,6 @@ function calculate_angles(
     function inner(sprinkling, i, j, n)
         @inbounds v_i = sprinkling[i, :] - sprinkling[n, :]
         @inbounds v_j = sprinkling[j, :] - sprinkling[n, :]
-        print(
-            " input data:  $(i), $(j), $(sprinkling[i, :]), $(sprinkling[j, :]), $(sprinkling[n, :]), $(v_i), $(v_j)",
-        )
 
         angle = type(
             acos(
