@@ -2,7 +2,6 @@ from typing import Callable, Any, Tuple
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.multiprocessing as mp
 
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
@@ -691,7 +690,7 @@ class TrainerDDP(Trainer):
             self.model.train()
             train_loader.sampler.set_epoch(self.epoch)
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
-            total_training_data.append(epoch_data)  # TODO: check if this works in DDP
+            total_training_data.append(epoch_data)
 
             # evaluation run on validation set
             self.model.eval()
@@ -716,76 +715,3 @@ class TrainerDDP(Trainer):
         )
         self.logger.info("Training process completed.")
         return all_training_data, all_validation_data
-
-
-def __run_training_loop_ddp__(
-    rank,
-    config,
-    dataset,
-    split,
-    result_queue: mp.Queue,
-    # training and evaluation functions
-    criterion: Callable,
-    apply_model: Callable | None = None,
-    # training evaluation and reporting
-    early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
-    validator: DefaultValidator | None = None,
-    tester: DefaultTester | None = None,
-):
-    """Train a single model on a single process.
-
-    Args:
-        rank (int): The rank of the process.
-        config (dict[str, Any]): Configuration dictionary.
-        dataset (Dataset): The dataset to train on.
-        split (list[float]): The train/validation/test split ratios.
-        result_queue (mp.Queue): Queue to collect results.
-        criterion (Callable): The loss function.
-        apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
-        early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): Early stopping criteria. Defaults to None.
-        validator (DefaultValidator | None, optional): Validator class instance for model evaluation. Defaults to None.
-        tester (DefaultTester | None, optional): Tester class instance for model evaluation. Defaults to None.
-    """
-    try:
-        initialize_ddp(
-            rank,
-            config["parallel"]["world_size"],
-            master_addr=config["parallel"].get("master_addr", "localhost"),
-            master_port=config["parallel"].get("master_port", "12345"),
-            backend=config["parallel"].get("backend", "nccl"),
-        )
-
-        trainer = TrainerDDP(
-            rank,
-            config,
-            criterion,
-            apply_model=apply_model,
-            early_stopping=early_stopping,
-            validator=validator,
-            tester=tester,
-        )
-        train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
-            dataset, split=split
-        )
-
-        train_data, val_data = trainer.run_training(
-            train_loader,
-            val_loader,
-        )
-        test_data = None
-        test_data = trainer.run_test(test_loader)
-
-        result_queue.put(
-            {
-                "training_data": train_data,
-                "validation_data": val_data,
-                "test_data": test_data,
-            }
-        )
-
-        cleanup_ddp()
-    except Exception as e:
-        print(f"Rank {rank} crashed: {e}", flush=True)
-        result_queue.put(None)
-        if dist.is_initialized():
-            cleanup_ddp()

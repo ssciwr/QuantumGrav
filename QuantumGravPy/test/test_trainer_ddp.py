@@ -26,7 +26,7 @@ def config(model_config_eval, tmppath):
             "device": "cpu",
             "early_stopping_patience": 10,
             "checkpoint_at": 20,
-            "checkpoint_path": tmppath,
+            "path": tmppath,
             # optimizer
             "learning_rate": 0.001,
             "weight_decay": 0.0001,
@@ -247,7 +247,7 @@ def test_trainer_ddp_check_model_status(config, make_dataloader):
 
     assert saved is False
 
-    trainer.checkpoint_at = 5
+    trainer.checkpoint_at = 5j
     saved = trainer._check_model_status(eval_data)
     assert saved is True
 
