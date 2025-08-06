@@ -137,6 +137,7 @@ class DefaultEarlyStopping:
         self.delta = delta
         self.best_score = np.inf
         self.window = window
+        self.logger = logging.getLogger(__name__)
 
     def __call__(self, data: list) -> bool:
         """Check if early stopping criteria are met.
@@ -149,11 +150,16 @@ class DefaultEarlyStopping:
         """
         window = min(self.window, len(data))
         smoothed = pd.Series(data).rolling(window=window, min_periods=1).mean()
-
-        if smoothed[-1] < self.best_score - self.delta:
-            self.best_score = smoothed[-1]
+        if smoothed.iloc[-1] < self.best_score - self.delta:
+            self.logger.info(
+                f"Early stopping patience reset: {self.current_patience} -> {self.patience}, early stopping best score updated: {self.best_score} -> {smoothed.iloc[-1]}"
+            )
+            self.best_score = smoothed.iloc[-1]
             self.current_patience = self.patience
         else:
+            self.logger.info(
+                f"Early stopping patience decreased: {self.current_patience} -> {self.current_patience - 1}"
+            )
             self.current_patience -= 1
 
         return self.current_patience <= 0
