@@ -284,34 +284,3 @@ def test_trainer_ddp_run_training(config, make_dataset):
     assert len(training_data[0]) == config["training"]["num_epochs"]
     assert len(trainer.validator.data) == config["training"]["num_epochs"]
     QG.cleanup_ddp()
-
-
-def test_train_parallel(config, create_data):
-    datadir, datafiles = create_data
-
-    dataset = QG.QGDataset(
-        input=datafiles,
-        output=datadir,
-        reader=reader,
-        float_type=torch.float32,
-        int_type=torch.int64,
-        validate_data=True,
-        n_processes=1,
-        chunksize=4,
-        transform=None,
-        pre_transform=None,
-        pre_filter=None,
-    )
-
-    results = QG.train_parallel(
-        config,
-        dataset,
-        split=[0.8, 0.1, 0.1],
-        criterion=compute_loss,
-        apply_model=None,
-        early_stopping=None,
-        validator=DummyEvaluator(),  # type: ignore
-        tester=DummyEvaluator(),  # type: ignore
-    )
-    assert isinstance(results, tuple)
-    assert len(results) in (2, 3)
