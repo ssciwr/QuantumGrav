@@ -7,7 +7,7 @@ import torch
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
-
+from torch_geometric.loader import DataLoader
 import QuantumGrav as QG
 
 
@@ -275,3 +275,101 @@ def graph_features_net():
             {"inplace": False},
         ],
     )
+
+
+@pytest.fixture
+def make_dataset(create_data, read_data):
+    datadir, datafiles = create_data
+
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=datadir,
+        reader=read_data,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=4,
+        transform=lambda x: x,
+        pre_transform=lambda x: x,
+        pre_filter=lambda x: True,
+    )
+    return dataset
+
+
+@pytest.fixture
+def make_dataloader(create_data, make_dataset):
+    _, __ = create_data
+
+    dataset = make_dataset
+    dataloader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True,
+        drop_last=True,  # Ensure all batches are of the same size. last batches that are bad need to be handled by hand
+    )
+    return dataloader
+
+
+@pytest.fixture
+def model_config_eval():
+    return {
+        "gcn_net": [
+            {
+                "in_dim": 2,
+                "out_dim": 8,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    8,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+            {
+                "in_dim": 8,
+                "out_dim": 12,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    12,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+        ],
+        "classifier": {
+            "input_dim": 12,
+            "output_dims": [
+                3,
+            ],
+            "hidden_dims": [24, 16],
+            "activation": "relu",
+            "backbone_kwargs": [{}, {}],
+            "output_kwargs": [{}],
+            "activation_kwargs": [{"inplace": False}],
+        },
+        "pooling_layer": "mean",
+    }
+
+
+@pytest.fixture
+def gnn_model_eval(model_config_eval):
+    """Fixture to create a GNNModel for evaluation."""
+    model = QG.GNNModel.from_config(
+        model_config_eval,
+    )
+    model.eval()
+    return model

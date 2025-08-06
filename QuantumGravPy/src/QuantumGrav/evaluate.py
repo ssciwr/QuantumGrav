@@ -1,176 +1,159 @@
-from typing import Callable, Any
 import torch
+from typing import Callable, Any
 import torch_geometric
-from collections.abc import Collection
-import tqdm
+import numpy as np
+import pandas as pd
+import logging
 
 
-def make_loss_statistics(
-    loss_data: list[dict[str, Any]],
-    list_of_loss_values: list[Any],
-    _: Collection[float] | None = None,
-) -> None:
-    """Generate loss statistics for a training/evaluation epoch.
+class DefaultEvaluator:
+    def __init__(
+        self, device, criterion: Callable, apply_model: Callable | None = None
+    ):
+        """Default evaluator for model evaluation.
 
-    Args:
-        loss_data (list[dict[str, Any]]): list to store loss statistics.
-        list_of_loss_values (list[Any]): List of loss values for the epoch.
-        y (Collection[float] | None, optional): Ground truth values. Defaults to None.
+        Args:
+            device (_type_): The device to run the evaluation on.
+            criterion (Callable): The loss function to use for evaluation.
+            apply_model (Callable): A function to apply the model to the data.
+        """
+        self.criterion = criterion
+        self.apply_model = apply_model
+        self.device = device
+        self.data = []
+        self.logger = logging.getLogger(__name__)
 
-    Returns:
-        list[dict[str, Any]]: Updated list with loss statistics.
-    """
+    def evaluate(
+        self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
+    ) -> Any:
+        """Evaluate the model on the given data loader.
 
-    # make statistics
-    epoch_loss_data = torch.tensor(list_of_loss_values, dtype=torch.float32)
-    mean_loss = torch.mean(epoch_loss_data).item()
-    std_loss = torch.std(epoch_loss_data).item()
-    min_loss = torch.min(epoch_loss_data).item()
-    max_loss = torch.max(epoch_loss_data).item()
-    median_loss = torch.median(epoch_loss_data).item()
-    q25_loss = torch.quantile(epoch_loss_data, 0.25).item()
-    q75_loss = torch.quantile(epoch_loss_data, 0.75).item()
+        Args:
+            model (torch.nn.Module): Model to evaluate.
+            data_loader (torch_geometric.loader.DataLoader): Data loader for evaluation.
 
-    loss_data.append(
-        {
-            "mean": mean_loss,
-            "std": std_loss,
-            "min": min_loss,
-            "max": max_loss,
-            "median": median_loss,
-            "q25": q25_loss,
-            "q75": q75_loss,
-        },
-    )
+        Returns:
+             list[Any]: A list of evaluation results.
+        """
+        model.eval()
+        current_data = []
 
+        with torch.no_grad():
+            for i, batch in enumerate(data_loader):
+                data = batch.to(self.device)
+                if self.apply_model:
+                    outputs = self.apply_model(model, data)
+                else:
+                    outputs = model(data.x, data.edge_index, data.batch)
+                loss = self.criterion(outputs, data)
+                current_data.append(loss)
 
-def evaluate_batch(
-    model: torch.nn.Module,
-    data: torch_geometric.data.Data,
-    apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any] = None,
-) -> torch.Tensor | tuple[torch.Tensor, ...]:
-    """Evaluate a single batch of data using the model.
+        return current_data
 
-    Args:
-        model (torch.nn.Module): The model to evaluate.
-        data (torch_geometric.data.Data): The input data for the model.
-        apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): A function to apply the model to the data. Defaults to None.
+    def report(self, data: list | pd.Series | torch.Tensor) -> None:
+        """Report the evaluation results to stdout"""
 
-    Returns:
-        torch.Tensor | tuple[torch.Tensor, ...]: The output of the model.
-    """
-    if apply_model:
-        outputs = apply_model(model, data)
-    else:
-        outputs = model(data.x, data.edge_index, data.batch)
-    return outputs
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+
+        if isinstance(data, list):
+            for i, d in enumerate(data):
+                if isinstance(d, torch.Tensor):
+                    data[i] = d.cpu().numpy()
+                    data[i] = d.to_numpy()
+
+        avg = np.mean(data)
+        sigma = np.std(data)
+        self.logger.info(f"Average loss: {avg}, Standard deviation: {sigma}")
+        self.data.append((avg, sigma))
 
 
-def train_epoch(
-    model: torch.nn.Module,
-    data_loader: torch_geometric.data.DataLoader,
-    optimizer: torch.optim.Optimizer,
-    criterion: Callable[
-        [torch.Tensor, torch.Tensor | torch_geometric.data.Data], torch.Tensor | float
-    ],
-    loss_data: list[dict[str, Any]],
-    process_loss: Callable[
-        [
-            list[dict[str, Any]],
-            torch.Tensor | float,
-            Collection[float],
-            Collection[torch.Tensor],
-        ],
-        list[dict[str, Any]],
-    ] = make_loss_statistics,
-    device: torch.device = torch.device("cpu"),
-    apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any] = None,
-) -> None:
-    """Train the model for one epoch. This will put the model into training mode, iterate over the data loader, compute the loss, and update the model parameters. It also processes the loss data if a processing function is provided or computes statistics on the loss data if not. Either output will be appended to the loss_data list.
+class DefaultTester(DefaultEvaluator):
+    def __init__(
+        self, device, criterion: Callable, apply_model: Callable | None = None
+    ):
+        """Default tester for model testing.
 
-    Args:
-        model (torch.nn.Module): Model to train
-        data_loader (torch_geometric.data.DataLoader): Data loader for the training data
-        optimizer (torch.optim.Optimizer): Optimizer for updating the model parameters
-        criterion (Callable[[torch.Tensor, torch.Tensor], torch.Tensor  |  float]): Loss function to compute the loss
-        loss_data (list[dict[str, Any]]): list to store loss statistics
-        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to None.
-        device (torch.device, optional): Device to run the training on. Defaults to torch.device("cpu").
-        apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): Function to apply the model to the data. Defaults to None.
-    """
-    if not model.training:
-        raise RuntimeError(
-            "Model should be in training mode before training. Use model.train() to set it to training mode."
-        )
-    # actual training loop
-    epoch_loss_data = []
-    for batch in tqdm.tqdm(data_loader, desc="Training epoch"):
-        optimizer.zero_grad()
-        data = batch.to(device)
-        outputs = evaluate_batch(model, data, apply_model)
-        loss = criterion(outputs, data)
-        loss.backward()
-        optimizer.step()
-        if isinstance(loss, torch.Tensor):
-            epoch_loss_data.append(loss.item())
+        Args:
+            device (_type_): The device to run the testing on.
+            criterion (Callable): The loss function to use for testing.
+            apply_model (Callable): A function to apply the model to the data.
+        """
+        super().__init__(device, criterion, apply_model)
+
+    def test(
+        self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
+    ):
+        """Test the model on the given data loader.
+
+        Args:
+            model (torch.nn.Module): Model to test.
+            data_loader (torch_geometric.loader.DataLoader): Data loader for testing.
+
+        Returns:
+            list[Any]: A list of testing results.
+        """
+        return self.evaluate(model, data_loader)
+
+
+class DefaultValidator(DefaultEvaluator):
+    def __init__(
+        self, device, criterion: Callable, apply_model: Callable | None = None
+    ):
+        super().__init__(device, criterion, apply_model)
+
+    def validate(
+        self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
+    ):
+        """Validate the model on the given data loader.
+
+        Args:
+            model (torch.nn.Module): Model to validate.
+            data_loader (torch_geometric.loader.DataLoader): Data loader for validation.
+        Returns:
+            list[Any]: A list of validation results.
+        """
+        return self.evaluate(model, data_loader)
+
+
+class DefaultEarlyStopping:
+    """Early stopping based on a validation metric."""
+
+    def __init__(
+        self,
+        patience: int,
+        delta: float = 1e-4,
+        window=7,
+    ):
+        """Early stopping initialization.
+
+        Args:
+            patience (int): Number of epochs with no improvement after which training will be stopped.
+            delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
+            window (int, optional): Size of the moving window for smoothing. Defaults to 7.
+        """
+        self.patience = patience
+        self.current_patience = patience
+        self.delta = delta
+        self.best_score = np.inf
+        self.window = window
+
+    def __call__(self, data: list) -> bool:
+        """Check if early stopping criteria are met.
+
+        Args:
+            data (list): List of validation metrics.
+
+        Returns:
+            bool: True if training should be stopped, False otherwise.
+        """
+        window = min(self.window, len(data))
+        smoothed = pd.Series(data).rolling(window=window, min_periods=1).mean()
+
+        if smoothed[-1] < self.best_score - self.delta:
+            self.best_score = smoothed[-1]
+            self.current_patience = self.patience
         else:
-            epoch_loss_data.append(loss)
+            self.current_patience -= 1
 
-    process_loss(
-        loss_data,
-        epoch_loss_data,
-        data_loader.dataset.data.y if hasattr(data_loader.dataset, "data") else None,
-    )
-
-
-def test_epoch(
-    model: torch.nn.Module,
-    data_loader: torch_geometric.data.DataLoader,
-    criterion: Callable[
-        [torch.Tensor, torch.Tensor | torch_geometric.data.Data], torch.Tensor | float
-    ],
-    loss_data: list[dict[str, Any]],
-    process_loss: Callable[
-        [
-            list[dict[str, Any]],
-            torch.Tensor | float,
-            Collection[float],
-            Collection[torch.Tensor],
-        ],
-        list[dict[str, Any]],
-    ] = make_loss_statistics,
-    device: torch.device = torch.device("cpu"),
-    apply_model: Callable[[torch.nn.Module, torch_geometric.data.Data], Any] = None,
-) -> None:
-    """Test the model for one epoch.
-
-    Args:
-        model (torch.nn.Module): The model to test.
-        data_loader (torch_geometric.data.DataLoader): The data loader for the test data.
-        criterion (Callable[[torch.Tensor, torch.Tensor], torch.Tensor  |  float]): The loss function.
-        loss_data (list[dict[str, Any]]): list to store loss statistics.
-        process_loss (Callable[ [torch.Tensor  |  float, Collection[float], Collection[torch.Tensor]], list[dict[str, Any]], ], optional): Function to process the loss data. Defaults to make_loss_statistics.
-        device (torch.device, optional): The device to run the evaluation on. Defaults to torch.device("cpu").
-        apply_model (Callable[[torch.nn.Module, torch_geometric.data.Data], Any], optional): A function to apply the model to the data. Defaults to None.
-    """
-    model.eval()
-
-    epoch_loss_data = []
-    with torch.no_grad():
-        for batch in tqdm.tqdm(data_loader, desc="Evaluating epoch"):
-            data = batch.to(device)
-            outputs = evaluate_batch(model, data, apply_model)
-            loss = criterion(outputs, data)
-            if isinstance(loss, torch.Tensor):
-                epoch_loss_data.append(loss.item())
-            else:
-                epoch_loss_data.append(loss)
-
-    process_loss(
-        loss_data,
-        epoch_loss_data,
-        data_loader.dataset.data.y if hasattr(data_loader.dataset, "data") else None,
-    )
-
-
-validate_epoch = test_epoch  # Re-use test_epoch logic for validation
+        return self.current_patience <= 0
