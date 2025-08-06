@@ -9,6 +9,8 @@ import numpy as np
 from copy import deepcopy
 import os
 import h5py
+from datetime import datetime
+from pathlib import Path
 
 
 @pytest.fixture
@@ -240,20 +242,29 @@ def test_trainer_ddp_check_model_status(config, make_dataloader):
         tester=DummyEvaluator(),  # type: ignore
     )
     trainer.initialize_model()
-    trainer.epoch = 10
-    trainer.checkpoint_at = 7
-    eval_data = [0.1, 0.2, 0.3]
-    saved = trainer._check_model_status(eval_data)
+    loss = np.random.rand(10).tolist()
 
+    trainer.epoch = 1
+    saved = trainer._check_model_status(loss)
     assert saved is False
 
-    trainer.checkpoint_at = 5j
-    saved = trainer._check_model_status(eval_data)
+    trainer.early_stopping = lambda x: True
+    loss = np.random.rand(10).tolist()
+    saved = trainer._check_model_status(loss)
+
     assert saved is True
 
-    trainer.rank = 1
-    saved = trainer._check_model_status(eval_data)
-    assert saved is False
+    partial_path = datetime.now().strftime("%Y-%m-%d_")
+    paths = [
+        f
+        for f in list(Path(config["training"]["path"]).iterdir())
+        if partial_path in f.name
+    ]
+    assert len(paths) == 1
+
+    file_content = [f.name for f in paths[0].iterdir()]
+    assert "config.yaml" in file_content
+    assert "model_checkpoints" in file_content
 
     QG.cleanup_ddp()
 
