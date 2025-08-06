@@ -1,5 +1,6 @@
 from typing import Callable, Any, Tuple
 import torch
+
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 
@@ -13,6 +14,41 @@ from datetime import datetime
 
 from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
+
+
+def initialize_ddp(
+    rank: int,
+    worldsize: int,
+    master_addr: str = "localhost",
+    master_port: str = "12345",
+    backend: str = "nccl",
+) -> None:
+    """Initialize the distributed process group. This assumes one process per GPU.
+
+    Args:
+        rank (int): The rank of the current process.
+        worldsize (int): The total number of processes.
+        master_addr (str, optional): The address of the master process. Defaults to "localhost". This needs to be the ip of the master node if you are running on a cluster.
+        master_port (str, optional): The port of the master process. Defaults to "12345". Choose a high port if you are running multiple jobs on the same machine to avoid conflicts. If running on a cluster, this should be the port that the master node is listening on.
+        backend (str, optional): The backend to use for distributed training. Defaults to "nccl".
+
+    Raises:
+        RuntimeError: If the environment variables MASTER_ADDR and MASTER_PORT are already set.
+    """
+    if "MASTER_ADDR" in os.environ or "MASTER_PORT" in os.environ:
+        raise RuntimeError(
+            "Environment variables MASTER_ADDR and MASTER_PORT are already set. Please unset them before initializing."
+        )
+    os.environ["MASTER_ADDR"] = master_addr
+    os.environ["MASTER_PORT"] = master_port
+    dist.init_process_group(backend=backend, rank=rank, world_size=worldsize)
+
+
+def cleanup_ddp() -> None:
+    """Clean up the distributed process group."""
+    dist.destroy_process_group()
+    del os.environ["MASTER_ADDR"]
+    del os.environ["MASTER_PORT"]
 
 
 class Trainer:
