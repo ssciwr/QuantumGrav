@@ -14,6 +14,7 @@ import Dates
 include("utils.jl")
 include("csetgeneration.jl")
 include("datageneration.jl")
+include("daggeneration.jl")
 
 export make_simple_cset,
     make_manifold_cset,
@@ -22,6 +23,9 @@ export make_simple_cset,
     make_adj,
     max_pathlen,
     calculate_angles,
-    calculate_distances
+    calculate_distances,
+    create_random_cset,
+    transitive_closure!,
+    transitive_reduction!
 
 end # module QuantumGrav
