@@ -143,15 +143,20 @@ function create_random_cset(
 
     adj = falses(atom_count, atom_count)
 
-    raw_weights = zeros(Float64, atom_count)  # preallocate weights 
+    raw_weights = zeros(Float64, atom_count)  # preallocate weights for connection sampling, later fill in the part we need
 
     for i in nodelist
-        future = view(nodelist, (i+1):atom_count)  # future nodes are all nodes after the current one
+        future = view(nodelist, (i+1):atom_count)  # future nodes are all nodes after the current one b/c topologically ordered
 
         future_connection_number = future_deg(rng, i, future, atom_count)
+
         raw_weights[(i+1):atom_count] .= link_prob.(rng, i, future)
+
         weights = StatsBase.weights(raw_weights[(i+1):atom_count])
+
         try
+            # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
+            # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
             out_edges = StatsBase.sample(
                 rng,
                 (i+1):atom_count,
@@ -159,8 +164,11 @@ function create_random_cset(
                 future_connection_number;
                 replace = false,
             )
+
             adj[i, out_edges] .= 1
+
             raw_weights[(i+1):atom_count] .= 0.0  # reset weights for the next iteration
+
         catch e
             @warn "Sampling in edges failed for node $i with future connections $future_connection_number: $e"
             @warn "Weights: $weights"
@@ -168,7 +176,7 @@ function create_random_cset(
         end
     end
 
-    # # make true adj matrix including transitives
+    # # make true adj matrix including missing transitives. This will result in the existing transitives being added again, but this is fine wrt correctness because they will just be a no-op. y
     transitive_closure!(adj)
 
     return mat_to_cs(adj), adj
