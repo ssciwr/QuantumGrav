@@ -6,14 +6,10 @@ Compute the transitive closure of a DAG represented by matrix `mat` by
 successively adding reachable nodes in the future of a node to it'
 """
 function transitive_closure!(mat::BitMatrix)
-    # we are operating on the 'past relations matrix here'
-    # transitive closure achieved by 'adding the future more than one step out'
     n = size(mat, 1)
     @inbounds for i = 1:n
-        for j = 1:(i-1)
+        for j = (i+1):n  # only look at future nodes
             if mat[i, j]
-
-                # FIXME: I think this is doing the indexing wrong. the row gives the past, the column gives the future!
                 mat[i, :] .= mat[i, :] .|| mat[j, :]  # OR operation to include all reachable nodes from node j --> adding the future
             end
         end
@@ -23,19 +19,22 @@ end
 """
     transitive_reduction!(mat::BitMatrix)
 
-DOCSTRING
+Compute the transitive reduction of a DAG represented by matrix `mat` by
+removing intermediate nodes in the future of a node that are reachable from the past of that node via the node itself.
+This function modifies the input matrix in place.
+The matrix `mat` is assumed to be in topological order, i.e., the rows
+and columns correspond to the nodes in a topological order.
 """
 function transitive_reduction!(mat::BitMatrix)
     n = size(mat, 1)
     @inbounds for i = 1:n
-        for j = (i+1):n # get the future node i
-            if mat[j, i]
-                # go over the past of node i. if there is 
-                # a connection from the past of node i to the future of node i # via j, we remove it
-                # FIXME: what about the indexing here?
-                for k = 1:(i-1)
-                    if mat[j, k] && mat[i, k]
-                        mat[j, i] = false  # remove the intermediate j to i link
+        for j = (i+1):n
+            if mat[i, j]
+                # If any intermediate node k exists with i → k and k → j, remove i → j
+                for k = (i+1):(j-1)
+                    if mat[i, k] && mat[k, j]
+                        mat[i, j] = false # remove intermediate nodes
+                        break
                     end
                 end
             end
@@ -65,8 +64,8 @@ function mat_to_cs(adj::BitMatrix)::CausalSets.BitArrayCauset
 
     # assume topological ordering
     for node_idx = 1:n
-        past_relations[node_idx] = adj[node_idx, :]
-        future_relations[node_idx] = adj[:, node_idx]
+        future_relations[node_idx] = adj[node_idx, :]
+        past_relations[node_idx] = adj[:, node_idx]
     end
 
     return CausalSets.BitArrayCauset(n, future_relations, past_relations)
@@ -86,7 +85,7 @@ and columns correspond to the nodes in a topological order.
 # Returns:
 - A `CausalSets.SparseArrayCauset` constructed from the adjacency matrix.
 """
-function mat_to_cs(adj::SparseMatrixCSC)::CausalSets.SparseArrayCauset
+function mat_to_cs(adj::SparseArrays.SparseMatrixCSC)::CausalSets.SparseArrayCauset
     n = size(adj, 1) # assume topological ordering
 
     future_relations = Vector{Vector{Int64}}(undef, n)
@@ -98,23 +97,22 @@ function mat_to_cs(adj::SparseMatrixCSC)::CausalSets.SparseArrayCauset
     end
     nodelist = 1:n  # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
     for node_idx in nodelist
-        # FIXME: I think this is doing the indexing wrong
-        past_relations[node_idx] = nodelist[Bool.(adj[node_idx, :])]
-        future_relations[node_idx] = nodelist[Bool.(adj[:, node_idx])]
+        future_relations[node_idx] = nodelist[Bool.(adj[node_idx, :])]
+        past_relations[node_idx] = nodelist[Bool.(adj[:, node_idx])]
     end
 
     return CausalSets.SparseArrayCauset(n, future_relations, past_relations), adj
 end
 
 """
-    create_random_cset(atom_count::Int64, indeg_prob::Function, link_prob::Function, rng::Random.AbstractRNG; type::Type{T})
+    create_random_cset(atom_count::Int64, future_deg::Function, link_prob::Function, rng::Random.AbstractRNG; type::Type{T})
 
 Create a random causal set with `atom_count` atoms, where the in-degree and link probabilities are defined by the provided functions.
 
 # Arguments:
 - `atom_count`: The number of atoms in the causal set.
-- `indeg_prob`: A function that takes the random number generator, the current node index, the past nodes, and the total number of atoms, and returns the in-degree probability.
-- `link_prob`: A function that takes the random number generator, the current node index, the past nodes, and returns the link probability.
+- `future_deg`: A function that takes the random number generator, the current node index, the past nodes, and the total number of atoms, and returns the future degree of a node, i.e., to how many future nodes it should connect. 
+- `link_prob`: A function that takes the random number generator, the current node index, the past nodes, and returns the link probability for a node to connect to any 'future' node (ahead of it in the topological order). This is an unnormalized probability, i.e., it does not need to sum to 1.
 - `rng`: A random number generator.
 - `type`: The type of causal set to create (either `CausalSets.SparseArrayCauset` or `CausalSets.BitArrayCauset`).
 
@@ -122,11 +120,11 @@ Create a random causal set with `atom_count` atoms, where the in-degree and link
 # Returns:
 - A tuple `(cset, adj)` where:
   - `cset`: The generated causal set.
-  - `adj`: The adjacency matrix of the causal set. This is transitively closed, i.e., contains all transitive links
+  - `adj`: The adjacency matrix of the causal set. This is transitively closed, i.e., contains all transitive links in order to represent the full causal set
 """
 function create_random_cset(
     atom_count::Int64,
-    indeg_prob::Function,
+    future_deg::Function,
     link_prob::Function,
     rng::Random.AbstractRNG;
     type::Type{T} = CausalSets.SparseArrayCauset,
@@ -148,26 +146,29 @@ function create_random_cset(
     raw_weights = zeros(Float64, atom_count)  # preallocate weights 
 
     for i in nodelist
-        if i == 1
-            continue  # skip the first node, no incoming relations
-        end
-        past = view(nodelist, 1:(i-1))  # past nodes are all nodes before the current one
-        in_degree = indeg_prob(rng, i, past, atom_count) # using the in-degree results in a matrix containing the past relations of the system as columns, not the future. out_degree would do the latter
+        future = view(nodelist, (i+1):atom_count)  # future nodes are all nodes after the current one
 
-        raw_weights[1:(i-1)] .= link_prob.(rng, i, past)
-        weights = StatsBase.weights(raw_weights[1:(i-1)])
+        future_connection_number = future_deg(rng, i, future, atom_count)
+        raw_weights[(i+1):atom_count] .= link_prob.(rng, i, future)
+        weights = StatsBase.weights(raw_weights[(i+1):atom_count])
         try
-            in_edges = StatsBase.sample(rng, 1:(i-1), weights, in_degree; replace = false)
-            adj[i, in_edges] .= 1
-            raw_weights[1:(i-1)] .= 0.0  # reset weights for the next iteration
+            out_edges = StatsBase.sample(
+                rng,
+                (i+1):atom_count,
+                weights,
+                future_connection_number;
+                replace = false,
+            )
+            adj[i, out_edges] .= 1
+            raw_weights[(i+1):atom_count] .= 0.0  # reset weights for the next iteration
         catch e
-            @warn "Sampling in edges failed for node $n with in-degree $in_degree: $e"
+            @warn "Sampling in edges failed for node $i with future connections $future_connection_number: $e"
             @warn "Weights: $weights"
             break
         end
     end
 
-    # make true adj matrix including transitives
+    # # make true adj matrix including transitives
     transitive_closure!(adj)
 
     return mat_to_cs(adj), adj

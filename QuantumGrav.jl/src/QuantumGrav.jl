@@ -2,7 +2,6 @@ module QuantumGrav
 
 import LinearAlgebra
 import Random
-import Graphs
 import SparseArrays
 import CausalSets
 import Distributions
@@ -10,6 +9,7 @@ import YAML
 import HDF5
 import ProgressMeter
 import Dates
+import StatsBase
 
 include("utils.jl")
 include("csetgeneration.jl")
