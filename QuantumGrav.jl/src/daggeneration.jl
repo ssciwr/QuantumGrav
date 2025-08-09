@@ -1,23 +1,44 @@
+function bv_to_view(bv::BitVector)::Vector{UInt64}
+    nwords = cld(length(bv), 64) # number of 64 bit elements in bitvector
+    ptr = Base.unsafe_convert(Ptr{UInt}, bv.chunks)
+    GC.@preserve bv begin
+        Base.unsafe_wrap(Vector{UInt64}, ptr, nwords)
+    end
+end
 
 """
-    transitive_closure!(mat::BitMatrix)
+    transitive_closure!(adj::Vector{BitVector})
 
-Compute the transitive closure of a DAG represented by matrix `mat` by 
+Compute the transitive closure of a DAG represented by vector of future relations `adj` by
 successively adding reachable nodes in the future of a node to it'
 """
-function transitive_closure!(mat::BitMatrix)
+function transitive_closure!(mat::Vector{BitVector})::Nothing
     n = size(mat, 1)
-    @inbounds for i = 1:n
-        for j = (i+1):n  # only look at future nodes
-            if mat[i, j]
-                mat[i, :] .= mat[i, :] .|| mat[j, :]  # OR operation to include all reachable nodes from node j --> adding the future
+    @inbounds for i in 1:n
+        for j in (i + 1):n  # only look at future nodes
+            if mat[i][j]
+                mat[i] .= mat[i] .|| mat[j] # OR operation to include all reachable nodes from node j --> adding the future
             end
         end
     end
 end
 
-"""
-    transitive_reduction!(mat::BitMatrix)
+function transitive_closure_fast!(adj::Vector{BitVector})::Nothing
+    # FIXME: not reliable yet. Gives different result from the above
+    n = length(adj)
+    @inbounds for i in n:-1:1 # go from last to first node
+        wi = bv_to_view(adj[i])
+        @inbounds for j in (i + 1):n
+            wj = bv_to_view(adj[j])
+            for k in eachindex(wi)
+                wi[k] |= wj[k]
+            end
+        end
+    end
+end
+
+"""TODO: change to vector{bit}
+    transitive_reduction!(adj::Vector{BitVector})
 
 Compute the transitive reduction of a DAG represented by matrix `mat` by
 removing intermediate nodes in the future of a node that are reachable from the past of that node via the node itself.
@@ -27,11 +48,11 @@ and columns correspond to the nodes in a topological order.
 """
 function transitive_reduction!(mat::BitMatrix)
     n = size(mat, 1)
-    @inbounds for i = 1:n
-        for j = (i+1):n
+    @inbounds for i in 1:n
+        for j in (i + 1):n
             if mat[i, j]
                 # If any intermediate node k exists with i → k and k → j, remove i → j
-                for k = (i+1):(j-1)
+                for k in (i + 1):(j - 1)
                     if mat[i, k] && mat[k, j]
                         mat[i, j] = false # remove intermediate nodes
                         break
@@ -42,9 +63,8 @@ function transitive_reduction!(mat::BitMatrix)
     end
 end
 
-
 """
-    mat_to_cs(adj::BitMatrix)
+    mat_to_cs(adj::Vector{BitVector})
 
 Convert a graph given by the matrix `adj`, assumed to be a transitively closed 
 DAG, to a `CausalSets.BitArrayCauset`.
@@ -57,15 +77,15 @@ and columns correspond to the nodes in a topological order.
 # Returns:
 - A `CausalSets.BitArrayCauset` constructed from the adjacency matrix.
 """
-function mat_to_cs(adj::BitMatrix)::CausalSets.BitArrayCauset
-    n = size(adj, 1)
+function mat_to_cs(adj::Vector{BitVector})::CausalSets.BitArrayCauset
+    n = length(adj)
     future_relations = Vector{BitVector}(undef, n)
     past_relations = Vector{BitVector}(undef, n)
 
     # assume topological ordering
-    for node_idx = 1:n
-        future_relations[node_idx] = adj[node_idx, :]
-        past_relations[node_idx] = adj[:, node_idx]
+    for node_idx in 1:n
+        future_relations[node_idx] = adj[node_idx]
+        past_relations[node_idx] = [adj[i][node_idx] for i in 1:n]
     end
 
     return CausalSets.BitArrayCauset(n, future_relations, past_relations)
@@ -91,10 +111,6 @@ function mat_to_cs(adj::SparseArrays.SparseMatrixCSC)::CausalSets.SparseArrayCau
     future_relations = Vector{Vector{Int64}}(undef, n)
     past_relations = Vector{Vector{Int64}}(undef, n)
 
-    for i = 1:n
-        future_relations[i] = []
-        past_relations[i] = []
-    end
     nodelist = 1:n  # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
     for node_idx in nodelist
         future_relations[node_idx] = nodelist[Bool.(adj[node_idx, :])]
@@ -122,14 +138,11 @@ Create a random causal set with `atom_count` atoms, where the in-degree and link
   - `cset`: The generated causal set.
   - `adj`: The adjacency matrix of the causal set. This is transitively closed, i.e., contains all transitive links in order to represent the full causal set
 """
-function create_random_cset(
-    atom_count::Int64,
-    future_deg::Function,
-    link_prob::Function,
-    rng::Random.AbstractRNG;
-    type::Type{T} = CausalSets.SparseArrayCauset,
-) where {T<:CausalSets.AbstractCauset}
-
+function create_random_cset(atom_count::Int64,
+                            future_deg::Function,
+                            link_prob::Function,
+                            rng::Random.AbstractRNG;
+                            type::Type{T}=CausalSets.SparseArrayCauset,) where {T<:CausalSets.AbstractCauset}
     if atom_count <= 0
         throw(ArgumentError("n_atoms must be greater than 0, got $atom_count"))
     end
@@ -141,33 +154,37 @@ function create_random_cset(
     # we interpret the random ordering as a topo-order and continue building the causet from there
     nodelist = 1:atom_count # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
 
-    adj = falses(atom_count, atom_count)
+    adj = [falses(atom_count) for _ in 1:atom_count]
 
     raw_weights = zeros(Float64, atom_count)  # preallocate weights for connection sampling, later fill in the part we need
 
     for i in nodelist
-        future = view(nodelist, (i+1):atom_count)  # future nodes are all nodes after the current one b/c topologically ordered
+        future_connection_number = future_deg(rng, i, (i + 1):atom_count, atom_count)
 
-        future_connection_number = future_deg(rng, i, future, atom_count)
+        for j in (i + 1):atom_count
+            raw_weights[j] = link_prob(rng, i, j)
+        end
 
-        raw_weights[(i+1):atom_count] .= link_prob.(rng, i, future)
+        rw = @view raw_weights[(i + 1):atom_count]
+        sum_rw = sum(rw)
 
-        weights = StatsBase.weights(raw_weights[(i+1):atom_count])
+        weights = StatsBase.Weights(rw, sum_rw) # TODO allocation that needs to go
 
         try
             # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
             # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
-            out_edges = StatsBase.sample(
-                rng,
-                (i+1):atom_count,
-                weights,
-                future_connection_number;
-                replace = false,
-            )
 
-            adj[i, out_edges] .= 1
+            out_edges = StatsBase.sample(rng,
+                                         (i + 1):atom_count,
+                                         weights,
+                                         future_connection_number;
+                                         replace=false,)
 
-            raw_weights[(i+1):atom_count] .= 0.0  # reset weights for the next iteration
+            # @assert length(out_edges) == future_connection_number "Sampled $future_connection_number edges, but got $(length(out_edges)) edges instead."
+
+            adj[i][out_edges] .= true
+
+            raw_weights[(i + 1):atom_count] .= 0.0  # reset weights for the next iteration
 
         catch e
             @warn "Sampling in edges failed for node $i with future connections $future_connection_number: $e"
@@ -177,8 +194,7 @@ function create_random_cset(
     end
 
     # # make true adj matrix including missing transitives. This will result in the existing transitives being added again, but this is fine wrt correctness because they will just be a no-op. y
-    transitive_closure!(adj)
+    # transitive_closure!(adj)
 
-    return mat_to_cs(adj), adj
-
+    return mat_to_cs(adj)
 end
