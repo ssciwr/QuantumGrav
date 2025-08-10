@@ -1,10 +1,3 @@
-function bv_to_view(bv::BitVector)::Vector{UInt64}
-    nwords = cld(length(bv), 64) # number of 64 bit elements in bitvector
-    ptr = Base.unsafe_convert(Ptr{UInt}, bv.chunks)
-    GC.@preserve bv begin
-        Base.unsafe_wrap(Vector{UInt64}, ptr, nwords)
-    end
-end
 
 """
     transitive_closure!(adj::Vector{BitVector})
@@ -17,44 +10,30 @@ function transitive_closure!(mat::Vector{BitVector})::Nothing
     @inbounds for i in 1:n
         for j in (i + 1):n  # only look at future nodes
             if mat[i][j]
-                mat[i] .= mat[i] .|| mat[j] # OR operation to include all reachable nodes from node j --> adding the future
+                mat[i] .|= mat[j] # OR operation to include all reachable nodes from node j --> adding the future
             end
         end
     end
 end
 
-function transitive_closure_fast!(adj::Vector{BitVector})::Nothing
-    # FIXME: not reliable yet. Gives different result from the above
-    n = length(adj)
-    @inbounds for i in n:-1:1 # go from last to first node
-        wi = bv_to_view(adj[i])
-        @inbounds for j in (i + 1):n
-            wj = bv_to_view(adj[j])
-            for k in eachindex(wi)
-                wi[k] |= wj[k]
-            end
-        end
-    end
-end
+"""
+    transitive_reduction!(mat::Vector{BitVector})
 
-"""TODO: change to vector{bit}
-    transitive_reduction!(adj::Vector{BitVector})
-
-Compute the transitive reduction of a DAG represented by matrix `mat` by
+Compute the transitive reduction of a DAG represented by vector of bitvectors `mat` representing the downstream connections/future relations of a DAG. By
 removing intermediate nodes in the future of a node that are reachable from the past of that node via the node itself.
 This function modifies the input matrix in place.
 The matrix `mat` is assumed to be in topological order, i.e., the rows
 and columns correspond to the nodes in a topological order.
 """
-function transitive_reduction!(mat::BitMatrix)
-    n = size(mat, 1)
+function transitive_reduction!(mat::Vector{BitVector})
+    n = length(mat)
     @inbounds for i in 1:n
         for j in (i + 1):n
-            if mat[i, j]
+            if mat[i][j]
                 # If any intermediate node k exists with i → k and k → j, remove i → j
                 for k in (i + 1):(j - 1)
-                    if mat[i, k] && mat[k, j]
-                        mat[i, j] = false # remove intermediate nodes
+                    if mat[i][k] && mat[k][j]
+                        mat[i][j] = false # remove intermediate nodes
                         break
                     end
                 end
@@ -168,12 +147,12 @@ function create_random_cset(atom_count::Int64,
         rw = @view raw_weights[(i + 1):atom_count]
         sum_rw = sum(rw)
 
-        weights = StatsBase.Weights(rw, sum_rw) # TODO allocation that needs to go
+        weights = StatsBase.Weights(rw, sum_rw) # TODO: allocation that needs to go
 
         try
             # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
             # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
-
+            # TODO: this allocation here must go!
             out_edges = StatsBase.sample(rng,
                                          (i + 1):atom_count,
                                          weights,
@@ -181,6 +160,7 @@ function create_random_cset(atom_count::Int64,
                                          replace=false,)
 
             # @assert length(out_edges) == future_connection_number "Sampled $future_connection_number edges, but got $(length(out_edges)) edges instead."
+            @assert length(out_edges) <= future_connection_number "Sampled $future_connection_number edges, but got $(length(out_edges)) edges instead."
 
             adj[i][out_edges] .= true
 
@@ -188,13 +168,12 @@ function create_random_cset(atom_count::Int64,
 
         catch e
             @warn "Sampling in edges failed for node $i with future connections $future_connection_number: $e"
-            @warn "Weights: $weights"
             break
         end
     end
 
     # # make true adj matrix including missing transitives. This will result in the existing transitives being added again, but this is fine wrt correctness because they will just be a no-op. y
-    # transitive_closure!(adj)
+    transitive_closure!(adj)
 
     return mat_to_cs(adj)
 end
