@@ -136,6 +136,7 @@ function create_random_cset(atom_count::Int64,
     adj = [falses(atom_count) for _ in 1:atom_count]
 
     raw_weights = zeros(Float64, atom_count)  # preallocate weights for connection sampling, later fill in the part we need
+    # out_edges = Vector{Int64}(undef, atom_count) # preallocate output edges for sampling, later fill in the part we need
 
     for i in nodelist
         future_connection_number = future_deg(rng, i, (i + 1):atom_count, atom_count)
@@ -148,26 +149,25 @@ function create_random_cset(atom_count::Int64,
         sum_rw = sum(rw)
 
         weights = StatsBase.Weights(rw, sum_rw) # TODO: allocation that needs to go
-
         try
             # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
             # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
-            # TODO: this allocation here must go!
-            out_edges = StatsBase.sample(rng,
-                                         (i + 1):atom_count,
-                                         weights,
-                                         future_connection_number;
-                                         replace=false,)
+            oe = StatsBase.sample(rng, (i + 1):atom_count, weights,
+                                  future_connection_number; replace=false)
+            # oe = @view out_edges[1:future_connection_number]
+            # StatsBase.sample!(rng,
+            #                 (i + 1):atom_count, # sample from this
+            #                 weights, # using these weights per entry
+            #                 oe, # sample as many elements as are in this and put them there too
+            #                 replace=false,)
 
-            # @assert length(out_edges) == future_connection_number "Sampled $future_connection_number edges, but got $(length(out_edges)) edges instead."
-            @assert length(out_edges) <= future_connection_number "Sampled $future_connection_number edges, but got $(length(out_edges)) edges instead."
+            adj[i][oe] .= true
 
-            adj[i][out_edges] .= true
-
-            raw_weights[(i + 1):atom_count] .= 0.0  # reset weights for the next iteration
+            # oe .= 0 # reset the samples
+            rw .= 0.0 # reset weights for the next iteration
 
         catch e
-            @warn "Sampling in edges failed for node $i with future connections $future_connection_number: $e"
+            throw("Sampling in edges failed for node $i with future connections $future_connection_number: $e")
             break
         end
     end
