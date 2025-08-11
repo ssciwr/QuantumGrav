@@ -10,7 +10,6 @@ using TestItems
 end
 
 @testitem "test_make_simple_layered_cset" tags = [:layeredgeneration] setup = [LayeredTests] begin
-    type = Float32
     cset, cuts = QuantumGrav.create_random_layered_causet(100, 3; rng=rng)
 
     @test cset.atom_count == 100
