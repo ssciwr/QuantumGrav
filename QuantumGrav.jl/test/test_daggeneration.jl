@@ -166,7 +166,7 @@ end
 
 @testitem "create_dag_works" tags = [:dag_creation] setup = [importModules, dag_params] begin
 
-    cset = QuantumGrav.create_random_cset(
+    cset = QuantumGrav.create_random_cset_from_dag(
         atom_count,
         future_deg,
         link_prob,
@@ -199,4 +199,71 @@ end
             end
         end
     end
+
+    cset = QuantumGrav.create_random_cset_from_dag(
+        atom_count,
+        future_deg,
+        link_prob,
+        rng;
+        type = CausalSets.SparseArrayCauset,
+        parallel = false,
+    )
+    @test cset isa CausalSets.SparseArrayCauset
+    @test cset.atom_count == atom_count
+
+    in_deg = sum.([convert.(Int, b) for b in cset.future_relations])
+
+    for i = 1:atom_count
+        @test in_deg[i] <= max(length((i+1):atom_count), 0)
+    end
+end
+
+
+
+@testitem "create_dag_works_parallel" tags = [:dag_creation] setup =
+    [importModules, dag_params] begin
+
+    cset = QuantumGrav.create_random_cset_from_dag(
+        atom_count,
+        future_deg,
+        link_prob,
+        rng;
+        type = CausalSets.BitArrayCauset,
+        parallel = true,
+    )
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == atom_count
+
+    in_deg = sum.([convert.(Int, b) for b in cset.future_relations])
+
+    for i = 1:atom_count
+        @test in_deg[i] <= max(length((i+1):atom_count), 0)
+    end
+
+    # make sure the atoms are in topological order-> only upper triangle 
+    # make sure there are no loops -> no back connections
+    for i = 1:atom_count
+        for j = 1:atom_count
+            if cset.future_relations[i][j]
+                @test j > i
+                @test cset.future_relations[j][i] == false
+            end
+
+            if j < i
+                @test cset.future_relations[i][j] == false
+            end
+        end
+    end
+end
+
+@testitem "create_dag_errors" tags = [:dag_creation] setup = [importModules, dag_params] begin
+    @test_throws "n_atoms must be greater than 0, got -1" QuantumGrav.create_random_cset_from_dag(
+        -1,
+        future_deg,
+        link_prob,
+        rng;
+        type = CausalSets.BitArrayCauset,
+        parallel = false,
+    )
 end

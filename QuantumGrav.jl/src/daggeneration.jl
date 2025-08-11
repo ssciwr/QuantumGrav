@@ -142,7 +142,7 @@ function mat_to_sparse_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
 end
 
 """
-    create_random_cset(atom_count::Int64, future_deg::Function, link_prob::Function, rng::Random.AbstractRNG; type::Type{T})
+    create_random_cset_from_dag(atom_count::Int64, future_deg::Function, link_prob::Function, rng::Random.AbstractRNG; type::Type{T})
 
 Create a random causal set with `atom_count` atoms, where the in-degree and link probabilities are defined by the provided functions.
 
@@ -161,7 +161,7 @@ Signature: link_prob(rng, node_toporder_index_i, node_toporder_index_j, future_c
   - `cset`: The generated causal set.
   - `adj`: The adjacency matrix of the causal set. This is transitively closed, i.e., contains all transitive links in order to represent the full causal set
 """
-function create_random_cset(
+function create_random_cset_from_dag(
     atom_count::Int64,
     future_deg::Function,
     link_prob::Function,
@@ -173,9 +173,6 @@ function create_random_cset(
         throw(ArgumentError("n_atoms must be greater than 0, got $atom_count"))
     end
 
-    if type != CausalSets.SparseArrayCauset && type != CausalSets.BitArrayCauset
-        throw(ArgumentError("Unsupported CausalSet type: $type"))
-    end
 
     """Create a single row in the DAG via side effects"""
     function create_row(i, row, rng, raw_weights)

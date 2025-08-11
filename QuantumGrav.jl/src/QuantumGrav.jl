@@ -24,7 +24,7 @@ export make_simple_cset,
     max_pathlen,
     calculate_angles,
     calculate_distances,
-    create_random_cset,
+    create_random_cset_from_dag,
     transitive_closure!,
     transitive_reduction!
 
