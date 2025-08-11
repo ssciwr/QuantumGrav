@@ -13,15 +13,21 @@ Returns:
     cuts :: Vector{Int} — list of cut indices separating layers (length n-1)
 """
 function gaussian_dist_cuts(N, n, σ; rng=Random.GLOBAL_RNG)
-    μs = zeros(n-1)
-    μs[1] = N/n
-    for i in 2:n-1
-        μs[i] = μs[i-1] + N/n
+    if N < 2 * σ * n
+        @warn "N is less than 2×σ×n; partitions may be biased to have more points in earlier layers than in later ones."
     end
-    cuts = [round(Int,μs[i] + σ * randn(rng)) for i in 1:n-1]
+    i = 1
+    cuts = zeros(n)
+    while i < n
+        μ = cuts[i]+(N - cuts[i])/(n - i + 1)
+        cuts[i+1] = round(Int, μ + σ * randn(rng))
+        if N + i - n > cuts[i+1] > cuts[i]
+            i+=1
+        end
+    end
+    popfirst!(cuts)
     return cuts
 end
-
 
 """
     layered_causet(N, n; p=0.5, rng=Random.GLOBAL_RNG)
