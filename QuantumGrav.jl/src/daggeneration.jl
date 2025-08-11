@@ -7,8 +7,8 @@ successively adding reachable nodes in the future of a node to it'
 """
 function transitive_closure!(mat::Vector{BitVector})::Nothing
     n = size(mat, 1)
-    @inbounds for i in 1:n
-        for j in (i + 1):n  # only look at future nodes
+    @inbounds for i = 1:n
+        for j = (i+1):n  # only look at future nodes
             if mat[i][j]
                 mat[i] .|= mat[j] # OR operation to include all reachable nodes from node j --> adding the future
             end
@@ -27,11 +27,11 @@ and columns correspond to the nodes in a topological order.
 """
 function transitive_reduction!(mat::Vector{BitVector})
     n = length(mat)
-    @inbounds for i in 1:n
-        for j in (i + 1):n
+    @inbounds for i = 1:n
+        for j = (i+1):n
             if mat[i][j]
                 # If any intermediate node k exists with i → k and k → j, remove i → j
-                for k in (i + 1):(j - 1)
+                for k = (i+1):(j-1)
                     if mat[i][k] && mat[k][j]
                         mat[i][j] = false # remove intermediate nodes
                         break
@@ -62,9 +62,9 @@ function mat_to_cs(adj::Vector{BitVector})::CausalSets.BitArrayCauset
     past_relations = Vector{BitVector}(undef, n)
 
     # assume topological ordering
-    for node_idx in 1:n
+    for node_idx = 1:n
         future_relations[node_idx] = adj[node_idx]
-        past_relations[node_idx] = [adj[i][node_idx] for i in 1:n]
+        past_relations[node_idx] = [adj[i][node_idx] for i = 1:n]
     end
 
     return CausalSets.BitArrayCauset(n, future_relations, past_relations)
@@ -117,11 +117,13 @@ Create a random causal set with `atom_count` atoms, where the in-degree and link
   - `cset`: The generated causal set.
   - `adj`: The adjacency matrix of the causal set. This is transitively closed, i.e., contains all transitive links in order to represent the full causal set
 """
-function create_random_cset(atom_count::Int64,
-                            future_deg::Function,
-                            link_prob::Function,
-                            rng::Random.AbstractRNG;
-                            type::Type{T}=CausalSets.SparseArrayCauset,) where {T<:CausalSets.AbstractCauset}
+function create_random_cset(
+    atom_count::Int64,
+    future_deg::Function,
+    link_prob::Function,
+    rng::Random.AbstractRNG;
+    type::Type{T} = CausalSets.SparseArrayCauset,
+) where {T<:CausalSets.AbstractCauset}
     if atom_count <= 0
         throw(ArgumentError("n_atoms must be greater than 0, got $atom_count"))
     end
@@ -133,33 +135,32 @@ function create_random_cset(atom_count::Int64,
     # we interpret the random ordering as a topo-order and continue building the causet from there
     nodelist = 1:atom_count # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
 
-    adj = [falses(atom_count) for _ in 1:atom_count]
+    adj = [falses(atom_count) for _ = 1:atom_count]
 
-    raw_weights = zeros(Float64, atom_count)  # preallocate weights for connection sampling, later fill in the part we need
-    # out_edges = Vector{Int64}(undef, atom_count) # preallocate output edges for sampling, later fill in the part we need
+    raw_weights = zeros(Float64, atom_count)  # preallocate weights for 
 
     for i in nodelist
-        future_connection_number = future_deg(rng, i, (i + 1):atom_count, atom_count)
+        future_connection_number = future_deg(rng, i, (i+1):atom_count, atom_count)
 
-        for j in (i + 1):atom_count
+        for j = (i+1):atom_count
             raw_weights[j] = link_prob(rng, i, j)
         end
 
-        rw = @view raw_weights[(i + 1):atom_count]
+        rw = @view raw_weights[(i+1):atom_count]
         sum_rw = sum(rw)
 
         weights = StatsBase.Weights(rw, sum_rw) # TODO: allocation that needs to go
         try
             # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
             # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
-            oe = StatsBase.sample(rng, (i + 1):atom_count, weights,
-                                  future_connection_number; replace=false)
-            # oe = @view out_edges[1:future_connection_number]
-            # StatsBase.sample!(rng,
-            #                 (i + 1):atom_count, # sample from this
-            #                 weights, # using these weights per entry
-            #                 oe, # sample as many elements as are in this and put them there too
-            #                 replace=false,)
+            oe = StatsBase.sample(
+                rng,
+                (i+1):atom_count,
+                weights,
+                future_connection_number;
+                replace = false,
+            )
+
 
             adj[i][oe] .= true
 
@@ -167,7 +168,9 @@ function create_random_cset(atom_count::Int64,
             rw .= 0.0 # reset weights for the next iteration
 
         catch e
-            throw("Sampling in edges failed for node $i with future connections $future_connection_number: $e")
+            throw(
+                "Sampling in edges failed for node $i with future connections $future_connection_number: $e",
+            )
             break
         end
     end
