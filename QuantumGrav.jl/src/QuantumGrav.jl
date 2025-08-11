@@ -1,15 +1,15 @@
 module QuantumGrav
 
-using LinearAlgebra: LinearAlgebra
-using Random: Random
-using SparseArrays: SparseArrays
-using CausalSets: CausalSets
-using Distributions: Distributions
-using YAML: YAML
-using HDF5: HDF5
-using ProgressMeter: ProgressMeter
-using Dates: Dates
-using StatsBase: StatsBase
+using LinearAlgebra
+using Random
+using SparseArrays
+using CausalSets
+using Distributions
+using YAML
+using HDF5
+using ProgressMeter
+using Dates
+using StatsBase
 
 include("utils.jl")
 include("csetgeneration.jl")
