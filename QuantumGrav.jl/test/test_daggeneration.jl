@@ -54,6 +54,14 @@ end
     @test adjcp[6][9]
 end
 
+@testitem "transitive_closure_empty" tags = [:dag_processing] setup = [importModules] begin
+    adj = Vector{BitVector}()
+
+    QuantumGrav.transitive_closure!(adj)
+
+    @test length(adj) == 0
+end
+
 @testitem "transitive_reduction" tags = [:dag_processing] setup=[
     importModules,
     make_testgraph,
@@ -74,4 +82,38 @@ end
 
     # removed edges 
     @test !adjcp[1][10]
+end
+
+@testitem "transitive_reduction_sparse" tags = [:dag_processing] setup=[
+    importModules,
+    make_testgraph,
+] begin
+
+    adjcp = [SparseArrays.sparse(convert.(Int, v)) for v in deepcopy(adj)]
+
+    @test adjcp isa Vector{SparseArrays.SparseVector{Int64,Int64}}
+
+    QuantumGrav.transitive_reduction!(adjcp)
+
+    # old parts unchanged
+    for i in eachindex(adj)
+        for j in eachindex(adj[i])
+            if adj[i][j] == 0
+                # what was *not* an edge before should stay an edge
+                @test adjcp[i][j] == 0
+            end
+        end
+    end
+
+    # removed edges 
+    @test adjcp[1][10] == 0
+    @test adjcp isa Vector{SparseArrays.SparseVector{Int64,Int64}}
+end
+
+@testitem "transitive_reduction_empty" tags = [:dag_processing] setup=[importModules] begin
+    adj = Vector{BitVector}()
+
+    QuantumGrav.transitive_reduction!(adj)
+
+    @test length(adj) == 0
 end

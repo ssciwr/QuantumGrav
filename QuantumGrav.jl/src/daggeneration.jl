@@ -6,7 +6,7 @@ Compute the transitive closure of a DAG represented by vector of future relation
 successively adding reachable nodes in the future of a node to it'
 """
 function transitive_closure!(mat::Vector{BitVector})::Nothing
-    n = size(mat, 1)
+    n = length(mat)
     @inbounds for i = 1:n
         for j = (i+1):n  # only look at future nodes
             if mat[i][j]
@@ -42,6 +42,23 @@ function transitive_reduction!(mat::Vector{BitVector})
     end
 end
 
+function transitive_reduction!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
+    n = length(mat)
+    @inbounds for i = 1:n
+        for j = (i+1):n
+            if mat[i][j] == 1
+                # If any intermediate node k exists with i → k and k → j, remove i → j
+                for k = (i+1):(j-1)
+                    if mat[i][k] == 1 && mat[k][j] == 1
+                        mat[i][j] = 0 # remove intermediate nodes
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
 """
     mat_to_cs(adj::Vector{BitVector})
 
@@ -56,7 +73,7 @@ and columns correspond to the nodes in a topological order.
 # Returns:
 - A `CausalSets.BitArrayCauset` constructed from the adjacency matrix.
 """
-function mat_to_cs(adj::Vector{BitVector})::CausalSets.BitArrayCauset
+function mat_to_bit_cs(adj::Vector{BitVector})::CausalSets.BitArrayCauset
     n = length(adj)
     future_relations = Vector{BitVector}(undef, n)
     past_relations = Vector{BitVector}(undef, n)
@@ -84,7 +101,7 @@ and columns correspond to the nodes in a topological order.
 # Returns:
 - A `CausalSets.SparseArrayCauset` constructed from the adjacency matrix.
 """
-function mat_to_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
+function mat_to_sparse_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
     n = length(adj)
     future_relations = Vector{SparseVector{Int64}}(undef, n)
     past_relations = Vector{SparseVector{Int64}}(undef, n)
@@ -198,5 +215,9 @@ function create_random_cset(
 
     transitive_closure!(adj)
 
-    return mat_to_cs(adj)
+    if type == CausalSets.SparseArrayCauset
+        return mat_to_sparse_cs(adj)
+    else
+        return mat_to_bit_cs(adj)
+    end
 end
