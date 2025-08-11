@@ -92,5 +92,3 @@ function create_random_layered_causet(N, n; p::Float64 = 0.5, rng = Random.GLOBA
 
     return CausalSets.to_bitarray_causet(tcg), atoms_per_layer
 end
-
-cset, per_later = create_random_layered_causet(3,2)
