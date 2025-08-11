@@ -1,9 +1,9 @@
 using TestItems
 
 @testsnippet LayeredTests begin
-    using QuantumGrav: QuantumGrav
-    using CausalSets: CausalSets
-    using Random: Random
+    using QuantumGrav
+    using CausalSets
+    using Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
@@ -32,6 +32,6 @@ end
     @test CausalSets.count_chains(cset, 8) == 0
     @test CausalSets.count_chains(cset, 9) == 0
 
-    @test_throws AssertionError QuantumGrav.create_random_layered_causet(2, 3; rng=rng)
-    @test_throws AssertionError QuantumGrav.create_random_layered_causet(100, 3; p=-.1, rng=rng)
+    @test_throws ArgumentError QuantumGrav.create_random_layered_causet(2, 3; rng=rng)
+    @test_throws ArgumentError QuantumGrav.create_random_layered_causet(100, 3; p=-.1, rng=rng)
 end

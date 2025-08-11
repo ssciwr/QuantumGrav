@@ -23,6 +23,7 @@ export make_simple_cset,
     make_adj,
     max_pathlen,
     calculate_angles,
-    calculate_distances
-
+    calculate_distances,
+    gaussian_dist_cuts,
+    create_random_layered_causet
 end # module QuantumGrav

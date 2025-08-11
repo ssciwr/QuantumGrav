@@ -12,7 +12,7 @@ Inputs:
 Returns:
     cuts :: Vector{Int} — list of cut indices separating layers (length n-1)
 """
-function gaussian_dist_cuts(N, n, σ; rng=Random.GLOBAL_RNG)
+function gaussian_dist_cuts(N::Int64, n::Int64, σ::Float64; rng=Random.GLOBAL_RNG)
     if N < 2 * σ * n
         @warn "N is less than 2×σ×n; partitions may be biased to have more points in earlier layers than in later ones."
     end
@@ -55,13 +55,23 @@ Notes:
     Layer sizes are resampled until within bounds to avoid bias from clamping.
 """
 
-function create_random_layered_causet(N, n; p::Float64 = 0.5, rng = Random.GLOBAL_RNG, standard_deviation::Union{Float64,Nothing} = nothing)
+function create_random_layered_causet(N::Int64, n::Int64; p::Float64 = 0.5, rng = Random.GLOBAL_RNG, standard_deviation::Union{Float64,Nothing} = nothing)
     
-    @assert N >= n  "N (number of atoms) must be at least n (number of layers)."
-    @assert N >= 1  "N (number of atoms) must be ≥ 1, is $N."
-    @assert n >= 1  "n (number of layers) must be ≥ 1., is $n."
-    @assert 0 < p <= 1  "p must be in (0,1], is $p."
-    @assert isnothing(standard_deviation) || 0 < standard_deviation "standard_deviation must be >0, is $standard_deviation."
+    if N < n
+        throw(ArgumentError("N (number of atoms) must be at least n (number of layers)."))
+    end
+    if N < 1
+        throw(ArgumentError("N (number of atoms) must be ≥ 1, is $N."))
+    end
+    if n < 1
+        throw(ArgumentError("n (number of layers) must be ≥ 1, is $n."))
+    end
+    if !(0 < p <= 1)
+        throw(ArgumentError("p must be in (0,1], is $p."))
+    end
+    if !(isnothing(standard_deviation) || standard_deviation > 0)
+        throw(ArgumentError("standard_deviation must be >0, is $standard_deviation."))
+    end
 
     σ = isnothing(standard_deviation) ? 0.1 * N / n : standard_deviation
 
