@@ -49,7 +49,7 @@ Notes:
     Layer sizes are resampled until within bounds to avoid bias from clamping.
 """
 
-function create_random_layered_causet(N, n; p::Float64 = 0.5, rng::AbstractRNG = Random.GLOBAL_RNG, standard_deviation::Union{Float64,Nothing} = nothing)
+function create_random_layered_causet(N, n; p::Float64 = 0.5, rng = Random.GLOBAL_RNG, standard_deviation::Union{Float64,Nothing} = nothing)
     
     @assert N >= n  "N (number of atoms) must be at least n (number of layers)."
     @assert N >= 1  "N (number of atoms) must be ≥ 1, is $N."
