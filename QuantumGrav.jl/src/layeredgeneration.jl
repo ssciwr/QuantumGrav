@@ -55,7 +55,7 @@ function create_random_layered_causet(N, n; p::Float64 = 0.5, rng = Random.GLOBA
     @assert N >= 1  "N (number of atoms) must be ≥ 1, is $N."
     @assert n >= 1  "n (number of layers) must be ≥ 1., is $n."
     @assert 0 < p <= 1  "p must be in (0,1], is $p."
-    @assert standard_deviation == nothing || 0 < standard_deviation "standard_deviation must be >0, is $standard_deviation."
+    @assert isnothing(standard_deviation) || 0 < standard_deviation "standard_deviation must be >0, is $standard_deviation."
 
     σ = isnothing(standard_deviation) ? 0.1 * N / n : standard_deviation
 
