@@ -84,16 +84,15 @@ and columns correspond to the nodes in a topological order.
 # Returns:
 - A `CausalSets.SparseArrayCauset` constructed from the adjacency matrix.
 """
-function mat_to_cs(adj::SparseArrays.SparseMatrixCSC)::CausalSets.SparseArrayCauset
-    n = size(adj, 1) # assume topological ordering
-
-    future_relations = Vector{Vector{Int64}}(undef, n)
-    past_relations = Vector{Vector{Int64}}(undef, n)
+function mat_to_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
+    n = length(adj)
+    future_relations = Vector{SparseVector{Int64}}(undef, n)
+    past_relations = Vector{SparseVector{Int64}}(undef, n)
 
     nodelist = 1:n  # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
     for node_idx in nodelist
-        future_relations[node_idx] = nodelist[Bool.(adj[node_idx, :])]
-        past_relations[node_idx] = nodelist[Bool.(adj[:, node_idx])]
+        future_relations[node_idx] = SparseArrays.sparse(adj[node_idx])
+        past_relations[node_idx] = SparseArrays.sparse([adj[i][node_idx] for i = 1:n])
     end
 
     return CausalSets.SparseArrayCauset(n, future_relations, past_relations), adj
@@ -123,6 +122,7 @@ function create_random_cset(
     link_prob::Function,
     rng::Random.AbstractRNG;
     type::Type{T} = CausalSets.SparseArrayCauset,
+    parallel::Bool = false,
 ) where {T<:CausalSets.AbstractCauset}
     if atom_count <= 0
         throw(ArgumentError("n_atoms must be greater than 0, got $atom_count"))
@@ -132,24 +132,21 @@ function create_random_cset(
         throw(ArgumentError("Unsupported CausalSet type: $type"))
     end
 
-    # we interpret the random ordering as a topo-order and continue building the causet from there
-    nodelist = 1:atom_count # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
+    """Create a single row in the DAG via side effects"""
+    function create_row(i, row, rng, raw_weights)
 
-    adj = [falses(atom_count) for _ = 1:atom_count]
-
-    raw_weights = zeros(Float64, atom_count)  # preallocate weights for 
-
-    for i in nodelist
         future_connection_number = future_deg(rng, i, (i+1):atom_count, atom_count)
 
         for j = (i+1):atom_count
-            raw_weights[j] = link_prob(rng, i, j)
+            raw_weights[j] = link_prob(rng, i, j, future_connection_number)
         end
 
         rw = @view raw_weights[(i+1):atom_count]
+
         sum_rw = sum(rw)
 
         weights = StatsBase.Weights(rw, sum_rw) # TODO: allocation that needs to go
+
         try
             # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
             # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
@@ -161,8 +158,7 @@ function create_random_cset(
                 replace = false,
             )
 
-
-            adj[i][oe] .= true
+            row[oe] .= true
 
             # oe .= 0 # reset the samples
             rw .= 0.0 # reset weights for the next iteration
@@ -171,11 +167,35 @@ function create_random_cset(
             throw(
                 "Sampling in edges failed for node $i with future connections $future_connection_number: $e",
             )
-            break
         end
     end
 
-    # # make true adj matrix including missing transitives. This will result in the existing transitives being added again, but this is fine wrt correctness because they will just be a no-op. y
+    # we interpret the random ordering as a topo-order and continue building the causet from there
+
+    nodelist = 1:atom_count # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
+
+    adj = [falses(atom_count) for _ = 1:atom_count]
+
+    if parallel
+
+        rngs = [Random.Xoshiro(rand(rng, 1:10000000)) for _ = 1:Threads.nthreads()]
+
+        raw_weights = [zeros(Float64, atom_count) for _ = 1:Threads.nthreads()] # preallocate weights for each thread
+
+        Threads.@threads for i in nodelist
+            t = Threads.threadid()
+            create_row(i, adj[i], rngs[t], raw_weights[t])
+        end
+    else
+        raw_weights = zeros(Float64, atom_count)  # preallocate weights for 
+
+        for i in nodelist
+            create_row(i, adj[i], rng, raw_weights)
+        end
+    end
+
+    # make true adj matrix including missing transitives. This will result in the existing transitives being added again, but this is fine wrt correctness because they will just be a no-op.
+
     transitive_closure!(adj)
 
     return mat_to_cs(adj)
