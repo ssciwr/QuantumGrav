@@ -1,8 +1,8 @@
 
 """
-    transitive_closure!(adj::Vector{BitVector})
+    transitive_closure!(mat::Vector{BitVector})
 
-Compute the transitive closure of a DAG represented by vector of future relations `adj` by
+Compute the transitive closure of a DAG represented by vector of future relations `mat` by
 successively adding reachable nodes in the future of a node to it'
 """
 function transitive_closure!(mat::Vector{BitVector})::Nothing
@@ -11,6 +11,23 @@ function transitive_closure!(mat::Vector{BitVector})::Nothing
         for j = (i+1):n  # only look at future nodes
             if mat[i][j]
                 mat[i] .|= mat[j] # OR operation to include all reachable nodes from node j --> adding the future
+            end
+        end
+    end
+end
+
+"""
+    transitive_closure!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
+
+Compute the transitive closure of a DAG represented by vector of future relations `mat` by
+successively adding reachable nodes in the future of a node to it'
+"""
+function transitive_closure!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})::Nothing
+    n = length(mat)
+    @inbounds for i = 1:n
+        for j = (i+1):n  # only look at future nodes
+            if mat[i][j]
+                mat[i] .= mat[i] .|| mat[j] # OR operation to include all reachable nodes from node j --> adding the future
             end
         end
     end
@@ -42,6 +59,15 @@ function transitive_reduction!(mat::Vector{BitVector})
     end
 end
 
+"""
+    transitive_reduction!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
+
+Compute the transitive reduction of a DAG represented by vector of bitvectors `mat` representing the downstream connections/future relations of a DAG. By
+removing intermediate nodes in the future of a node that are reachable from the past of that node via the node itself.
+This function modifies the input matrix in place.
+The matrix `mat` is assumed to be in topological order, i.e., the rows
+and columns correspond to the nodes in a topological order.
+"""
 function transitive_reduction!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
     n = length(mat)
     @inbounds for i = 1:n
@@ -103,8 +129,8 @@ and columns correspond to the nodes in a topological order.
 """
 function mat_to_sparse_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
     n = length(adj)
-    future_relations = Vector{SparseVector{Int64}}(undef, n)
-    past_relations = Vector{SparseVector{Int64}}(undef, n)
+    future_relations = Vector{SparseArrays.SparseVector{Int64}}(undef, n)
+    past_relations = Vector{SparseArrays.SparseVector{Int64}}(undef, n)
 
     nodelist = 1:n  # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
     for node_idx in nodelist
@@ -112,7 +138,7 @@ function mat_to_sparse_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
         past_relations[node_idx] = SparseArrays.sparse([adj[i][node_idx] for i = 1:n])
     end
 
-    return CausalSets.SparseArrayCauset(n, future_relations, past_relations), adj
+    return CausalSets.SparseArrayCauset(n, future_relations, past_relations)
 end
 
 """
@@ -123,7 +149,9 @@ Create a random causal set with `atom_count` atoms, where the in-degree and link
 # Arguments:
 - `atom_count`: The number of atoms in the causal set.
 - `future_deg`: A function that takes the random number generator, the current node index, the past nodes, and the total number of atoms, and returns the future degree of a node, i.e., to how many future nodes it should connect. 
+Signature: future_deg(rng, current_node_toporder_index, (i+1):atom_count, atom_count)
 - `link_prob`: A function that takes the random number generator, the current node index, the past nodes, and returns the link probability for a node to connect to any 'future' node (ahead of it in the topological order). This is an unnormalized probability, i.e., it does not need to sum to 1.
+Signature: link_prob(rng, node_toporder_index_i, node_toporder_index_j, future_connection_number)
 - `rng`: A random number generator.
 - `type`: The type of causal set to create (either `CausalSets.SparseArrayCauset` or `CausalSets.BitArrayCauset`).
 
@@ -138,7 +166,7 @@ function create_random_cset(
     future_deg::Function,
     link_prob::Function,
     rng::Random.AbstractRNG;
-    type::Type{T} = CausalSets.SparseArrayCauset,
+    type::Type{T} = CausalSets.BitArrayCauset,
     parallel::Bool = false,
 ) where {T<:CausalSets.AbstractCauset}
     if atom_count <= 0
@@ -152,7 +180,9 @@ function create_random_cset(
     """Create a single row in the DAG via side effects"""
     function create_row(i, row, rng, raw_weights)
 
-        future_connection_number = future_deg(rng, i, (i+1):atom_count, atom_count)
+        possible_node_number = atom_count - (i+1)
+        future_connection_number =
+            min(future_deg(rng, i, (i+1):atom_count, atom_count), possible_node_number)
 
         for j = (i+1):atom_count
             raw_weights[j] = link_prob(rng, i, j, future_connection_number)
@@ -162,7 +192,11 @@ function create_random_cset(
 
         sum_rw = sum(rw)
 
-        weights = StatsBase.Weights(rw, sum_rw) # TODO: allocation that needs to go
+        weights = StatsBase.Weights(rw, sum_rw)
+
+        if length(weights) == 0
+            return
+        end
 
         try
             # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
@@ -174,10 +208,7 @@ function create_random_cset(
                 future_connection_number;
                 replace = false,
             )
-
             row[oe] .= true
-
-            # oe .= 0 # reset the samples
             rw .= 0.0 # reset weights for the next iteration
 
         catch e
