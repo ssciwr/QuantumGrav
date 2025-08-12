@@ -1,3 +1,20 @@
+
+"""
+# `flip_param_determiner`
+
+A 2D spline interpolator (from `Dierckx.jl`) that maps a given `(connectivity_goal, size)` pair to an estimated `flip_param`.
+
+- `connectivity_goal` (`Float64`): target connectivity ratio in `[0,1]`.
+- `size` (`Int64`): number of nodes in the causet.
+- `Returns`: interpolated `flip_param` (`Float64`).
+
+This spline is built on a full grid from `optim_values.csv` with shape `(13, 6)`, using `kx=1, ky=1` (piecewise-linear) and `s=0.0` (exact interpolation).
+"""
+
+values = CSV.read("QuantumGrav/QuantumGrav.jl/src/optim_values.csv", DataFrame);
+flip_param_determiner = Spline2D(sort(unique(values.connectivity_goal)), sort(unique(values.size)), reshape(values.flip_param,(13,6)); kx=1, ky=1, s=0.0);
+
+
 """ 
 Sample a causet with given connectivity using a Markov Chain Monte Carlo method with adaptive number of edge flips.
 
@@ -14,7 +31,7 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - A bitarray causet sampled according to the connectivity goal.
 """
 
-function adaptive_sample_bitarray_causet(size::Int64, connectivity_goal::Float64, markov_steps::Int64, rng::AbstractRNG; flip_param::Float64=0.1, rel_tol::Union{Float64,Nothing}=nothing, abs_tol::Union{Float64,Nothing}=0.01)
+function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::Float64, markov_steps::Int64, rng::AbstractRNG; rel_tol::Union{Float64,Nothing}=nothing, abs_tol::Union{Float64,Nothing}=0.01)
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
     end
@@ -26,10 +43,6 @@ function adaptive_sample_bitarray_causet(size::Int64, connectivity_goal::Float64
     if markov_steps < 1
         throw(ArgumentError("markov_steps has to be at least 1, is $(markov_steps)"))
     end
-
-    if flip_param < 0 or flip_param > 1
-        throw(ArgumentError("flip_param has to be in [0,1], is $(flip_param)"))
-    end
     
     if !isnothing(rel_tol) && rel_tol < 0
         throw(ArgumentError("rel_tol has to be in [0,1], is $(rel_tol)"))
@@ -37,6 +50,12 @@ function adaptive_sample_bitarray_causet(size::Int64, connectivity_goal::Float64
 
     if !isnothing(abs_tol) && abs_tol < 0
         throw(ArgumentError("abs_tol has to be in [0,1], is $(abs_tol)"))
+    end
+
+    flip_param = flip_param_determiner(connectivity_goal, size)
+
+    if flip_param <= 0 
+        throw(ArgumentError("flip_param has to be larger than 0, is $(flip_param)"))
     end
 
     # Start from empty graphs if connectivity goal is low
@@ -74,11 +93,11 @@ function adaptive_sample_bitarray_causet(size::Int64, connectivity_goal::Float64
         new_connectivity = CausalSets.count_edges(tcg_new)/(size*(size-1)/2)
         
         if !isnothing(abs_tol) && abs(new_connectivity - connectivity_goal) < abs_tol
-            return CausalSets.to_bitarray_causet(tcg_new), step, new_connectivity
+            return CausalSets.to_bitarray_causet(tcg_new)
         end
 
         if !isnothing(rel_tol) && abs(new_connectivity - connectivity_goal) / connectivity_goal < rel_tol
-            return CausalSets.to_bitarray_causet(tcg_new), step, new_connectivity
+            return CausalSets.to_bitarray_causet(tcg_new)
         end
 
         # Decide whether to accept or reject the new state based on connectivity and Metropolis criterion
@@ -96,5 +115,5 @@ function adaptive_sample_bitarray_causet(size::Int64, connectivity_goal::Float64
     end
     @warn "Relative precision $(rel_tol) or absolute precision $(abs_tol) not reached after $(markov_steps) steps. Final connectivity error: $(abs(prev_connectivity - connectivity_goal))"
     # Return the sampled causet
-    return CausalSets.to_bitarray_causet(tcg), step, prev_connectivity
+    return CausalSets.to_bitarray_causet(tcg)
 end

@@ -10,10 +10,15 @@ import YAML
 import HDF5
 import ProgressMeter
 import Dates
+import DataFrames
+import CSV
+import Dierckx
 
 include("utils.jl")
 include("csetgeneration.jl")
 include("datageneration.jl")
+include("csetgenerationbyconnectivity.jl")
+
 
 export make_simple_cset,
     make_manifold_cset,
@@ -22,6 +27,7 @@ export make_simple_cset,
     make_adj,
     max_pathlen,
     calculate_angles,
-    calculate_distances
+    calculate_distances,
+    sample_bitarray_causet_by_connectivity
 
 end # module QuantumGrav
