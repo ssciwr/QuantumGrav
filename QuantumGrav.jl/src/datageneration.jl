@@ -70,7 +70,6 @@ function calculate_angles(
     function inner(sprinkling, i, j, n)
         @inbounds v_i = sprinkling[i, :] - sprinkling[n, :]
         @inbounds v_j = sprinkling[j, :] - sprinkling[n, :]
-
         angle = type(
             acos(
                 clamp(
@@ -83,8 +82,12 @@ function calculate_angles(
                 ),
             ),
         )
+        if isnan(angle) || isinf(angle)
+            throw(ArgumentError("Angle is NaN or Inf. This should not happen."))
+        end
         return angle
     end
+
     idxs = findall(x -> x > 0, neighbors)
     n = length(idxs)
     num_pairs = div(n * (n - 1), 2)
