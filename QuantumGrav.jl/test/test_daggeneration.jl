@@ -266,4 +266,24 @@ end
         type = CausalSets.BitArrayCauset,
         parallel = false,
     )
+
+    wrong_future_deg(rng, i, range, n)::Float64 = 3.14
+
+    @test_throws "future_deg must return an int" QuantumGrav.create_random_cset_from_dag(
+        5,
+        wrong_future_deg,
+        link_prob,
+        rng;
+    )
+
+    wrong_link_prob(rng, i, j, n)::Int64 = 42
+
+    @test_throws "link_prob must return a Float64" QuantumGrav.create_random_cset_from_dag(
+        5,
+        future_deg,
+        wrong_link_prob,
+        rng;
+    )
+
+
 end

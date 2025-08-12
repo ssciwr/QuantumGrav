@@ -149,9 +149,9 @@ Create a random causal set with `atom_count` atoms, where the in-degree and link
 # Arguments:
 - `atom_count`: The number of atoms in the causal set.
 - `future_deg`: A function that takes the random number generator, the current node index, the past nodes, and the total number of atoms, and returns the future degree of a node, i.e., to how many future nodes it should connect. 
-Signature: future_deg(rng, current_node_toporder_index, (i+1):atom_count, atom_count)
+Signature: future_deg(rng, current_node_toporder_index, (i+1):atom_count, atom_count)::Int64
 - `link_prob`: A function that takes the random number generator, the current node index, the past nodes, and returns the link probability for a node to connect to any 'future' node (ahead of it in the topological order). This is an unnormalized probability, i.e., it does not need to sum to 1.
-Signature: link_prob(rng, node_toporder_index_i, node_toporder_index_j, future_connection_number)
+Signature: link_prob(rng, node_toporder_index_i, node_toporder_index_j, future_connection_number)::Float64
 - `rng`: A random number generator.
 - `type`: The type of causal set to create (either `CausalSets.SparseArrayCauset` or `CausalSets.BitArrayCauset`).
 
@@ -178,8 +178,41 @@ function create_random_cset_from_dag(
     function create_row(i, row, rng, raw_weights)
 
         possible_node_number = atom_count - (i+1)
+
+        if possible_node_number <= 0
+            return
+        end
+
         future_connection_number =
             min(future_deg(rng, i, (i+1):atom_count, atom_count), possible_node_number)
+
+        if !(future_connection_number isa Int)
+            throw(
+                TypeError(
+                    Symbol(future_deg),
+                    "future_deg must return an int",
+                    Int,
+                    typeof(future_connection_number),
+                ),
+            )
+        end
+
+        if future_connection_number == 0
+            return
+        end
+
+        tmp = link_prob(rng, 1, 2, future_connection_number)
+
+        if !(tmp isa Float64)
+            throw(
+                TypeError(
+                    Symbol(link_prob),
+                    "link_prob must return a Float64",
+                    Float64,
+                    typeof(tmp),
+                ),
+            )
+        end
 
         for j = (i+1):atom_count
             raw_weights[j] = link_prob(rng, i, j, future_connection_number)
@@ -191,28 +224,18 @@ function create_random_cset_from_dag(
 
         weights = StatsBase.Weights(rw, sum_rw)
 
-        if length(weights) == 0
-            return
-        end
+        # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
+        # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
+        oe = StatsBase.sample(
+            rng,
+            (i+1):atom_count,
+            weights,
+            future_connection_number;
+            replace = false,
+        )
+        row[oe] .= true
+        rw .= 0.0 # reset weights for the next iteration
 
-        try
-            # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
-            # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
-            oe = StatsBase.sample(
-                rng,
-                (i+1):atom_count,
-                weights,
-                future_connection_number;
-                replace = false,
-            )
-            row[oe] .= true
-            rw .= 0.0 # reset weights for the next iteration
-
-        catch e
-            throw(
-                "Sampling in edges failed for node $i with future connections $future_connection_number: $e",
-            )
-        end
     end
 
     # we interpret the random ordering as a topo-order and continue building the causet from there
