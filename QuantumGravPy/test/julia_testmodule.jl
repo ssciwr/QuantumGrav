@@ -107,6 +107,7 @@ function (gen::Generator)(batchsize::Int)
                     boundary,
                     atomcount,
                     dimension,
+                    100, # number of iterations for the MCMC algorithm 
                     rng;
                     type = type,
                 )
