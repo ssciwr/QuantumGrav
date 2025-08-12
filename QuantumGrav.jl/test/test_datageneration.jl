@@ -198,6 +198,7 @@ end
             "CausalDiamond",
             100,
             2,
+            300,
             rng;
             type = Float32,
         )
@@ -209,7 +210,7 @@ end
     function prepare_output(file, config::Dict)
         dset = QuantumGrav.HDF5.create_dataset(
             file,
-            "/adjacency_matrices",
+            "adjacency_matrices",
             Float32,
             QuantumGrav.HDF5.dataspace((100, 100, 0), (100, 100, -1));
             chunk = (100, 100, 1),
@@ -219,7 +220,7 @@ end
 
         dset = QuantumGrav.HDF5.create_dataset(
             file,
-            "/sprinkling",
+            "sprinkling",
             Float32,
             QuantumGrav.HDF5.dataspace((100, 2, 0), (100, 2, -1));
             chunk = (100, 2, 1),
@@ -260,8 +261,8 @@ end
     file = [f for f in outputcontent if occursin(".h5", f)][1]
 
     QuantumGrav.HDF5.h5open(joinpath(config["output"], file), "r") do file
-        @test haskey(file, "/adjacency_matrices")
-        @test size(file["/adjacency_matrices"]) == (100, 100, 10)
+        @test haskey(file, "adjacency_matrices")
+        @test size(file["adjacency_matrices"]) == (100, 100, 10)
     end
 
     rm(config["output"]; recursive = true) # Clean up the output directory
