@@ -6,8 +6,8 @@ import pytest
 
 
 @pytest.fixture
-def make_dataloader(create_data, read_data):
-    datadir, datafiles = create_data
+def make_dataloader(create_data_hdf5, read_data):
+    datadir, datafiles = create_data_hdf5
 
     dataset = QG.QGDataset(
         input=datafiles,
