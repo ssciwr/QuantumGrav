@@ -180,7 +180,6 @@ def create_data_zarr(create_data):
     path, datafiles, tmpdir, jl_generator = create_data
 
     for i in range(3):
-        print("i= ", i)
         data = jl_generator(5)
         # Save the data to an HDF5 file
         zarr_file = tmpdir / f"test_data_{i}.zarr"
