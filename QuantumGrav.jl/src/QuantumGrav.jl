@@ -19,7 +19,6 @@ include("csetgeneration.jl")
 include("datageneration.jl")
 include("csetgenerationbyconnectivity.jl")
 
-
 export make_simple_cset,
     make_manifold_cset,
     make_general_cset,

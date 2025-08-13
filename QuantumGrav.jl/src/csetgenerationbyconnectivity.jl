@@ -4,16 +4,18 @@
 
 A 2D spline interpolator (from `Dierckx.jl`) that maps a given `(connectivity_goal, size)` pair to an estimated `flip_param`.
 
+# input
 - `connectivity_goal` (`Float64`): target connectivity ratio in `[0,1]`.
 - `size` (`Int64`): number of nodes in the causet.
-- `Returns`: interpolated `flip_param` (`Float64`).
+
+# Returns 
+- interpolated `flip_param` (`Float64`).
 
 This spline is built on a full grid from `optim_values.csv` with shape `(13, 6)`, using `kx=1, ky=1` (piecewise-linear) and `s=0.0` (exact interpolation).
 """
 
-values = CSV.read("QuantumGrav/QuantumGrav.jl/src/optim_values.csv", DataFrame);
-flip_param_determiner = Spline2D(sort(unique(values.connectivity_goal)), sort(unique(values.size)), reshape(values.flip_param,(13,6)); kx=1, ky=1, s=0.0);
-
+values = CSV.read(joinpath(@__DIR__,"optim_values.csv"), DataFrames.DataFrame);
+flip_param_determiner = Dierckx.Spline2D(sort(unique(values.connectivity_goal)), sort(unique(values.size)), reshape(values.flip_param,(13,6)); kx=1, ky=1, s=0.0);
 
 """ 
 Sample a causet with given connectivity using a Markov Chain Monte Carlo method with adaptive number of edge flips.
@@ -31,7 +33,7 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - A bitarray causet sampled according to the connectivity goal.
 """
 
-function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::Float64, markov_steps::Int64, rng::AbstractRNG; rel_tol::Union{Float64,Nothing}=nothing, abs_tol::Union{Float64,Nothing}=0.01)
+function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::Float64, markov_steps::Int64, rng::Random.AbstractRNG; rel_tol::Union{Float64,Nothing}=nothing, abs_tol::Union{Float64,Nothing}=0.01)
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
     end
