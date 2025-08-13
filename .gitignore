@@ -50,3 +50,6 @@ data/
 
 # coverage files
 .coverage*
+
+# ignor experimental dir 
+*/experimental/*

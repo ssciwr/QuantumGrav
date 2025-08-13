@@ -1,24 +1,24 @@
 using TestItems
 
 @testsnippet importModules begin
-    using QuantumGrav: QuantumGrav
-    using CausalSets: CausalSets
-    using SparseArrays: SparseArrays
-    using Distributions: Distributions
-    using Random: Random
-    using Graphs: Graphs
-    using HDF5: HDF5
-    using YAML: YAML
+    using QuantumGrav
+    using CausalSets
+    using SparseArrays
+    using Distributions
+    using Random
+    using Graphs
+    using HDF5
+    using YAML
 end
 
 @testsnippet makeData begin
-    using CausalSets: CausalSets
-    using QuantumGrav: QuantumGrav
-    using SparseArrays: SparseArrays
-    using Distributions: Distributions
-    using Graphs: Graphs
-    using HDF5: HDF5
-    using YAML: YAML
+    using CausalSets
+    using QuantumGrav
+    using SparseArrays
+    using Distributions
+    using Graphs
+    using HDF5
+    using YAML
 
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()
@@ -29,8 +29,122 @@ end
     end
 
     cset_empty, sprinkling_empty = MockData(0)
-
     cset_links, sprinkling_links = MockData(100)
+end
+
+@testsnippet makeDataFunctionsHDF5 begin
+    using CausalSets
+    using QuantumGrav
+    using SparseArrays
+    using Distributions
+    using Graphs
+    using HDF5
+    using Random
+    using YAML
+
+    function transform(config, rng::AbstractRNG)
+        cset, sprinkling = QuantumGrav.make_simple_cset(
+            "Minkowski",
+            "CausalDiamond",
+            100,
+            2,
+            300,
+            rng;
+            type = Float32,
+        )
+        adj = QuantumGrav.make_adj(cset; type = Float32)
+
+        return Dict("adjacency_matrices" => Matrix(adj), "sprinkling" => sprinkling)
+    end
+
+    function prepare_output(file, config::Dict)
+        dset = HDF5.create_dataset(
+            file,
+            "adjacency_matrices",
+            Float32,
+            HDF5.dataspace((100, 100, 0), (100, 100, -1));
+            chunk = (100, 100, 1),
+            deflate = 8,
+        )
+        close(dset)
+
+        dset = HDF5.create_dataset(
+            file,
+            "sprinkling",
+            Float32,
+            HDF5.dataspace((100, 2, 0), (100, 2, -1));
+            chunk = (100, 2, 1),
+            deflate = 8,
+        )
+        return close(dset)
+    end
+
+    function write_data(file, config::Dict, data::Dict)
+        dset = HDF5.open_dataset(file, "/adjacency_matrices")
+        old_size = size(dset)
+        new_size =
+            (old_size[1], old_size[2], old_size[3] + length(data["adjacency_matrices"]))
+
+        HDF5.set_extent_dims(dset, new_size)
+        for (i, datapoint) in enumerate(data["adjacency_matrices"])
+            dset[1:new_size[1], 1:new_size[2], old_size[3]+i] .= datapoint
+        end
+        return close(dset)
+    end
+end
+
+
+
+@testsnippet makeDataFunctionsZarr begin
+    using CausalSets
+    using QuantumGrav
+    using SparseArrays
+    using Distributions
+    using Graphs
+    using Zarr
+    using Random
+    using YAML
+
+    function transform(config, rng::AbstractRNG)
+        cset, sprinkling = QuantumGrav.make_simple_cset(
+            "Minkowski",
+            "CausalDiamond",
+            100,
+            2,
+            300,
+            rng;
+            type = Float32,
+        )
+        adj = QuantumGrav.make_adj(cset; type = Float32)
+
+        return Dict("adjacency_matrices" => Matrix(adj), "sprinkling" => sprinkling)
+    end
+
+    function prepare_output(file, config::Dict)
+        println("file: ", file)
+        root = Zarr.zgroup(file)
+        compressor = Zarr.BloscCompressor(cname = "zstd", clevel = 3, shuffle = true)
+        Zarr.zcreate(
+            Float32,
+            root,
+            "adjacency_matrices",
+            100,
+            100,
+            10;
+            chunks = (100, 100, config["num_datapoints"]),
+            compressor = compressor,
+        )
+    end
+
+    function write_data(file, config::Dict, data::Dict)
+
+        adj = Zarr.zopen(file, "w"; path = "adjacency_matrices")
+
+        for (i, arr) in enumerate(data["adjacency_matrices"])
+            adj[:, :, i] = arr
+        end
+
+    end
 end
 
 # Test makelink_matrix
@@ -168,81 +282,17 @@ end
     @test all(distances .>= 0.0)
 end
 
-@testitem "test_make_data" tags = [:featuregeneration] setup = [importModules] begin
+@testitem "test_make_data_missing_conf_node" tags = [:featuregeneration] setup =
+    [makeDataFunctionsHDF5] begin
+
     bad_config = Dict(
         "num_datapoints" => 10,
         "file_mode" => "w",
         "num_threads" => Threads.nthreads(),
         "seed" => 42,
+        "output_format" => "hdf5",
     )
 
-    wrong_config = Dict(
-        "num_datapoints" => 10,
-        "output" => joinpath(tempdir(), "test_data"),
-        "file_mode" => "w",
-        "num_threads" => 2 * Threads.nthreads(),
-        "seed" => 42,
-    )
-
-    config = Dict(
-        "num_datapoints" => 10,
-        "output" => joinpath(tempdir(), "test_data"),
-        "file_mode" => "w",
-        "num_threads" => Threads.nthreads(),
-        "seed" => 42,
-    )
-
-    function transform(config, rng::Random.AbstractRNG)
-        cset, sprinkling = QuantumGrav.make_simple_cset(
-            "Minkowski",
-            "CausalDiamond",
-            100,
-            2,
-            300,
-            rng;
-            type = Float32,
-        )
-        adj = QuantumGrav.make_adj(cset; type = Float32)
-
-        return Dict("adjacency_matrices" => Matrix(adj), "sprinkling" => sprinkling)
-    end
-
-    function prepare_output(file, config::Dict)
-        dset = QuantumGrav.HDF5.create_dataset(
-            file,
-            "adjacency_matrices",
-            Float32,
-            QuantumGrav.HDF5.dataspace((100, 100, 0), (100, 100, -1));
-            chunk = (100, 100, 1),
-            deflate = 8,
-        )
-        close(dset)
-
-        dset = QuantumGrav.HDF5.create_dataset(
-            file,
-            "sprinkling",
-            Float32,
-            QuantumGrav.HDF5.dataspace((100, 2, 0), (100, 2, -1));
-            chunk = (100, 2, 1),
-            deflate = 8,
-        )
-        return close(dset)
-    end
-
-    function write_data(file, config::Dict, data::Dict)
-        dset = QuantumGrav.HDF5.open_dataset(file, "/adjacency_matrices")
-        old_size = size(dset)
-        new_size =
-            (old_size[1], old_size[2], old_size[3] + length(data["adjacency_matrices"]))
-
-        QuantumGrav.HDF5.set_extent_dims(dset, new_size)
-
-        for (i, datapoint) in enumerate(data["adjacency_matrices"])
-            dset[1:new_size[1], 1:new_size[2], old_size[3]+i] .= datapoint
-        end
-
-        return close(dset)
-    end
 
     @test_throws ArgumentError QuantumGrav.make_data(
         transform,
@@ -250,7 +300,37 @@ end
         write_data;
         config = bad_config,
     )
+end
+@testitem "test_make_data_bad_output_config" tags = [:featuregeneration] setup =
+    [makeDataFunctionsHDF5] begin
+    bad_config = Dict(
+        "num_datapoints" => 10,
+        "output" => joinpath(tempdir(), "test_data"),
+        "file_mode" => "w",
+        "num_threads" => Threads.nthreads(),
+        "seed" => 42,
+        "output_format" => "bs",
+    )
 
+    @test_throws ArgumentError QuantumGrav.make_data(
+        transform,
+        prepare_output,
+        write_data;
+        config = bad_config,
+    )
+end
+
+
+@testitem "test_make_data_hdf5_works" tags = [:featuregeneration] setup =
+    [makeDataFunctionsHDF5] begin
+    config = Dict(
+        "num_datapoints" => 10,
+        "output" => joinpath(tempdir(), "test_data"),
+        "file_mode" => "w",
+        "num_threads" => Threads.nthreads(),
+        "seed" => 42,
+        "output_format" => "hdf5",
+    )
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
 
     outputcontent = readdir(config["output"])
@@ -264,6 +344,36 @@ end
         @test haskey(file, "adjacency_matrices")
         @test size(file["adjacency_matrices"]) == (100, 100, 10)
     end
+
+    rm(config["output"]; recursive = true) # Clean up the output directory
+end
+
+
+
+@testitem "test_make_data_zarr_works" tags = [:featuregeneration] setup =
+    [makeDataFunctionsZarr] begin
+    config = Dict(
+        "num_datapoints" => 10,
+        "output" => joinpath(tempdir(), "test_data"),
+        "file_mode" => "a",
+        "num_threads" => Threads.nthreads(),
+        "seed" => 42,
+        "output_format" => "zarr",
+    )
+
+    QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
+
+    outputcontent = readdir(config["output"])
+    @test true in [occursin(".zarr", file) for file in outputcontent]
+    @test true in [occursin(".yaml", file) for file in outputcontent]
+    @test true in [occursin(".jl", file) for file in outputcontent]
+
+    file = [f for f in outputcontent if occursin(".zarr", f)][1]
+
+    store = Zarr.DirectoryStore(joinpath(tempdir(), "test_data", file))
+    adj = Zarr.zopen(store, "r"; path = "adjacency_matrices")
+
+    @assert size(adj) == (100, 100, 10)
 
     rm(config["output"]; recursive = true) # Clean up the output directory
 end

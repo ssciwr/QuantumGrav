@@ -375,11 +375,11 @@ function make_data(
         "output" => "~/QuantumGrav/data",
         "file_mode" => "w",
         "seed" => 42,
+        "output_format" => "hdf5",
     ),
 )
-    # TODO: enforce signature of functions programmatically
     # consistency checks
-    for key in ["num_datapoints", "output", "file_mode", "seed"]
+    for key in ["num_datapoints", "output", "file_mode", "seed", "output_format"]
         if !haskey(config, key)
             throw(ArgumentError("Configuration must contain the key: $key"))
         end
@@ -439,63 +439,75 @@ function make_data(
 
     datetime = Dates.now()
     datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
-    HDF5.h5open(
-        joinpath(abspath(expanduser(config["output"])), "data_$(getpid())_$(datetime).h5"),
-        config["file_mode"],
-    ) do file
 
-        # get the source code of the transform/prepare/write functions and write them to the data folder 
-        # to document how the data has been created
-        for func in [transform, prepare_output, write_data]
-            funcdata = first(methods(func)) # this assumes that the function is not overloaded since we use this to determine the file path it's not a problem
-            filepath = String(funcdata.file)
-            targetpath = joinpath(
-                abspath(expanduser(config["output"])),
-                splitext(basename(filepath))[1] * "_$(getpid()).jl",
-            )
-            if isfile(targetpath) == false
-                cp(filepath, targetpath)
-            end
-        end
-
-        # # get the current commit hash of the QuantumGrav package and put it into the config
-        # # also get the current branch name. 
-        # # TODO: make this work for arbitrary paths or delete
-        # config["commit_hash"] = read(`git rev-parse HEAD`, String)
-
-        # config["branch_name"] = read(`git rev-parse --abbrev-ref HEAD`, String)
-
-        YAML.write_file(
-            joinpath(abspath(expanduser(config["output"])), "config_$(getpid()).yaml"),
-            config,
+    # get the source code of the transform/prepare/write functions and write them to the data folder 
+    # to document how the data has been created
+    for func in [transform, prepare_output, write_data]
+        funcdata = first(methods(func)) # this assumes that the function is not overloaded since we use this to determine the file path it's not a problem
+        filepath = String(funcdata.file)
+        targetpath = joinpath(
+            abspath(expanduser(config["output"])),
+            splitext(basename(filepath))[1] * "_$(getpid()).jl",
         )
-
-        # prepare the file: generate datasets, attributes, dataspaces... 
-        @info "Preparing output file"
-        prepare_output(file, config)
-
-        num_datapoints = config["num_datapoints"]
-        num_datapoints_chunks = num_datapoints
-        # check if the data generation should be chunked
-        if "chunks" in keys(config)
-            num_chunks = config["chunks"]
-            num_datapoints_chunks = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
-            final_chunksize = num_datapoints - num_chunks * num_datapoints_chunks # Computes the remaining number of datapoints that do not fit into a full chunk.
-        else
-            num_chunks = 1
-            final_chunksize = 0
-        end
-
-        # Multithreading enabled by default, use Threads.@threads for parallel data generation
-        for c = 1:num_chunks
-            @info "Generating data chunk $(c)/$(num_chunks) with $num_datapoints_chunks datapoints"
-            make_data_chunk(file, num_datapoints_chunks)
-        end
-
-        if final_chunksize > 0
-            @info "Generating final data chunk with $final_chunksize datapoints"
-            # handle the final chunk with the remaining datapoints
-            make_data_chunk(file, final_chunksize)
+        if isfile(targetpath) == false
+            cp(filepath, targetpath)
         end
     end
+
+    YAML.write_file(
+        joinpath(abspath(expanduser(config["output"])), "config_$(getpid()).yaml"),
+        config,
+    )
+
+    if config["output_format"] == "hdf5"
+        file = HDF5.h5open(
+            joinpath(
+                abspath(expanduser(config["output"])),
+                "data_$(getpid())_$(datetime).h5",
+            ),
+            config["file_mode"],
+        )
+    elseif config["output_format"] == "zarr"
+        filepath = joinpath(
+            abspath(expanduser(config["output"])),
+            "data_$(getpid())_$(datetime).zarr",
+        )
+
+        file = Zarr.DirectoryStore(filepath)
+    else
+        throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
+    end
+
+    # prepare the file: generate datasets, attributes, dataspaces... 
+    @info "Preparing output file"
+    prepare_output(file, config)
+
+    num_datapoints = config["num_datapoints"]
+    num_datapoints_chunks = num_datapoints
+    # check if the data generation should be chunked
+    if "chunks" in keys(config)
+        num_chunks = config["chunks"]
+        num_datapoints_chunks = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
+        final_chunksize = num_datapoints - num_chunks * num_datapoints_chunks # Computes the remaining number of datapoints that do not fit into a full chunk.
+    else
+        num_chunks = 1
+        final_chunksize = 0
+    end
+
+    # Multithreading enabled by default, use Threads.@threads for parallel data generation
+    for c = 1:num_chunks
+        @info "Generating data chunk $(c)/$(num_chunks) with $num_datapoints_chunks datapoints"
+        make_data_chunk(file, num_datapoints_chunks)
+    end
+
+    if final_chunksize > 0
+        @info "Generating final data chunk with $final_chunksize datapoints"
+        # handle the final chunk with the remaining datapoints
+        make_data_chunk(file, final_chunksize)
+    end
+
+    if config["output_format"] == "hdf5"
+        close(file)
+    end        # nothing to do for Zarr storage mode
+
 end
