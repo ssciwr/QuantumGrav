@@ -16,6 +16,7 @@ import Dierckx
 
 include("utils.jl")
 include("csetgeneration.jl")
+include("layeredgeneration.jl")
 include("datageneration.jl")
 include("csetgenerationbyconnectivity.jl")
 
@@ -28,5 +29,6 @@ export make_simple_cset,
     calculate_angles,
     calculate_distances,
     sample_bitarray_causet_by_connectivity
-
+    gaussian_dist_cuts,
+    create_random_layered_causet
 end # module QuantumGrav
