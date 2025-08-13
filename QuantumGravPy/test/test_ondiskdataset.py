@@ -7,8 +7,8 @@ from torch_geometric.loader import DataLoader
 
 
 @pytest.mark.parametrize("n", [1, 3], ids=["sequential", "parallel"])
-def test_ondisk_dataset_creation_processing(create_data, read_data, n):
-    datadir, datafiles = create_data
+def test_ondisk_dataset_creation_processing(create_data_hdf5, read_data, n):
+    datadir, datafiles = create_data_hdf5
     dataset = QG.QGDataset(
         input=datafiles,
         output=datadir,

@@ -2,7 +2,7 @@ import pytest
 import juliacall as jcall
 from pathlib import Path
 import h5py
-
+import zarr
 import torch
 import torch_geometric
 from torch_geometric.data import Data
@@ -133,6 +133,13 @@ def create_data(tmp_path_factory, julia_paths):
         }
     )
 
+    return path, datafiles, tmpdir, jl_generator
+
+
+@pytest.fixture
+def create_data_hdf5(create_data):
+    path, datafiles, tmpdir, jl_generator = create_data
+
     for i in range(3):
         data = jl_generator(5)
         # Save the data to an HDF5 file
@@ -169,8 +176,94 @@ def create_data(tmp_path_factory, julia_paths):
 
 
 @pytest.fixture
+def create_data_zarr(create_data):
+    path, datafiles, tmpdir, jl_generator = create_data
+
+    for i in range(3):
+        print("i= ", i)
+        data = jl_generator(5)
+        # Save the data to an HDF5 file
+        zarr_file = tmpdir / f"test_data_{i}.zarr"
+
+        store = zarr.storage.LocalStore(zarr_file, read_only=False)
+
+        adj = zarr.create_array(
+            store,
+            shape=(len(data), 15, 15),
+            chunks=(1, 15, 15),
+            dtype="float32",
+            name="adjacency_matrix",
+        )
+
+        link = zarr.create_array(
+            store,
+            shape=(len(data), 15, 15),
+            chunks=(1, 15, 15),
+            dtype="float32",
+            name="link_matrix",
+        )
+
+        maxpathlen_future = zarr.create_array(
+            store,
+            shape=(len(data), 15),
+            chunks=(1, 15),
+            name="max_pathlen_future",
+            dtype="float32",
+        )
+
+        max_pathlen_past = zarr.create_array(
+            store,
+            shape=(len(data), 15),
+            chunks=(1, 15),
+            name="max_pathlen_past",
+            dtype="float32",
+        )
+
+        manifold = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="manifold", dtype="int32"
+        )
+
+        boundary = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="boundary", dtype="int32"
+        )
+
+        dimension = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="dimension", dtype="int32"
+        )
+
+        atomcount = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="atomcount", dtype="int32"
+        )
+
+        num_samples = zarr.create_array(
+            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
+        )
+
+        num_samples[0] = len(data)
+
+        for j, d in enumerate(data):
+            adjmat = d["adjacency_matrix"].to_numpy()
+            linkmat = d["link_matrix"].to_numpy()
+            max_path_f = d["max_pathlen_future"].to_numpy()
+            max_path_p = d["max_pathlen_past"].to_numpy()
+            adj[j, 0 : adjmat.shape[0], 0 : adjmat.shape[1]] = adjmat
+            link[j, 0 : linkmat.shape[0], 0 : linkmat.shape[1]] = linkmat
+            maxpathlen_future[j, 0 : max_path_f.shape[0]] = max_path_f
+            max_pathlen_past[j, 0 : max_path_p.shape[0]] = max_path_p
+            manifold[j] = d["manifold"]
+            boundary[j] = d["boundary"]
+            dimension[j] = d["dimension"]
+            atomcount[j] = d["atomcount"]
+
+        datafiles.append(zarr_file)
+    return tmpdir, datafiles
+
+
+@pytest.fixture
 def read_data():
-    def reader(f: h5py.File, idx: int, float_dtype, int_dtype, validate) -> Data:
+    def reader(
+        f: h5py.File | zarr.Group, idx: int, float_dtype, int_dtype, validate
+    ) -> Data:
         adj_raw = f["adjacency_matrix"][idx, :, :]
         adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
         edge_index, edge_weight = dense_to_sparse(adj_matrix)
@@ -193,11 +286,18 @@ def read_data():
         boundary = f["boundary"][idx]
         dimension = f["dimension"][idx]
 
+        value_list = [manifold.item(), boundary.item(), dimension.item()]
+
         data = Data(
             x=x,
             edge_index=edge_index,
             edge_attr=edge_weight.unsqueeze(1),
-            y=torch.tensor([[manifold, boundary, dimension]], dtype=int_dtype),
+            y=torch.tensor(
+                [
+                    value_list,
+                ],
+                dtype=int_dtype,
+            ),
         )
 
         if validate and not data.validate():
