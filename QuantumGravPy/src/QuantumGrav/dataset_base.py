@@ -38,6 +38,7 @@ class QGDatasetBase:
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
             output (str | Path): The output directory where processed data will be stored.
+            mode (str): File storage mode. 'zarr' or 'hdf5'
             reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
@@ -56,6 +57,7 @@ class QGDatasetBase:
         if mode not in ["hdf5", "zarr"]:
             raise ValueError("mode must be 'hdf5' or 'zarr'")
 
+        self.mode = mode
         self.input = input
         for file in self.input:
             if Path(file).exists() is False:
@@ -235,3 +237,15 @@ class QGDatasetBase:
             ]
 
         return [res for res in results if res is not None]
+
+    def process_chunk(
+        self,
+        store: zarr.storage.LocalStore,
+        start: int,
+        pre_transform: Callable[[Data], Data] | None = None,
+        pre_filter: Callable[[Data], bool] | None = None,
+    ):
+        if self.mode == "hdf5":
+            return self.process_chunk_hdf5(store, start, pre_transform, pre_filter)
+        else:
+            return self.process_chunk_zarr(store, start, pre_transform, pre_filter)
