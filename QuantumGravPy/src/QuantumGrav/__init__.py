@@ -28,6 +28,7 @@ from .evaluate import (
 )
 
 from .train import Trainer
+from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 
 __all__ = [
     # datasets
@@ -55,6 +56,9 @@ __all__ = [
     "GNNModel",
     # training
     "Trainer",
+    "TrainerDDP",
+    "initialize_ddp",
+    "cleanup_ddp",
     # evaluation
     "DefaultEvaluator",
     "DefaultValidator",

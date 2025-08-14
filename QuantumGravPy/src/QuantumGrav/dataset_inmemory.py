@@ -9,7 +9,6 @@ import zarr
 # system imports and quality of life tools
 from pathlib import Path
 from collections.abc import Callable
-from typing import Any
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -20,7 +19,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
 
     def __init__(
         self,
-        input: list[str | Path] | Callable[[Any], dict],
+        input: list[str | Path],
         output: str | Path,
         mode: str = "hdf5",
         reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
@@ -38,7 +37,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         """Initialize a QGDatasetInMemory instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that can be loaded into memory completely.
 
         Args:
-            input (list[str  |  Path] | Callable[[Any], dict]): A list of file paths (as strings or Path objects) to the input data files, or a callable that returns a dictionary containing the input data.
+            input (list[str  |  Path]): A list of file paths (as strings or Path objects) to the input data files.
             output (str | Path): A file path (as a string or Path object) to the output data file.
             mode (str): File storage mode. 'zarr' or 'hdf5'
             reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to read the data from the input files. Defaults to None.

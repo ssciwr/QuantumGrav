@@ -1,9 +1,10 @@
-from typing import Callable, Any, Tuple
 import torch
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 
 from collections.abc import Collection
+from typing import Callable, Any, Tuple
+
 import numpy as np
 from pathlib import Path
 import logging
