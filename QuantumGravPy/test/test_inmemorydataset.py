@@ -6,14 +6,23 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 
 
+@pytest.mark.parametrize(
+    "create_data_fixture",
+    ["create_data_hdf5", "create_data_zarr"],
+    ids=["hdf5", "zarr"],
+)
 @pytest.mark.parametrize("n", [1, 3], ids=["sequential", "parallel"])
-def test_inmemory_dataset_creation_and_process(create_data_hdf5, read_data, n):
-    datadir, datafiles = create_data_hdf5
+def test_inmemory_dataset_creation_processing(
+    request, create_data_fixture, read_data, n
+):
+    create_data = request.getfixturevalue(create_data_fixture)
+    mode = "hdf5" if create_data_fixture == "create_data_hdf5" else "zarr"
+    datadir, datafiles = create_data
 
     dataset = QG.QGDatasetInMemory(
         input=datafiles,
         output=datadir,
-        mode="hdf5",
+        mode=mode,
         reader=read_data,
         float_type=torch.float32,
         int_type=torch.int64,
@@ -39,36 +48,6 @@ def test_inmemory_dataset_creation_and_process(create_data_hdf5, read_data, n):
     assert (Path(dataset.processed_dir) / "metadata.yaml").exists()
     assert len(dataset) == 15
     assert isinstance(dataset[5], Data)
-
-
-@pytest.mark.parametrize(
-    "create_data_fixture",
-    ["create_data_hdf5", "create_data_zarr"],
-    ids=["hdf5", "zarr"],
-)
-@pytest.mark.parametrize("n", [1, 3], ids=["sequential", "parallel"])
-def test_inmemory_dataset_creation_processing(
-    request, create_data_fixture, read_data, n
-):
-    create_data = request.getfixturevalue(create_data_fixture)
-
-    datadir, datafiles = create_data
-    mode = "hdf5" if create_data_fixture == "create_data_hdf5" else "zarr"
-
-    dataset = QG.QGDatasetInMemory(
-        input=datafiles,
-        output=datadir,
-        mode=mode,
-        reader=read_data,
-        float_type=torch.float32,
-        int_type=torch.int64,
-        validate_data=True,
-        n_processes=n,
-        chunksize=4,
-        transform=lambda x: x,
-        pre_transform=lambda x: x,
-        pre_filter=lambda x: True,
-    )
 
     loader = DataLoader(
         dataset,

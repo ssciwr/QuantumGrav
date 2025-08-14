@@ -32,6 +32,7 @@ def test_ondisk_dataset_creation_processing(request, create_data_fixture, read_d
     )
 
     assert dataset.input == datafiles
+    assert dataset.raw_file_names == [f.name for f in datafiles]
     assert dataset.output == datadir
     assert dataset.float_type == torch.float32
     assert dataset.int_type == torch.int64

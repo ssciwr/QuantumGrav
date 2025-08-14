@@ -124,7 +124,12 @@ class QGDatasetBase:
         Returns:
             list[str]: A list of raw file paths.
         """
-        return [str(Path(f).name) for f in self.input if Path(f).suffix == ".h5"]
+        if self.mode == "zarr":
+            suf = ".zarr"
+        else:
+            suf = ".h5"
+
+        return [str(Path(f).name) for f in self.input if Path(f).suffix == suf]
 
     @property
     def processed_file_names(self) -> list[str]:
@@ -184,7 +189,7 @@ class QGDatasetBase:
 
         results = []
         if self.n_processes > 1:
-            results = Parallel(n_jobs=self.n_processes)(
+            results = Parallel(n_jobs=self.n_processes, verbose=10)(
                 delayed(process_item)(datapoint) for datapoint in data
             )
         else:
@@ -227,7 +232,7 @@ class QGDatasetBase:
             return item
 
         if self.n_processes > 1:
-            results = Parallel(n_jobs=self.n_processes)(
+            results = Parallel(n_jobs=self.n_processes, verbose=10)(
                 delayed(process_item)(i)
                 for i in range(start, min(start + self.chunksize, N))
             )
