@@ -508,6 +508,6 @@ function make_data(
 
     if config["output_format"] == "hdf5"
         close(file)
-    end        # nothing to do for Zarr storage mode
+    end        # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
 
 end
