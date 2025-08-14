@@ -33,10 +33,8 @@ def initialize_ddp(
     Raises:
         RuntimeError: If the environment variables MASTER_ADDR and MASTER_PORT are already set.
     """
-    if "MASTER_ADDR" in os.environ or "MASTER_PORT" in os.environ:
-        raise RuntimeError(
-            "Environment variables MASTER_ADDR and MASTER_PORT are already set. Please unset them before initializing."
-        )
+    if dist.is_initialized():
+        raise RuntimeError("The distributed process group is already initialized.")
     os.environ["MASTER_ADDR"] = master_addr
     os.environ["MASTER_PORT"] = master_port
     dist.init_process_group(backend=backend, rank=rank, world_size=worldsize)
@@ -44,9 +42,10 @@ def initialize_ddp(
 
 def cleanup_ddp() -> None:
     """Clean up the distributed process group."""
-    dist.destroy_process_group()
-    del os.environ["MASTER_ADDR"]
-    del os.environ["MASTER_PORT"]
+    if dist.is_initialized():
+        dist.destroy_process_group()
+        os.environ.pop("MASTER_ADDR", None)
+        os.environ.pop("MASTER_PORT", None)
 
 
 class TrainerDDP(train.Trainer):
@@ -110,7 +109,7 @@ class TrainerDDP(train.Trainer):
         """
         model = gnn_model.GNNModel.from_config(self.config["model"])
 
-        if self.device == "cpu" or (
+        if self.device.type == "cpu" or (
             isinstance(self.device, torch.device) and self.device.type == "cpu"
         ):
             d_id = None
@@ -280,6 +279,14 @@ class TrainerDDP(train.Trainer):
             should_stop = self._check_model_status(
                 self.validator.data if self.validator else total_training_data,
             )
+
+            object_list = [should_stop]
+
+            should_stop = dist.broadcast_object_list(
+                object_list, src=0, device=self.device
+            )
+            should_stop = object_list[0]
+
             if should_stop:
                 break
 
