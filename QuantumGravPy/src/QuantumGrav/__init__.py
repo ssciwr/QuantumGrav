@@ -27,7 +27,8 @@ from .evaluate import (
     DefaultValidator,
 )
 
-from .train import Trainer, TrainerDDP, initialize_ddp, cleanup_ddp
+from .train import Trainer
+from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 
 __all__ = [
     # datasets
