@@ -82,7 +82,7 @@ function sample_bitarray_causet_by_connectivity(
     markov_steps::Int64,
     rng::Random.AbstractRNG;
     rel_tol::Union{Float64,Nothing} = nothing,
-    abs_tol::Union{Float64,Nothing} = Nothing,
+    abs_tol::Union{Float64,Nothing} = nothing,
 )
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
@@ -99,12 +99,7 @@ function sample_bitarray_causet_by_connectivity(
     end
 
     if abs_tol === nothing && rel_tol === nothing
-        throw(
-            ArgumentError(
-                "Either abs_tol or rel_tol must be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)",
-            ),
-        )
-    end
+        @info "Neither abs_tol nor rel_tol set, using markov_steps as stopping criterion."
 
     if abs_tol !== nothing && rel_tol !== nothing
         throw(
