@@ -105,3 +105,51 @@ def test_default_tester_report(caplog):
         # Test specific content
         assert f"Average loss: {expected_avg}" in caplog.text
         assert f"Standard deviation: {expected_std}" in caplog.text
+
+
+def test_default_early_stopping_creation():
+    """Test the DefaultEarlyStopping class."""
+    patience = 5
+    delta = 1e-4
+    window = 7
+
+    early_stopping = QG.DefaultEarlyStopping(patience, delta, window)
+
+    assert early_stopping.patience == patience
+    assert early_stopping.delta == delta
+    assert early_stopping.window == window
+
+
+def test_default_early_stopping_check(caplog):
+    """Test the check method of DefaultEarlyStopping."""
+    patience = 2
+    delta = 1e-4
+    window = 3
+
+    early_stopping = QG.DefaultEarlyStopping(patience, delta, window)
+    early_stopping.best_score = float("inf")
+
+    # Simulate some validation losses
+    losses = [0.1, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04]
+
+    with caplog.at_level(logging.INFO):
+        assert early_stopping(losses) is False  # Not enough data to decide
+        assert early_stopping.best_score != float("inf")  # Best score should be updated
+        assert early_stopping.current_patience == 2
+        assert (
+            "Early stopping patience reset: 2 -> 2, early stopping best score updated: "
+            in caplog.text
+        )
+
+    working_losses = [2 * x for x in losses]
+
+    with caplog.at_level(logging.INFO):
+        assert early_stopping(working_losses) is False  # Should trigger early stoppin
+        assert early_stopping.current_patience == 1  # Patience should be reset
+
+        assert "Early stopping patience decreased:" in caplog.text
+
+        assert early_stopping(working_losses) is True  # Should trigger early stoppin
+
+        assert early_stopping.current_patience == 0  # Patience should be exhausted
+        assert "Early stopping patience decreased: 1 -> 0" in caplog.text

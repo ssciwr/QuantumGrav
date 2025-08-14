@@ -8,11 +8,13 @@ import CausalSets
 import Distributions
 import YAML
 import HDF5
+import Zarr
 import ProgressMeter
 import Dates
 
 include("utils.jl")
 include("csetgeneration.jl")
+include("layeredgeneration.jl")
 include("datageneration.jl")
 
 export make_simple_cset,
@@ -22,6 +24,7 @@ export make_simple_cset,
     make_adj,
     max_pathlen,
     calculate_angles,
-    calculate_distances
-
+    calculate_distances,
+    gaussian_dist_cuts,
+    create_random_layered_causet
 end # module QuantumGrav

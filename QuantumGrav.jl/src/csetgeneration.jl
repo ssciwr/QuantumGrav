@@ -23,6 +23,7 @@ function make_simple_cset(
     boundary::String,
     n::Int64,
     d::Int,
+    markov_iter::Int,
     rng::Random.AbstractRNG;
     type::Type{T} = Float32,
 ) where {T<:Number}
@@ -31,7 +32,12 @@ function make_simple_cset(
 
     if manifold isa PseudoManifold
         # create a pseudosprinkling in a n-d euclidean space for a non-manifold like causalset
-        return CausalSets.sample_random_causet(CausalSets.BitArrayCauset, n, 300, rng),
+        return CausalSets.sample_random_causet(
+            CausalSets.BitArrayCauset,
+            n,
+            markov_iter,
+            rng,
+        ),
         stack(make_pseudosprinkling(n, d, -1.0, 1.0, type; rng = rng), dims = 1)
     else
         sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng = rng)
@@ -138,6 +144,7 @@ Generates a causal set based on a random choice between a manifold-like distribu
 - `order`: Order of the Chebyshev expansion for the manifold like csets.
 - `r`: Decay base for Chebyshev coefficients.
 - `d`: Dimension of the manifold (must be 2).
+- `markov_iter`: Number of iterations for the Markov chain when generating a random causet.
 - `type`: Type to which the sprinkling coordinates will be converted.
 
 # Returns:
@@ -155,6 +162,7 @@ function make_general_cset(
     order::Int64,
     r::Float64,
     d::Int64,
+    markov_iter::Int,
     type::Type{T},
 )::Tuple{CausalSets.BitArrayCauset,Matrix{T},Matrix{T},Int64} where {T<:Number}
 
@@ -172,7 +180,12 @@ function make_general_cset(
             make_manifold_cset(npoints, rng, order, r; d = d, type = type)
 
     else
-        cset = CausalSets.sample_random_causet(CausalSets.BitArrayCauset, npoints, 300, rng) # markov expansion big enough?
+        cset = CausalSets.sample_random_causet(
+            CausalSets.BitArrayCauset,
+            npoints,
+            markov_iter,
+            rng,
+        )
         sprinkling = make_pseudosprinkling(npoints, d, -1.0, 1.0, type; rng = rng)
         chebyshev_coefs = zeros(order, order) # pseudo-coefficients, not used in this case
     end

@@ -4,6 +4,7 @@ import torch
 
 # data handling
 import h5py
+import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
@@ -21,6 +22,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         self,
         input: list[str | Path] | Callable[[Any], dict],
         output: str | Path,
+        mode: str = "hdf5",
         reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
         float_type: torch.dtype = torch.float32,
@@ -38,6 +40,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         Args:
             input (list[str  |  Path] | Callable[[Any], dict]): A list of file paths (as strings or Path objects) to the input data files, or a callable that returns a dictionary containing the input data.
             output (str | Path): A file path (as a string or Path object) to the output data file.
+            mode (str): File storage mode. 'zarr' or 'hdf5'
             reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to read the data from the input files. Defaults to None.
             float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
             int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
@@ -52,6 +55,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
             self,
             input,
             output,
+            mode,
             reader=reader,
             float_type=float_type,
             int_type=int_type,
@@ -72,30 +76,45 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
 
     def process(self) -> None:
         """Process the dataset from the read rawdata into its final form."""
+
         data_list = []
+
         for file in self.input:
-            with h5py.File(str(Path(file).resolve().absolute()), "r") as raw_file:
-                # read the data in chunks and process it parallelized or
-                # sequentially based on the parallel_processing flag
+            if self.mode == "hdf5":
+                raw_file = h5py.File(str(Path(file).resolve().absolute()), "r")
                 num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
 
-                for i in range(0, num_chunks * self.chunksize, self.chunksize):
-                    data = self.process_chunk(
-                        raw_file,
-                        i,
-                        pre_transform=self.pre_transform,
-                        pre_filter=self.pre_filter,
-                    )
+            else:
+                raw_file = zarr.storage.LocalStore(
+                    str(Path(file).resolve().absolute()), read_only=True
+                )
+                root = zarr.open_group(raw_file, path="", mode="r")
+                N = int(root["num_samples"][0])
+                num_chunks = N // self.chunksize
 
-                    data_list.extend(data)
+            # read the data in chunks and process it parallelized or
+            # sequentially based on the parallel_processing flag
 
-                # final chunk processing
+            for i in range(0, num_chunks * self.chunksize, self.chunksize):
                 data = self.process_chunk(
                     raw_file,
-                    num_chunks * self.chunksize,
+                    i,
                     pre_transform=self.pre_transform,
                     pre_filter=self.pre_filter,
                 )
 
                 data_list.extend(data)
+
+            # final chunk processing
+            data = self.process_chunk(
+                raw_file,
+                num_chunks * self.chunksize,
+                pre_transform=self.pre_transform,
+                pre_filter=self.pre_filter,
+            )
+
+            data_list.extend(data)
+
+            raw_file.close()
+
         InMemoryDataset.save(data_list, Path(self.processed_dir) / "data.pt")
