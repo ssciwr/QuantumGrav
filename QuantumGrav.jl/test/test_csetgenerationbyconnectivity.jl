@@ -19,7 +19,9 @@ end
     @test length(cset.future_relations) == 2^10
     @test length(cset.past_relations) == 2^10
     @test abs(CausalSets.count_relations(cset) / (cset.atom_count * (cset.atom_count - 1) / 2) - connectivity_goal) < 0.01 # connectivity has indeed reached connectivity_goal to withn abs_tol
+end
 
+@testitem "test_simple_cset_by_connectivity_throws" tags = [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivity] begin
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(-1, .5, 20, rng; abs_tol = 0.01)
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(2^7, -.5, 20, rng; abs_tol = 0.01)
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(2^7, 1.1, 20, rng; abs_tol = 0.01)

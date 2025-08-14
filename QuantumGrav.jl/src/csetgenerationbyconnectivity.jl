@@ -1,8 +1,7 @@
-
 """
 # `flip_param_determiner`
 
-A 2D spline interpolator (from `Dierckx.jl`) that maps a given `(connectivity_goal, size)` pair to an estimated `flip_param`.
+A 2D spline interpolator that maps a given `(connectivity_goal, size)` pair to an estimated `flip_param`.
 
 # input
 - `connectivity_goal` (`Float64`): target connectivity ratio in `[0,1]`.
@@ -11,12 +10,49 @@ A 2D spline interpolator (from `Dierckx.jl`) that maps a given `(connectivity_go
 # Returns 
 - interpolated `flip_param` (`Float64`).
 
-This spline is built on a full grid from `optim_values.csv` with shape `(13, 6)`, using `kx=1, ky=1` (piecewise-linear) and `s=0.0` (exact interpolation).
+This piecewise-linear, exact spline is built on a full grid with shape `(13, 6)`.
 """
+const grid_connectivity_goal = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.91, 0.95, 0.99]  # connectivity_goal grid (ascending)
+const grid_size = [128, 256, 512, 1024, 2048, 4096]  # size grid (ascending)
+const grid_flip_param  = [
+    0.05  0.04  0.025 0.015 0.013 0.012;
+    0.03  0.035 0.026 0.016 0.013 0.007;
+    0.02  0.03  0.023 0.012 0.01  0.005;
+    0.025 0.02  0.024 0.015 0.01  0.006;
+    0.025 0.025 0.025 0.02  0.014 0.008;
+    0.03  0.035 0.03  0.025 0.015 0.008;
+    0.06  0.04  0.04  0.027 0.016 0.009;
+    0.1   0.07  0.05  0.032 0.019 0.01;
+    0.17  0.1   0.065 0.042 0.025 0.014;
+    0.27  0.18  0.11  0.07  0.04  0.025;
+    0.28  0.19  0.125 0.075 0.045 0.027;
+    0.45  0.32  0.19  0.11  0.07  0.047;
+    1.2   0.7   0.45  0.3   0.3   0.2
+]
 
-values = CSV.read(joinpath(@__DIR__,"optim_values.csv"), DataFrames.DataFrame);
-flip_param_determiner = Dierckx.Spline2D(sort(unique(values.connectivity_goal)), sort(unique(values.size)), reshape(values.flip_param,(13,6)); kx=1, ky=1, s=0.0);
+# Fixed flip_param_determiner (piecewise-bilinear interpolation).
+# Clamps out-of-range queries to the nearest grid boundaries.
+# Inputs: connectivity_goal::Float64 in [0,1], size::Int64 (number of nodes)
+# Returns: Float64 flip_param
+@inline function flip_param_determiner(connectivity_goal::Float64, size::Int64)::Float64
+    x = clamp(connectivity_goal, grid_connectivity_goal[1], grid_connectivity_goal[end])
+    y = clamp(Float64(size), grid_size[1], grid_size[end])
 
+    i = clamp(searchsortedlast(grid_connectivity_goal, x), 1, length(grid_connectivity_goal)-1)
+    j = clamp(searchsortedlast(grid_size, y), 1, length(grid_size)-1)
+
+    x1 = grid_connectivity_goal[i];   x2 = grid_connectivity_goal[i+1]
+    y1 = grid_size[j];   y2 = grid_size[j+1]
+    tx = x2 == x1 ? 0.0 : (x - x1) / (x2 - x1)
+    ty = y2 == y1 ? 0.0 : (y - y1) / (y2 - y1)
+
+    z11 = grid_flip_param[i, j]
+    z21 = grid_flip_param[i+1, j]
+    z12 = grid_flip_param[i, j+1]
+    z22 = grid_flip_param[i+1, j+1]
+
+    return (1-tx)*(1-ty)*z11 + tx*(1-ty)*z21 + (1-tx)*ty*z12 + tx*ty*z22
+end
 """ 
 Sample a causet with given connectivity using a Markov Chain Monte Carlo method with adaptive number of edge flips.
 
@@ -33,7 +69,7 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - A bitarray causet sampled according to the connectivity goal.
 """
 
-function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::Float64, markov_steps::Int64, rng::Random.AbstractRNG; rel_tol::Union{Float64,Nothing}=nothing, abs_tol::Union{Float64,Nothing}=0.01)
+function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::Float64, markov_steps::Int64, rng::Random.AbstractRNG; rel_tol::Float64=0., abs_tol::Float64=0.01)
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
     end
@@ -63,12 +99,9 @@ function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::
     # Start from empty graphs if connectivity goal is low
     graph = CausalSets.empty_graph(size)
     tcg = CausalSets.empty_graph(size)
-    trg = CausalSets.empty_graph(size)
     tcg_new = CausalSets.empty_graph(size)
-    trg_new = CausalSets.empty_graph(size)
 
-    # Compute initial transitive closure and connectivity
-    CausalSets.transitive_closure!(graph, tcg)
+    # Compute initial connectivity
     prev_connectivity = CausalSets.count_edges(tcg) / (size * (size - 1) / 2)
 
     step = 1
@@ -79,26 +112,20 @@ function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::
         i = [rand(rng, 1:size-1) for flip in 1:flips_per_step]
         j = [rand(rng, i[flip]+1:size) for flip in 1:flips_per_step]
         # Store previous edge states for possible rollback
-        prev_edge = [graph.edges[i[flip]][j[flip]] for flip in 1:flips_per_step]
+        prev_edges = [graph.edges[i[flip]][j[flip]] for flip in 1:flips_per_step]
         
         # Flip selected edges
         for flip in 1:flips_per_step
-            graph.edges[i[flip]][j[flip]] = !prev_edge[flip]
+            graph.edges[i[flip]][j[flip]] = !prev_edges[flip]
         end
 
-        # Check if transitive closure needs to be recomputed
-        if any([prev_edge[flip] || !tcg.edges[i[flip]][j[flip]] for flip in 1:flips_per_step])
-            CausalSets.transitive_closure!(graph, tcg_new)
-        end
-        
+        # Restore transitivity
+        CausalSets.transitive_closure!(graph, tcg_new)
+
         # Compute new connectivity after flips
         new_connectivity = CausalSets.count_edges(tcg_new)/(size*(size-1)/2)
         
-        if !isnothing(abs_tol) && abs(new_connectivity - connectivity_goal) < abs_tol
-            return CausalSets.to_bitarray_causet(tcg_new)
-        end
-
-        if !isnothing(rel_tol) && abs(new_connectivity - connectivity_goal) / connectivity_goal < rel_tol
+        if abs(new_connectivity - connectivity_goal) < abs_tol || abs(new_connectivity - connectivity_goal) / connectivity_goal < rel_tol
             return CausalSets.to_bitarray_causet(tcg_new)
         end
 
@@ -109,8 +136,8 @@ function sample_bitarray_causet_by_connectivity(size::Int64, connectivity_goal::
             prev_connectivity = new_connectivity
         else
             # Reject the modification: revert flipped edges
-            for flip in 1:flips_per_step
-                graph.edges[i[flip]][j[flip]] = prev_edge[flip]
+            for flip in flips_per_step
+                graph.edges[i[flip]][j[flip]]  = prev_edges[flip]
             end
         end
         step += 1
