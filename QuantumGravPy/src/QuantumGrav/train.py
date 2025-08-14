@@ -25,7 +25,8 @@ class Trainer:
         criterion: Callable,
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        early_stopping: Callable[[list[dict[str, Any]] | torch.Tensor], bool]
+        | None = None,
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
@@ -112,7 +113,7 @@ class Trainer:
         #     self.logger.error(f"Error initializing model: {e}")
         #     return None
 
-    def initialize_optimizer(self) -> torch.optim.Optimizer:
+    def initialize_optimizer(self) -> torch.optim.Optimizer | None:
         """Initialize the optimizer for training.
 
         Raises:
@@ -170,7 +171,7 @@ class Trainer:
         )
 
         train_loader = DataLoader(
-            self.train_dataset,
+            self.train_dataset,  # type: ignore
             batch_size=self.config["training"]["batch_size"],
             num_workers=self.config["training"].get("num_workers", 0),
             pin_memory=self.config["training"].get("pin_memory", True),
@@ -179,7 +180,7 @@ class Trainer:
         )
 
         val_loader = DataLoader(
-            self.val_dataset,
+            self.val_dataset,  # type: ignore
             batch_size=self.config["validation"]["batch_size"],
             num_workers=self.config["validation"].get("num_workers", 0),
             pin_memory=self.config["validation"].get("pin_memory", True),
@@ -188,7 +189,7 @@ class Trainer:
         )
 
         test_loader = DataLoader(
-            self.test_dataset,
+            self.test_dataset,  # type: ignore
             batch_size=self.config["testing"]["batch_size"],
             num_workers=self.config["testing"].get("num_workers", 0),
             pin_memory=self.config["testing"].get("pin_memory", True),
@@ -230,7 +231,7 @@ class Trainer:
         model: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         train_loader: DataLoader,
-    ) -> list[Any]:
+    ) -> torch.Tensor:
         """Run a single training epoch.
 
         Args:
@@ -242,7 +243,7 @@ class Trainer:
             RuntimeError: If the optimizer is not initialized.
 
         Returns:
-            list[Any]: The training loss for each batch.
+            torch.Tensor: The training loss for each batch stored in a torch.Tensor
         """
 
         if model is None:
@@ -251,27 +252,36 @@ class Trainer:
         if optimizer is None:
             raise RuntimeError("Optimizer must be initialized before training.")
 
+        #
         output_size = len(self.config["model"]["classifier"]["output_dims"])
+
         losses = torch.zeros(
             len(train_loader), output_size, dtype=torch.float32, device=self.device
         )
+
         # training run
         for i, batch in enumerate(
             tqdm.tqdm(train_loader, desc=f"Training Epoch {self.epoch}")
         ):
             optimizer.zero_grad()
             self.logger.debug(f"  Moving batch to device: {self.device}")
+
             data = batch.to(self.device)
             outputs = self._evaluate_batch(model, data)
+
             self.logger.debug("  Computing loss")
             loss = self.criterion(outputs, data)
+
             self.logger.debug(f"  Backpropagating loss: {loss.item()}")
             loss.backward()
+
             optimizer.step()
+
             losses[i, :] = loss
+
         return losses
 
-    def _check_model_status(self, eval_data: list[Any]) -> bool:
+    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
         """Check the status of the model during training.
 
         Args:
@@ -299,7 +309,7 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
-    ) -> Tuple[Collection[Any], Collection[Any]]:
+    ) -> Tuple[torch.Tensor, Collection[Any]]:
         """Run the training process.
 
         Args:
@@ -314,16 +324,26 @@ class Trainer:
         num_epochs = self.config["training"]["num_epochs"]
 
         self.model = self.initialize_model()
+
         optimizer = self.initialize_optimizer()
+
+        if optimizer is None:
+            raise AttributeError(
+                "Error, optimizer must be successfully initialized before running training"
+            )
+
         total_training_data = torch.zeros(num_epochs, 2, dtype=torch.float32)
+
         for epoch in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
+
             self.model.train()
+
             epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
 
             # collect mean and std for each epoch
             total_training_data[epoch, :] = torch.Tensor(
-                [epoch_data.mean(dim=0), epoch_data.std(dim=0)]
+                [epoch_data.mean(dim=0).item(), epoch_data.std(dim=0).item()]
             )
 
             self.logger.info(

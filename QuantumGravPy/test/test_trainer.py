@@ -113,7 +113,7 @@ class DummyEvaluator:
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
-    loss = torch.nn.MSELoss()(x[0], data.y.to(torch.float32))
+    loss = torch.nn.MSELoss()(x[0], data.y.to(torch.float32))  # type: ignore
     return loss
 
 
@@ -212,14 +212,17 @@ def test_trainer_prepare_dataloader(make_dataset, config):
 
     for batch in train_loader:
         assert isinstance(batch, Data)
+        assert batch.x is not None
         assert batch.x.shape == (60, 2)
 
     for batch in val_loader:
         assert isinstance(batch, Data)
+        assert batch.x is not None
         assert batch.x.shape == (15, 2)
 
     for batch in test_loader:
         assert isinstance(batch, Data)
+        assert batch.x is not None
         assert batch.x.shape == (15, 2)
 
 
@@ -253,6 +256,8 @@ def test_trainer_train_epoch(make_dataset, config):
     )
     trainer.initialize_model()
     trainer.initialize_optimizer()
+    assert trainer.model is not None
+    assert trainer.optimizer is not None
 
     train_loader, _, _ = trainer.prepare_dataloaders(
         make_dataset, split=[0.8, 0.1, 0.1]
@@ -313,6 +318,9 @@ def test_trainer_load_checkpoint(config):
     )
 
     trainer.initialize_model()
+
+    assert trainer.model is not None
+
     trainer.save_checkpoint()
 
     original_weights = [param.clone() for param in trainer.model.parameters()]
@@ -381,6 +389,9 @@ def test_trainer_run_training(make_dataset, config):
     trainer.initialize_model()
     trainer.initialize_optimizer()
 
+    assert trainer.validator is not None
+    assert trainer.model is not None
+
     test_loader, validation_loader, _ = trainer.prepare_dataloaders(
         make_dataset, split=[0.8, 0.1, 0.1]
     )
@@ -401,7 +412,7 @@ def test_trainer_run_training(make_dataset, config):
 
     assert valid_data is not None  # has no validator
     assert len(valid_data) == config["training"]["num_epochs"]
-    assert len(training_data) == config["training"]["num_epochs"]
+    assert training_data.shape[0] == config["training"]["num_epochs"]
     assert len(trainer.validator.data) == config["training"]["num_epochs"]
 
 
@@ -414,6 +425,7 @@ def test_trainer_run_test(make_dataset, config):
         validator=None,
         tester=DummyEvaluator(),  # type: ignore
     )
+    assert trainer.tester is not None
     trainer.initialize_model()
     trainer.initialize_optimizer()
 

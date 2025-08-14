@@ -24,7 +24,9 @@ class DefaultEvaluator:
         self.logger = logging.getLogger(__name__)
 
     def evaluate(
-        self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
+        self,
+        model: torch.nn.Module,
+        data_loader: torch_geometric.loader.DataLoader,  # type: ignore
     ) -> Any:
         """Evaluate the model on the given data loader.
 
@@ -50,7 +52,7 @@ class DefaultEvaluator:
 
         return current_data
 
-    def report(self, data: list | pd.Series | torch.Tensor) -> None:
+    def report(self, data: list | pd.Series | torch.Tensor | np.ndarray) -> None:
         """Report the evaluation results to stdout"""
 
         if isinstance(data, torch.Tensor):
@@ -60,7 +62,6 @@ class DefaultEvaluator:
             for i, d in enumerate(data):
                 if isinstance(d, torch.Tensor):
                     data[i] = d.cpu().numpy()
-                    data[i] = d.to_numpy()
 
         avg = np.mean(data)
         sigma = np.std(data)
@@ -82,7 +83,9 @@ class DefaultTester(DefaultEvaluator):
         super().__init__(device, criterion, apply_model)
 
     def test(
-        self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
+        self,
+        model: torch.nn.Module,
+        data_loader: torch_geometric.loader.DataLoader,  # type: ignore
     ):
         """Test the model on the given data loader.
 
@@ -103,7 +106,9 @@ class DefaultValidator(DefaultEvaluator):
         super().__init__(device, criterion, apply_model)
 
     def validate(
-        self, model: torch.nn.Module, data_loader: torch_geometric.loader.DataLoader
+        self,
+        model: torch.nn.Module,
+        data_loader: torch_geometric.loader.DataLoader,  # type: ignore
     ):
         """Validate the model on the given data loader.
 
