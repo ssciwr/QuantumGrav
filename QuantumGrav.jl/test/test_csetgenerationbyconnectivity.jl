@@ -4,9 +4,6 @@ using TestItems
     using QuantumGrav
     using CausalSets
     using Random
-    using CSV
-    using DataFrames
-    using Dierckx
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)

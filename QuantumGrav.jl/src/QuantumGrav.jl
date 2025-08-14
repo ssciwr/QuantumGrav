@@ -10,9 +10,6 @@ import YAML
 import HDF5
 import ProgressMeter
 import Dates
-import DataFrames
-import CSV
-import Dierckx
 
 include("utils.jl")
 include("csetgeneration.jl")
