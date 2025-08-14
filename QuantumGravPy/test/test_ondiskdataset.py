@@ -6,12 +6,20 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 
+@pytest.mark.parametrize(
+    "create_data_fixture",
+    ["create_data_hdf5", "create_data_zarr"],
+    ids=["hdf5", "zarr"],
+)
 @pytest.mark.parametrize("n", [1, 3], ids=["sequential", "parallel"])
-def test_ondisk_dataset_creation_processing(create_data, read_data, n):
+def test_ondisk_dataset_creation_processing(request, create_data_fixture, read_data, n):
+    create_data = request.getfixturevalue(create_data_fixture)
+    mode = "hdf5" if create_data_fixture == "create_data_hdf5" else "zarr"
     datadir, datafiles = create_data
     dataset = QG.QGDataset(
         input=datafiles,
         output=datadir,
+        mode=mode,
         reader=read_data,
         float_type=torch.float32,
         int_type=torch.int64,
@@ -38,8 +46,8 @@ def test_ondisk_dataset_creation_processing(create_data, read_data, n):
     assert isinstance(dataset[5], Data)
 
 
-def test_ondisk_dataset_with_dataloader(create_data, read_data):
-    datadir, datafiles = create_data
+def test_ondisk_dataset_with_dataloader(create_data_hdf5, read_data):
+    datadir, datafiles = create_data_hdf5
     dataset = QG.QGDataset(
         input=datafiles,
         output=datadir,
@@ -66,8 +74,8 @@ def test_ondisk_dataset_with_dataloader(create_data, read_data):
         assert len(batch) == 2 if i < 7 else 1  # Last batch may be smaller
 
 
-def test_ondisk_dataset_get(create_data, read_data):
-    datadir, datafiles = create_data
+def test_ondisk_dataset_get(create_data_hdf5, read_data):
+    datadir, datafiles = create_data_hdf5
     dataset = QG.QGDataset(
         input=datafiles,
         output=datadir,

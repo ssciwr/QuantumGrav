@@ -24,11 +24,10 @@ docs/site/
 Manifest.toml
 
 # Python stuff
-
 .venv
 *.pyc 
 __pycache__/
-.venv/
+*/.venv
 settings.json
 
 # macOS specific files
@@ -50,3 +49,6 @@ data/
 
 # coverage files
 .coverage*
+
+# ignor experimental dir 
+*/experimental/*
