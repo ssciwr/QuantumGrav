@@ -35,9 +35,10 @@ def initialize_ddp(
     """
     if dist.is_initialized():
         raise RuntimeError("The distributed process group is already initialized.")
-    os.environ["MASTER_ADDR"] = master_addr
-    os.environ["MASTER_PORT"] = master_port
-    dist.init_process_group(backend=backend, rank=rank, world_size=worldsize)
+    else:
+        os.environ["MASTER_ADDR"] = master_addr
+        os.environ["MASTER_PORT"] = master_port
+        dist.init_process_group(backend=backend, rank=rank, world_size=worldsize)
 
 
 def cleanup_ddp() -> None:
