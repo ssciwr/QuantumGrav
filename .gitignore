@@ -50,3 +50,6 @@ data/
 
 # coverage files
 .coverage*
+
+# experimental stuff 
+**/experimental/*

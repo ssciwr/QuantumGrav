@@ -14,6 +14,7 @@ NetworkLayout = "46757867-2c16-5918-afeb-47bfcb05e46a"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [sources]
@@ -30,4 +31,5 @@ NetworkLayout = "0.4.10"
 ProgressMeter = "1.10.4"
 Random = "1.11.0"
 SparseArrays = "1.11.0"
+StatsBase = "0.34.6"
 YAML = "0.4.14"

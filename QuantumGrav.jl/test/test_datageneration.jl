@@ -1,24 +1,24 @@
 using TestItems
 
 @testsnippet importModules begin
-    using QuantumGrav: QuantumGrav
-    using CausalSets: CausalSets
-    using SparseArrays: SparseArrays
-    using Distributions: Distributions
-    using Random: Random
-    using Graphs: Graphs
-    using HDF5: HDF5
-    using YAML: YAML
+    using QuantumGrav
+    using CausalSets
+    using SparseArrays
+    using Distributions
+    using Random
+    using Graphs
+    using HDF5
+    using YAML
 end
 
 @testsnippet makeData begin
-    using CausalSets: CausalSets
-    using QuantumGrav: QuantumGrav
-    using SparseArrays: SparseArrays
-    using Distributions: Distributions
-    using Graphs: Graphs
-    using HDF5: HDF5
-    using YAML: YAML
+    using CausalSets
+    using QuantumGrav
+    using SparseArrays
+    using Distributions
+    using Graphs
+    using HDF5
+    using YAML
 
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()

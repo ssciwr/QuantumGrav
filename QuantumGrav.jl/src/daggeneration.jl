@@ -1,0 +1,274 @@
+
+"""
+    transitive_closure!(mat::Vector{BitVector})
+
+Compute the transitive closure of a DAG represented by vector of future relations `mat` by
+successively adding reachable nodes in the future of a node to it'
+"""
+function transitive_closure!(mat::Vector{BitVector})::Nothing
+    n = length(mat)
+    @inbounds for i = 1:n
+        for j = (i+1):n  # only look at future nodes
+            if mat[i][j]
+                mat[i] .|= mat[j] # OR operation to include all reachable nodes from node j --> adding the future
+            end
+        end
+    end
+end
+
+"""
+    transitive_closure!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
+
+Compute the transitive closure of a DAG represented by vector of future relations `mat` by
+successively adding reachable nodes in the future of a node to it'
+"""
+function transitive_closure!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})::Nothing
+    n = length(mat)
+    @inbounds for i = 1:n
+        for j = (i+1):n  # only look at future nodes
+            if mat[i][j]
+                mat[i] .= mat[i] .|| mat[j] # OR operation to include all reachable nodes from node j --> adding the future
+            end
+        end
+    end
+end
+
+"""
+    transitive_reduction!(mat::Vector{BitVector})
+
+Compute the transitive reduction of a DAG represented by vector of bitvectors `mat` representing the downstream connections/future relations of a DAG. By
+removing intermediate nodes in the future of a node that are reachable from the past of that node via the node itself.
+This function modifies the input matrix in place.
+The matrix `mat` is assumed to be in topological order, i.e., the rows
+and columns correspond to the nodes in a topological order.
+"""
+function transitive_reduction!(mat::Vector{BitVector})
+    n = length(mat)
+    @inbounds for i = 1:n
+        for j = (i+1):n
+            if mat[i][j]
+                # If any intermediate node k exists with i → k and k → j, remove i → j
+                for k = (i+1):(j-1)
+                    if mat[i][k] && mat[k][j]
+                        mat[i][j] = false # remove intermediate nodes
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+"""
+    transitive_reduction!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
+
+Compute the transitive reduction of a DAG represented by vector of bitvectors `mat` representing the downstream connections/future relations of a DAG. By
+removing intermediate nodes in the future of a node that are reachable from the past of that node via the node itself.
+This function modifies the input matrix in place.
+The matrix `mat` is assumed to be in topological order, i.e., the rows
+and columns correspond to the nodes in a topological order.
+"""
+function transitive_reduction!(mat::Vector{SparseArrays.SparseVector{Int64,Int64}})
+    n = length(mat)
+    @inbounds for i = 1:n
+        for j = (i+1):n
+            if mat[i][j] == 1
+                # If any intermediate node k exists with i → k and k → j, remove i → j
+                for k = (i+1):(j-1)
+                    if mat[i][k] == 1 && mat[k][j] == 1
+                        mat[i][j] = 0 # remove intermediate nodes
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+"""
+    mat_to_cs(adj::Vector{BitVector})
+
+Convert a graph given by the matrix `adj`, assumed to be a transitively closed 
+DAG, to a `CausalSets.BitArrayCauset`.
+The matrix `adj` is assumed to be in topological order, i.e., the rows
+and columns correspond to the nodes in a topological order.
+
+# Arguments:
+- `adj`: A `BitMatrix` representing the adjacency matrix of a DAG.
+
+# Returns:
+- A `CausalSets.BitArrayCauset` constructed from the adjacency matrix.
+"""
+function mat_to_bit_cs(adj::Vector{BitVector})::CausalSets.BitArrayCauset
+    n = length(adj)
+    future_relations = Vector{BitVector}(undef, n)
+    past_relations = Vector{BitVector}(undef, n)
+
+    # assume topological ordering
+    for node_idx = 1:n
+        future_relations[node_idx] = adj[node_idx]
+        past_relations[node_idx] = [adj[i][node_idx] for i = 1:n]
+    end
+
+    return CausalSets.BitArrayCauset(n, future_relations, past_relations)
+end
+
+"""
+    mat_to_cs(adj::SparseMatrixCSC)
+
+Convert a graph given by the sparse matrix `adj`, assumed to be a transitively closed
+DAG, to a `CausalSets.SparseArrayCauset`.
+The matrix `adj` is assumed to be in topological order, i.e., the rows
+and columns correspond to the nodes in a topological order. 
+
+# Arguments:
+- `adj`: A `SparseMatrixCSC` representing the adjacency matrix of a DAG.
+
+# Returns:
+- A `CausalSets.SparseArrayCauset` constructed from the adjacency matrix.
+"""
+function mat_to_sparse_cs(adj::Vector{BitVector})::CausalSets.SparseArrayCauset
+    n = length(adj)
+    future_relations = Vector{SparseArrays.SparseVector{Int64}}(undef, n)
+    past_relations = Vector{SparseArrays.SparseVector{Int64}}(undef, n)
+
+    nodelist = 1:n  # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
+    for node_idx in nodelist
+        future_relations[node_idx] = SparseArrays.sparse(adj[node_idx])
+        past_relations[node_idx] = SparseArrays.sparse([adj[i][node_idx] for i = 1:n])
+    end
+
+    return CausalSets.SparseArrayCauset(n, future_relations, past_relations)
+end
+
+"""
+    create_random_cset_from_dag(atom_count::Int64, future_deg::Function, link_prob::Function, rng::Random.AbstractRNG; type::Type{T})
+
+Create a random causal set with `atom_count` atoms, where the in-degree and link probabilities are defined by the provided functions.
+
+# Arguments:
+- `atom_count`: The number of atoms in the causal set.
+- `future_deg`: A function that takes the random number generator, the current node index, the past nodes, and the total number of atoms, and returns the future degree of a node, i.e., to how many future nodes it should connect. 
+Signature: future_deg(rng, current_node_toporder_index, (i+1):atom_count, atom_count)::Int64
+- `link_prob`: A function that takes the random number generator, the current node index, the past nodes, and returns the link probability for a node to connect to any 'future' node (ahead of it in the topological order). This is an unnormalized probability, i.e., it does not need to sum to 1.
+Signature: link_prob(rng, node_toporder_index_i, node_toporder_index_j, future_connection_number)::Float64
+- `rng`: A random number generator.
+- `type`: The type of causal set to create (either `CausalSets.SparseArrayCauset` or `CausalSets.BitArrayCauset`).
+
+
+# Returns:
+- A tuple `(cset, adj)` where:
+  - `cset`: The generated causal set.
+  - `adj`: The adjacency matrix of the causal set. This is transitively closed, i.e., contains all transitive links in order to represent the full causal set
+"""
+function create_random_cset_from_dag(
+    atom_count::Int64,
+    future_deg::Function,
+    link_prob::Function,
+    rng::Random.AbstractRNG;
+    type::Type{T} = CausalSets.BitArrayCauset,
+    parallel::Bool = false,
+) where {T<:CausalSets.AbstractCauset}
+    if atom_count <= 0
+        throw(ArgumentError("n_atoms must be greater than 0, got $atom_count"))
+    end
+
+
+    """Create a single row in the DAG via side effects"""
+    function create_row(i, row, rng, raw_weights)
+
+        possible_node_number = atom_count - (i+1)
+
+        if possible_node_number <= 0
+            return
+        end
+
+        future_connection_number =
+            min(future_deg(rng, i, (i+1):atom_count, atom_count), possible_node_number)
+
+        if !(future_connection_number isa Int)
+            throw(
+                TypeError(
+                    Symbol(future_deg),
+                    "future_deg must return an int",
+                    Int,
+                    typeof(future_connection_number),
+                ),
+            )
+        end
+
+        if future_connection_number == 0
+            return
+        end
+
+        tmp = link_prob(rng, 1, 2, future_connection_number)
+
+        if !(tmp isa Float64)
+            throw(
+                TypeError(
+                    Symbol(link_prob),
+                    "link_prob must return a Float64",
+                    Float64,
+                    typeof(tmp),
+                ),
+            )
+        end
+
+        for j = (i+1):atom_count
+            raw_weights[j] = link_prob(rng, i, j, future_connection_number)
+        end
+
+        rw = @view raw_weights[(i+1):atom_count]
+
+        sum_rw = sum(rw)
+
+        weights = StatsBase.Weights(rw, sum_rw)
+
+        # Sample future connections based on the weights and assign them in the adjacency matrix. This will result in the presence of some transitive edges, but not all of them. 
+        # In order to reliably transitively reduce this DAG, we must hence first transitively close it. --> see below
+        oe = StatsBase.sample(
+            rng,
+            (i+1):atom_count,
+            weights,
+            future_connection_number;
+            replace = false,
+        )
+        row[oe] .= true
+        rw .= 0.0 # reset weights for the next iteration
+
+    end
+
+    # we interpret the random ordering as a topo-order and continue building the causet from there
+
+    nodelist = 1:atom_count # assume this to be a topological ordering of the nodes. This is fine, because for generation, any strong ordering will do.
+
+    adj = [falses(atom_count) for _ = 1:atom_count]
+
+    if parallel
+
+        rngs = [Random.Xoshiro(rand(rng, 1:10000000)) for _ = 1:Threads.nthreads()]
+
+        raw_weights = [zeros(Float64, atom_count) for _ = 1:Threads.nthreads()] # preallocate weights for each thread
+
+        Threads.@threads for i in nodelist
+            t = Threads.threadid()
+            create_row(i, adj[i], rngs[t], raw_weights[t])
+        end
+    else
+        raw_weights = zeros(Float64, atom_count)  # preallocate weights for 
+
+        for i in nodelist
+            create_row(i, adj[i], rng, raw_weights)
+        end
+    end
+
+    # make true adj matrix including missing transitives. This will result in the existing transitives being added again, but this is fine wrt correctness because they will just be a no-op.
+
+    transitive_closure!(adj)
+
+    if type == CausalSets.SparseArrayCauset
+        return mat_to_sparse_cs(adj)
+    else
+        return mat_to_bit_cs(adj)
+    end
+end
