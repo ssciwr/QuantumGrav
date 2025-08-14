@@ -240,7 +240,7 @@ class QGDatasetBase:
 
     def process_chunk(
         self,
-        store: zarr.storage.LocalStore,
+        store: zarr.storage.LocalStore | h5py.File,
         start: int,
         pre_transform: Callable[[Data], Data] | None = None,
         pre_filter: Callable[[Data], bool] | None = None,

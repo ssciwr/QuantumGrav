@@ -4,6 +4,7 @@ from pathlib import Path
 import h5py
 import zarr
 import torch
+import numpy as np
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
@@ -285,7 +286,14 @@ def read_data():
         boundary = f["boundary"][idx]
         dimension = f["dimension"][idx]
 
-        value_list = [manifold.item(), boundary.item(), dimension.item()]
+        if (
+            isinstance(manifold, np.ndarray)
+            and isinstance(boundary, np.ndarray)
+            and isinstance(dimension, np.ndarray)
+        ):
+            value_list = [manifold.item(), boundary.item(), dimension.item()]
+        else:
+            value_list = [manifold, boundary, dimension]
 
         data = Data(
             x=x,
