@@ -12,49 +12,65 @@ A 2D spline interpolator that maps a given `(connectivity_goal, size)` pair to a
 
 This piecewise-linear, exact spline is built on a full grid with shape `(13, 6)`.
 """
-const grid_connectivity_goal = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.91,
-                                0.95, 0.99]  # connectivity_goal grid (ascending)
-const grid_size = [128, 256, 512, 1024, 2048, 4096]  # size grid (ascending)
-const grid_flip_param = [0.05 0.04 0.025 0.015 0.013 0.012;
-                         0.03 0.035 0.026 0.016 0.013 0.007;
-                         0.02 0.03 0.023 0.012 0.01 0.005;
-                         0.025 0.02 0.024 0.015 0.01 0.006;
-                         0.025 0.025 0.025 0.02 0.014 0.008;
-                         0.03 0.035 0.03 0.025 0.015 0.008;
-                         0.06 0.04 0.04 0.027 0.016 0.009;
-                         0.1 0.07 0.05 0.032 0.019 0.01;
-                         0.17 0.1 0.065 0.042 0.025 0.014;
-                         0.27 0.18 0.11 0.07 0.04 0.025;
-                         0.28 0.19 0.125 0.075 0.045 0.027;
-                         0.45 0.32 0.19 0.11 0.07 0.047;
-                         1.2 0.7 0.45 0.3 0.3 0.2]
+struct FlipParamDeterminer
+    grid_connectivity_goal::Vector{Float64}
+    grid_size::Vector{Int64}
+    grid_flip_param::Matrix{Float64}
+end
+
+function FlipParamDeterminer()
+    grid_connectivity_goal =
+        [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.91, 0.95, 0.99]  # connectivity_goal grid (ascending)
+    grid_size = [128, 256, 512, 1024, 2048, 4096]  # size grid (ascending)
+    grid_flip_param = [
+        0.05 0.04 0.025 0.015 0.013 0.012;
+        0.03 0.035 0.026 0.016 0.013 0.007;
+        0.02 0.03 0.023 0.012 0.01 0.005;
+        0.025 0.02 0.024 0.015 0.01 0.006;
+        0.025 0.025 0.025 0.02 0.014 0.008;
+        0.03 0.035 0.03 0.025 0.015 0.008;
+        0.06 0.04 0.04 0.027 0.016 0.009;
+        0.1 0.07 0.05 0.032 0.019 0.01;
+        0.17 0.1 0.065 0.042 0.025 0.014;
+        0.27 0.18 0.11 0.07 0.04 0.025;
+        0.28 0.19 0.125 0.075 0.045 0.027;
+        0.45 0.32 0.19 0.11 0.07 0.047;
+        1.2 0.7 0.45 0.3 0.3 0.2
+    ]
+    return FlipParamDeterminer(grid_connectivity_goal, grid_size, grid_flip_param)
+end
 
 # Fixed flip_param_determiner (piecewise-bilinear interpolation).
 # Clamps out-of-range queries to the nearest grid boundaries.
 # Inputs: connectivity_goal::Float64 in [0,1], size::Int64 (number of nodes)
 # Returns: Float64 flip_param
 @inline function flip_param_determiner(connectivity_goal::Float64, size::Int64)::Float64
-    x = clamp(connectivity_goal, grid_connectivity_goal[1], grid_connectivity_goal[end])
-    y = clamp(Float64(size), grid_size[1], grid_size[end])
+    c = FlipParamDeterminer()
+    x = clamp(connectivity_goal, c.grid_connectivity_goal[1], c.grid_connectivity_goal[end])
+    y = clamp(Float64(size), c.grid_size[1], c.grid_size[end])
 
-    i = clamp(searchsortedlast(grid_connectivity_goal, x),
-              1,
-              length(grid_connectivity_goal) - 1)
-    j = clamp(searchsortedlast(grid_size, y), 1, length(grid_size) - 1)
+    i = clamp(
+        searchsortedlast(c.grid_connectivity_goal, x),
+        1,
+        length(c.grid_connectivity_goal) - 1,
+    )
+    j = clamp(searchsortedlast(c.grid_size, y), 1, length(c.grid_size) - 1)
 
-    x1 = grid_connectivity_goal[i]
-    x2 = grid_connectivity_goal[i + 1]
-    y1 = grid_size[j]
-    y2 = grid_size[j + 1]
+    x1 = c.grid_connectivity_goal[i]
+    x2 = c.grid_connectivity_goal[i+1]
+    y1 = c.grid_size[j]
+    y2 = c.grid_size[j+1]
     tx = x2 == x1 ? 0.0 : (x - x1) / (x2 - x1)
     ty = y2 == y1 ? 0.0 : (y - y1) / (y2 - y1)
 
-    z11 = grid_flip_param[i, j]
-    z21 = grid_flip_param[i + 1, j]
-    z12 = grid_flip_param[i, j + 1]
-    z22 = grid_flip_param[i + 1, j + 1]
+    z11 = c.grid_flip_param[i, j]
+    z21 = c.grid_flip_param[i+1, j]
+    z12 = c.grid_flip_param[i, j+1]
+    z22 = c.grid_flip_param[i+1, j+1]
 
-    return (1 - tx) * (1 - ty) * z11 + tx * (1 - ty) * z21 + (1 - tx) * ty * z12 +
+    return (1 - tx) * (1 - ty) * z11 +
+           tx * (1 - ty) * z21 +
+           (1 - tx) * ty * z12 +
            tx * ty * z22
 end
 """ 
@@ -73,18 +89,23 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - A bitarray causet sampled according to the connectivity goal.
 """
 
-function sample_bitarray_causet_by_connectivity(size::Int64,
-                                                connectivity_goal::Float64,
-                                                markov_steps::Int64,
-                                                rng::Random.AbstractRNG;
-                                                rel_tol::Union{Float64,Nothing}=nothing,
-                                                abs_tol::Union{Float64,Nothing}=nothing,)
+function sample_bitarray_causet_by_connectivity(
+    size::Int64,
+    connectivity_goal::Float64,
+    markov_steps::Int64,
+    rng::Random.AbstractRNG;
+    rel_tol::Union{Float64,Nothing} = nothing,
+    abs_tol::Union{Float64,Nothing} = nothing,
+    acceptance::Float64 = 5e5,
+)
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
     end
 
     if connectivity_goal > 1 || connectivity_goal < 1e-9 # use small number here -> everything below is considered zero
-        throw(ArgumentError("connectivity_goal has to be in (0,1], is $(connectivity_goal)"))
+        throw(
+            ArgumentError("connectivity_goal has to be in (0,1], is $(connectivity_goal)"),
+        )
     end
 
     if markov_steps < 1
@@ -92,11 +113,15 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
     end
 
     if abs_tol === nothing && rel_tol === nothing
-        @info "Neither abs_tol nor rel_tol set, using markov_steps as stopping criterion."
+        @warn "Neither abs_tol nor rel_tol set, using markov_steps as stopping criterion."
     end
 
     if abs_tol !== nothing && rel_tol !== nothing
-        throw(ArgumentError("Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)"))
+        throw(
+            ArgumentError(
+                "Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)",
+            ),
+        )
     end
 
     if !isnothing(rel_tol) && rel_tol < 0
@@ -123,19 +148,24 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
 
     step = 1
     while step < markov_steps
-        flips_per_step = Int64(ceil(flip_param *
-                                    abs(prev_connectivity - connectivity_goal) * size *
-                                    (size - 1) / 2))
+        flips_per_step = Int64(
+            ceil(
+                flip_param *
+                abs(prev_connectivity - connectivity_goal) *
+                size *
+                (size - 1) / 2,
+            ),
+        )
 
         # Randomly select edges to flip
-        i = [rand(rng, 1:(size - 1)) for flip in 1:flips_per_step]
-        j = [rand(rng, (i[flip] + 1):size) for flip in 1:flips_per_step]
+        i = [rand(rng, 1:(size-1)) for flip = 1:flips_per_step]
+        j = [rand(rng, (i[flip]+1):size) for flip = 1:flips_per_step]
 
         # Store previous edge states for possible rollback
-        prev_edges = [graph.edges[i[flip]][j[flip]] for flip in 1:flips_per_step]
+        prev_edges = [graph.edges[i[flip]][j[flip]] for flip = 1:flips_per_step]
 
         # Flip selected edges
-        for flip in 1:flips_per_step
+        for flip = 1:flips_per_step
             graph.edges[i[flip]][j[flip]] = !prev_edges[flip]
         end
 
@@ -155,17 +185,18 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
         end
 
         # Decide whether to accept or reject the new state based on connectivity and Metropolis criterion
-        if (new_connectivity - connectivity_goal)^2 <=
-           (prev_connectivity - connectivity_goal)^2 ||
-           rand(rng) <
-           2.0^(5e5 * (abs(prev_connectivity - connectivity_goal) -
-                       abs(new_connectivity - connectivity_goal)))
+        # Decide whether to accept or reject the new state based on connectivity and Metropolis criterion
+        e_old = abs(prev_connectivity - connectivity_goal)
+        e_new = abs(new_connectivity - connectivity_goal)
+        delta_e = e_old - e_new
+
+        if e_new <= e_old || rand(rng) < min(1.0, exp(acceptance * delta_e))
             # Accept the modification:
             tcg = tcg_new
             prev_connectivity = new_connectivity
         else
             # Reject the modification: revert flipped edges
-            for flip in 1:flips_per_step
+            for flip = 1:flips_per_step
                 graph.edges[i[flip]][j[flip]] = prev_edges[flip]
             end
         end
