@@ -8,6 +8,7 @@ import CausalSets
 import Distributions
 import YAML
 import HDF5
+import Zarr
 import ProgressMeter
 import Dates
 

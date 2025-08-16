@@ -2,12 +2,13 @@ import pytest
 import juliacall as jcall
 from pathlib import Path
 import h5py
-
+import zarr
 import torch
+import numpy as np
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
-
+from torch_geometric.loader import DataLoader
 import QuantumGrav as QG
 
 
@@ -133,6 +134,13 @@ def create_data(tmp_path_factory, julia_paths):
         }
     )
 
+    return path, datafiles, tmpdir, jl_generator
+
+
+@pytest.fixture
+def create_data_hdf5(create_data):
+    path, datafiles, tmpdir, jl_generator = create_data
+
     for i in range(3):
         data = jl_generator(5)
         # Save the data to an HDF5 file
@@ -169,8 +177,93 @@ def create_data(tmp_path_factory, julia_paths):
 
 
 @pytest.fixture
+def create_data_zarr(create_data):
+    path, datafiles, tmpdir, jl_generator = create_data
+
+    for i in range(3):
+        data = jl_generator(5)
+        # Save the data to an HDF5 file
+        zarr_file = tmpdir / f"test_data_{i}.zarr"
+
+        store = zarr.storage.LocalStore(zarr_file, read_only=False)
+
+        adj = zarr.create_array(
+            store,
+            shape=(len(data), 15, 15),
+            chunks=(1, 15, 15),
+            dtype="float32",
+            name="adjacency_matrix",
+        )
+
+        link = zarr.create_array(
+            store,
+            shape=(len(data), 15, 15),
+            chunks=(1, 15, 15),
+            dtype="float32",
+            name="link_matrix",
+        )
+
+        maxpathlen_future = zarr.create_array(
+            store,
+            shape=(len(data), 15),
+            chunks=(1, 15),
+            name="max_pathlen_future",
+            dtype="float32",
+        )
+
+        max_pathlen_past = zarr.create_array(
+            store,
+            shape=(len(data), 15),
+            chunks=(1, 15),
+            name="max_pathlen_past",
+            dtype="float32",
+        )
+
+        manifold = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="manifold", dtype="int32"
+        )
+
+        boundary = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="boundary", dtype="int32"
+        )
+
+        dimension = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="dimension", dtype="int32"
+        )
+
+        atomcount = zarr.create_array(
+            store, shape=(len(data)), chunks=(1,), name="atomcount", dtype="int32"
+        )
+
+        num_samples = zarr.create_array(
+            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
+        )
+
+        num_samples[0] = len(data)
+
+        for j, d in enumerate(data):
+            adjmat = d["adjacency_matrix"].to_numpy()
+            linkmat = d["link_matrix"].to_numpy()
+            max_path_f = d["max_pathlen_future"].to_numpy()
+            max_path_p = d["max_pathlen_past"].to_numpy()
+            adj[j, 0 : adjmat.shape[0], 0 : adjmat.shape[1]] = adjmat
+            link[j, 0 : linkmat.shape[0], 0 : linkmat.shape[1]] = linkmat
+            maxpathlen_future[j, 0 : max_path_f.shape[0]] = max_path_f
+            max_pathlen_past[j, 0 : max_path_p.shape[0]] = max_path_p
+            manifold[j] = d["manifold"]
+            boundary[j] = d["boundary"]
+            dimension[j] = d["dimension"]
+            atomcount[j] = d["atomcount"]
+
+        datafiles.append(zarr_file)
+    return tmpdir, datafiles
+
+
+@pytest.fixture
 def read_data():
-    def reader(f: h5py.File, idx: int, float_dtype, int_dtype, validate) -> Data:
+    def reader(
+        f: h5py.File | zarr.Group, idx: int, float_dtype, int_dtype, validate
+    ) -> Data:
         adj_raw = f["adjacency_matrix"][idx, :, :]
         adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
         edge_index, edge_weight = dense_to_sparse(adj_matrix)
@@ -193,11 +286,25 @@ def read_data():
         boundary = f["boundary"][idx]
         dimension = f["dimension"][idx]
 
+        if (
+            isinstance(manifold, np.ndarray)
+            and isinstance(boundary, np.ndarray)
+            and isinstance(dimension, np.ndarray)
+        ):
+            value_list = [manifold.item(), boundary.item(), dimension.item()]
+        else:
+            value_list = [manifold, boundary, dimension]
+
         data = Data(
             x=x,
             edge_index=edge_index,
             edge_attr=edge_weight.unsqueeze(1),
-            y=torch.tensor([[manifold, boundary, dimension]], dtype=int_dtype),
+            y=torch.tensor(
+                [
+                    value_list,
+                ],
+                dtype=int_dtype,
+            ),
         )
 
         if validate and not data.validate():
@@ -275,3 +382,101 @@ def graph_features_net():
             {"inplace": False},
         ],
     )
+
+
+@pytest.fixture
+def make_dataset(create_data_hdf5, read_data):
+    datadir, datafiles = create_data_hdf5
+
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=datadir,
+        reader=read_data,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=4,
+        transform=lambda x: x,
+        pre_transform=lambda x: x,
+        pre_filter=lambda x: True,
+    )
+    return dataset
+
+
+@pytest.fixture
+def make_dataloader(create_data_hdf5, make_dataset):
+    _, __ = create_data_hdf5
+
+    dataset = make_dataset
+    dataloader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True,
+        drop_last=True,  # Ensure all batches are of the same size. last batches that are bad need to be handled by hand
+    )
+    return dataloader
+
+
+@pytest.fixture
+def model_config_eval():
+    return {
+        "gcn_net": [
+            {
+                "in_dim": 2,
+                "out_dim": 8,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    8,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+            {
+                "in_dim": 8,
+                "out_dim": 12,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    12,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+        ],
+        "classifier": {
+            "input_dim": 12,
+            "output_dims": [
+                3,
+            ],
+            "hidden_dims": [24, 16],
+            "activation": "relu",
+            "backbone_kwargs": [{}, {}],
+            "output_kwargs": [{}],
+            "activation_kwargs": [{"inplace": False}],
+        },
+        "pooling_layer": "mean",
+    }
+
+
+@pytest.fixture
+def gnn_model_eval(model_config_eval):
+    """Fixture to create a GNNModel for evaluation."""
+    model = QG.GNNModel.from_config(
+        model_config_eval,
+    )
+    model.eval()
+    return model

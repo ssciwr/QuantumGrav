@@ -28,7 +28,8 @@ dependencies = [
     "scikit-learn",
     "joblib",
     "juliacall",
-    "PyYAML"
+    "PyYAML", 
+    "zarr",
 ]
 
 # Optional dependencies

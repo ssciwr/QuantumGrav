@@ -20,7 +20,15 @@ from .gnn_model import GNNModel
 from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
 from .graphfeatures_block import GraphFeaturesBlock
-from .evaluate import train_epoch, validate_epoch, test_epoch
+from .evaluate import (
+    DefaultEvaluator,
+    DefaultTester,
+    DefaultEarlyStopping,
+    DefaultValidator,
+)
+
+from .train import Trainer
+from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 
 __all__ = [
     # datasets
@@ -41,13 +49,19 @@ __all__ = [
     "list_registered_normalizers",
     "list_registered_activations",
     "list_registered_gnn_layers",
-    # training
+    # models
     "GNNBlock",
     "ClassifierBlock",
     "GraphFeaturesBlock",
     "GNNModel",
+    # training
+    "Trainer",
+    "TrainerDDP",
+    "initialize_ddp",
+    "cleanup_ddp",
     # evaluation
-    "train_epoch",
-    "validate_epoch",
-    "test_epoch",
+    "DefaultEvaluator",
+    "DefaultValidator",
+    "DefaultTester",
+    "DefaultEarlyStopping",
 ]
