@@ -12,13 +12,14 @@ end
 @testitem "test_make_simple_cset_by_connectivity" tags = [:csetgenerationbyconnectivity] setup =
     [TestsCSetByConnectivity] begin
     connectivity_goal = 0.5
-    cset = QuantumGrav.sample_bitarray_causet_by_connectivity(
+    cset, converged = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
         connectivity_goal,
         20,
         rng;
         abs_tol = 0.01,
     )
+    @test converged == true
     @test cset.atom_count == 2^10
     @test length(cset.future_relations) == 2^10
     @test length(cset.past_relations) == 2^10
@@ -27,8 +28,9 @@ end
         connectivity_goal,
     ) < 0.01 # connectivity has indeed reached connectivity_goal to withn abs_tol
 
-    cset =
+    cset, converged =
         QuantumGrav.sample_bitarray_causet_by_connectivity(2^10, connectivity_goal, 20, rng) # no abs_tol set, so markov_steps is used as stopping criterion
+    @test converged == false
     @test cset.atom_count == 2^10
     @test length(cset.future_relations) == 2^10
     @test length(cset.past_relations) == 2^10
