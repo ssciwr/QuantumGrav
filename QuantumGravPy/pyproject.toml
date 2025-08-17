@@ -36,7 +36,10 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-mock",
-    "mkdocs"
+    "mkdocs", 
+    "mkdocstrings[python]", 
+    "mkdocs-material",
+    "mkdocs-jupyter"
 ]
 
 [tool.pytest.ini_options]
