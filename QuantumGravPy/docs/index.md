@@ -8,3 +8,11 @@ This project is dedicated to providing tools for creating causal sets as used in
 
 Start with the [Getting started](./getting_started.md) page to get up and running. 
 
+For the Python package `QuantumGravPy`, the [`Datasets and Preprocessing`](./datasets_and_preprocessing.md) section will show you how to use the supplied dataset classes for processing your raw data. 
+To learn how to train a model, check out the [`Model training`](./training_a_model.md) section. 
+Finally, the [`API documentation`](./api.md) will tell you everything you need to know about the source code of the package. 
+
+For the Julia package `QuantumGrav.jl`, TODO: 
+
+
+Note that the two packages are designed to function in unison, with the Julia package producing data that the python package consumes.
