@@ -1,0 +1,10 @@
+site_name: QuantumGrav Documentation
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - Datasets and Preprocessing: datasets_and_preprocessing.md
+  - Model Training: training_a_model.md
+  - API documentation: api.md
+  - About: about.md
+  - License: license.md
+theme: readthedocs
