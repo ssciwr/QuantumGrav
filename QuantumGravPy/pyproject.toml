@@ -18,12 +18,10 @@ readme = { file = "../README.md", content-type = "text/markdown" }
 
 dependencies = [
     "torch", 
-    "torchaudio",
     "torchvision",
     "torch-geometric",
     "h5py",
     "pandas",
-    "seaborn",
     "matplotlib",
     "scikit-learn",
     "joblib",
@@ -38,6 +36,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-mock",
+    "mkdocs"
 ]
 
 [tool.pytest.ini_options]
