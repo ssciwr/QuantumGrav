@@ -11,6 +11,7 @@ version = "0.1.0"
 description = "Graph neural networks for the causal set approach to quantum gravity"
 authors = [
     { name = "Harald Mack", email = "harald.mack@protonmail.com" },
+    { name = "Tuyen Le", email = "tuyen.le@iwr.uni-heidelberg.de" },
 ]
 requires-python = ">= 3.12"
 license = { file = "../LICENSE"} 
