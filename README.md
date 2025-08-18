@@ -1,87 +1,131 @@
 # QuantumGrav
 Quantum gravity project experimental repo. 
 
-## Python
-*this assumes a UNIX system* 
+## Installation
 
-- Set up a virtual environment first
-```bash 
-python3 -m venv .venv 
+### Julia
+1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
+
+We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
+
+2. Open a terminal and start the Julia REPL
+
+3. Activate a project environment in which you want to work
+
+```julia
+# press ] to enter the package manager prompt, then:
+activate path/to/your/project
+# press backspace or Ctrl+C to leave the pkg prompt
 ```
-- activate it
+
+4. Add the QuantumGrav package as a dependendy. This must be done from a local path
+
+```julia 
+# press ] to enter the package manager prompt, then:
+add /path/to/QuantumGrav/QuantumGrav.jl
+```
+This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia. 
+
+### Python
+The Python package lives in `QuantumGravPy/` and follows a standard packaging layout (sources under `QuantumGravPy/src/QuantumGrav`). The project uses PyTorch and PyTorch Geometric; installation of those dependencies depends on your OS and available hardware (CUDA version).
+
+Basic steps (UNIX-like shells):
+
+1. Create and activate a virtual environment:
+
 ```bash
-source ./.venv/bin/activate  
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-- install the dependencies. Because these differ based on hardware, please refer to the [pytorch-geometric documentation](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) for further details.
+2. Upgrade pip:
 
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip install torch-geometric
-pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
-``` 
-
-See [the pytorch installation page](https://pytorch.org/get-started/locally/) and the [pytorch-geometric installation page](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html), respectively, for more information
-
-- finally, install the package:
-
-```bash 
-```bash 
-cd ./QuantumGravPy
-python3 -m pip install .
-``` 
-
-- or, for development, do: 
-```bash 
-cd ./QuantumGravPy
-python3 -m pip install -e .[dev]
+python -m pip install --upgrade pip 
 ```
 
-### Build the documentation 
-You need to do a development installation as described above: 
-```bash 
-cd ./py
-python3 -m pip install -e .[dev]
+3. Install PyTorch (follow the instructions at https://pytorch.org/get-started/locally/ for the correct wheel for your platform and CUDA). Example (CPU-only wheel). 
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 ```
 
-This will install the mkdocs package. Then, in the `QuantumGravPy` directory, run 
-```bash 
+4. For PyTorch Geometric, follow the project documentation for the correct platform-specific wheels: https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html
+
+5. Install the Python package (recommended editable install for development):
+
+```bash
+cd QuantumGravPy
+python -m pip install -e .
+```
+
+After installation you can import the package as `import QuantumGrav` from Python code or a REPL.
+
+## Installation as a developer
+1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
+
+### Julia (developer workflow)
+We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
+
+2. Open a terminal, start the Julia REPL and activate your target environment 
+```bash
+activate path/to/your/project
+```
+
+3. Check out `QuantumGrav.jl` for development 
+```bash
+# press ] to enter the package manager prompt, then:
+develop path/to/QuantumGrav/QuantumGrav.jl
+```
+This will track the changes you made automatically. 
+
+4. Running tests from the Julia REPL (recommended for detailed output):
+```julia
+using TestItemRunner
+@run_package_tests
+```
+
+This runs the tests defined under `QuantumGrav.jl/test` using the activated environment.
+
+### Python (developer workflow)
+
+Do an editable install so local changes in `QuantumGravPy/src/QuantumGrav` are available immediately:
+
+```bash
+cd QuantumGravPy
+python -m pip install -e .[dev]
+```
+
+Run the Python unit tests from the repository root (with the virtualenv activated):
+
+```bash
+cd QuantumGravPy
+pytest test
+```
+
+### Building the documentation locally
+
+The documentation is generated with MkDocs and `mkdocstrings`. MkDocs needs to be able to import the `QuantumGrav` package so either install the package in the same environment (editable install above) or add the `src` path to `PYTHONPATH` before running mkdocs.
+
+Quick serve (from repository root):
+
+```bash
+cd QuantumGravPy
+# if you didn't install the package, export PYTHONPATH to include the src dir
 mkdocs serve
 ```
-The output will contain a message at the end: 
-```bash 
-INFO    -  [13:48:53] Serving on http://127.0.0.1:8000/
-```
+Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package [here](https://documenter.juliadocs.org/stable/).
 
-Opening `http://127.0.0.1:8000/` in your browser will then display the documentation. Currently, we only have python documentation. 
+Training and evaluation scripts live under `QuantumGravPy/src/QuantumGrav/` (`train.py`, `train_ddp.py`) and can be run once dependencies are installed.
+See the [training section](./training_a_model.md) for more. 
 
-## Julia
-- To work on the software, clone the repo, and in the base directory in the terminal run: 
-- `julia`
-- hit `]` 
-- type `develop .` 
-- hit ctrl+c to get out of the package manager
-- `exit()` to leave julia
+## Notes and troubleshooting
 
-- To add the dependency for data generation: 
-```julia 
-using Pkg 
-Pkg.add("CausalSets")
-```
+- PyTorch and PyTorch-Geometric installation is platform and CUDA-version specific; consult the official installation docs if you encounter wheel or binary compatibility errors.
 
-- To run tests:
-  - navigate to the base directory of the package 
-  - open julia, then run: 
-    - hit `]` 
-    - type `activate .` 
-    - hit ctrl+c or backspace to leave the package manager 
-    - run: 
-    ```julia 
-    using TestItemRunner
-    @run_package_tests
-    ``` 
-    - `exit()` to leave julia
-- this will give you more detailed output. 
-- Alternatively, you can also type `test` in the package manager environment 
-to run the tests
-you can also use vscode to run the t
+### Contribution guide
+
+Tbd.
+
+
+
