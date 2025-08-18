@@ -1,6 +1,5 @@
-This document explains how to get the project running for development and for usage. It covers the two supported ecosystems used in this repository: the Julia package (data generation and low-level causal-set utilities) and the Python package (model code, training and evaluation).
-
 # Getting started
+This document explains how to get the project running for development and for usage. It covers the two supported ecosystems used in this repository: the Julia package (data generation and low-level causal-set utilities) and the Python package (model code, training and evaluation).
 
 ## Installation
 
