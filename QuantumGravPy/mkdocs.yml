@@ -3,6 +3,7 @@ nav:
   - Home: index.md
   - Getting Started: getting_started.md
   - Datasets and Preprocessing: datasets_and_preprocessing.md
+  - Graph Neural Network models: models.md
   - Model Training: training_a_model.md
   - API documentation: api.md
   - License: license.md
@@ -34,3 +35,12 @@ plugins:
       handlers: 
         python:
           paths: [src] 
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
