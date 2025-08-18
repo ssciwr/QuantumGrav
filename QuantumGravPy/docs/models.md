@@ -196,12 +196,33 @@ The frontend model takes the combined embeddings from the backbone and optional 
     "output_dims": [2, 3],  # Two tasks: binary classification and 3-class classification
     "hidden_dims": [128, 64],
     "activation": "ReLU", 
-    "norm_args": [arg1, arg2, ...]
-    "norm_kwargs": {
-        key1: kwarg1, 
-        key2: kwarg2,
-        key3: ...
-    }
+    "backbone_kwargs": 
+        - {
+            key1: kwarg1, 
+            key2: kwarg2,
+            key3: ...
+        }
+        - {
+            key1: kwarg1, 
+            key2: kwarg2,
+            key3: ...
+        }
+       - {
+            key1: kwarg1, 
+            key2: kwarg2,
+            key3: ...
+        }
+    output_kwargs: 
+        - {
+            key1: kwarg1, 
+            key2: kwarg2,
+            key3: ...
+        }, 
+        - {
+            key1: kwarg1, 
+            key2: kwarg2,
+            key3: ...
+        }
     "activation_args": [arg1, arg2, ...]
     "activation_kwargs": {
         key1: kwarg1, 
@@ -212,6 +233,8 @@ The frontend model takes the combined embeddings from the backbone and optional 
 ```
 By customizing the `hidden_dims` you can make the network shallower or deeper or wider or narrower. 
 In this way, transfer learning is supported - we can change the frontend depending on the task, while keeping the model that produces embeddings.
+The output layers are implemneted as one linear layer per task, and each of them can be given a list of kwargs. The same holds for the input- and hidden layers: for each of them, the `backbone_kwargs` config node can contain a set of kwargs, too. you can leave out some of them if desired, but for skipping one you need to put in an empty dictionary because the code maps kwargs to layers by index in the list. 
+
 
 ## Configuration-driven model creation
 
