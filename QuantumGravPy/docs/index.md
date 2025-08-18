@@ -8,7 +8,7 @@ This project is dedicated to providing tools for creating causal sets as used in
 
 Start with the [Getting started](./getting_started.md) page to get up and running. 
 
-For the Python package `QuantumGravPy`, the [`Datasets and Preprocessing`](./datasets_and_preprocessing.md) section will show you how to use the supplied dataset classes for processing your raw data. 
+For the Python package `QuantumGravPy`, the [`Datasets and Preprocessing`](./datasets_and_preprocessing.md) section will show you how to use the supplied dataset classes for processing your raw data. Next, you should learn about the model architecture used in this package in [`Graph Neural Network models`](./models.md). 
 To learn how to train a model, check out the [`Model training`](./training_a_model.md) section. 
 Finally, the [`API documentation`](./api.md) will tell you everything you need to know about the source code of the package. 
 
