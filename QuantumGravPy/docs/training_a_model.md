@@ -204,16 +204,16 @@ testing: *valtest
 
 ```
 A config **must** have the high-level nodes 'model', 'training', 'validation', and 'testing'. Data processing is currently not governed by a config because it's too specialized for the task at hand. 
-All the nodes in `training` above are necessary and cannot be left out, because they are needed for the DataLoaders and the evaluation and training semantics. 
+All the nodes in `training` above are necessary and cannot be left out, because they are needed for the DataLoaders and the evaluation and training semantics.  
 
-The `model` part defines the architecture of the model that's used, so kindly check the [`Graph Neural Network models`](./models.md) section for that. 
+The `model` part defines the architecture of the model that's used, so please check the [`Graph Neural Network models`](./models.md) section again for how that works.
 
 ## Train a model
 
-## Full example 
 The following is a complete end-to-end example for model training for a classification task. We are putting toghether the content from ['Using Datasets for data processing and batching'](./datasets_and_preprocessing.md) and from ['Training a model'](./training_a_model.md) and are overwriting the Evaluators to report F1 scores. Then, we set up the trainer class, prepare everything and run training. For completeness, we put everything into on file here, but it may be advisable to split your script into multiple files if you write as much code as here. Also, we might add several variants of evaluators as default in the future. To get a good idea of how the system works, please work through this example carefully and make sure you understand each step. 
 For bugs or issues, please report them [here](https://github.com/ssciwr/QuantumGrav/issues).
 
+### Full code example 
 
 ```python 
 from pathlib import Path
