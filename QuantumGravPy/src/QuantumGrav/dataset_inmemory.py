@@ -22,7 +22,9 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         input: list[str | Path],
         output: str | Path,
         mode: str = "hdf5",
-        reader: Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]]
+        reader: Callable[
+            [h5py.File | zarr.Group, torch.dtype, torch.dtype, bool], list[Data]
+        ]
         | None = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
@@ -40,7 +42,7 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
             input (list[str  |  Path]): A list of file paths (as strings or Path objects) to the input data files.
             output (str | Path): A file path (as a string or Path object) to the output data file.
             mode (str): File storage mode. 'zarr' or 'hdf5'
-            reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to read the data from the input files. Defaults to None.
+            reader (Callable[[h5py.File | zarr.Group, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to read the data from the input files. Defaults to None.
             float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
             int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data. Defaults to True.

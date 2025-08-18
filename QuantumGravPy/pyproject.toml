@@ -11,6 +11,7 @@ version = "0.1.0"
 description = "Graph neural networks for the causal set approach to quantum gravity"
 authors = [
     { name = "Harald Mack", email = "harald.mack@protonmail.com" },
+    { name = "Tuyen Le", email = "tuyen.le@iwr.uni-heidelberg.de" },
 ]
 requires-python = ">= 3.12"
 license = { file = "../LICENSE"} 
@@ -18,12 +19,10 @@ readme = { file = "../README.md", content-type = "text/markdown" }
 
 dependencies = [
     "torch", 
-    "torchaudio",
     "torchvision",
     "torch-geometric",
     "h5py",
     "pandas",
-    "seaborn",
     "matplotlib",
     "scikit-learn",
     "joblib",
@@ -38,6 +37,10 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-mock",
+    "mkdocs", 
+    "mkdocstrings[python]", 
+    "mkdocs-material",
+    "mkdocs-jupyter"
 ]
 
 [tool.pytest.ini_options]
