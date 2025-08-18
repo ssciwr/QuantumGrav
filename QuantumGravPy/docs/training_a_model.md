@@ -26,7 +26,7 @@ class Trainer:
         tester: DefaultTester | None = None,
     )
 ```
-We talked about the `config` file. The `criterion` is a loss function that must have the following signature: 
+The `config` argument has its own section [below](#the-configuration-dict). The `criterion` is a loss function that must have the following signature: 
 ```python 
 criterion[[model_output, torch_geometric.data.Data], torch.Tensor]
 ```
@@ -74,7 +74,7 @@ Under the hood, they both use the `evalute` function of their parent class `Defa
 The idea behind these two classes is that the user derives their own class from them and adjusts the `test`, `validate` and `report` functions to their own needs, e.g., for reporting the F1 score in a classification task. 
 Note that you can also break the type annotation if you think you need and for instance use your own evaluator classes - just make sure the call signatures are correct. 
 
-## `early_stopping`
+### `early_stopping`
 This function is there to stop training once a certain condition has been reached. It eats the output of `Validator` and then computes a boolean that tells the `Trainer` object whether it should stop or continue training.
 
 For example, this can look like the following code block, where we use a moving average over the loss and a tolerance to determine if we should stop or not: Each epoch, the mean validation loss over the window is evaluated and compared to the current best one, and if it's above that we subtract 1 from the `patience` variable. if `patience` runs out, we stop training. When we find a better best mean loss, we reset patience and continue. 
@@ -208,7 +208,7 @@ All the nodes in `training` above are necessary and cannot be left out, because 
 
 The `model` part defines the architecture of the model that's used, so kindly check the [`Graph Neural Network models`](./models.md) section for that. 
 
-## Running training
+## Train a model
 
 ## Full example 
 The following is a complete end-to-end example for model training for a classification task. We are putting toghether the content from ['Using Datasets for data processing and batching'](./datasets_and_preprocessing.md) and from ['Training a model'](./training_a_model.md) and are overwriting the Evaluators to report F1 scores. Then, we set up the trainer class, prepare everything and run training. For completeness, we put everything into on file here, but it may be advisable to split your script into multiple files if you write as much code as here. Also, we might add several variants of evaluators as default in the future. To get a good idea of how the system works, please work through this example carefully and make sure you understand each step. 
