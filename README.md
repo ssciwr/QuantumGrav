@@ -23,24 +23,43 @@ pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -
 
 See [the pytorch installation page](https://pytorch.org/get-started/locally/) and the [pytorch-geometric installation page](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html), respectively, for more information
 
+- finally, install the package:
+
 ```bash 
-- finally, install the package 
 ```bash 
-cd ./py
+cd ./QuantumGravPy
 python3 -m pip install .
 ``` 
 
 - or, for development, do: 
 ```bash 
+cd ./QuantumGravPy
+python3 -m pip install -e .[dev]
+```
+
+### Build the documentation 
+You need to do a development installation as described above: 
+```bash 
 cd ./py
 python3 -m pip install -e .[dev]
 ```
+
+This will install the mkdocs package. Then, in the `QuantumGravPy` directory, run 
+```bash 
+mkdocs serve
+```
+The output will contain a message at the end: 
+```bash 
+INFO    -  [13:48:53] Serving on http://127.0.0.1:8000/
+```
+
+Opening `http://127.0.0.1:8000/` in your browser will then display the documentation. Currently, we only have python documentation. 
 
 ## Julia
 - To work on the software, clone the repo, and in the base directory in the terminal run: 
 - `julia`
 - hit `]` 
-- type `activate .` 
+- type `develop .` 
 - hit ctrl+c to get out of the package manager
 - `exit()` to leave julia
 
