@@ -9,6 +9,16 @@ using TestItems
     rng = Random.Xoshiro(42)
 end
 
+@testsnippet TestsCSetByConnectivityDistribution begin
+    using QuantumGrav
+    using CausalSets
+    using Random
+    using Distributions
+
+    Random.seed!(42)  # Set a seed for reproducibility
+    rng = Random.Xoshiro(42)
+end
+
 @testitem "test_make_simple_cset_by_connectivity" tags = [:csetgenerationbyconnectivity] setup =
     [TestsCSetByConnectivity] begin
     connectivity_goal = 0.5
@@ -84,6 +94,76 @@ end
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^7,
         0.5,
+        20,
+        rng;
+        abs_tol = -0.01,
+    )
+end
+
+@testitem "test_make_simple_cset_by_connectivity_distribution" tags = [:csetgenerationbyconnectivitydist] setup =
+    [TestsCSetByConnectivityDistribution] begin
+    dist = Distributions.Beta(2,2)
+    cset, converged = QuantumGrav.random_causet_by_connectivity_distribution(
+        2^10,
+        dist,
+        20,
+        rng;
+        abs_tol = 0.01,
+    )
+    @test converged == true
+    @test cset.atom_count == 2^10
+    @test length(cset.future_relations) == 2^10
+    @test length(cset.past_relations) == 2^10
+
+    cset, converged =
+        QuantumGrav.random_causet_by_connectivity_distribution(2^10, Distributions.Beta(2,2), 20, rng) # no abs_tol set, so markov_steps is used as stopping criterion
+    @test converged == false
+    @test cset.atom_count == 2^10
+    @test length(cset.future_relations) == 2^10
+    @test length(cset.past_relations) == 2^10
+    # no connectivity check here, as the stopping criterion is markov_steps, which is not guaranteed to reach the connectivity goal
+
+end
+
+
+@testitem "test_simple_cset_by_connectivity_distribution_throws" tags =
+    [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivityDistribution] begin
+    @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
+        -1,
+        Distributions.Beta(2,2),
+        20,
+        rng;
+        abs_tol = 0.01,
+    )
+
+    @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
+        2^7,
+        Normal(2,2), # distribution with support outside [0,1]
+        20,
+        rng;
+        abs_tol = 0.01,
+    )
+
+    @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
+        2^7,
+        Distributions.Beta(2,2),
+        -3,
+        rng;
+        abs_tol = 0.01,
+    )
+
+    @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
+        2^7,
+        Distributions.Beta(2,2),
+        20,
+        rng;
+        abs_tol = 0.01,
+        rel_tol = 0.01,
+    )
+
+    @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
+        2^7,
+        Distributions.Beta(2,2),
         20,
         rng;
         abs_tol = -0.01,

@@ -10,9 +10,12 @@ Creates a causet and its coordinate representation from a manifold and boundary.
 - `d::Int`: Dimension of the spacetime
 - `rng::Random.AbstractRNG`: Random number generator
 - `type::Type{T}`: Numeric type for coordinates
+- rel_tol::Union{Float64,Nothing}`: Relative tolerance for MCMC breaking in random cset generation
+- abs_tol::Union{Float64,Nothing}`: Absolute tolerance for MCMC breaking in random cset generation,
+- acceptance::Float64`: Acceptance condition for MCMC
 
 # Returns
-- `Tuple`: (causet, coordinates) where coordinates is a matrix of point positions
+- `Tuple`: (causet, converged, coordinates) where coordinates is a matrix of point positions, converged is a bool
 
 # Notes
 Special handling for PseudoManifold which generates random causets,
@@ -23,26 +26,33 @@ function make_simple_cset(
     boundary::String,
     n::Int64,
     d::Int,
+    dist::Distributions.Distribution,
     markov_iter::Int,
     rng::Random.AbstractRNG;
     type::Type{T} = Float32,
+    rel_tol::Union{Float64,Nothing}=nothing,
+    abs_tol::Union{Float64,Nothing}=nothing,
+    acceptance::Float64=5e5
 ) where {T<:Number}
     manifold = make_manifold(manifold, d)
     boundary = make_boundary(boundary, d)
 
     if manifold isa PseudoManifold
         # create a pseudosprinkling in a n-d euclidean space for a non-manifold like causalset
-        return CausalSets.sample_random_causet(
-            CausalSets.BitArrayCauset,
+        return random_causet_by_connectivity_distribution(
             n,
+            dist,
             markov_iter,
-            rng,
-        ),
+            rng;
+            rel_tol = rel_tol,
+            abs_tol = abs_tol,
+            acceptance = acceptance,
+        )...,
         stack(make_pseudosprinkling(n, d, -1.0, 1.0, type; rng = rng), dims = 1)
     else
         sprinkling = CausalSets.generate_sprinkling(manifold, boundary, n; rng = rng)
         cset = CausalSets.BitArrayCauset(manifold, sprinkling)
-        return cset, type.(stack(collect.(sprinkling), dims = 1))
+        return cset, true, type.(stack(collect.(sprinkling), dims = 1))
     end
 end
 
@@ -144,14 +154,16 @@ Generates a causal set based on a random choice between a manifold-like distribu
 - `order`: Order of the Chebyshev expansion for the manifold like csets.
 - `r`: Decay base for Chebyshev coefficients.
 - `d`: Dimension of the manifold (must be 2).
+- `dist`: Distribution from which to draw the connectivity goal for pseudo-manifold causal sets.
 - `markov_iter`: Number of iterations for the Markov chain when generating a random causet.
 - `type`: Type to which the sprinkling coordinates will be converted.
 
 # Returns:
-- A tuple `(cset, sprinkling, chebyshev_coefs)` where:
+- A tuple `(cset, sprinkling, chebyshev_coefs, manifold_like)` where:
   - `cset`: The generated causal set.
   - `sprinkling`: The list of sprinkled points.
   - `chebyshev_coefs`: The matrix of Chebyshev coefficients used to construct the manifold (or zeros for pseudo-manifold).
+  - `manifold_like`: Indicator whether the generated causet came from a manifold-like distribution (1) or pseudo-manifold (0).
 
 # Throws: 
    - `ArgumentError` if `d != 2`
@@ -162,8 +174,12 @@ function make_general_cset(
     order::Int64,
     r::Float64,
     d::Int64,
+    dist::Distributions.Distribution,
     markov_iter::Int,
-    type::Type{T},
+    type::Type{T};
+    rel_tol::Union{Float64,Nothing}=nothing,
+    abs_tol::Union{Float64,Nothing}=nothing,
+    acceptance::Float64=5e5,
 )::Tuple{CausalSets.BitArrayCauset,Matrix{T},Matrix{T},Int64} where {T<:Number}
 
     if d != 2
@@ -180,12 +196,13 @@ function make_general_cset(
             make_manifold_cset(npoints, rng, order, r; d = d, type = type)
 
     else
-        cset = CausalSets.sample_random_causet(
-            CausalSets.BitArrayCauset,
-            npoints,
-            markov_iter,
-            rng,
-        )
+        cset = random_causet_by_connectivity_distribution(npoints,
+                                                dist,
+                                                markov_iter,
+                                                rng;
+                                                rel_tol = rel_tol,
+                                                abs_tol = abs_tol,
+                                                acceptance = acceptance,)[1]
         sprinkling = make_pseudosprinkling(npoints, d, -1.0, 1.0, type; rng = rng)
         chebyshev_coefs = zeros(order, order) # pseudo-coefficients, not used in this case
     end
