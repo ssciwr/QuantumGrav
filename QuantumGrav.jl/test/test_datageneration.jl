@@ -48,7 +48,7 @@ end
             "CausalDiamond",
             100,
             2,
-            Distributions.Beta(2,2)
+            Distributions.Beta(2,2),
             300,
             rng;
             type = Float32,
@@ -113,7 +113,7 @@ end
             "CausalDiamond",
             100,
             2,
-            Distributions.Beta(2,2)
+            Distributions.Beta(2,2),
             300,
             rng;
             type = Float32,
