@@ -194,20 +194,21 @@ function make_general_cset(
         # create a simple causet with a Minkowski manifold and a causal diamond boundary
         cset, sprinkling, chebyshev_coefs =
             make_manifold_cset(npoints, rng, order, r; d = d, type = type)
+        converged = true
 
     else
-        cset = random_causet_by_connectivity_distribution(npoints,
+        cset, converged = random_causet_by_connectivity_distribution(npoints,
                                                 dist,
                                                 markov_iter,
                                                 rng;
                                                 rel_tol = rel_tol,
                                                 abs_tol = abs_tol,
-                                                acceptance = acceptance,)[1]
+                                                acceptance = acceptance,)
         sprinkling = make_pseudosprinkling(npoints, d, -1.0, 1.0, type; rng = rng)
         chebyshev_coefs = zeros(order, order) # pseudo-coefficients, not used in this case
     end
 
     sprinkling = type.(stack(collect.(sprinkling), dims = 1))
 
-    return cset, sprinkling, chebyshev_coefs, manifold_like
+    return cset, sprinkling, chebyshev_coefs, manifold_like, converged
 end
