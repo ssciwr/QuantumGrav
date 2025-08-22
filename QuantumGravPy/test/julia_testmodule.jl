@@ -69,6 +69,7 @@ function (gen::Generator)(batchsize::Int)
     manifold_distr = Distributions.DiscreteUniform(1, 6)
     boundary_distr = Distributions.DiscreteUniform(1, 3)
     atomcount_distr = Distributions.DiscreteUniform(min_atomcount, max_atomcount)
+    dist = Distributions.Beta(2,2) # distribution for connectivity_goal
 
     # make a bunch of datapoints
     batch = Vector{Dict{String,Any}}(undef, batchsize)
@@ -102,14 +103,16 @@ function (gen::Generator)(batchsize::Int)
             # make dataset 
             try
                 # make data needed 
-                cset, sprinkling = QG.make_simple_cset(
+                cset, converged sprinkling = QG.make_simple_cset(
                     manifold,
                     boundary,
                     atomcount,
                     dimension,
+                    dist, 
                     100, # number of iterations for the MCMC algorithm 
                     rng;
                     type = type,
+                    abs_tol = 0.01,
                 )
                 ok = true
                 e = nothing
