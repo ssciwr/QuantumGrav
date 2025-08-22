@@ -143,7 +143,7 @@ end
     dist = Distributions.Beta(2,2)
     abs_tol = 0.01
 
-    cset, sprinkling, chebyshev_coefs, manifold_like =
+    cset, sprinkling, chebyshev_coefs, manifold_like, converged =
         QuantumGrav.make_general_cset(rng, npoints, order, r, d, dist, markov_iter, Float32; abs_tol = abs_tol)
 
     @test cset.atom_count == npoints
