@@ -103,7 +103,7 @@ function (gen::Generator)(batchsize::Int)
             # make dataset 
             try
                 # make data needed 
-                cset, converged sprinkling = QG.make_simple_cset(
+                cset, converged, sprinkling = QG.make_simple_cset(
                     manifold,
                     boundary,
                     atomcount,
