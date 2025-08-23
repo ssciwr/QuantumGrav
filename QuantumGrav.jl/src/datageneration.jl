@@ -399,8 +399,8 @@ function make_data(
         mkpath(abspath(expanduser(config["output"])))
     end
 
+    rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
     function make_data_chunk(file, num_datapoints_chunks::Int64)
-        rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
         data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
 
         @info "    Generating data on $(Threads.nthreads()) threads"
