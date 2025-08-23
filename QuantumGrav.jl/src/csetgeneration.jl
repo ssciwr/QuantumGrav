@@ -180,7 +180,7 @@ function make_general_cset(
     rel_tol::Union{Float64,Nothing}=nothing,
     abs_tol::Union{Float64,Nothing}=nothing,
     acceptance::Float64=5e5,
-)::Tuple{CausalSets.BitArrayCauset,Matrix{T},Matrix{T},Int64} where {T<:Number}
+)::Tuple{CausalSets.BitArrayCauset,Matrix{T},Matrix{T},Int64,Bool} where {T<:Number}
 
     if d != 2
         throw(ArgumentError("Currently, only 2D is supported, got $d"))
