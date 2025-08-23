@@ -6,4 +6,5 @@ include("./test_datageneration.jl")
 include("./test_csetgeneration.jl")
 include("./test_csetgenerationbyconnectivity.jl")
 include("./test_layeredgeneration.jl")
+include("./test_destroy_cset.jl")
 @run_package_tests
