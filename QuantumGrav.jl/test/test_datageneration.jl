@@ -48,9 +48,11 @@ end
             "CausalDiamond",
             100,
             2,
+            Distributions.Beta(2,2),
             300,
             rng;
             type = Float32,
+            abs_tol = 0.01
         )
         adj = QuantumGrav.make_adj(cset; type = Float32)
 
@@ -111,9 +113,11 @@ end
             "CausalDiamond",
             100,
             2,
+            Distributions.Beta(2,2),
             300,
             rng;
             type = Float32,
+            abs_tol = 0.01
         )
         adj = QuantumGrav.make_adj(cset; type = Float32)
 
