@@ -17,6 +17,8 @@ Starts from a manifold-like causal set and destroys its manifoldlike structure b
 
 # Returns
 - `CausalSets.BitArrayCauset`: The resulting causal set as a BitArrayCauset, which may be non-manifoldlike after random edge flips.
+- `sprinkling`: The sprinkling of the geometry underlying the destroyed causal set.
+- `chebyshev_coefs`: The Chebyshev coefficients of the geometry underlying the destroyed causal set.
 
 # Throws
 - `ArgumentError`: if `num_flips < 1`.
