@@ -26,7 +26,8 @@ export make_simple_cset,
     max_pathlen,
     calculate_angles,
     calculate_distances,
-    sample_bitarray_causet_by_connectivity
+    sample_bitarray_causet_by_connectivity,
+    random_causet_by_connectivity_distribution,
     gaussian_dist_cuts,
     create_random_layered_causet
 end # module QuantumGrav
