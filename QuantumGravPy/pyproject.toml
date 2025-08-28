@@ -30,6 +30,7 @@ dependencies = [
     "juliacall",
     "PyYAML", 
     "zarr",
+    "optuna",
 ]
 
 # Optional dependencies

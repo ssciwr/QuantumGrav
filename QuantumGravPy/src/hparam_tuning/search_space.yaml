@@ -1,0 +1,88 @@
+model:
+  name: "QuantumGravSearchSpace"
+  gcn_net:
+    - in_dim: 12 # number of node features
+      out_dim: [128, 256]
+      dropout_min: 0.2
+      dropout_max: 0.5
+      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
+      normalizer: ["batch_norm", "identity", "layer_norm"]
+      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
+      norm_args: 
+        - 128
+      gnn_layer_kwargs:
+        normalize: False
+        bias: True
+        project: False
+        root_weight: False
+        aggr: "mean"
+    - in_dim: 128
+      out_dim: 256
+      dropout: 0.3
+      gnn_layer_type: "sage"
+      normalizer: "batch_norm"
+      activation: "relu"
+      norm_args: 
+        - 256
+      gnn_layer_kwargs:
+        normalize: False
+        bias: True
+        project: False
+        root_weight: False
+        aggr: "mean"
+    - in_dim: 256
+      out_dim: 128
+      dropout: 0.3
+      gnn_layer_type: "sage"
+      normalizer: "batch_norm"
+      activation: "relu"
+      norm_args: 
+        - 128
+      gnn_layer_kwargs:
+        normalize: False
+        bias: True
+        project: False
+        root_weight: False
+        aggr: "mean"
+  pooling_layer: mean
+  classifier:
+    input_dim: 128
+    output_dims: 
+      - 2
+    hidden_dims: 
+      - 48
+      - 18
+    activation: "relu"
+    backbone_kwargs: [{}, {}]
+    output_kwargs: [{}]
+    activation_kwargs: [{ "inplace": False }]
+
+training:
+  seed: 42
+  # training loop
+  device: "cuda"
+  early_stopping_patience: 5
+  early_stopping_window: 7
+  early_stopping_tol: 0.001
+  early_stopping_metric: "f1_weighted"
+  checkpoint_at: 2
+  checkpoint_path: /path/to/where/the/intermediate/models/should/go
+  # optimizer
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  # training loader
+  batch_size: 32
+  num_workers: 12
+  pin_memory: False
+  drop_last: True
+  num_epochs: 200
+  split: 0.8
+validation: &valtest
+  batch_size: 32
+  num_workers: 12
+  pin_memory: False
+  drop_last: True
+  shuffle: True
+  persistent_workers: True
+  split: 0.1
+testing: *valtest

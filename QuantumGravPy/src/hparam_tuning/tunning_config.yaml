@@ -1,0 +1,10 @@
+tune_model: false # whether to use search space for model settings
+tune_training: true # whether to use search space for training settings
+search_space_path: "search_space.yaml" # path to the search space config file
+dependencies_path: "dependencies.yaml" # path to the dependencies config file
+study_name: "quantum_grav_study" # name of the Optuna study
+storage: experiments/ # directory to store the study results
+best_param_path: "best_params.yaml" # path to save the best hyperparameters
+direction: "minimize" # direction of optimization ("minimize" or "maximize")
+n_trials: 20 # number of trials for hyperparameter tuning
+timeout: 600 # timeout in seconds for the study

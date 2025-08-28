@@ -15,6 +15,8 @@ from datetime import datetime
 from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 
+import optuna
+
 
 class Trainer:
     """Trainer class for training and evaluating GNN models."""
@@ -26,8 +28,9 @@ class Trainer:
         criterion: Callable,
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]] | torch.Tensor], bool]
-        | None = None,
+        early_stopping: (
+            Callable[[list[dict[str, Any]] | torch.Tensor], bool] | None
+        ) = None,
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
@@ -310,12 +313,15 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
+        trial: optuna.trial.Trial | None = None,
     ) -> Tuple[torch.Tensor, Collection[Any]]:
         """Run the training process.
 
         Args:
             train_loader (DataLoader): The data loader for the training set.
             val_loader (DataLoader): The data loader for the validation set.
+            trial (optuna.trial.Trial | None, optional): An Optuna trial
+                for hyperparameter tuning. Defaults to None.
 
         Returns:
             Tuple[Collection[Any], Collection[Any]]: The training and validation results.
@@ -350,6 +356,14 @@ class Trainer:
             self.logger.info(
                 f"  Completed epoch {self.epoch}. training loss: {total_training_data[self.epoch, 0]} +/- {total_training_data[self.epoch, 1]}."
             )
+
+            # integrate Optuna here for hyperparameter tuning
+            if trial is not None:
+                trial.report(total_training_data[self.epoch, 0].item(), self.epoch)
+
+                # Handle pruning based on the intermediate value.
+                if trial.should_prune():
+                    raise optuna.exceptions.TrialPruned()
 
             # evaluation run on validation set
             if self.validator is not None:
