@@ -4,7 +4,7 @@ model:
     - in_dim: 12 # number of node features
       out_dim: [128, 256]
       dropout:
-        type: tuple
+        type: tuple # to distinguish from categorical
         value: [0.2, 0.5, 0.1] # range for dropout, min, max, step
       gnn_layer_type: ["sage", "gcn", "gat", "gco"]
       normalizer: ["batch_norm", "identity", "layer_norm"]
@@ -18,42 +18,46 @@ model:
         root_weight: False
         aggr: "mean"
     - in_dim: 128 # should match previous layer's out_dim, manually set later
-      out_dim: 256
-      dropout: 0.3
-      gnn_layer_type: "sage"
-      normalizer: "batch_norm"
-      activation: "relu"
+      out_dim: [256, 512]
+      dropout:
+        type: tuple
+        value: [0.2, 0.5, 0.1]
+      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
+      normalizer: ["batch_norm", "identity", "layer_norm"]
+      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
       norm_args: 
-        - 256
+        - 256 # should match out_dim, manually set later
       gnn_layer_kwargs:
         normalize: False
         bias: True
         project: False
         root_weight: False
         aggr: "mean"
-    - in_dim: 256
-      out_dim: 128
-      dropout: 0.3
-      gnn_layer_type: "sage"
-      normalizer: "batch_norm"
-      activation: "relu"
+    - in_dim: 256 # should match previous layer's out_dim, manually set later
+      out_dim: [128, 256]
+      dropout:
+        type: tuple
+        value: [0.2, 0.5, 0.1]
+      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
+      normalizer: ["batch_norm", "identity", "layer_norm"]
+      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
       norm_args: 
-        - 128
+        - 128 # should match out_dim, manually set later
       gnn_layer_kwargs:
         normalize: False
         bias: True
         project: False
         root_weight: False
         aggr: "mean"
-  pooling_layer: mean
+  pooling_layer: ["mean", "max", "sum"]
   classifier:
-    input_dim: 128
+    input_dim: 128 # should match last gcn_net layer's out_dim, manually set later
     output_dims: 
-      - 2
+      - 2 # number of classes in classification task
     hidden_dims: 
       - 48
       - 18
-    activation: "relu"
+    activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
     backbone_kwargs: [{}, {}]
     output_kwargs: [{}]
     activation_kwargs: [{ "inplace": False }]
@@ -69,14 +73,18 @@ training:
   checkpoint_at: 2
   checkpoint_path: /path/to/where/the/intermediate/models/should/go
   # optimizer
-  learning_rate: 0.001
-  weight_decay: 0.0001
+  learning_rate:
+    type: tuple
+    value: [1e-5, 1e-1, true]
+  weight_decay:
+    type: tuple
+    value: [1e-6, 1e-2, true]
   # training loader
-  batch_size: 32
+  batch_size: [32, 64]
   num_workers: 12
   pin_memory: False
   drop_last: True
-  num_epochs: 200
+  num_epochs: [50, 100, 200]
   split: 0.8
 validation: &valtest
   batch_size: 32

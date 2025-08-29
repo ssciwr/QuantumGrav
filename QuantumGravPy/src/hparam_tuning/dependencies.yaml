@@ -8,4 +8,6 @@ model:
     # layer 2
     - in_dim: "gcn_net[1].out_dim"
     - norm_args: "gcn_net[2].out_dim"
+  classifier:
+    input_dim: "gcn_net[-1].out_dim"
 

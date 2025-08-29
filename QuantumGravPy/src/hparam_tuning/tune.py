@@ -4,7 +4,25 @@ import optuna
 from typing import Any
 
 
-def _is_suggest_caterorical(value: Any) -> bool:
+def _is_tuple_of_3(value: Any) -> bool:
+    """Check if a value is a tuple of 3 elements.
+
+    Args:
+        value (Any): The value to check.
+
+    Returns:
+        bool: True if the value is a tuple with 3 elements,
+            False otherwise.
+    """
+    is_tuple_of_3 = (
+        isinstance(value, dict)
+        and value.get("type") == "tuple"
+        and len(value.get("value", [])) == 3
+    )
+    return is_tuple_of_3
+
+
+def _is_suggest_categorical(value: Any) -> bool:
     """Check if a value should be an input for an Optuna suggest_categorical.
     The value would be a list of possible categories.
     E.g. ['relu', 'tanh', 'sigmoid'] or [16, 32, 64]
@@ -32,11 +50,7 @@ def _is_suggest_float(value: Any) -> bool:
             and the third is either a float or a bool.
             False otherwise.
     """
-    is_tuple_of_3 = (
-        isinstance(value, dict)
-        and value.get("type") == "tuple"
-        and len(value.get("value", [])) == 3
-    )
+    is_tuple_of_3 = _is_tuple_of_3(value)
     num_values = tuple(value.get("value", [])) if is_tuple_of_3 else ()
     two_floats = (
         (isinstance(num_values[0], float) and isinstance(num_values[1], float))
@@ -65,7 +79,7 @@ def _is_suggest_int(value: Any) -> bool:
             and the third is an integer.
             False otherwise.
     """
-    is_tuple_of_3 = isinstance(value, tuple) and len(value) == 3
+    is_tuple_of_3 = _is_tuple_of_3(value)
     two_ints = (
         (isinstance(value[0], int) and isinstance(value[1], int))
         if is_tuple_of_3
@@ -88,7 +102,7 @@ def _convert_to_suggestion(
     Returns:
         Any: The converted value.
     """
-    if _is_suggest_caterorical(value):
+    if _is_suggest_categorical(value):
         return trial.suggest_categorical(param_name, value)
     elif _is_suggest_float(value):
         if isinstance(value[2], bool):
@@ -164,34 +178,61 @@ def apply_dependencies(config: dict, depmap: dict) -> dict:
     return config
 
 
+def load_yaml(file: Path, description: str) -> dict:
+    """Load a YAML file, raising an error if it doesn't exist.
+
+    Args:
+        file (Path): Path to the YAML file.
+        description (str): Description of the file for error messages.
+    """
+    if not file or not file.exists():
+        raise FileNotFoundError(f"{description} file {file} does not exist.")
+    with open(file, "r") as f:
+        return yaml.safe_load(f)
+
+
 def build_search_space_with_dependencies(
-    config_file: Path, depmap_file: Path, trial: optuna.trial.Trial
+    search_space_file: Path,
+    depmap_file: Path,
+    trial: optuna.trial.Trial,
+    tune_model: bool = False,
+    tune_training: bool = True,
+    base_settings_file: Path = None,
 ) -> dict:
     """Build a hyperparameter search space from a YAML configuration file
     and a dependency map file, using an Optuna trial object.
 
     Args:
-        config_file (Path): Path to the YAML configuration file.
+        search_space_file (Path): Path to the YAML configuration file.
         depmap_file (Path): Path to the dependency map YAML file.
         trial (optuna.trial.Trial): Optuna trial object for suggesting hyperparameters.
+        tune_model (bool, optional): Whether to tune model hyperparameters.
+            Defaults to False, meaning values for model will be taken from base settings.
+        tune_training (bool, optional): Whether to tune training hyperparameters.
+            Defaults to True, meaning values for training will be taken from search space.
 
     Returns:
         dict: A dictionary representing the hyperparameter search space
             with dependencies applied.
     """
-    if not config_file.exists():
-        raise FileNotFoundError(f"Config file {config_file} does not exist.")
-    if not depmap_file.exists():
-        raise FileNotFoundError(f"Dependency map file {depmap_file} does not exist.")
+    search_space = load_yaml(search_space_file, description="Search space")
+    depmap = load_yaml(depmap_file, description="Dependency map")
+    base_settings = {}
 
-    with open(config_file, "r") as file:
-        config = yaml.safe_load(file)
+    if not tune_model or not tune_training:
+        base_settings = load_yaml(
+            base_settings_file,
+            description="Base settings file is required "
+            "if you do not want to tune model or training. Base settings",
+        )
 
-    with open(depmap_file, "r") as file:
-        depmap = yaml.safe_load(file)
+        if not tune_model:
+            search_space["model"] = base_settings["model"]
+        if not tune_training:
+            search_space["training"] = base_settings["training"]
 
-    search_space = get_suggestion(config, trial)
-    search_space_with_deps = apply_dependencies(search_space, depmap)
+    search_space_with_suggestions = get_suggestion(search_space, trial)
+    search_space_with_deps = apply_dependencies(search_space_with_suggestions, depmap)
     return search_space_with_deps
 
 
@@ -204,15 +245,7 @@ def get_tunning_settings(tunning_config_path: Path) -> dict:
     Returns:
         dict: A dictionary containing the tuning settings.
     """
-    if not tunning_config_path.exists():
-        raise FileNotFoundError(
-            f"Tunning config file {tunning_config_path} does not exist."
-        )
-
-    with open(tunning_config_path, "r") as file:
-        tunning_config = yaml.safe_load(file)
-
-    return tunning_config
+    return load_yaml(tunning_config_path, description="Tuning config")
 
 
 def create_study(tunning_config: dict) -> None:

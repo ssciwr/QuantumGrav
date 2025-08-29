@@ -1,5 +1,6 @@
 tune_model: false # whether to use search space for model settings
 tune_training: true # whether to use search space for training settings
+base_settings_path: "base_settings.yaml" # path to the base settings file
 search_space_path: "search_space.yaml" # path to the search space config file
 dependencies_path: "dependencies.yaml" # path to the dependencies config file
 study_name: "quantum_grav_study" # name of the Optuna study
