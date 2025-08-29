@@ -3,7 +3,7 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/QuantumGrav"]
+packages = ["src/QuantumGrav", "src/QGTune"]
 
 [project]
 name = "QuantumGrav"

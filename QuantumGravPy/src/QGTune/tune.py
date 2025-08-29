@@ -4,8 +4,8 @@ import optuna
 from typing import Any
 
 
-def _is_tuple_of_3(value: Any) -> bool:
-    """Check if a value is a tuple of 3 elements.
+def _is_yaml_tuple_of_3(value: Any) -> bool:
+    """Check if a value is a yaml tuple of 3 elements.
 
     Args:
         value (Any): The value to check.
@@ -33,7 +33,7 @@ def _is_suggest_categorical(value: Any) -> bool:
     Returns:
         bool: True if the value is a list, False otherwise.
     """
-    return isinstance(value, list)
+    return isinstance(value, list) and len(value) > 0
 
 
 def _is_suggest_float(value: Any) -> bool:
@@ -50,7 +50,7 @@ def _is_suggest_float(value: Any) -> bool:
             and the third is either a float or a bool.
             False otherwise.
     """
-    is_tuple_of_3 = _is_tuple_of_3(value)
+    is_tuple_of_3 = _is_yaml_tuple_of_3(value)
     num_values = tuple(value.get("value", [])) if is_tuple_of_3 else ()
     two_floats = (
         (isinstance(num_values[0], float) and isinstance(num_values[1], float))
@@ -75,18 +75,13 @@ def _is_suggest_int(value: Any) -> bool:
 
     Returns:
         bool: True if the value is a tuple with 3 elements,
-            The first two numbers are integers,
-            and the third is an integer.
+            All three are integers.
             False otherwise.
     """
-    is_tuple_of_3 = _is_tuple_of_3(value)
-    two_ints = (
-        (isinstance(value[0], int) and isinstance(value[1], int))
-        if is_tuple_of_3
-        else False
-    )
-    third_is_int = (isinstance(value[2], int)) if is_tuple_of_3 else False
-    return is_tuple_of_3 and two_ints and third_is_int
+    is_tuple_of_3 = _is_yaml_tuple_of_3(value)
+    num_values = tuple(value.get("value", [])) if is_tuple_of_3 else ()
+    all_ints = all(isinstance(v, int) for v in num_values) if is_tuple_of_3 else False
+    return is_tuple_of_3 and all_ints
 
 
 def _convert_to_suggestion(
@@ -105,12 +100,23 @@ def _convert_to_suggestion(
     if _is_suggest_categorical(value):
         return trial.suggest_categorical(param_name, value)
     elif _is_suggest_float(value):
-        if isinstance(value[2], bool):
-            return trial.suggest_float(param_name, value[0], value[1], log=value[2])
+        number_values = value.get("value", [])
+        if isinstance(number_values[2], bool):
+            return trial.suggest_float(
+                param_name,
+                float(number_values[0]),  # e.g. 1e-5
+                float(number_values[1]),
+                log=number_values[2],
+            )
         else:
-            return trial.suggest_float(param_name, value[0], value[1], step=value[2])
+            return trial.suggest_float(
+                param_name, number_values[0], number_values[1], step=number_values[2]
+            )
     elif _is_suggest_int(value):
-        return trial.suggest_int(param_name, value[0], value[1], step=value[2])
+        number_values = value.get("value", [])
+        return trial.suggest_int(
+            param_name, number_values[0], number_values[1], step=number_values[2]
+        )
     else:
         return value
 
@@ -178,14 +184,14 @@ def apply_dependencies(config: dict, depmap: dict) -> dict:
     return config
 
 
-def load_yaml(file: Path, description: str) -> dict:
+def load_yaml(file: Path | str, description: str) -> dict:
     """Load a YAML file, raising an error if it doesn't exist.
 
     Args:
-        file (Path): Path to the YAML file.
+        file (Path | str): Path to the YAML file.
         description (str): Description of the file for error messages.
     """
-    if not file or not file.exists():
+    if not file or not Path(str(file)).exists():
         raise FileNotFoundError(f"{description} file {file} does not exist.")
     with open(file, "r") as f:
         return yaml.safe_load(f)
@@ -271,7 +277,7 @@ def create_study(tunning_config: dict) -> None:
     return study
 
 
-def save_best_trail(study: optuna.study.Study, output_path: Path) -> None:
+def save_best_trial(study: optuna.study.Study, output_path: Path) -> None:
     """Save the best trial of an Optuna study to a YAML file.
 
     Args:

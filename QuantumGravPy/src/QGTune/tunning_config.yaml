@@ -4,7 +4,7 @@ base_settings_path: "base_settings.yaml" # path to the base settings file
 search_space_path: "search_space.yaml" # path to the search space config file
 dependencies_path: "dependencies.yaml" # path to the dependencies config file
 study_name: "quantum_grav_study" # name of the Optuna study
-storage: experiments/ # directory to store the study results
+storage: experiments/results.db # storage file for the Optuna study
 best_param_path: "best_params.yaml" # path to save the best hyperparameters
 direction: "minimize" # direction of optimization ("minimize" or "maximize")
 n_trials: 20 # number of trials for hyperparameter tuning
