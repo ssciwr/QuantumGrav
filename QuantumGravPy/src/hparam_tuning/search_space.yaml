@@ -3,20 +3,21 @@ model:
   gcn_net:
     - in_dim: 12 # number of node features
       out_dim: [128, 256]
-      dropout_min: 0.2
-      dropout_max: 0.5
+      dropout:
+        type: tuple
+        value: [0.2, 0.5, 0.1] # range for dropout, min, max, step
       gnn_layer_type: ["sage", "gcn", "gat", "gco"]
       normalizer: ["batch_norm", "identity", "layer_norm"]
       activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
       norm_args: 
-        - 128
+        - 128 # should match out_dim, manually set later
       gnn_layer_kwargs:
         normalize: False
         bias: True
         project: False
         root_weight: False
         aggr: "mean"
-    - in_dim: 128
+    - in_dim: 128 # should match previous layer's out_dim, manually set later
       out_dim: 256
       dropout: 0.3
       gnn_layer_type: "sage"

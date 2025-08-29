@@ -32,14 +32,19 @@ def _is_suggest_float(value: Any) -> bool:
             and the third is either a float or a bool.
             False otherwise.
     """
-    is_tuple_of_3 = isinstance(value, tuple) and len(value) == 3
+    is_tuple_of_3 = (
+        isinstance(value, dict)
+        and value.get("type") == "tuple"
+        and len(value.get("value", [])) == 3
+    )
+    num_values = tuple(value.get("value", [])) if is_tuple_of_3 else ()
     two_floats = (
-        (isinstance(value[0], float) and isinstance(value[1], float))
+        (isinstance(num_values[0], float) and isinstance(num_values[1], float))
         if is_tuple_of_3
         else False
     )
     third_is_float_or_bool = (
-        (isinstance(value[2], float) or isinstance(value[2], bool))
+        (isinstance(num_values[2], float) or isinstance(num_values[2], bool))
         if is_tuple_of_3
         else False
     )
@@ -108,10 +113,11 @@ def get_suggestion(config: dict, trial: optuna.trial.Trial) -> dict:
     """
     suggestions = {}
     for param, value in config.items():
-        if isinstance(value, dict):
-            suggestions[param] = get_suggestion(value, trial)
+        suggestion = _convert_to_suggestion(param, value, trial)
+        if isinstance(suggestion, dict):
+            suggestions[param] = get_suggestion(suggestion, trial)
         else:
-            suggestions[param] = _convert_to_suggestion(param, value, trial)
+            suggestions[param] = suggestion
     return suggestions
 
 
