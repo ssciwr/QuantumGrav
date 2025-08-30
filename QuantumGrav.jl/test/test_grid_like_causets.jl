@@ -129,7 +129,8 @@ end
 # ---------------- create_grid_causet_2D ----------------
 @testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[setupGridTests] begin
     grid = QuantumGrav.generate_grid_2d(30, "square"; a=1.0, rotate_deg=0)
-    cset = QuantumGrav.create_grid_causet_2D(30, "square", CausalSets.MinkowskiManifold{2}(); a=1.0, rotate_deg=0)
+    cset, _, sprinkling = QuantumGrav.create_grid_causet_2D(30, "square", CausalSets.MinkowskiManifold{2}(); a=1.0, rotate_deg=0)
     @test typeof(cset) == CausalSets.BitArrayCauset
     @test cset.atom_count == 30
+    @test length(sprinkling) == 60
 end

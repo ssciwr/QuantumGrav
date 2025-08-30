@@ -141,9 +141,16 @@ sort the points by the manifold’s time ordering, and return a `BitArrayCauset`
 # Keywords
 See `generate_grid_2d` for lattice parameters and rotation.
 """
-function create_grid_causet_2D(size::Int64, lattice::AbstractString, manifold::CausalSets.AbstractManifold; a::Float64=1.0, b::Float64=0.5, gamma_deg::Float64=60.0, rotate_deg=nothing, origin=(0.0,0.0))::CausalSets.BitArrayCauset
+function create_grid_causet_2D( size::Int64, 
+                                lattice::AbstractString,
+                                manifold::CausalSets.AbstractManifold; 
+                                type::Type{T} = Float32, 
+                                a::Float64=1.0, b::Float64=0.5, 
+                                gamma_deg::Float64=60.0, 
+                                rotate_deg=nothing, 
+                                origin=(0.0,0.0))::Tuple{CausalSets.BitArrayCauset, Bool, Matrix{T}} where {T<:Number}
     grid = generate_grid_2d(size, lattice; a=a, b=b, gamma_deg=gamma_deg, rotate_deg=rotate_deg, origin=origin)
     pseudosprinkling = sort_grid_by_time_from_manifold(manifold, grid)
 
-    return CausalSets.BitArrayCauset(manifold, pseudosprinkling)
+    return CausalSets.BitArrayCauset(manifold, pseudosprinkling), true, type.(stack(collect.(pseudosprinkling), dims = 1))
 end
