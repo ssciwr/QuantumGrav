@@ -1,3 +1,7 @@
+[![test](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml/badge.svg)](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml)
+[![Docs(Currently only Python)](https://img.shields.io/badge/docs-latest-blue?logo=read-the-docs)](https://ssciwr.github.io/QuantumGrav/)
+
+
 # QuantumGrav
 Quantum gravity project experimental repo. 
 
