@@ -34,5 +34,6 @@ export make_simple_cset,
     create_random_layered_causet,
     destroy_manifold_cset,
     generate_grid_from_brillouin_cell,
-    generate_grid_2d
+    generate_grid_2d,
+    create_grid_causet_2D
 end # module QuantumGrav
