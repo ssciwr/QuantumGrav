@@ -8,7 +8,7 @@ import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -32,9 +32,9 @@ class QGDatasetInMemory(QGDatasetBase, InMemoryDataset):
         chunksize: int = 1000,
         n_processes: int = 1,
         # dataset properties
-        transform: Callable[[Data], Data] | None = None,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        transform: Callable[[Data | Collection], Data] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     ):
         """Initialize a QGDatasetInMemory instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that can be loaded into memory completely.
 

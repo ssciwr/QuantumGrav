@@ -3,30 +3,6 @@ This document explains how to get the project running for development and for us
 
 ## Installation
 
-### Julia
-1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
-
-We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
-
-2. Open a terminal and start the Julia REPL
-
-3. Activate a project environment in which you want to work
-
-```julia
-# press ] to enter the package manager prompt, then:
-activate path/to/your/project
-# press backspace or Ctrl+C to leave the pkg prompt
-```
-
-4. Add the QuantumGrav package as a dependendy. This must be done from a local path
-
-```julia 
-# press ] to enter the package manager prompt, then:
-add /path/to/QuantumGrav/QuantumGrav.jl
-```
-This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia. 
-
-### Python
 The Python package lives in `QuantumGravPy/` and follows a standard packaging layout (sources under `QuantumGravPy/src/QuantumGrav`). The project uses PyTorch and PyTorch Geometric; installation of those dependencies depends on your OS and available hardware (CUDA version).
 
 Basic steps (UNIX-like shells):
@@ -64,30 +40,6 @@ After installation you can import the package as `import QuantumGrav` from Pytho
 ## Installation as a developer
 1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
 
-### Julia (developer workflow)
-We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
-
-2. Open a terminal, start the Julia REPL and activate your target environment 
-```bash
-activate path/to/your/project
-```
-
-3. Check out `QuantumGrav.jl` for development 
-```bash
-# press ] to enter the package manager prompt, then:
-develop path/to/QuantumGrav/QuantumGrav.jl
-```
-This will track the changes you made automatically. 
-
-4. Running tests from the Julia REPL (recommended for detailed output):
-```julia
-using TestItemRunner
-@run_package_tests
-```
-
-This runs the tests defined under `QuantumGrav.jl/test` using the activated environment.
-
-### Python (developer workflow)
 
 Do an editable install so local changes in `QuantumGravPy/src/QuantumGrav` are available immediately:
 

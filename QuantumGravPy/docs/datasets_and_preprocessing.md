@@ -13,11 +13,11 @@ The various Dataset all work by the same principle:
 
 Becausse this package does not make assumptions about the structure and character of the input raw data, you need to supply a set of functions yourself: 
 
-- A `reader` function that reads the raw data to construct a single cset/graph/sample
+- A `reader` function that reads the raw data to construct a single cset/graph/sample.
 
-- A `pre_transform` function which builds the actual `Data` object. This will be executed only once and create a directory named `processed` which will contain the processed files, one for each cset. 
+- A `pre_transform` function which builds the actual `Data` object. This will be executed only once when you open the dataset path.  Internally, the dataset will create a directory named `processed` which will contain the processed files, one for each cset. The precence of this directory is used to determine if `pre_transform` is executed again, so you can go to the directory and delete `processed` or rename it to trigger a new processing run. 
 
-- A `pre_filter` function which filters out undesired raw samples and only lets a subset through to be processed by `pre_transform`. 
+- A `pre_filter` function which filters out undesired raw samples and only lets a subset through to be processed by `pre_transform`. The semantics is the same as `pre_transform`, and the two will always be executed together. 
 
 - A `transform` function which is executed each time the dataset path on disk is opened, and can be used to execute all data transformations that would need to be carried out each time a dataset is loaded. 
 
@@ -45,9 +45,9 @@ class QGDataset(QGDatasetBase, Dataset):
         chunksize: int = 1000,
         n_processes: int = 1,
         # dataset properties
-        transform: Callable[[Data], Data] | None = None,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        transform: Callable[[Data | Collection], Data] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     )
 ```
 

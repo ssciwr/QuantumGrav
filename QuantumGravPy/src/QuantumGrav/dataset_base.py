@@ -9,7 +9,7 @@ import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from joblib import delayed, Parallel
 
 
@@ -151,8 +151,8 @@ class QGDatasetBase:
         self,
         raw_file: h5py.File,
         start: int,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     ) -> list[Data]:
         """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 
@@ -200,8 +200,8 @@ class QGDatasetBase:
         self,
         store: zarr.storage.LocalStore,
         start: int,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     ) -> list[Data]:
         """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 

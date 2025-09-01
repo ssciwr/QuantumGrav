@@ -41,7 +41,7 @@ This submodel is the main part of the graph neural network backbone, composed of
       show_source: true
 
 ## Model evaluation
-This module provides base classes that take the output of applying the model to a validation or training dataset, and derive useful quantities to evaluate the model quality. These do not do anything useful by default, but you must derive a from them that implemements your desired evaluation, e.g., F1 score. 
+This module provides base classes that take the output of applying the model to a validation or training dataset, and derive useful quantities to evaluate the model quality. These do not do anything useful by default. Rather, you must derive your own class from them that implemements your desired evaluation, e.g., using an F1 score. 
 
 ::: QuantumGrav.evaluate 
     handler: python
