@@ -2,21 +2,52 @@ import pytest
 from QGTune import tune
 import optuna
 import yaml
+import numpy as np
 
 
 @pytest.fixture
-def sample_yaml_file(tmp_path):
-    yaml_content = """
-model:
-  lr:
-    type: tuple
-    value: [1e-5, 1e-1, true]
-  num_layers: [1,2,3]
-  activation: ['relu', 'tanh', 'sigmoid']
-  name: 'MyModel'
-"""
+def get_config():
+    return {
+        "model": {
+            "gcn_net": [
+                {"in_dim": 16, "out_dim": 32, "norm_args": ["ref"]},
+                {"in_dim": "ref", "out_dim": 64, "norm_args": ["ref"]},
+            ],
+            "classifier": {"input_dim": "ref"},
+            "num_layers": [1, 2, 3],
+            "activation": ["relu", "tanh", "sigmoid"],
+            "name": "MyModel",
+        },
+        "training": {
+            "lr": {"type": "tuple", "value": [1e-5, 1e-1, True]},
+            "batch_size": [16, 32, 64],
+        },
+    }
+
+
+@pytest.fixture
+def get_dependencies():
+    return {
+        "model": {
+            "gcn_net": [
+                # layer 0
+                {"norm_args": ["model.gcn_net[0].out_dim"]},
+                # layer 1
+                {
+                    "in_dim": "model.gcn_net[0].out_dim",
+                    "norm_args": ["model.gcn_net[1].out_dim"],
+                },
+            ],
+            "classifier": {"input_dim": "model.gcn_net[-1].out_dim"},
+        }
+    }
+
+
+@pytest.fixture
+def sample_yaml_file(tmp_path, get_config):
     yaml_file = tmp_path / "sample.yaml"
-    yaml_file.write_text(yaml_content)
+    with open(yaml_file, "w") as f:
+        yaml.safe_dump(get_config, f)
     return yaml_file
 
 
@@ -123,6 +154,64 @@ def test_get_suggestions():
     suggestions = tune.get_suggestion(config, trial)
     assert suggestions == {"activation": "tanh"}
 
+    # recursive case
+    config = {
+        "model": {
+            "lr": {"type": "tuple", "value": [1e-5, 1e-1, True]},
+            "num_layers": [1, 2, 3],
+            "activation": ["relu", "tanh", "sigmoid"],
+            "name": "MyModel",
+        },
+        "training": {
+            "batch_size": [16, 32, 64],
+        },
+    }
+    trial = optuna.trial.FixedTrial(
+        {
+            "lr": 0.0001,
+            "num_layers": 2,
+            "activation": "tanh",
+            "name": "MyModel",
+            "batch_size": 32,
+        }
+    )
+    suggestions = tune.get_suggestion(config, trial)
+    assert suggestions == {
+        "model": {
+            "lr": 0.0001,
+            "num_layers": 2,
+            "activation": "tanh",
+            "name": "MyModel",
+        },
+        "training": {
+            "batch_size": 32,
+        },
+    }
+
+
+def test_resolve_dependencies(get_config):
+    ref_path = "training.lr.value"
+    current = tune._resolve_dependencies(get_config, ref_path)
+    assert np.isclose(current[0], 1e-5)
+    assert np.isclose(current[1], 1e-1)
+    assert current[2] is True
+
+    ref_path = "model.gcn_net[0].out_dim"
+    current = tune._resolve_dependencies(get_config, ref_path)
+    assert current == 32
+
+    ref_path = "model.gcn_net[-1].out_dim"
+    current = tune._resolve_dependencies(get_config, ref_path)
+    assert current == 64
+
+
+def test_apply_dependencies(get_config, get_dependencies):
+    config_with_deps = tune.apply_dependencies(get_config, get_dependencies)
+    assert config_with_deps["model"]["gcn_net"][0]["norm_args"] == [32]
+    assert config_with_deps["model"]["gcn_net"][1]["in_dim"] == 32
+    assert config_with_deps["model"]["gcn_net"][1]["norm_args"] == [64]
+    assert config_with_deps["model"]["classifier"]["input_dim"] == 64
+
 
 def test_load_yaml_invalid(tmp_path):
     with pytest.raises(FileNotFoundError):
@@ -138,12 +227,10 @@ def test_load_yaml_invalid(tmp_path):
 def test_load_yaml_valid(sample_yaml_file):
     config = tune.load_yaml(sample_yaml_file, description="Sample YAML")
     assert "model" in config
-    assert "lr" in config["model"]
-    assert config["model"]["lr"]["type"] == "tuple"
-    assert config["model"]["lr"]["value"] == ["1e-5", "1e-1", True]
-    assert "num_layers" in config["model"]
-    assert config["model"]["num_layers"] == [1, 2, 3]
-    assert "activation" in config["model"]
-    assert config["model"]["activation"] == ["relu", "tanh", "sigmoid"]
-    assert "name" in config["model"]
-    assert config["model"]["name"] == "MyModel"
+    assert "training" in config
+    assert "gcn_net" in config["model"]
+    assert len(config["model"]["gcn_net"]) == 2
+    assert config["model"]["gcn_net"][0]["in_dim"] == 16
+    assert config["model"]["gcn_net"][0]["out_dim"] == 32
+    assert config["model"]["gcn_net"][1]["in_dim"] == "ref"
+    assert config["training"]["lr"]["type"] == "tuple"

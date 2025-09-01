@@ -1,7 +1,7 @@
 import yaml
 from pathlib import Path
 import optuna
-from typing import Any
+from typing import Any, List
 
 
 def _is_yaml_tuple_of_3(value: Any) -> bool:
@@ -155,11 +155,40 @@ def _resolve_dependencies(config: dict, ref_path: str) -> Any:
     parts = ref_path.replace("]", "").replace("[", ".").split(".")
     current = config
     for part in parts:
-        if part.isdigit():
-            current = current[int(part)]
-        else:
-            current = current[part]
+        try:
+            index = int(part)
+            current = current[index]
+        except ValueError:  # part is not an integer
+            current = current.get(part)
     return current
+
+
+def _walk_to_ref(node: Any, walk_path: List[str], config: dict) -> None:
+    """A recursive function to walk to a reference in a
+    dependency dictionary and resolve dependencies.
+
+    Args:
+        node (Any): The current node in the dependency dictionary.
+        walk_path (List[str]): The path that has been walked so far.
+        config (dict): The configuration dictionary.
+    """
+    if isinstance(node, dict):
+        items = node.items()
+    elif isinstance(node, list):
+        items = enumerate(node)
+    else:
+        return
+
+    for key, value in items:
+        if isinstance(value, (dict, list)):
+            _walk_to_ref(value, walk_path + [key], config)
+        else:
+            resolved_value = _resolve_dependencies(config, value)
+            parent = config
+            for p in walk_path:
+                parent = parent[p]
+            # structure of depmap must map the structure of config
+            parent[key] = resolved_value
 
 
 def apply_dependencies(config: dict, depmap: dict) -> dict:
@@ -173,14 +202,7 @@ def apply_dependencies(config: dict, depmap: dict) -> dict:
     Returns:
         dict: The configuration dictionary with dependencies applied.
     """
-    for part, deps in depmap.items():
-        for key, layers in deps.items():
-            for i, layer_dep in enumerate(layers):
-                for field, ref in layer_dep.items():
-                    resolved_value = _resolve_dependencies(config, ref)
-                    config[part][key][i][field] = (
-                        [resolved_value] if field == "norm_args" else resolved_value
-                    )
+    _walk_to_ref(depmap, [], config)
     return config
 
 
