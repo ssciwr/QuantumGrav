@@ -132,14 +132,36 @@ function sort_grid_by_time_from_manifold(manifold::CausalSets.AbstractManifold{N
 end
 
 """
-    create_grid_causet_2D(size, lattice, manifold; a=1.0, b=0.5, gamma_deg=60.0, rotate_deg=nothing, origin=(0.0,0.0))
-        -> CausalSets.BitArrayCauset
+    create_grid_causet_2D(size, lattice, manifold; 
+                          type=Float32, a=1.0, b=0.5, 
+                          gamma_deg=60.0, rotate_deg=nothing, 
+                          origin=(0.0, 0.0)) 
+        -> Tuple{CausalSets.BitArrayCauset, Bool, Matrix{T}}
 
-Construct a 2D grid of `size` points for the given Bravais lattice name via `generate_grid_2d`,
-sort the points by the manifold’s time ordering, and return a `BitArrayCauset` built on that order.
+Construct a 2D grid of `size` points based on the given Bravais lattice, sort them by the time function of `manifold`, and build a `BitArrayCauset` from the resulting pseudo‑sprinkling.
+
+# Arguments
+- `size::Int`: number of atoms to generate (≥ 1).
+- `lattice::AbstractString`: name of the 2D Bravais lattice. Supported names (case-insensitive):
+    • "square", "quadratic" → edges ((a,0), (0,a))
+    • "rectangular" → edges ((a,0), (0,b))
+    • "centered-rectangular", "rhombic", "c-rect" → edges ((a/2,b/2), (a/2,-b/2))
+    • "hexagonal", "triangular" → edges ((a,0), (a/2, a*sqrt(3)/2))
+    • "oblique", "monoclinic" → edges ((a,0), (b*cos(γ), b*sin(γ))) with `γ = gamma_deg`
+- `manifold::CausalSets.AbstractManifold{2}`: 2D manifold defining the causal structure on the grid.
 
 # Keywords
-See `generate_grid_2d` for lattice parameters and rotation.
+- `type::Type{T}=Float32`: numeric type used for the returned coordinate matrix.
+- `a::Float64=1.0`, `b::Float64=0.5`: lattice constants.
+- `gamma_deg::Float64=60.0`: angle between lattice vectors (for "oblique"/"monoclinic" only).
+- `rotate_deg=nothing`: if set, rotate the lattice by the given angle (in degrees). If `nothing`, automatically aligns `(e₁ + e₂)` with the positive y-axis.
+- `origin::Tuple{Float64,Float64}`: coordinate of the origin vertex.
+
+# Returns
+- `Tuple{BitArrayCauset, Bool, Matrix{T}}`:    
+    - `BitArrayCauset` the constructed causet,
+    - `Bool` - `true` immitates the "converged" return option in make_simple_cset,
+    - `Matrix{T}` - the coordinate matrix of atoms on the grid, immitating the sprinkling in make_simple_cset
 """
 function create_grid_causet_2D( size::Int64, 
                                 lattice::AbstractString,
