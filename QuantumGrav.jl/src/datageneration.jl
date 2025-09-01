@@ -364,22 +364,16 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
 - `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
 - `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
-- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
+- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
 function make_data(
     transform::Function,
     prepare_output::Function,
     write_data::Function;
-    config::Dict{String,Any} = Dict{String,Any}(
-        "num_datapoints" => 1000,
-        "output" => "~/QuantumGrav/data",
-        "file_mode" => "w",
-        "seed" => 42,
-        "output_format" => "hdf5",
-    ),
+    config::Dict{String,Any} = Dict{String,Any}(),
 )
     # consistency checks
-    for key in ["num_datapoints", "output", "file_mode", "seed", "output_format"]
+    for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
             throw(ArgumentError("Configuration must contain the key: $key"))
         end
@@ -397,6 +391,62 @@ function make_data(
     # make directory to put data into
     if !isdir(abspath(expanduser(config["output"])))
         mkpath(abspath(expanduser(config["output"])))
+    end
+
+    datetime = Dates.now()
+    datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
+
+    # get the source code of the transform/prepare/write functions and write them to the data folder 
+    # to document how the data has been created
+    for func in [transform, prepare_output, write_data]
+        funcdata = first(methods(func)) # this assumes that all overloads of the passed functions are part of the same file
+        filepath = String(funcdata.file)
+        targetpath = joinpath(
+            abspath(expanduser(config["output"])),
+            splitext(basename(filepath))[1] * "_$(getpid()).jl",
+        )
+
+        if isfile(targetpath) == false
+            cp(filepath, targetpath)
+        end
+    end
+
+    # get git info of QuantumGrav package 
+    pkg_id = Base.identify_package("QuantumGrav")
+    info = Pkg.dependencies()[pkg_id.uuid]
+    git_source = info.git_source
+    git_branch = info.git_revision
+    git_tree_hash = info.tree_hash
+    config["QuantumGrav"] = Dict(
+        "git_source" => git_source,
+        "git_branch" => git_branch,
+        "git_tree_hash" => git_tree_hash,
+    )
+
+    YAML.write_file(
+        joinpath(
+            abspath(expanduser(config["output"])),
+            "config_$(getpid())_$(datetime).yaml",
+        ),
+        config,
+    )
+
+    if config["output_format"] == "hdf5"
+        filepath = joinpath(
+            abspath(expanduser(config["output"])),
+            "data_$(getpid())_$(datetime).h5",
+        )
+
+        file = HDF5.h5open(filepath, get(config, "file_mode", "w"))
+    elseif config["output_format"] == "zarr"
+        filepath = joinpath(
+            abspath(expanduser(config["output"])),
+            "data_$(getpid())_$(datetime).zarr",
+        )
+
+        file = Zarr.DirectoryStore(filepath)
+    else
+        throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
     end
 
     # this must not go into the `make_data_file` function
@@ -437,61 +487,6 @@ function make_data(
         write_data(file, config, final_data)
         final_data = nothing # clear the final_data to reduce memory usage
         return GC.gc() # run garbage collector to free memory
-    end
-
-    datetime = Dates.now()
-    datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
-
-    # get the source code of the transform/prepare/write functions and write them to the data folder 
-    # to document how the data has been created
-    for func in [transform, prepare_output, write_data]
-        funcdata = first(methods(func)) # this assumes that all overloads of the passed functions are part of the same file
-        filepath = String(funcdata.file)
-        targetpath = joinpath(
-            abspath(expanduser(config["output"])),
-            splitext(basename(filepath))[1] * "_$(getpid()).jl",
-        )
-
-        if isfile(targetpath) == false
-            cp(filepath, targetpath)
-        end
-    end
-
-
-    # get git info of QuantumGrav package 
-    pkg_id = Base.identify_package("QuantumGrav")
-    info = Pkg.dependencies()[pkg_id.uuid]
-    git_source = info.git_source
-    git_branch = info.git_revision
-    git_tree_hash = info.tree_hash
-    config["QuantumGrav"] = Dict(
-        "git_source" => git_source,
-        "git_branch" => git_branch,
-        "git_tree_hash" => git_tree_hash,
-    )
-
-    YAML.write_file(
-        joinpath(abspath(expanduser(config["output"])), "config_$(getpid()).yaml"),
-        config,
-    )
-
-    if config["output_format"] == "hdf5"
-        file = HDF5.h5open(
-            joinpath(
-                abspath(expanduser(config["output"])),
-                "data_$(getpid())_$(datetime).h5",
-            ),
-            config["file_mode"],
-        )
-    elseif config["output_format"] == "zarr"
-        filepath = joinpath(
-            abspath(expanduser(config["output"])),
-            "data_$(getpid())_$(datetime).zarr",
-        )
-
-        file = Zarr.DirectoryStore(filepath)
-    else
-        throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
     end
 
     # prepare the file: generate datasets, attributes, dataspaces... 
