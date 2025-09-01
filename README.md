@@ -1,68 +1,89 @@
+[![test](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml/badge.svg)](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml)
+[![Docs(Currently only Python)](https://img.shields.io/badge/docs-latest-blue?logo=read-the-docs)](https://ssciwr.github.io/QuantumGrav/)
+
+
 # QuantumGrav
 Quantum gravity project experimental repo. 
 
-## Python
-*this assumes a UNIX system* 
+## Installation
 
-- Set up a virtual environment first
-```bash 
-python3 -m venv .venv 
-```
-- activate it
-```bash
-source ./.venv/bin/activate  
-```
+### Julia
+1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
 
-- install the dependencies. Because these differ based on hardware, please refer to the [pytorch-geometric documentation](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) for further details.
+We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
 
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip install torch-geometric
-pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
-``` 
+2. Open a terminal and start the Julia REPL
 
-See [the pytorch installation page](https://pytorch.org/get-started/locally/) and the [pytorch-geometric installation page](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html), respectively, for more information
+3. Activate a project environment in which you want to work
 
-```bash 
-- finally, install the package 
-```bash 
-cd ./py
-python3 -m pip install .
-``` 
-
-- or, for development, do: 
-```bash 
-cd ./py
-python3 -m pip install -e .[dev]
+```julia
+# press ] to enter the package manager prompt, then:
+activate path/to/your/project
+# press backspace or Ctrl+C to leave the pkg prompt
 ```
 
-## Julia
-- To work on the software, clone the repo, and in the base directory in the terminal run: 
-- `julia`
-- hit `]` 
-- type `activate .` 
-- hit ctrl+c to get out of the package manager
-- `exit()` to leave julia
+4. Add the QuantumGrav package as a dependendy. This must be done from a local path
 
-- To add the dependency for data generation: 
 ```julia 
-using Pkg 
-Pkg.add("CausalSets")
+# press ] to enter the package manager prompt, then:
+add /path/to/QuantumGrav/QuantumGrav.jl
+```
+This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia. 
+
+### Python
+For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/getting_started/)
+
+## Installation as a developer
+1. Clone the repository from [here](https://ssciwr.github.io/QuantumGrav/getting_started/). 
+
+### Julia (developer workflow)
+We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
+
+2. Open a terminal, start the Julia REPL and activate your target environment 
+```bash
+activate path/to/your/project
 ```
 
-- To run tests:
-  - navigate to the base directory of the package 
-  - open julia, then run: 
-    - hit `]` 
-    - type `activate .` 
-    - hit ctrl+c or backspace to leave the package manager 
-    - run: 
-    ```julia 
-    using TestItemRunner
-    @run_package_tests
-    ``` 
-    - `exit()` to leave julia
-- this will give you more detailed output. 
-- Alternatively, you can also type `test` in the package manager environment 
-to run the tests
-you can also use vscode to run the t
+3. Check out `QuantumGrav.jl` for development 
+```bash
+# press ] to enter the package manager prompt, then:
+develop path/to/QuantumGrav/QuantumGrav.jl
+```
+This will track the changes you made automatically. 
+
+4. Running tests from the Julia REPL (recommended for detailed output):
+```julia
+using TestItemRunner
+@run_package_tests
+```
+
+This runs the tests defined under `QuantumGrav.jl/test` using the activated environment.
+
+### Python (developer workflow)
+For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/getting_started/)
+
+### Building the documentation locally
+The documentation is generated with MkDocs and `mkdocstrings`. MkDocs needs to be able to import the `QuantumGrav` package so either install the package in the same environment (editable install above) or add the `src` path to `PYTHONPATH` before running mkdocs.
+
+Quick serve (from repository root):
+
+```bash
+cd QuantumGravPy
+# if you didn't install the package, export PYTHONPATH to include the src dir
+mkdocs serve
+```
+Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package documentation [here](https://documenter.juliadocs.org/stable/).
+
+Training and evaluation scripts live under `QuantumGravPy/src/QuantumGrav/` (`train.py`, `train_ddp.py`) and can be run once dependencies are installed.
+See the [training section](./training_a_model.md) for more. 
+
+## Notes and troubleshooting
+
+- PyTorch and PyTorch-Geometric installation is platform and CUDA-version specific; consult the official installation docs if you encounter wheel or binary compatibility errors.
+
+### Contribution guide
+
+Tbd.
+
+
+
