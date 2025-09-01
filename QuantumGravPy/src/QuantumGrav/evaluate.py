@@ -1,5 +1,5 @@
 import torch
-from typing import Callable, Any
+from typing import Callable, Any, Iterable
 import torch_geometric
 import numpy as np
 import pandas as pd
@@ -142,13 +142,14 @@ class DefaultEarlyStopping:
         self.delta = delta
         self.best_score = np.inf
         self.window = window
+        self.found_better = False
         self.logger = logging.getLogger(__name__)
 
-    def __call__(self, data: list) -> bool:
+    def __call__(self, data: Iterable | pd.DataFrame | pd.Series) -> bool:
         """Check if early stopping criteria are met.
 
         Args:
-            data (list): List of validation metrics.
+            data: Iterable of validation metrics, e.g., list of scalars, list of tuples, Dataframe, numpy array...
 
         Returns:
             bool: True if training should be stopped, False otherwise.
@@ -161,10 +162,12 @@ class DefaultEarlyStopping:
             )
             self.best_score = smoothed.iloc[-1]
             self.current_patience = self.patience
+            self.found_better = True
         else:
             self.logger.info(
                 f"Early stopping patience decreased: {self.current_patience} -> {self.current_patience - 1}"
             )
             self.current_patience -= 1
+            self.found_better = False
 
         return self.current_patience <= 0
