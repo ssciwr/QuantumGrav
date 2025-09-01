@@ -35,5 +35,6 @@ export make_simple_cset,
     destroy_manifold_cset,
     generate_grid_from_brillouin_cell,
     generate_grid_2d,
-    create_grid_causet_2D
+    create_grid_causet_2D,
+    create_grid_causet_2D_polynomial_manifold
 end # module QuantumGrav

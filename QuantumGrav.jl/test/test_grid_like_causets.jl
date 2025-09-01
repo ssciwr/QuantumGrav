@@ -129,8 +129,38 @@ end
 # ---------------- create_grid_causet_2D ----------------
 @testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[setupGridTests] begin
     grid = QuantumGrav.generate_grid_2d(30, "square"; a=1.0, rotate_deg=0)
-    cset, _, sprinkling = QuantumGrav.create_grid_causet_2D(30, "square", CausalSets.MinkowskiManifold{2}(); a=1.0, rotate_deg=0)
+    cset, _, coords = QuantumGrav.create_grid_causet_2D(30, "square", CausalSets.MinkowskiManifold{2}(); a=1.0, rotate_deg=0)
     @test typeof(cset) == CausalSets.BitArrayCauset
     @test cset.atom_count == 30
-    @test length(sprinkling) == 60
+    @test length(coords) == 60
+end
+
+@testitem "grid_polynomial_manifold_builds_causet" tags=[:cset, :polynomial] setup=[setupGridTests] begin
+    rng = Random.MersenneTwister(1234)
+    size = 30
+    order = 3
+    r = 2.0
+    cset, converged, coords = QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+        size, "square", rng, order, r;
+        a=1.0, rotate_deg=0.0
+    )
+
+    @test typeof(cset) == CausalSets.BitArrayCauset
+    @test cset.atom_count == size
+    @test converged == true
+    @test length(coords) == 2 * size
+end
+
+@testitem "grid_polynomial_input_errors" tags=[:cset, :errors] setup=[setupGridTests] begin
+    rng = Random.MersenneTwister(1234)
+
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+        1, "square", rng, 3, 2.0; a=1.0
+    )
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+        10, "square", rng, 0, 2.0; a=1.0
+    )
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+        10, "square", rng, 3, 1.0; a=1.0
+    )
 end
