@@ -304,6 +304,11 @@ class Trainer:
                 self.save_checkpoint()
                 return True
 
+            if self.early_stopping.found_better:
+                self.logger.info(f"Found better model at epoch {self.epoch}.")
+                self.save_checkpoint()
+                # not returning true because this is not the end of training
+
         return False
 
     def run_training(
