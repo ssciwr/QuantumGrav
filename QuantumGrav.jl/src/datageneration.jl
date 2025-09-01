@@ -411,6 +411,7 @@ function make_data(
         end
     end
 
+    # build the config file 
     # get git info of QuantumGrav package 
     pkg_id = Base.identify_package("QuantumGrav")
     info = Pkg.dependencies()[pkg_id.uuid]
@@ -449,7 +450,8 @@ function make_data(
         throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
     end
 
-    # this must not go into the `make_data_file` function
+    # make data
+    # this must not go into the `make_data_file` function or each file will contain the same data
     rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
 
     function make_data_file(file, num_datapoints::Int64)
@@ -467,7 +469,7 @@ function make_data(
         end
         ProgressMeter.finish!(p)
 
-        @info " Aggregating data from $(Threads.nthreads()) threads"
+        @info "    Aggregating data from $(Threads.nthreads()) threads"
         # aggregate everything int one big dictionary
         final_data = Dict{String,Any}()
         for thread_local_data in data
@@ -482,7 +484,7 @@ function make_data(
             end
         end
 
-        @info "Writing data with $(num_datapoints) datapoints to file"
+        @info "    Writing data with $(num_datapoints) datapoints to file"
         # ... then write to file with the supplied write_data function
         write_data(file, config, final_data)
         final_data = nothing # clear the final_data to reduce memory usage
