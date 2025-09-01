@@ -32,5 +32,4 @@ jobs:
         working-directory: ./QuantumGravPy
         run: pip install -r docs/requirements.txt
       - name: Deploy documentation
-        working-directory: ./QuantumGravPy
         run: mkdocs gh-deploy --force
