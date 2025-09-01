@@ -78,14 +78,7 @@ class QGDatasetBase:
         for filepath in self.input:
             if not Path(filepath).exists():
                 raise FileNotFoundError(f"Input file {filepath} does not exist.")
-
-            if mode == "hdf5":
-                with h5py.File(filepath, "r") as f:
-                    self._num_samples += int(f["num_causal_sets"][()])
-            else:
-                with zarr.storage.LocalStore(filepath, read_only=True) as store:
-                    root = zarr.open_group(store, path="", mode="r")
-                    self._num_samples += int(root["num_samples"][0])
+            self._num_samples += self._get_num_samples_per_file(filepath)
 
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
@@ -106,6 +99,62 @@ class QGDatasetBase:
 
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
                 yaml.dump(self.metadata, f)
+
+    def _get_num_samples_per_file(self, filepath: str | Path) -> int:
+        """Get the number of samples in a given file.
+
+        Args:
+            filepath (str | Path): The path to the file.
+
+        Raises:
+            ValueError: If the file is not a valid HDF5 or Zarr file.
+
+        Returns:
+            int: The number of samples in the file.
+        """
+        if self.mode == "hdf5":
+            attempts = [
+                lambda f: int(f["num_causal_sets"][()]),
+                lambda f: int(f["adjacency_matrix"].shape[2]),
+            ]
+            for attempt in attempts:
+                with h5py.File(filepath, "r") as f:
+                    try:
+                        return attempt(f)
+                    except Exception:
+                        continue
+        elif self.mode == "zarr":
+            attempts = [
+                lambda: int(
+                    zarr.open_group(
+                        zarr.storage.LocalStore(filepath, read_only=True),
+                        path="",
+                        mode="r",
+                    )["num_causal_sets"][0]
+                ),
+                lambda: int(
+                    zarr.open_array(
+                        zarr.storage.LocalStore(filepath, read_only=True),
+                        path="num_causal_sets",
+                        mode="r",
+                    )[0]
+                ),
+                lambda: int(
+                    zarr.open_array(
+                        zarr.storage.LocalStore(filepath, read_only=True),
+                        path="adjacency_matrix",
+                        mode="r",
+                    ).shape[2]
+                ),
+            ]
+
+            for attempt in attempts:
+                try:
+                    return attempt()
+                except Exception:
+                    continue
+        else:
+            raise ValueError("mode must be 'hdf5' or 'zarr'")
 
     @property
     def processed_dir(self) -> str | None:
@@ -214,12 +263,11 @@ class QGDatasetBase:
         Returns:
             list[Data]: The processed data or None if the chunk is empty.
         """
-        root = zarr.open_group(store, path="", mode="r")
-        N = int(root["num_samples"][0])
+        N = self._get_num_samples_per_file(store.root)
 
         def process_item(i: int):
             item = self.data_reader(
-                root,
+                store.root,
                 i,
                 self.float_type,
                 self.int_type,
