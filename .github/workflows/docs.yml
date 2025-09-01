@@ -30,7 +30,7 @@ jobs:
 
       - name: Install package and dependencies
         working-directory: ./QuantumGravPy
-        run: pip install mkdocs-material 
+        run: pip install -r docs/requirements.txt
       - name: Deploy documentation
         working-directory: ./QuantumGravPy
         run: mkdocs gh-deploy --force
