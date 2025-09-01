@@ -399,13 +399,15 @@ function make_data(
         mkpath(abspath(expanduser(config["output"])))
     end
 
+    # this must not go into the `make_data_file` function
     rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
-    function make_data_chunk(file, num_datapoints_chunks::Int64)
+
+    function make_data_file(file, num_datapoints::Int64)
         data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
 
         @info "    Generating data on $(Threads.nthreads()) threads"
-        p = ProgressMeter.Progress(num_datapoints_chunks)
-        Threads.@threads for _ = 1:num_datapoints_chunks
+        p = ProgressMeter.Progress(num_datapoints)
+        Threads.@threads for _ = 1:num_datapoints
             t = Threads.threadid()
             rng = rngs[t]
             data_point = transform(config, rng)
@@ -430,7 +432,7 @@ function make_data(
             end
         end
 
-        @info "Writing data chunk with $(num_datapoints_chunks) datapoints to file"
+        @info "Writing data with $(num_datapoints) datapoints to file"
         # ... then write to file with the supplied write_data function
         write_data(file, config, final_data)
         final_data = nothing # clear the final_data to reduce memory usage
@@ -443,16 +445,30 @@ function make_data(
     # get the source code of the transform/prepare/write functions and write them to the data folder 
     # to document how the data has been created
     for func in [transform, prepare_output, write_data]
-        funcdata = first(methods(func)) # this assumes that the function is not overloaded since we use this to determine the file path it's not a problem
+        funcdata = first(methods(func)) # this assumes that all overloads of the passed functions are part of the same file
         filepath = String(funcdata.file)
         targetpath = joinpath(
             abspath(expanduser(config["output"])),
             splitext(basename(filepath))[1] * "_$(getpid()).jl",
         )
+
         if isfile(targetpath) == false
             cp(filepath, targetpath)
         end
     end
+
+
+    # get git info of QuantumGrav package 
+    pkg_id = Base.identify_package("QuantumGrav")
+    info = Pkg.dependencies()[pkg_id.uuid]
+    git_source = info.git_source
+    git_branch = info.git_revision
+    git_tree_hash = info.tree_hash
+    config["QuantumGrav"] = Dict(
+        "git_source" => git_source,
+        "git_branch" => git_branch,
+        "git_tree_hash" => git_tree_hash,
+    )
 
     YAML.write_file(
         joinpath(abspath(expanduser(config["output"])), "config_$(getpid()).yaml"),
@@ -483,31 +499,14 @@ function make_data(
     prepare_output(file, config)
 
     num_datapoints = config["num_datapoints"]
-    num_datapoints_chunks = num_datapoints
-    # check if the data generation should be chunked
-    if "chunks" in keys(config)
-        num_chunks = config["chunks"]
-        num_datapoints_chunks = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
-        final_chunksize = num_datapoints - num_chunks * num_datapoints_chunks # Computes the remaining number of datapoints that do not fit into a full chunk.
-    else
-        num_chunks = 1
-        final_chunksize = 0
-    end
 
-    # Multithreading enabled by default, use Threads.@threads for parallel data generation
-    for c = 1:num_chunks
-        @info "Generating data chunk $(c)/$(num_chunks) with $num_datapoints_chunks datapoints"
-        make_data_chunk(file, num_datapoints_chunks)
-    end
-
-    if final_chunksize > 0
-        @info "Generating final data chunk with $final_chunksize datapoints"
-        # handle the final chunk with the remaining datapoints
-        make_data_chunk(file, final_chunksize)
-    end
+    # make data file
+    @info "Generating file with $num_datapoints datapoints"
+    make_data_file(file, num_datapoints)
 
     if config["output_format"] == "hdf5"
         close(file)
-    end        # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
+    end
+    # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
 
 end
