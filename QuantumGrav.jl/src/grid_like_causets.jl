@@ -176,3 +176,80 @@ function create_grid_causet_2D( size::Int64,
 
     return CausalSets.BitArrayCauset(manifold, pseudosprinkling), true, type.(stack(collect.(pseudosprinkling), dims = 1))
 end
+
+"""
+    create_grid_causet_2D_polynomial_manifold(size, lattice, rng, order, r;
+                                              type=Float32, a=1.0, b=0.5, 
+                                              gamma_deg=60.0, rotate_deg=nothing, 
+                                              origin=(0.0, 0.0)) 
+        -> Tuple{CausalSets.BitArrayCauset, Bool, Matrix{T}}
+
+Construct a 2D grid of `size` points based on the given Bravais lattice, generate a random 2D polynomial time function, and build a `BitArrayCauset` from the resulting pseudo-sprinkling order.
+
+# Arguments
+- `size::Int`: number of atoms to generate (≥ 1).
+- `lattice::AbstractString`: name of the 2D Bravais lattice. Supported names (case-insensitive):
+    • "square", "quadratic" → edges ((a,0), (0,a))
+    • "rectangular" → edges ((a,0), (0,b))
+    • "centered-rectangular", "rhombic", "c-rect" → edges ((a/2,b/2), (a/2,-b/2))
+    • "hexagonal", "triangular" → edges ((a,0), (a/2, a*sqrt(3)/2))
+    • "oblique", "monoclinic" → edges ((a,0), (b*cos(γ), b*sin(γ))) with `γ = gamma_deg`
+- `rng::Random.AbstractRNG`: random number generator for coefficient sampling.
+- `order::Int`: order of the polynomial (≥ 1).
+- `r::Float64`: exponential decay rate for Chebyshev coefficients.
+
+# Keywords
+- `type::Type{T}=Float32`: numeric type used for the returned coordinate matrix.
+- `a::Float64=1.0`, `b::Float64=0.5`: lattice constants.
+- `gamma_deg::Float64=60.0`: angle between lattice vectors (for "oblique"/"monoclinic" only).
+- `rotate_deg=nothing`: if set, rotate the lattice by the given angle (in degrees). If `nothing`, automatically aligns `(e₁ + e₂)` with the positive y-axis.
+- `origin::Tuple{Float64,Float64}`: coordinate of the origin vertex.
+
+# Returns
+- `Tuple{BitArrayCauset, Bool, Matrix{T}}`:    
+    - `BitArrayCauset` — the constructed causet from the polynomial time ordering,
+    - `Bool` — always `true`, for compatibility with `make_simple_cset`,
+    - `Matrix{T}` — coordinate matrix of atoms on the grid.
+"""
+function create_grid_causet_2D_polynomial_manifold( size::Int64, 
+                                lattice::AbstractString,
+                                rng::Random.AbstractRNG,
+                                order::Int64,
+                                r::Float64;
+                                type::Type{T} = Float32, 
+                                a::Float64=1.0, b::Float64=0.5, 
+                                gamma_deg::Float64=60.0, 
+                                rotate_deg=nothing, 
+                                origin=(0.0,0.0))::Tuple{CausalSets.BitArrayCauset, Bool, Matrix{T}} where {T<:Number}
+
+    size ≥ 2 || throw(ArgumentError("size must be ≥ 2, is $(size)"))
+    order ≥ 1 || throw(ArgumentError("order must be ≥ 1, is $(order)"))
+    r > 1 || throw(ArgumentError("r must be > 1, is $(r)"))
+    
+    grid = generate_grid_2d(size, lattice; a=a, b=b, gamma_deg=gamma_deg, rotate_deg=rotate_deg, origin=origin)
+
+    # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
+    # it has to be a (order x order)-matrix because we describe a function of two variables
+    chebyshev_coefs = zeros(Float64, order, order)
+    for i = 1:order
+        for j = 1:order
+            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
+        end
+    end
+
+    # Construct the Chebyshev-to-Taylor transformation matrix
+    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order - 1)
+
+    # Transform Chebyshev coefficients to Taylor coefficients
+    taylorcoefs = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)
+
+    # Square the polynomial to ensure positivity
+    squaretaylorcoefs = CausalSets.polynomial_pow(taylorcoefs, 2)
+
+    # Create a polynomial manifold from the squared Taylor coefficients
+    polym = CausalSets.PolynomialManifold{2}(squaretaylorcoefs)
+
+    pseudosprinkling = sort_grid_by_time_from_manifold(polym, grid)
+
+    return CausalSets.BitArrayCauset(polym, pseudosprinkling), true, type.(stack(collect.(pseudosprinkling), dims = 1))
+end
