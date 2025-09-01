@@ -27,10 +27,10 @@ add /path/to/QuantumGrav/QuantumGrav.jl
 This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia. 
 
 ### Python
-For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/)
+For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/getting_started/)
 
 ## Installation as a developer
-1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
+1. Clone the repository from [here](https://ssciwr.github.io/QuantumGrav/getting_started/). 
 
 ### Julia (developer workflow)
 We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
@@ -56,7 +56,7 @@ using TestItemRunner
 This runs the tests defined under `QuantumGrav.jl/test` using the activated environment.
 
 ### Python (developer workflow)
-For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/)
+For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/getting_started/)
 
 ### Building the documentation locally
 The documentation is generated with MkDocs and `mkdocstrings`. MkDocs needs to be able to import the `QuantumGrav` package so either install the package in the same environment (editable install above) or add the `src` path to `PYTHONPATH` before running mkdocs.
@@ -68,7 +68,7 @@ cd QuantumGravPy
 # if you didn't install the package, export PYTHONPATH to include the src dir
 mkdocs serve
 ```
-Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package [here](https://documenter.juliadocs.org/stable/).
+Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package documentation [here](https://documenter.juliadocs.org/stable/).
 
 Training and evaluation scripts live under `QuantumGravPy/src/QuantumGrav/` (`train.py`, `train_ddp.py`) and can be run once dependencies are installed.
 See the [training section](./training_a_model.md) for more. 
