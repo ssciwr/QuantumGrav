@@ -144,6 +144,7 @@ def objective(trial):
         tune_model=True,
         tune_training=True,
         base_settings_file=get_base_config_file(tmp_dir),
+        built_search_space_file=tmp_dir / "built_search_space.yaml",
     )
 
     # prepare model
@@ -237,8 +238,16 @@ def tune_integration():
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
 
-    print("Save best parameters to best_params.yaml")
-    tune.save_best_trial(study, tmp_dir / "best_params.yaml")
+    print("Save best trial to best_trial.yaml")
+    tune.save_best_trial(study, tmp_dir / "best_trial.yaml")
+
+    print("Save best config to best_config.yaml")
+    tune.save_best_config(
+        built_search_space_file=tmp_dir / "built_search_space.yaml",
+        best_trial_file=tmp_dir / "best_trial.yaml",
+        depmap_file=tmp_dir / "deps.yaml",
+        output_file=tmp_dir / "best_config.yaml",
+    )
 
 
 if __name__ == "__main__":

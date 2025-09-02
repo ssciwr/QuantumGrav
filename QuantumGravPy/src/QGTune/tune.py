@@ -2,6 +2,7 @@ import yaml
 from pathlib import Path
 import optuna
 from typing import Any, List
+import copy
 
 
 def _is_yaml_tuple_of_3(value: Any) -> bool:
@@ -266,6 +267,7 @@ def build_search_space_with_dependencies(
     tune_model: bool = False,
     tune_training: bool = True,
     base_settings_file: Path = None,
+    built_search_space_file: Path = None,
 ) -> dict:
     """Build a hyperparameter search space from a YAML configuration file
     and a dependency map file, using an Optuna trial object.
@@ -301,6 +303,10 @@ def build_search_space_with_dependencies(
 
     search_space_with_suggestions = get_suggestion(search_space, trial)
     search_space_with_deps = apply_dependencies(search_space_with_suggestions, depmap)
+
+    if built_search_space_file:
+        with open(built_search_space_file, "w") as f:
+            yaml.safe_dump(search_space_with_deps, f)
     return search_space_with_deps
 
 
@@ -353,3 +359,62 @@ def save_best_trial(study: optuna.study.Study, output_path: Path) -> None:
         yaml.safe_dump(best_params, file)
 
     print(f"Best trial parameters saved to {output_path}.")
+
+
+def save_best_config(
+    built_search_space_file: Path,
+    best_trial_file: Path,
+    depmap_file: Path,
+    output_file: Path,
+):
+    """Save the best configuration by combining the best trial parameters
+    with the built search space.
+
+    Args:
+        built_search_space_file (Path): Path to the built search space YAML file.
+        best_trial_file (Path): Path to the best trial parameters YAML file.
+            Keys in this file are joined keys from the built search space.
+        depmap_file (Path): Path to the dependency map YAML file.
+            This is necessary to resolve dependencies in the built search space.
+            As the built search space was saved with first trial values.
+        output_file (Path): Path to the output YAML file for the best configuration.
+    """
+    if not output_file:
+        raise ValueError("Output file path must be provided.")
+
+    built_search_space = load_yaml(
+        built_search_space_file, description="Built search space"
+    )
+    best_trial = load_yaml(best_trial_file, description="Best trial")
+
+    best_config = copy.deepcopy(built_search_space)
+
+    def _get_next(current: dict, part: str | int):
+        try:
+            index = int(part)
+            return current[index]
+        except ValueError:
+            return current.get(part)
+
+    def _set_next(current: dict, part: str | int, value: Any):
+        try:
+            index = int(part)
+            current[index] = value
+        except ValueError:
+            current[part] = value
+
+    for key, value in best_trial.items():
+        parts = key.split(".")
+        current = best_config
+        for part in parts[:-1]:
+            current = _get_next(current, part)
+        _set_next(current, parts[-1], value)
+
+    # apply dependencies to resolve any changes
+    depmap = load_yaml(depmap_file, description="Dependency map")
+    best_config = apply_dependencies(best_config, depmap)
+
+    with open(output_file, "w") as file:
+        yaml.safe_dump(best_config, file)
+
+    print(f"Best configuration saved to {output_file}.")

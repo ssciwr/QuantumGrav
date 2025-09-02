@@ -3,8 +3,10 @@ tune_training: true # whether to use search space for training settings
 base_settings_path: "base_settings.yaml" # path to the base settings file
 search_space_path: "search_space.yaml" # path to the search space config file
 dependencies_path: "dependencies.yaml" # path to the dependencies config file
+built_search_space_path: "built_search_space.yaml" # path to save the built search space with dependencies applied
 study_name: "quantum_grav_study" # name of the Optuna study
 storage: experiments/results.db # storage file for the Optuna study
+best_trial_path: "best_trial.yaml" # path to save the best trial information
 best_param_path: "best_params.yaml" # path to save the best hyperparameters
 direction: "minimize" # direction of optimization ("minimize" or "maximize")
 n_trials: 20 # number of trials for hyperparameter tuning

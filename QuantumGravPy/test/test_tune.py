@@ -423,3 +423,78 @@ def test_save_best_trial(tmp_path):
     tune.save_best_trial(study, output_file)
     loaded_config = tune.load_yaml(output_file, description="Best Trial Config")
     assert loaded_config == {"lr": 0.01, "n_layers": 3}
+
+
+def test_save_best_config(tmp_path):
+    built_search_space = {
+        "model": {
+            "nn": [
+                {
+                    "in_dim": "waiting",
+                    "out_dim": "waiting",
+                    "dropout": "waiting",
+                },
+                {
+                    "in_dim": "waiting",
+                    "out_dim": "waiting",
+                    "dropout": "waiting",
+                },
+            ]
+        }
+    }
+    best_trial = {
+        "model.nn.0.in_dim": 784,
+        "model.nn.0.out_dim": 32,
+        "model.nn.0.dropout": 0.5,
+        "model.nn.1.in_dim": 32,
+        "model.nn.1.out_dim": 32,
+        "model.nn.1.dropout": 0.1,
+    }
+    depmap = {
+        "model": {
+            "nn": [
+                {},
+                {
+                    "in_dim": "model.nn[0].out_dim",
+                },
+            ]
+        }
+    }
+    built_search_space_file = tmp_path / "built_search_space.yaml"
+    with open(built_search_space_file, "w") as f:
+        yaml.safe_dump(built_search_space, f)
+    best_trial_file = tmp_path / "best_trial.yaml"
+    with open(best_trial_file, "w") as f:
+        yaml.safe_dump(best_trial, f)
+    depmap_file = tmp_path / "depmap.yaml"
+    with open(depmap_file, "w") as f:
+        yaml.safe_dump(depmap, f)
+    output_file = tmp_path / "best_config.yaml"
+
+    tune.save_best_config(
+        built_search_space_file,
+        best_trial_file,
+        depmap_file,
+        output_file,
+    )
+
+    with open(output_file, "r") as f:
+        best_config = yaml.safe_load(f)
+
+    expected_config = {
+        "model": {
+            "nn": [
+                {
+                    "in_dim": 784,
+                    "out_dim": 32,
+                    "dropout": 0.5,
+                },
+                {
+                    "in_dim": 32,
+                    "out_dim": 32,
+                    "dropout": 0.1,
+                },
+            ]
+        }
+    }
+    assert best_config == expected_config
