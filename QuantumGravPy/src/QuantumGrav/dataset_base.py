@@ -238,7 +238,7 @@ class QGDatasetBase:
 
         results = []
         if self.n_processes > 1:
-            results = Parallel(n_jobs=self.n_processes, verbose=10)(
+            results = Parallel(n_jobs=self.n_processes)(
                 delayed(process_item)(datapoint) for datapoint in data
             )
         else:
@@ -280,7 +280,7 @@ class QGDatasetBase:
             return item
 
         if self.n_processes > 1:
-            results = Parallel(n_jobs=self.n_processes, verbose=10)(
+            results = Parallel(n_jobs=self.n_processes)(
                 delayed(process_item)(i)
                 for i in range(start, min(start + self.chunksize, N))
             )

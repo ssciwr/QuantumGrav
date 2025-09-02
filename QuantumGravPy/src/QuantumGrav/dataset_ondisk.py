@@ -98,12 +98,11 @@ class QGDataset(QGDatasetBase, Dataset):
                 num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
 
             else:
+                N = self._get_num_samples_per_file(Path(file).resolve().absolute())
+                num_chunks = N // self.chunksize
                 raw_file = zarr.storage.LocalStore(
                     str(Path(file).resolve().absolute()), read_only=True
                 )
-                root = zarr.open_group(raw_file, path="", mode="r")
-                N = int(root["num_samples"][0])
-                num_chunks = N // self.chunksize
 
             for i in range(0, num_chunks * self.chunksize, self.chunksize):
                 data = self.process_chunk(
