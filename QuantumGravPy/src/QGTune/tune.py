@@ -304,27 +304,27 @@ def build_search_space_with_dependencies(
     return search_space_with_deps
 
 
-def get_tunning_settings(tunning_config_path: Path) -> dict:
+def get_tuning_settings(tuning_config_path: Path) -> dict:
     """Get hyperparameter tuning settings from a YAML configuration file.
 
     Args:
-        tunning_config_path (Path): Path to the tuning configuration YAML file.
+        tuning_config_path (Path): Path to the tuning configuration YAML file.
 
     Returns:
         dict: A dictionary containing the tuning settings.
     """
-    return load_yaml(tunning_config_path, description="Tuning config")
+    return load_yaml(tuning_config_path, description="Tuning config")
 
 
-def create_study(tunning_config: dict) -> None:
+def create_study(tuning_config: dict) -> None:
     """Create an Optuna study and save to a specified storage.
 
     Args:
-        tunning_config (dict): The configuration dictionary for tuning settings.
+        tuning_config (dict): The configuration dictionary for tuning settings.
     """
-    storage = tunning_config.get("storage")
-    study_name = tunning_config.get("study_name")
-    direction = tunning_config.get("direction", "minimize")
+    storage = tuning_config.get("storage")
+    study_name = tuning_config.get("study_name")
+    direction = tuning_config.get("direction", "minimize")
 
     study = optuna.create_study(
         study_name=study_name,
