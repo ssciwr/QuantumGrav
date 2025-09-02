@@ -13,7 +13,7 @@ def get_config():
                 {"in_dim": 16, "out_dim": 32, "norm_args": ["ref"]},
                 {"in_dim": "ref", "out_dim": 64, "norm_args": ["ref"]},
             ],
-            "classifier": {"input_dim": "ref"},
+            "classifier": {"in_dim": "ref"},
             "num_layers": [1, 2, 3],
             "activation": ["relu", "tanh", "sigmoid"],
             "name": "MyModel",
@@ -23,6 +23,44 @@ def get_config():
             "batch_size": [16, 32, 64],
         },
     }
+
+
+@pytest.fixture
+def get_base_config_file(tmp_path):
+    base_config = {
+        "model": {
+            "gcn_net": [
+                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
+                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
+            ],
+            "classifier": {"input_dim": 64},
+            "num_layers": 2,
+            "activation": "relu",
+            "name": "MyModel",
+        },
+        "training": {
+            "lr": 0.001,
+            "batch_size": 16,
+        },
+    }
+    with open(tmp_path / "base_config.yaml", "w") as f:
+        yaml.safe_dump(base_config, f)
+    return tmp_path / "base_config.yaml"
+
+
+@pytest.fixture
+def get_fixed_trial():
+    return optuna.trial.FixedTrial(
+        {
+            "model.gcn_net.0.norm_args": "ref",  # will be replaced by dependency
+            "model.gcn_net.1.in_dim": "ref",  # will be replaced by dependency
+            "model.gcn_net.1.norm_args": "ref",
+            "model.num_layers": 2,
+            "model.activation": "tanh",
+            "training.lr": 0.0001,
+            "training.batch_size": 32,
+        }
+    )
 
 
 @pytest.fixture
@@ -44,10 +82,18 @@ def get_dependencies():
 
 
 @pytest.fixture
-def sample_yaml_file(tmp_path, get_config):
+def get_config_file(tmp_path, get_config):
     yaml_file = tmp_path / "sample.yaml"
     with open(yaml_file, "w") as f:
         yaml.safe_dump(get_config, f)
+    return yaml_file
+
+
+@pytest.fixture
+def get_dependencies_file(tmp_path, get_dependencies):
+    yaml_file = tmp_path / "dependencies.yaml"
+    with open(yaml_file, "w") as f:
+        yaml.safe_dump(get_dependencies, f)
     return yaml_file
 
 
@@ -63,6 +109,21 @@ def test_is_yaml_tuple_of_3():
     assert tune._is_yaml_tuple_of_3({"type": "tuple", "value": [1, 2, 3, 4]}) is False
 
 
+def test_is_flat_list():
+    assert tune._is_flat_list(1) is False
+    assert tune._is_flat_list("something") is False
+    assert tune._is_flat_list({}) is False
+    assert tune._is_flat_list([]) is True
+    assert tune._is_flat_list([1]) is True
+    assert tune._is_flat_list(["relu", "tanh", "sigmoid"]) is True
+    assert tune._is_flat_list([16, 32, 64]) is True
+    assert tune._is_flat_list([1.0, 2.0, 3.0]) is True
+    assert tune._is_flat_list([{"a": 1}, {"b": 2}]) is False
+    assert tune._is_flat_list([[1, 2], [3, 4]]) is False
+    assert tune._is_flat_list([True, False]) is True
+    assert tune._is_flat_list([None, None]) is True
+
+
 def test_is_suggest_categorical():
     assert tune._is_suggest_categorical(1) is False
     assert tune._is_suggest_categorical("something") is False
@@ -71,6 +132,10 @@ def test_is_suggest_categorical():
     assert tune._is_suggest_categorical([1]) is True
     assert tune._is_suggest_categorical(["relu", "tanh", "sigmoid"]) is True
     assert tune._is_suggest_categorical([16, 32, 64]) is True
+    assert tune._is_suggest_categorical([1.0, 2.0, 3.0]) is True
+    assert tune._is_suggest_categorical([{"a": 1}, {"b": 2}]) is False
+    assert tune._is_suggest_categorical([[1, 2], [3, 4]]) is False
+    assert tune._is_suggest_categorical([True, False]) is True
 
 
 def test_is_suggest_float():
@@ -132,58 +197,47 @@ def test_convert_to_suggestion():
         "param", ["relu", "tanh", "sigmoid"], trial
     ) == trial.suggest_categorical("param", ["relu", "tanh", "sigmoid"])
 
+    trial = optuna.trial.FixedTrial({"param": 1})
+    assert tune._convert_to_suggestion("norm_args", [12], trial) == [12]
 
-def test_get_suggestions():
+
+def test_get_suggestions_single():
     config = {"name": "MyModel"}
-    trial = optuna.trial.FixedTrial({"param": "MyModel"})
-    suggestions = tune.get_suggestion(config, trial)
+    trial = optuna.trial.FixedTrial({"name": "MyModel"})
+    suggestions = tune.get_suggestion(config, trial, traced_param=[])
     assert suggestions == {"name": "MyModel"}
 
     config = {"lr": {"type": "tuple", "value": [1e-5, 1e-1, True]}}
     trial = optuna.trial.FixedTrial({"lr": 0.0001})
-    suggestions = tune.get_suggestion(config, trial)
+    suggestions = tune.get_suggestion(config, trial, traced_param=[])
     assert suggestions == {"lr": 0.0001}
 
     config = {"num_layers": [1, 2, 3]}
     trial = optuna.trial.FixedTrial({"num_layers": 2})
-    suggestions = tune.get_suggestion(config, trial)
+    suggestions = tune.get_suggestion(config, trial, traced_param=[])
     assert suggestions == {"num_layers": 2}
 
     config = {"activation": ["relu", "tanh", "sigmoid"]}
     trial = optuna.trial.FixedTrial({"activation": "tanh"})
-    suggestions = tune.get_suggestion(config, trial)
+    suggestions = tune.get_suggestion(config, trial, traced_param=[])
     assert suggestions == {"activation": "tanh"}
 
-    # recursive case
-    config = {
-        "model": {
-            "lr": {"type": "tuple", "value": [1e-5, 1e-1, True]},
-            "num_layers": [1, 2, 3],
-            "activation": ["relu", "tanh", "sigmoid"],
-            "name": "MyModel",
-        },
-        "training": {
-            "batch_size": [16, 32, 64],
-        },
-    }
-    trial = optuna.trial.FixedTrial(
-        {
-            "lr": 0.0001,
-            "num_layers": 2,
-            "activation": "tanh",
-            "name": "MyModel",
-            "batch_size": 32,
-        }
-    )
-    suggestions = tune.get_suggestion(config, trial)
+
+def test_get_suggestions_nested(get_config, get_fixed_trial):
+    suggestions = tune.get_suggestion(get_config, get_fixed_trial, traced_param=[])
     assert suggestions == {
         "model": {
-            "lr": 0.0001,
+            "gcn_net": [
+                {"in_dim": 16, "out_dim": 32, "norm_args": ["ref"]},
+                {"in_dim": "ref", "out_dim": 64, "norm_args": ["ref"]},
+            ],
+            "classifier": {"in_dim": "ref"},
             "num_layers": 2,
             "activation": "tanh",
             "name": "MyModel",
         },
         "training": {
+            "lr": 0.0001,
             "batch_size": 32,
         },
     }
@@ -224,8 +278,8 @@ def test_load_yaml_invalid(tmp_path):
         tune.load_yaml(tmp_path / "non_existent.yaml", description="Test")
 
 
-def test_load_yaml_valid(sample_yaml_file):
-    config = tune.load_yaml(sample_yaml_file, description="Sample YAML")
+def test_load_yaml_valid(get_config_file):
+    config = tune.load_yaml(get_config_file, description="Sample YAML")
     assert "model" in config
     assert "training" in config
     assert "gcn_net" in config["model"]
@@ -234,3 +288,34 @@ def test_load_yaml_valid(sample_yaml_file):
     assert config["model"]["gcn_net"][0]["out_dim"] == 32
     assert config["model"]["gcn_net"][1]["in_dim"] == "ref"
     assert config["training"]["lr"]["type"] == "tuple"
+
+
+def test_build_search_space_with_dependencies_tune_all(
+    get_config_file, get_dependencies_file, get_fixed_trial
+):
+    search_space = tune.build_search_space_with_dependencies(
+        get_config_file,
+        get_dependencies_file,
+        get_fixed_trial,
+        tune_model=True,
+        tune_training=True,
+        base_settings_file=None,
+    )
+
+    expected_search_space = {
+        "model": {
+            "gcn_net": [
+                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
+                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
+            ],
+            "classifier": {"input_dim": 64},
+            "num_layers": 2,
+            "activation": "tanh",
+            "name": "MyModel",
+        },
+        "training": {
+            "lr": 0.0001,
+            "batch_size": 32,
+        },
+    }
+    assert search_space == expected_search_space

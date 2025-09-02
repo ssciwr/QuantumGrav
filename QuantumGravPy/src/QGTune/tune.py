@@ -22,6 +22,20 @@ def _is_yaml_tuple_of_3(value: Any) -> bool:
     return is_tuple_of_3
 
 
+def _is_flat_list(value: Any) -> bool:
+    """Check if a value is a flat list (not nested).
+
+    Args:
+        value (Any): The value to check.
+
+    Returns:
+        bool: True if the value is a flat list, False otherwise.
+    """
+    return isinstance(value, list) and all(
+        not isinstance(v, (list, dict)) for v in value
+    )
+
+
 def _is_suggest_categorical(value: Any) -> bool:
     """Check if a value should be an input for an Optuna suggest_categorical.
     The value would be a list of possible categories.
@@ -33,7 +47,13 @@ def _is_suggest_categorical(value: Any) -> bool:
     Returns:
         bool: True if the value is a list, False otherwise.
     """
-    return isinstance(value, list) and len(value) > 0
+    non_empty_list = isinstance(value, list) and len(value) > 0
+    valid_elements = (
+        all(v is not None and isinstance(v, (bool, str, float, int)) for v in value)
+        if non_empty_list
+        else False
+    ) and _is_flat_list(value)
+    return non_empty_list and valid_elements
 
 
 def _is_suggest_float(value: Any) -> bool:
@@ -97,6 +117,10 @@ def _convert_to_suggestion(
     Returns:
         Any: The converted value.
     """
+    if param_name.split(".")[-1] == "norm_args":
+        # special case since norm_args can be a list of int
+        return value
+
     if _is_suggest_categorical(value):
         return trial.suggest_categorical(param_name, value)
     elif _is_suggest_float(value):
@@ -121,23 +145,39 @@ def _convert_to_suggestion(
         return value
 
 
-def get_suggestion(config: dict, trial: optuna.trial.Trial) -> dict:
+def get_suggestion(
+    config: dict, trial: optuna.trial.Trial, traced_param: list = []
+) -> dict:
     """Get a dictionary of suggestions from a configuration dictionary.
 
     Args:
         config (dict): The configuration dictionary.
         trial (optuna.trial.Trial): The Optuna trial object.
+        traced_param (list, optional): The list of traced parameters.
 
     Returns:
         dict: A dictionary of suggestions.
     """
-    suggestions = {}
-    for param, value in config.items():
-        suggestion = _convert_to_suggestion(param, value, trial)
-        if isinstance(suggestion, dict):
-            suggestions[param] = get_suggestion(suggestion, trial)
+    if isinstance(config, list):
+        items = enumerate(config)
+        suggestions = [None] * len(config)
+    elif isinstance(config, dict):
+        items = config.items()
+        suggestions = {}
+    else:
+        return {}
+
+    for param, value in items:
+        traced_param.append(str(param))
+        traced_name = ".".join(traced_param)
+        suggestion = _convert_to_suggestion(traced_name, value, trial)
+        if isinstance(suggestion, dict) or (
+            isinstance(suggestion, list) and not _is_flat_list(suggestion)
+        ):
+            suggestions[param] = get_suggestion(suggestion, trial, traced_param)
         else:
             suggestions[param] = suggestion
+        traced_param.pop()
     return suggestions
 
 
