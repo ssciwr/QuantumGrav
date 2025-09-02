@@ -3,6 +3,7 @@ from QGTune import tune
 import optuna
 import yaml
 import numpy as np
+import time
 
 
 @pytest.fixture
@@ -49,18 +50,18 @@ def get_base_config_file(tmp_path):
 
 
 @pytest.fixture
-def get_fixed_trial():
-    return optuna.trial.FixedTrial(
-        {
-            "model.gcn_net.0.norm_args": "ref",  # will be replaced by dependency
-            "model.gcn_net.1.in_dim": "ref",  # will be replaced by dependency
-            "model.gcn_net.1.norm_args": "ref",
-            "model.num_layers": 2,
-            "model.activation": "tanh",
-            "training.lr": 0.0001,
-            "training.batch_size": 32,
-        }
-    )
+def get_best_trial():
+    return {
+        "model.num_layers": 2,
+        "model.activation": "tanh",
+        "training.lr": 0.0001,
+        "training.batch_size": 32,
+    }
+
+
+@pytest.fixture
+def get_fixed_trial(get_best_trial):
+    return optuna.trial.FixedTrial(params=get_best_trial)
 
 
 @pytest.fixture
@@ -95,6 +96,15 @@ def get_dependencies_file(tmp_path, get_dependencies):
     with open(yaml_file, "w") as f:
         yaml.safe_dump(get_dependencies, f)
     return yaml_file
+
+
+@pytest.fixture
+def get_tune_config():
+    return {
+        "direction": "minimize",
+        "study_name": "test_study",
+        "storage": None,
+    }
 
 
 def test_is_yaml_tuple_of_3():
@@ -319,3 +329,97 @@ def test_build_search_space_with_dependencies_tune_all(
         },
     }
     assert search_space == expected_search_space
+
+
+def test_build_search_space_tune_model_only(
+    get_config_file, get_dependencies_file, get_fixed_trial, get_base_config_file
+):
+    search_space = tune.build_search_space_with_dependencies(
+        get_config_file,
+        get_dependencies_file,
+        get_fixed_trial,
+        tune_model=True,
+        tune_training=False,
+        base_settings_file=get_base_config_file,
+    )
+
+    expected_search_space = {
+        "model": {
+            "gcn_net": [
+                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
+                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
+            ],
+            "classifier": {"in_dim": 64},
+            "num_layers": 2,
+            "activation": "tanh",
+            "name": "MyModel",
+        },
+        "training": {  # obtained from base config
+            "lr": 0.001,
+            "batch_size": 16,
+        },
+    }
+    assert search_space == expected_search_space
+
+
+def test_build_search_space_tune_training_only(
+    get_config_file, get_dependencies_file, get_fixed_trial, get_base_config_file
+):
+    search_space = tune.build_search_space_with_dependencies(
+        get_config_file,
+        get_dependencies_file,
+        get_fixed_trial,
+        tune_model=False,
+        tune_training=True,
+        base_settings_file=get_base_config_file,
+    )
+
+    expected_search_space = {
+        "model": {  # obtained from base config
+            "gcn_net": [
+                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
+                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
+            ],
+            "classifier": {"in_dim": 64},
+            "num_layers": 2,
+            "activation": "relu",
+            "name": "MyModel",
+        },
+        "training": {
+            "lr": 0.0001,
+            "batch_size": 32,
+        },
+    }
+    assert search_space == expected_search_space
+
+
+def test_create_study(get_tune_config):
+    study = tune.create_study(get_tune_config)
+    assert study.direction == optuna.study.StudyDirection.MINIMIZE
+    assert study.study_name == "test_study"
+
+
+def test_save_best_trial(tmp_path):
+    study = optuna.create_study(direction="minimize", storage=None)
+    best_trial = optuna.trial.FrozenTrial(
+        number=0,
+        state=optuna.trial.TrialState.COMPLETE,
+        value=0.5,
+        datetime_start=time.time(),
+        datetime_complete=time.time(),
+        params={"lr": 0.01, "n_layers": 3},
+        distributions={
+            "lr": optuna.distributions.FloatDistribution(1e-5, 1e-1, log=True),
+            "n_layers": optuna.distributions.IntDistribution(1, 5),
+        },
+        user_attrs={},
+        system_attrs={},
+        intermediate_values={},
+        trial_id=0,
+    )
+    study.add_trial(best_trial)
+
+    output_file = tmp_path / "best_trial.yaml"
+    tune.save_best_trial(study, output_file)
+    loaded_config = tune.load_yaml(output_file, description="Best Trial Config")
+    assert loaded_config == {"lr": 0.01, "n_layers": 3}
