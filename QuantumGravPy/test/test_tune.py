@@ -33,7 +33,7 @@ def get_base_config_file(tmp_path):
                 {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
                 {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
             ],
-            "classifier": {"input_dim": 64},
+            "classifier": {"in_dim": 64},
             "num_layers": 2,
             "activation": "relu",
             "name": "MyModel",
@@ -76,7 +76,7 @@ def get_dependencies():
                     "norm_args": ["model.gcn_net[1].out_dim"],
                 },
             ],
-            "classifier": {"input_dim": "model.gcn_net[-1].out_dim"},
+            "classifier": {"in_dim": "model.gcn_net[-1].out_dim"},
         }
     }
 
@@ -264,7 +264,7 @@ def test_apply_dependencies(get_config, get_dependencies):
     assert config_with_deps["model"]["gcn_net"][0]["norm_args"] == [32]
     assert config_with_deps["model"]["gcn_net"][1]["in_dim"] == 32
     assert config_with_deps["model"]["gcn_net"][1]["norm_args"] == [64]
-    assert config_with_deps["model"]["classifier"]["input_dim"] == 64
+    assert config_with_deps["model"]["classifier"]["in_dim"] == 64
 
 
 def test_load_yaml_invalid(tmp_path):
@@ -308,7 +308,7 @@ def test_build_search_space_with_dependencies_tune_all(
                 {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
                 {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
             ],
-            "classifier": {"input_dim": 64},
+            "classifier": {"in_dim": 64},
             "num_layers": 2,
             "activation": "tanh",
             "name": "MyModel",
