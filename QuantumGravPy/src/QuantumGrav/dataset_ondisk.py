@@ -8,7 +8,7 @@ import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -133,7 +133,6 @@ class QGDataset(QGDatasetBase, Dataset):
 
         if idx < 0 or idx >= self._num_samples:
             raise IndexError("Index out of bounds.")
-
         # Load the data from the processed files
         datapoint = torch.load(
             Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
@@ -141,6 +140,12 @@ class QGDataset(QGDatasetBase, Dataset):
         if self.transform is not None:
             datapoint = self.transform(datapoint)
         return datapoint
+
+    def __getitem__(self, idx: int | Collection[int]) -> Data | Collection[Data]:
+        if isinstance(idx, int):
+            return self.get(idx)
+        else:
+            return [self.get(i) for i in idx]
 
     def len(self) -> int:
         """Get the number of samples in the dataset.
