@@ -181,7 +181,7 @@ class Trainer:
             pin_memory=self.config["training"].get("pin_memory", True),
             drop_last=self.config["training"].get("drop_last", False),
             prefetch_factor=self.config["training"].get("prefetch_factor", None),
-            shuffle=True,
+            shuffle=self.config["training"].get("shuffle", True),
         )
 
         val_loader = DataLoader(
@@ -191,7 +191,7 @@ class Trainer:
             pin_memory=self.config["validation"].get("pin_memory", True),
             drop_last=self.config["validation"].get("drop_last", False),
             prefetch_factor=self.config["validation"].get("prefetch_factor", None),
-            shuffle=True,
+            shuffle=self.config["validation"].get("shuffle", True),
         )
 
         test_loader = DataLoader(
@@ -201,7 +201,7 @@ class Trainer:
             pin_memory=self.config["testing"].get("pin_memory", True),
             drop_last=self.config["testing"].get("drop_last", False),
             prefetch_factor=self.config["testing"].get("prefetch_factor", None),
-            shuffle=True,
+            shuffle=self.config["testing"].get("shuffle", True),
         )
         self.logger.info(
             f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
