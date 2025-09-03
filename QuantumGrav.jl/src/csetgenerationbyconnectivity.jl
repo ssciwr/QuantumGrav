@@ -194,3 +194,66 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
     # Return the sampled causet
     return CausalSets.to_bitarray_causet(tcg), false
 end
+
+"""
+Sample a causet of given `size` with connectivity goal drawn from a specified distribution.
+
+This function draws a connectivity goal value from the provided distribution `dist` and then 
+samples a causet using Markov Chain Monte Carlo with adaptive edge flips to approximate this connectivity.
+
+# Inputs
+- `size::Int64`: Number of nodes in the causet.
+- `dist::Distributions.Distribution`: Distribution from which to draw the connectivity goal.
+- `markov_steps::Int64`: Number of Markov chain steps to perform.
+- `rng::Random.AbstractRNG`: Random number generator instance.
+
+# Keyword Arguments
+- `rel_tol::Union{Float64,Nothing}`: Relative tolerance for stopping criterion.
+- `abs_tol::Union{Float64,Nothing}`: Absolute tolerance for stopping criterion.
+- `acceptance::Float64`: Acceptance parameter for the Metropolis criterion.
+
+# Returns
+- A tuple containing:
+  - `CausalSets.BitArrayCauset`: The sampled causet as a bitarray.
+  - `Bool`: A boolean indicating whether the sampling was successful within the tolerance.
+"""
+function random_causet_by_connectivity_distribution(size::Int64,
+                                                dist::Distributions.Distribution,
+                                                markov_steps::Int64,
+                                                rng::Random.AbstractRNG;
+                                                rel_tol::Union{Float64,Nothing}=nothing,
+                                                abs_tol::Union{Float64,Nothing}=nothing,
+                                                acceptance::Float64=5e5,)::Tuple{CausalSets.BitArrayCauset,
+                                                                                 Bool}
+    if size < 1
+        throw(ArgumentError("size must be larger than 0, is $(size)"))
+    end
+
+    a, b = Distributions.extrema(dist)
+    if a < 0.0 || b > 1.0
+        throw(ArgumentError("Distribution support [$a,$b] is not fully contained in [0,1]. Use Distributions.truncated to truncate."))
+    end
+
+    if markov_steps < 1
+        throw(ArgumentError("markov_steps has to be at least 1, is $(markov_steps)"))
+    end
+
+    if abs_tol === nothing && rel_tol === nothing
+        @warn "Neither abs_tol nor rel_tol set, using markov_steps as stopping criterion."
+    end
+
+    if abs_tol !== nothing && rel_tol !== nothing
+        throw(ArgumentError("Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)"))
+    end
+
+    if !isnothing(rel_tol) && rel_tol < 0
+        throw(ArgumentError("rel_tol has to be in [0,1], is $(rel_tol)"))
+    end
+
+    if !isnothing(abs_tol) && abs_tol < 0
+        throw(ArgumentError("abs_tol has to be in [0,1], is $(abs_tol)"))
+    end
+
+    connectivity_goal = rand(rng, dist)
+    return sample_bitarray_causet_by_connectivity(size, connectivity_goal, markov_steps, rng; rel_tol = rel_tol, abs_tol = abs_tol, acceptance = acceptance)
+end
