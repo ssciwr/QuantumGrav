@@ -75,7 +75,10 @@ class Trainer:
 
         # date and time of run:
         run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.data_path = Path(self.config["training"]["path"]) / run_date
+        self.data_path = (
+            Path(self.config["training"]["path"])
+            / f"{config['model'].get('name', 'run')}_{run_date}"
+        )
 
         if not self.data_path.exists():
             self.data_path.mkdir(parents=True)
@@ -259,21 +262,21 @@ class Trainer:
         losses = torch.zeros(
             len(train_loader), output_size, dtype=torch.float32, device=self.device
         )
-
+        self.logger.info(f"  Starting training epoch {self.epoch}")
         # training run
         for i, batch in enumerate(
             tqdm.tqdm(train_loader, desc=f"Training Epoch {self.epoch}")
         ):
+            self.logger.debug(f"    Moving batch {i} to device: {self.device}")
             optimizer.zero_grad()
-            self.logger.debug(f"  Moving batch to device: {self.device}")
 
             data = batch.to(self.device)
             outputs = self._evaluate_batch(model, data)
 
-            self.logger.debug("  Computing loss")
+            self.logger.debug("    Computing loss")
             loss = self.criterion(outputs, data)
 
-            self.logger.debug(f"  Backpropagating loss: {loss.item()}")
+            self.logger.debug(f"    Backpropagating loss: {loss.item()}")
             loss.backward()
 
             optimizer.step()
@@ -300,13 +303,13 @@ class Trainer:
 
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
-                self.logger.info(f"Early stopping at epoch {self.epoch}.")
-                self.save_checkpoint()
+                self.logger.debug(f"Early stopping at epoch {self.epoch}.")
+                self.save_checkpoint(name_addition="early_stopping")
                 return True
 
             if self.early_stopping.found_better:
-                self.logger.info(f"Found better model at epoch {self.epoch}.")
-                self.save_checkpoint()
+                self.logger.debug(f"Found better model at epoch {self.epoch}.")
+                self.save_checkpoint(name_addition="current_best")
                 # not returning true because this is not the end of training
 
         return False
@@ -370,10 +373,6 @@ class Trainer:
             self.epoch += 1
 
         self.logger.info("Training process completed.")
-        self.logger.info("Saving model")
-
-        outpath = self.data_path / f"final_model_epoch={self.epoch}.pt"
-        torch.save(self.model.state_dict(), outpath)
 
         return total_training_data, self.validator.data if self.validator else []
 
@@ -404,7 +403,7 @@ class Trainer:
         self.logger.info("Testing process completed.")
         return test_result
 
-    def save_checkpoint(self):
+    def save_checkpoint(self, name_addition: str = ""):
         """Save model checkpoint.
 
         Raises:
@@ -415,22 +414,17 @@ class Trainer:
         if self.model is None:
             raise ValueError("Model must be initialized before saving checkpoint.")
 
-        if "name" not in self.config["model"]:
-            raise ValueError(
-                "Model configuration must contain 'name' to save checkpoint."
-            )
-
         self.logger.info(
-            f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.checkpoint_path}"
+            f"Saving checkpoint for model {self.config['model'].get('name', ' model')} at epoch {self.epoch} to {self.checkpoint_path}"
         )
         outpath = (
             self.checkpoint_path
-            / f"{self.config['model']['name']}_epoch_{self.epoch}.pt"
+            / f"{self.config['model'].get('name', 'model')}_epoch_{self.epoch}_{name_addition}.pt"
         )
 
         if outpath.exists() is False:
             outpath.parent.mkdir(parents=True, exist_ok=True)
-            self.logger.info(f"Created directory {outpath.parent} for checkpoint.")
+            self.logger.debug(f"Created directory {outpath.parent} for checkpoint.")
 
         self.latest_checkpoint = outpath
         torch.save(self.model.state_dict(), outpath)
