@@ -19,14 +19,16 @@ end
 
 @testitem "test_make_simple_cset" tags = [:csetgeneration] setup = [setupTests] begin
     type = Float32
-    cset, sprinkling = QuantumGrav.make_simple_cset(
+    cset, converged, sprinkling = QuantumGrav.make_simple_cset(
         "Minkowski",
         "CausalDiamond",
         100,
         2,
+        Distributions.Beta(2,2),
         300,
         rng;
         type = type,
+        abs_tol = 0.01
     )
 
     @test cset.atom_count == 100
@@ -34,8 +36,8 @@ end
     @test length(cset.past_relations) == 100
     @test size(sprinkling) == (100, 2)
 
-    cset, sprinkling =
-        QuantumGrav.make_simple_cset("Random", "BoxBoundary", 100, 3, 300, rng; type = type)
+    cset, converged, sprinkling =
+        QuantumGrav.make_simple_cset("Random", "BoxBoundary", 100, 3, Distributions.Beta(2,2), 300, rng; type = type, abs_tol = 0.01)
 
     @test cset.atom_count == 100
     @test length(cset.future_relations) == 100
@@ -47,9 +49,11 @@ end
         "CausalDiamond",
         0,
         4,
+        Distributions.Beta(2,2),
         300,
         rng;
         type = type,
+        abs_tol = 0.01,
     )
 end
 
@@ -136,9 +140,11 @@ end
     r = 1.5
     d = 2
     markov_iter = 200
+    dist = Distributions.Beta(2,2)
+    abs_tol = 0.01
 
-    cset, sprinkling, chebyshev_coefs, manifold_like =
-        QuantumGrav.make_general_cset(rng, npoints, order, r, d, markov_iter, Float32)
+    cset, sprinkling, chebyshev_coefs, manifold_like, converged =
+        QuantumGrav.make_general_cset(rng, npoints, order, r, d, dist, markov_iter, Float32; abs_tol = abs_tol)
 
     @test cset.atom_count == npoints
     @test size(sprinkling) == (npoints, d)

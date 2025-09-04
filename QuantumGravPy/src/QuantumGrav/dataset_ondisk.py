@@ -8,7 +8,7 @@ import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -22,16 +22,19 @@ class QGDataset(QGDatasetBase, Dataset):
         input: list[str | Path],
         output: str | Path,
         mode: str = "hdf5",
-        reader: Callable[[h5py.File, int], list[Data]] | None = None,
+        reader: Callable[
+            [h5py.File | zarr.Group, torch.dtype, torch.dtype, bool], list[Data]
+        ]
+        | None = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
         validate_data: bool = True,
         chunksize: int = 1000,
         n_processes: int = 1,
         # dataset properties
-        transform: Callable[[Data], Data] | None = None,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        transform: Callable[[Data | Collection], Data] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     ):
         """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk.
 
@@ -39,7 +42,7 @@ class QGDataset(QGDatasetBase, Dataset):
             input (list[str  |  Path] | Callable[[Any], dict]): List of input hdf5 file paths.
             output (str | Path): Output directory where processed data will be stored.
             mode (str): File storage mode. 'zarr' or 'hdf5'
-            reader (Callable[[h5py.File, int], list[Data]] | None, optional): Function to read data from the hdf5 file. Defaults to None.
+            reader (Callable[[h5py.File | zarr.Group, int], list[Data]] | None, optional): Function to read data from the hdf5 file. Defaults to None.
             float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
             int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data. Defaults to True.
