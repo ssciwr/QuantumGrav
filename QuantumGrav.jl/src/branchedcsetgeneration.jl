@@ -25,195 +25,52 @@ function generate_random_branch_points(sprinkling::Vector{CausalSets.Coordinates
 end
 
 """
-    assign_branch(point::Coordinates{2}, branch_points::Vector{Coordinates{2}}, manifold::ConformallyTimesliceableManifold{2}) -> Int
+    in_past_of(manifold::ConformallyTimesliceableManifold{2}, x::Coordinates{2}, y::Coordinates{2}, branch_points::Vector{Coordinates{2}}) -> Bool
 
-Assigns a branch index to a spacetime point `point` relative to a list of `branch_points`, which represent singular vertical branch cuts starting at each branch point and extending toward the future (i.e. increasing time at fixed spatial coordinate).
+Determines whether the point `x` is in the causal past of `y` in a 2D conformally timesliceable manifold with possible branching singularities.
 
-This function defines a piecewise-topological structure on spacetime as follows:
+This function extends the standard causal relation by enforcing topological constraints from vertical branch cuts:
+- It first checks whether `x` is causally related to `y` in the usual spacetime sense (i.e., `x ≺ y`).
+- Then, it examines whether any `branch_point ∈ branch_points` lies strictly spatially between `x` and `y`.
+- If such a branch point exists and is **not in the causal future of `x`**, the causal path from `x` to `y` is considered obstructed and the function returns `false`.
 
-1. If `point` lies in the causal past of one of the `branch_points`, then it belongs to the branch indexed by the **earliest such branch point** in time. That is, iterate through the `branch_points` in increasing coordinate time and assign the branch index `i` as soon as `point ≺ branch_points[i]`.
-
-2. If `point` is **not** in the causal past of any branch point, then it lies in one of the n+1 **future spatial sectors**, determined by the spatial (x-coordinate) position of the `branch_points`.
-
-   - First, the `branch_points` are sorted by spatial coordinate.
-   - If `point.x < branch_points[1].x`, assign branch index `n + 1`.
-   - If `point.x ∈ [branch_points[i].x, branch_points[i+1].x)`, assign branch index `n + 1 + i`.
-   - If `point.x > branch_points[end].x`, assign branch index `2n + 1`.
-
-The total number of branches is therefore `2n + 1`: 
-- `n` for the temporal pasts of the branch points, 
-- `n+1` for the spatial sectors above the branch cuts.
+This models scenarios like topology change (e.g., trousers) where causal curves cannot cross unconnected regions without violating causal consistency.
 
 # Arguments
-- `point::Coordinates{2}`: The spacetime point to classify.
-- `branch_points::Vector{Coordinates{2}}`: Branch points sorted by coordinate time (first component). Must not be empty.
-- `manifold::ConformallyTimesliceableManifold{2}`: The manifold on which to evaluate causal relations.
+- `manifold::ConformallyTimesliceableManifold{2}`: The spacetime background.
+- `x::Coordinates{2}`: Potential past event.
+- `y::Coordinates{2}`: Potential future event.
+- `branch_points::Vector{Coordinates{2}}`: Locations of topological branch points, assumed to induce vertical (time-directed) branch cuts.
 
 # Returns
-- `Int`: The branch index of the point (in 1 : 2n+1).
+- `Bool`: `true` if `x` is causally in the past of `y` and no branch cut obstructs the path; `false` otherwise.
 
 # Throws
-- `ArgumentError` if `branch_points` are not sorted by coordinate time.
-"""
-function assign_branch(point::CausalSets.Coordinates{2}, branch_points::Vector{CausalSets.Coordinates{2}}, manifold::CausalSets.ConformallyTimesliceableManifold{2})::Int
-    n = length(branch_points)
-
-    # Check monotonicity in time
-    for i in 2:n
-        if branch_points[i-1][1] > branch_points[i][1]
-            throw(ArgumentError("branch_points must be sorted by coordinate time (increasing first component)"))
-        end
-    end
-
-    # 1. Temporal assignment
-    for i in 1:n
-        if CausalSets.in_past_of(manifold, point, branch_points[i])
-            return i
-        end
-    end
-
-    # 2. Spatial assignment
-    sorted = sort(branch_points, by = x -> x[2])  # sort by x (spatial)
-    px = point[2]
-
-    if px < sorted[1][2]
-        return n + 1
-    end
-    for i in 1:(n - 1)
-        if sorted[i][2] ≤ px < sorted[i + 1][2]
-            return n + 1 + i
-        end
-    end
-    return 2n + 1
-end
-
-struct BranchedCoordinates{N}
-    coord::CausalSets.Coordinates{N}
-    branch::Int 
-end
-
-"""
-    compute_branch_relations(manifold::ConformallyTimesliceableManifold{2}, branch_points::Vector{Coordinates{2}}) -> Vector{BitVector}
-
-Computes the causal relationships between branches (only in 2D):
-- For branches 1 to n, branch i is in the past of j if it's causally in the past and no spatially intermediate branch cut blocks the path.
-- For branches n+1 to 2n+1, the branch inherits the full causal past of its mother branches (either one or two, based on spatial sector).
-
-# Arguments
-- `manifold::ConformallyTimesliceableManifold{2}`: Manifold to evaluate causal structure.
-- `branch_points::Vector{Coordinates{2}}`: Sorted list of branch points (by time).
-
-# Returns
-- `Vector{BitVector}`: Past-relation matrix `B[i][j] = true` iff branch `i` is in the past of branch `j`.
-
-# Throws
-- `ArgumentError` if `branch_points` are not sorted by time (first coordinate).
-"""
-function compute_branch_relations(
-    manifold::CausalSets.ConformallyTimesliceableManifold{2},
-    branch_points::Vector{CausalSets.Coordinates{2}},
-)::Vector{BitVector}
-    n = length(branch_points)
-
-    # Check monotonicity in time
-    for i in 2:n
-        if branch_points[i-1][1] > branch_points[i][1]
-            throw(ArgumentError("branch_points must be sorted by coordinate time (increasing first component)"))
-        end
-    end
-
-    total = 2n + 1
-    B = [falses(total) for _ in 1:total]  # Vector{BitVector}
-
-    # === Step 1: base causal relations for branches 1..n ===
-    B[1] .= true  # everything is in future of branch 1
-
-    for i in 2:n
-        B[i][i] = true
-        xᵢ = branch_points[i]
-        for j in (i + 1):n
-            xⱼ = branch_points[j]
-            CausalSets.in_past_of(manifold, xᵢ, xⱼ) || continue
-            obstructed = any(
-                k -> min(xᵢ[2], xⱼ[2]) < branch_points[k][2] < max(xᵢ[2], xⱼ[2]) &&
-                     !CausalSets.in_past_of(manifold, xᵢ, branch_points[k]),
-                (i + 1):(j - 1)
-            )
-            B[i][j] = !obstructed
-        end
-    end
-
-    # === Step 2: assign future sectors (branches n+1..2n+1) ===
-    sorted_idxs = sort(1:length(branch_points); by = i -> branch_points[i][2])
-
-    for b in (n + 1):(2n + 1)
-        sector = b - n
-        if sector == 1
-            mothers = (sorted_idxs[1][1],)
-        elseif sector == n + 1
-            mothers = (sorted_idxs[end][1],)
-        else
-            mothers = (sorted_idxs[sector - 1][1], sorted_idxs[sector][1])
-        end
-
-        # Reflexivity
-        B[b][b] = true
-
-        # Add links from all mothers
-        for m in mothers
-            B[m][b] = true
-        end
-
-        # Inherit pasts of both mothers
-        for k in 1:n
-            B[k][b] = any(m -> B[k][m], mothers)
-        end
-    end
-
-    return B
-end
-
-"""
-    in_past_of(manifold, x::BranchedCoordinates{N}, y::BranchedCoordinates{N}, branch_relations::Vector{BitVector}) -> Bool
-
-Returns `true` if `x` is in the causal past of `y`, considering both the spacetime lightcone structure and the causal structure of the branches.
-
-# Arguments
-- `manifold::ConformallyTimesliceableManifold{N}`: The underlying spacetime.
-- `x, y::BranchedCoordinates{N}`: The two spacetime points with branch labels.
-- `branch_relations::Vector{BitVector}`: Branch causal relations.
-
-# Returns
-- `Bool`: `true` if `x ≺ y` according to both spacetime and branch topology.
-
-# Throws
-- `ArgumentError` if either `x.branch` or `y.branch` is out of bounds (i.e., < 1 or > length(branch_relations)).
+- Nothing, but assumes `branch_points` are valid coordinate tuples in 2D spacetime.
 """
 function CausalSets.in_past_of(
-    manifold::CausalSets.ConformallyTimesliceableManifold{N},
-    x::BranchedCoordinates{N},
-    y::BranchedCoordinates{N},
-    branch_relations::Vector{BitVector},
-)::Bool where {N}
-    total_branches = length(branch_relations)
-    if x.branch < 1 || x.branch > total_branches
-        throw(ArgumentError("Invalid branch index x.branch = $(x.branch). Must be in 1:$(total_branches)."))
-    end
-    if y.branch < 1 || y.branch > total_branches
-        throw(ArgumentError("Invalid branch index y.branch = $(y.branch). Must be in 1:$(total_branches)."))
-    end
-    # Check branch causality
-    branch_relations[x.branch][y.branch] || return false
+    manifold::CausalSets.ConformallyTimesliceableManifold{2},
+    x::CausalSets.Coordinates{2},
+    y::CausalSets.Coordinates{2},
+    branch_points::Vector{CausalSets.Coordinates{2}},
+)::Bool
+    # Check standard causal relation
+    CausalSets.in_past_of(manifold, x, y) || return false
 
-    # Check standard spacetime causality
-    return CausalSets.in_past_of(manifold, x.coord, y.coord)
+    # Check for branch cuts that obstruct causality
+    for b in branch_points
+        if min(x[2], y[2]) < b[2] < max(x[2], y[2])
+            CausalSets.in_past_of(manifold, x, b) || return false
+        end
+    end
+    return true
 end
 
 struct BranchedManifoldCauset{N, M} <: CausalSets.AbstractCauset where {N, M<:CausalSets.AbstractManifold}
     atom_count::Int64
     manifold::M
-    sprinkling::Vector{BranchedCoordinates{N}}
-    branch_relations::Vector{BitVector}
+    sprinkling::Vector{CausalSets.Coordinates{N}}
+    branch_points::Vector{CausalSets.Coordinates{N}}
 end
 
 """
@@ -223,10 +80,10 @@ Create a `BranchedManifoldCauset` from a `manifold`, a list of `BranchedCoord{N}
 """
 function BranchedManifoldCauset(
     manifold::M,
-    sprinkling::Vector{BranchedCoordinates{N}},
-    branch_relations::Vector{BitVector},
+    sprinkling::Vector{CausalSets.Coordinates{N}},
+    branch_points::Vector{CausalSets.Coordinates{N}},
 )::BranchedManifoldCauset{N, M} where {N, M<:CausalSets.AbstractManifold{N}}
-    return BranchedManifoldCauset{N, M}(length(sprinkling), manifold, sprinkling, branch_relations)
+    return BranchedManifoldCauset{N, M}(length(sprinkling), manifold, sprinkling, branch_points)
 end
 
 """
@@ -237,7 +94,7 @@ Returns `true` if element `i` is in the past of element `j`, based on both space
 function CausalSets.in_past_of_unchecked(causet::BranchedManifoldCauset, i::Int, j::Int)::Bool
     x = causet.sprinkling[i]
     y = causet.sprinkling[j]
-    return CausalSets.in_past_of(causet.manifold, x, y, causet.branch_relations)
+    return CausalSets.in_past_of(causet.manifold, x, y, causet.branch_points)
 end
 
 """
@@ -267,7 +124,7 @@ function Base.convert(::Type{CausalSets.BitArrayCauset}, causet::BranchedManifol
 
     Threads.@threads for i in 1:atom_count
         for j in i+1:atom_count
-            if CausalSets.in_past_of(causet.manifold, causet.sprinkling[i], causet.sprinkling[j], causet.branch_relations)
+            if CausalSets.in_past_of(causet.manifold, causet.sprinkling[i], causet.sprinkling[j], causet.branch_points)
                 future_relations[i][j] = true
                 past_relations[j][i] = true
             end
@@ -377,14 +234,8 @@ function make_branched_manifold_cset(
     # Randomly promote nbranchpoints of the sprinkling points to branch points
     branch_points = generate_branch_points(sprinkling, nbranchpoints)
 
-    # assign a branch to every point in sprinkling
-    branched_sprinkling = [BranchedCoordinates{d}(sprinkling[i], assign_branch(sprinkling[i], branch_points, polym)) for i in 1:length(sprinkling)]
-
-    # compute branch-relation matrix
-    rel = compute_branch_relations(polym, branch_points)
-
     # Construct the causal set from the manifold and sprinkling
-    cset = BranchedManifoldCauset(polym, branched_sprinkling, rel)
+    cset = BranchedManifoldCauset(polym, branched_sprinkling, branch_points)
 
     return cset, sprinkling, type.(chebyshev_coefs)
 end
