@@ -17,6 +17,8 @@ include("csetgeneration.jl")
 include("layeredgeneration.jl")
 include("datageneration.jl")
 include("csetgenerationbyconnectivity.jl")
+include("csetmerging.jl")
+include("branchedcsetgeneration.jl")
 include("destroy_manifold_like_cset.jl")
 include("grid_like_causets.jl")
 
@@ -32,6 +34,11 @@ export make_simple_cset,
     random_causet_by_connectivity_distribution,
     gaussian_dist_cuts,
     create_random_layered_causet,
+    merge_csets,
+    insert_cset,
+    insert_KR_into_manifoldlike,
+    BranchedManifoldCauset,
+    make_branched_manifold_cset
     destroy_manifold_cset,
     generate_grid_from_brillouin_cell,
     generate_grid_2d,
