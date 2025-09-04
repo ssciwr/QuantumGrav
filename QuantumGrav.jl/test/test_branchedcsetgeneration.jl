@@ -56,10 +56,10 @@ end
 
 @testitem "BranchedManifoldCauset constructor" tags = [:branchedcsetgeneration, :branch_points] setup = [branchedtests] begin
     polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
-    coords = [CausalSets.Coordinates{2}((i / 10, 0.0)) for i in 1:10]
-    rel = [falses(2n + 1) for n in 1:10]  # dummy relation matrix
+    coords = [(i / 10, 0.0) for i in 1:10]
+    branch_points = [coords[3], coords[4]] # dummy relation matrix
 
-    causet = QuantumGrav.BranchedManifoldCauset(polym, coords, rel)
+    causet = QuantumGrav.BranchedManifoldCauset(polym, coords, branch_points)
     @test causet isa QuantumGrav.BranchedManifoldCauset
     @test causet.atom_count == length(coords)
     @test causet.sprinkling[1] isa CausalSets.Coordinates{2}
