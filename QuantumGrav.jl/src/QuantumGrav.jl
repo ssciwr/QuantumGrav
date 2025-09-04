@@ -18,6 +18,7 @@ include("layeredgeneration.jl")
 include("datageneration.jl")
 include("csetgenerationbyconnectivity.jl")
 include("csetmerging.jl")
+include("branchedcsetgeneration.jl")
 
 export make_simple_cset,
     make_manifold_cset,
@@ -32,5 +33,7 @@ export make_simple_cset,
     create_random_layered_causet,
     merge_csets,
     insert_cset,
-    insert_KR_into_manifoldlike
+    insert_KR_into_manifoldlike,
+    BranchedManifoldCauset,
+    make_branched_manifold_cset
 end # module QuantumGrav
