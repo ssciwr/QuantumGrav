@@ -93,3 +93,29 @@ end
     @test bitcset.future_relations[1][3] == false
     @test bitcset.past_relations[3][1] == false
 end
+
+@testitem "make_branched_manifold_cset" tags = [:branchedcsetgeneration, :generation] setup = [branchedtests] begin
+    npoints = 100
+    nbranchpoints = 5
+    order = 4
+    r = 1.5
+
+    cset, sprinkling, coefs = QuantumGrav.make_branched_manifold_cset(npoints, nbranchpoints, rng, order, r)
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test length(sprinkling) == npoints
+    @test size(coefs) == (order, order)
+    @test cset.atom_count == npoints
+end
+
+@testitem "make_branched_manifold_cset throws" tags = [:branchedcsetgeneration, :generation, :throws] setup = [branchedtests] begin
+    order = 4
+    r = 1.5
+
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(0, 0, rng, order, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 11, rng, order, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, -1, rng, order, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, rng, 0, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, rng, order, 0.5)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, rng, order, r; d=3)
+end

@@ -184,8 +184,8 @@ function make_branched_manifold_cset(
         throw(ArgumentError("npoints must be greater than 0, got $npoints"))
     end
 
-    if nbranchpoints < 1 || nbranchpoints > npoints
-        throw(ArgumentError("nbranchpoints must be between 1 and npoints = $npoints, got $nbranchpoints"))
+    if nbranchpoints < 0 || nbranchpoints > npoints
+        throw(ArgumentError("nbranchpoints must be between 0 and npoints = $npoints, got $nbranchpoints"))
     end
 
     if order <= 0
@@ -232,10 +232,10 @@ function make_branched_manifold_cset(
     sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints)
 
     # Randomly promote nbranchpoints of the sprinkling points to branch points
-    branch_points = generate_branch_points(sprinkling, nbranchpoints)
+    branch_points = generate_random_branch_points(sprinkling, nbranchpoints)
 
     # Construct the causal set from the manifold and sprinkling
-    cset = BranchedManifoldCauset(polym, branched_sprinkling, branch_points)
+    cset = BranchedManifoldCauset(polym, sprinkling, branch_points)
 
-    return cset, sprinkling, type.(chebyshev_coefs)
+    return CausalSets.BitArrayCauset(cset), sprinkling, type.(chebyshev_coefs)
 end
