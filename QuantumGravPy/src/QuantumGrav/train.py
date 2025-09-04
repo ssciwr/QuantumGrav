@@ -404,7 +404,7 @@ class Trainer:
         test_result = self.tester.test(self.model, test_loader)
         self.tester.report(test_result)
         self.logger.info("Testing process completed.")
-        return test_result
+        return self.tester.data
 
     def save_checkpoint(self, name_addition: str = ""):
         """Save model checkpoint.
