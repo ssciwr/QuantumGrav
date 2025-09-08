@@ -251,4 +251,8 @@ def tune_integration():
 
 
 if __name__ == "__main__":
+    if not tmp_dir.exists():
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    print("Starting the tuning integration process...")
     tune_integration()
