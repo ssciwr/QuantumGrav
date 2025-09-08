@@ -202,12 +202,15 @@ def objective(trial):
 
 
 def tune_integration():
+    # Note: Multi-thread optimization has traditionally been inefficient in Python
+    # due to the Global Interpreter Lock (GIL) (Python < 3.14)
     tuning_config = {
         "study_name": "test_study",
         "storage": None,
         "direction": "maximize",
         "n_trials": 10,
         "timeout": 600,
+        "n_jobs": 1,  # set to >1 to enable multi-threading
     }
 
     study = tune.create_study(tuning_config)
@@ -215,6 +218,7 @@ def tune_integration():
         objective,
         n_trials=tuning_config["n_trials"],
         timeout=tuning_config["timeout"],
+        n_jobs=tuning_config["n_jobs"],  # pass n_jobs to optimize method
     )
 
     pruned_trials = study.get_trials(
