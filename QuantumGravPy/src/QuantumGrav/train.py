@@ -355,18 +355,20 @@ class Trainer:
                 f"  Completed epoch {self.epoch}. training loss: {total_training_data[self.epoch, 0]} +/- {total_training_data[self.epoch, 1]}."
             )
 
-            # integrate Optuna here for hyperparameter tuning
-            if trial is not None:
-                trial.report(total_training_data[self.epoch, 0].item(), self.epoch)
-
-                # Handle pruning based on the intermediate value.
-                if trial.should_prune():
-                    raise optuna.exceptions.TrialPruned()
-
             # evaluation run on validation set
             if self.validator is not None:
                 validation_result = self.validator.validate(self.model, val_loader)
                 self.validator.report(validation_result)
+
+                # integrate Optuna here for hyperparameter tuning
+                if trial is not None:
+                    avg_sigma_loss = self.validator.data[self.epoch]
+                    avg_loss = avg_sigma_loss[0]
+                    trial.report(avg_loss, self.epoch)
+
+                    # Handle pruning based on the intermediate value.
+                    if trial.should_prune():
+                        raise optuna.exceptions.TrialPruned()
 
             should_stop = self._check_model_status(
                 self.validator.data if self.validator else total_training_data,

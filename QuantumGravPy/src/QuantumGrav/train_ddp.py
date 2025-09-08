@@ -13,6 +13,8 @@ from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 from . import train
 
+import optuna
+
 
 def initialize_ddp(
     rank: int,
@@ -241,6 +243,7 @@ class TrainerDDP(train.Trainer):
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
+        trial: optuna.trial.Trial | None = None,
     ) -> Tuple[list[Any], list[Any]]:
         """
         Run the training loop for the distributed model. This will synchronize for validation. No testing is performed in this function. The model will only be checkpointed and early stopped on the 'rank' 0 process.
@@ -248,6 +251,8 @@ class TrainerDDP(train.Trainer):
         Args:
             train_loader (DataLoader): The training data loader.
             val_loader (DataLoader): The validation data loader.
+            trial (optuna.trial.Trial | None, optional): An Optuna trial for hyperparameter optimization.
+                Defaults to None.
 
         Returns:
             Tuple[list[Any], list[Any]]: The training and validation results.
@@ -275,6 +280,16 @@ class TrainerDDP(train.Trainer):
                 validation_result = self.validator.validate(self.model, val_loader)
                 if self.rank == 0:
                     self.validator.report(validation_result)
+
+                    # integrate Optuna here for hyperparameter tuning
+                    if trial is not None:
+                        avg_sigma_loss = self.validator.data[self.epoch]
+                        avg_loss = avg_sigma_loss[0]
+                        trial.report(avg_loss, self.epoch)
+
+                        # Handle pruning based on the intermediate value.
+                        if trial.should_prune():
+                            raise optuna.exceptions.TrialPruned()
 
             dist.barrier()  # Ensure all processes have completed the epoch before checking status
             should_stop = self._check_model_status(
