@@ -16,7 +16,7 @@ Normally, users can call Optuna's suggestion functions directly when creating, t
 
 To define search space in `QuantumGrav`, users need three setting files:
 
-* Base setting file: contains all configurations for using the `QuantumGrav` Python package (see [the configuration `dict`](./training_a_model#the-configuration-dict))
+* Base setting file: contains all configurations for using the `QuantumGrav` Python package (see [the configuration `dict`](./training_a_model.md#the-configuration-dict))
 * Search space file: specifies the hyperparameters to optimize and their ranges
 * Dependency mapping file: defines dependencies between hyperparameters. A common case is in GNN layers, where the input dimension of one layer must match the output dimension of the previous layer.
 
@@ -63,7 +63,7 @@ model:
             value: [1e-5, 1e-1, true]
         ```
 
-Full example of the search space built based on the base setting from [the configuration `dict`](./training_a_model#the-configuration-dict):
+Full example of the search space built based on the base setting from [the configuration `dict`](./training_a_model.md#the-configuration-dict):
 
 ```yaml
 model:
