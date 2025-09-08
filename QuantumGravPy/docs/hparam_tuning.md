@@ -12,7 +12,7 @@ To use Optuna, we first need to define the hyperparameter search space with meth
 * `suggest_float()`: suggest a value for the floating point parameter
 * `suggest_int()`: suggest a value for the integer parameter
 
-Normally, users can call Optuna’s suggestion functions directly when creating, training, validating, or testing their models (see [Optuna's code examples](https://optuna.org/#code_examples)). However, since the `QuantumGrav` package allows these steps to be configured via a YAML file, it is more convenient to handle hyperparameter tuning the same way.
+Normally, users can call Optuna's suggestion functions directly when creating, training, validating, or testing their models (see [Optuna's code examples](https://optuna.org/#code_examples)). However, since the `QuantumGrav` package allows these steps to be configured via a YAML file, it is more convenient to handle hyperparameter tuning the same way.
 
 To define search space in `QuantumGrav`, users need three setting files:
 
@@ -204,7 +204,7 @@ model:
 
 Here, the first value of `norm_args` in the first layer is set to `"model.gcn_net[0].out_dim"`, which points to the `out_dim` of the first element in `model` -> `gcn_net`. The same approach is used for the `in_dim` of the second layer.
 
-To use this mapping, users must understand the search space file’s structure and ensure the dependency mapping file follows it exactly.
+To use this mapping, users must understand the search space file's structure and ensure the dependency mapping file follows it exactly.
 
 Full example of dependency mapping file for the above search space file:
 
