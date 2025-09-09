@@ -399,6 +399,16 @@ def test_create_study(get_tune_config):
     assert study.study_name == "test_study"
 
 
+def test_create_study_with_storage(get_tune_config, tmp_path):
+    storage_path = tmp_path / "optuna_study.log"
+    get_tune_config["storage"] = storage_path
+    study = tune.create_study(get_tune_config)
+    assert study.direction == optuna.study.StudyDirection.MINIMIZE
+    assert study.study_name == "test_study"
+    assert study._storage is not None
+    assert isinstance(study._storage, optuna.storages.JournalStorage)
+
+
 def test_save_best_trial(tmp_path):
     study = optuna.create_study(direction="minimize", storage=None)
     best_trial = optuna.trial.FrozenTrial(

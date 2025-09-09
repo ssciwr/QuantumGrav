@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 from torchvision import datasets, transforms
 from pathlib import Path
+from multiprocessing import Pool
+from functools import partial
 
 
 DEVICE = torch.device("cpu")
@@ -12,8 +14,36 @@ current_dir = Path(__file__).parent
 tmp_dir = current_dir / "tmp"
 
 
-def get_config_file(tmp_path):
-    config = {
+def get_tuning_config_file(tmp_path):
+    # Note on n_jobs: Multi-thread optimization has traditionally been inefficient
+    # in Python due to the Global Interpreter Lock (GIL) (Python < 3.14)
+    tuning_config = {
+        "tune_model": True,
+        "tune_training": True,
+        "base_settings_file": str(tmp_path / "base_config.yaml"),
+        "search_space_file": str(tmp_path / "search_space.yaml"),
+        "depmap_file": str(tmp_path / "deps.yaml"),
+        "study_name": "test_study",
+        "storage": str(tmp_path / "test_study.log"),
+        "direction": "maximize",
+        "n_trials": 10,
+        "timeout": 600,
+        "n_jobs": 1,  # set to >1 to enable multi-threading,
+        "built_search_space_file": str(tmp_path / "built_search_space.yaml"),
+        "best_trial_file": str(tmp_path / "best_trial.yaml"),
+        "best_config_file": str(tmp_path / "best_config.yaml"),
+        "n_processes": 2,
+        "n_iterations": 2,
+    }
+    tuning_config_file = tmp_path / "tuning_config.yaml"
+    with open(tuning_config_file, "w") as f:
+        yaml.safe_dump(tuning_config, f)
+
+    return tuning_config_file
+
+
+def get_search_space_file(file_path):
+    search_space = {
         "model": {
             "n_layers": 3,
             "nn": [
@@ -41,14 +71,14 @@ def get_config_file(tmp_path):
             "epochs": [2, 5],
         },
     }
-    config_file = tmp_path / "config.yaml"
-    with open(config_file, "w") as f:
-        yaml.safe_dump(config, f)
 
-    return config_file
+    with open(file_path, "w") as f:
+        yaml.safe_dump(search_space, f)
+
+    return file_path
 
 
-def get_dependency_file(tmp_path):
+def get_dependency_file(file_path):
     deps = {
         "model": {
             "nn": [
@@ -62,13 +92,13 @@ def get_dependency_file(tmp_path):
             ],
         }
     }
-    dep_file = tmp_path / "deps.yaml"
-    with open(dep_file, "w") as f:
+
+    with open(file_path, "w") as f:
         yaml.safe_dump(deps, f)
-    return dep_file
+    return file_path
 
 
-def get_base_config_file(tmp_path):
+def get_base_config_file(file_path):
     base_config = {
         "model": {
             "n_layers": 3,
@@ -92,11 +122,11 @@ def get_base_config_file(tmp_path):
         },
         "training": {"batch_size": 32, "optimizer": "Adam", "lr": 0.001, "epochs": 5},
     }
-    base_config_file = tmp_path / "base_config.yaml"
-    with open(base_config_file, "w") as f:
+
+    with open(file_path, "w") as f:
         yaml.safe_dump(base_config, f)
 
-    return base_config_file
+    return file_path
 
 
 def define_small_model(config):
@@ -136,15 +166,22 @@ def load_data(config, dir_path):
     return train_loader, valid_loader
 
 
-def objective(trial):
+def objective(trial, tuning_config):
+    base_config_file = get_base_config_file(tuning_config.get("base_settings_file"))
+    search_space_file = get_search_space_file(tuning_config.get("search_space_file"))
+    depmap_file = get_dependency_file(tuning_config.get("depmap_file"))
+    tune_model = tuning_config.get("tune_model")
+    tune_training = tuning_config.get("tune_training")
+    built_search_space_file = tuning_config.get("built_search_space_file")
+
     search_space = tune.build_search_space_with_dependencies(
-        get_config_file(tmp_dir),
-        get_dependency_file(tmp_dir),
+        search_space_file,
+        depmap_file,
         trial,
-        tune_model=True,
-        tune_training=True,
-        base_settings_file=get_base_config_file(tmp_dir),
-        built_search_space_file=tmp_dir / "built_search_space.yaml",
+        tune_model=tune_model,
+        tune_training=tune_training,
+        base_settings_file=base_config_file,
+        built_search_space_file=built_search_space_file,
     )
 
     # prepare model
@@ -201,21 +238,11 @@ def objective(trial):
     return accuracy
 
 
-def tune_integration():
-    # Note: Multi-thread optimization has traditionally been inefficient in Python
-    # due to the Global Interpreter Lock (GIL) (Python < 3.14)
-    tuning_config = {
-        "study_name": "test_study",
-        "storage": None,
-        "direction": "maximize",
-        "n_trials": 10,
-        "timeout": 600,
-        "n_jobs": 1,  # set to >1 to enable multi-threading
-    }
+def tune_integration(_, tuning_config):  # _ is the iteration index
 
     study = tune.create_study(tuning_config)
     study.optimize(
-        objective,
+        partial(objective, tuning_config=tuning_config),
         n_trials=tuning_config["n_trials"],
         timeout=tuning_config["timeout"],
         n_jobs=tuning_config["n_jobs"],  # pass n_jobs to optimize method
@@ -258,5 +285,12 @@ if __name__ == "__main__":
     if not tmp_dir.exists():
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
+    tuning_config = tune.get_tuning_settings(get_tuning_config_file(tmp_dir))
+    n_processes = tuning_config.get("n_processes", 1)
+    n_iterations = tuning_config.get("n_iterations", 1)
+
     print("Starting the tuning integration process...")
-    tune_integration()
+    with Pool(processes=n_processes) as pool:
+        pool.map(
+            partial(tune_integration, tuning_config=tuning_config), range(n_iterations)
+        )

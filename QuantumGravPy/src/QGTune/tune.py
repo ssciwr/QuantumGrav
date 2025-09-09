@@ -1,8 +1,10 @@
+import optuna.storages.journal
 import yaml
 from pathlib import Path
 import optuna
 from typing import Any, List
 import copy
+import sys
 
 
 def _is_yaml_tuple_of_3(value: Any) -> bool:
@@ -332,9 +334,23 @@ def create_study(tuning_config: dict) -> None:
     study_name = tuning_config.get("study_name")
     direction = tuning_config.get("direction", "minimize")
 
+    # create storage object if storage is provided
+    optuna_storage = None
+    if storage is not None:
+        lock_obj = None
+
+        if sys.platform.startswith("win"):
+            lock_obj = optuna.storages.journal.JournalFileOpenLock(str(storage))
+
+        backend = optuna.storages.journal.JournalFileBackend(
+            str(storage), lock_obj=lock_obj
+        )
+
+        optuna_storage = optuna.storages.JournalStorage(backend)
+
     study = optuna.create_study(
         study_name=study_name,
-        storage=storage,
+        storage=optuna_storage,
         load_if_exists=True,
         direction=direction,
         pruner=optuna.pruners.MedianPruner(
