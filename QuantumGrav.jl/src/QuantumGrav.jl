@@ -28,5 +28,5 @@ export make_simple_cset,
     calculate_angles,
     calculate_distances,
     sample_bitarray_causet_by_connectivity
-gaussian_dist_cuts, create_random_layered_causet
+gaussian_dist_cuts, create_random_layered_causet, make_data
 end # module QuantumGrav

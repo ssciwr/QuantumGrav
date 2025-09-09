@@ -332,19 +332,20 @@ end
         "output_format" => "hdf5",
     )
 
-    if isdir(config["output"])
-        rm(config["output"]; recursive = true)
+    if isdir(abspath(expanduser(config["output"])))
+        rm(abspath(expanduser(config["output"])); recursive = true)
     end
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
 
-    outputcontent = readdir(config["output"])
+    outputcontent = readdir(abspath(expanduser(config["output"])))
     @test true in [occursin(".h5", file) for file in outputcontent]
     @test true in [occursin(".yaml", file) for file in outputcontent]
     @test true in [occursin(".jl", file) for file in outputcontent]
 
-    # check config file 
-    open(joinpath(config["output"], "config_$(getpid()).yaml")) do file
+    # check config file
+    cfg_file = filter(x -> occursin(".yaml", x), readdir(config["output"]))[1]
+    open(joinpath(config["output"], cfg_file)) do file
         config_data = YAML.load(file)
         @test config_data["num_datapoints"] == 10
         @test config_data["output_format"] == "hdf5"
@@ -379,19 +380,21 @@ end
         "output_format" => "zarr",
     )
 
-    if isdir(config["output"])
-        rm(config["output"]; recursive = true)
+
+    if isdir(abspath(expanduser(config["output"])))
+        rm(abspath(expanduser(config["output"])); recursive = true)
     end
 
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
 
-    outputcontent = readdir(config["output"])
+    outputcontent = readdir(abspath(expanduser(config["output"])))
     @test true in [occursin(".zarr", file) for file in outputcontent]
     @test true in [occursin(".yaml", file) for file in outputcontent]
     @test true in [occursin(".jl", file) for file in outputcontent]
 
     # check config file 
-    open(joinpath(config["output"], "config_$(getpid()).yaml")) do file
+    cfg_file = filter(x -> occursin(".yaml", x), readdir(config["output"]))[1]
+    open(joinpath(config["output"], cfg_file)) do file
         config_data = YAML.load(file)
         @test config_data["num_datapoints"] == 10
         @test config_data["output_format"] == "zarr"
