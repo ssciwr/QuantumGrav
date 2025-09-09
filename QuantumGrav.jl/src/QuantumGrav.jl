@@ -11,7 +11,6 @@ import HDF5
 import Zarr
 import ProgressMeter
 import Dates
-import Pkg
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -30,15 +29,15 @@ export make_simple_cset,
     calculate_angles,
     calculate_distances,
     sample_bitarray_causet_by_connectivity
-    gaussian_dist_cuts, 
-    create_random_layered_causet, 
-    make_data
-    random_causet_by_connectivity_distribution,
-    gaussian_dist_cuts,
-    create_random_layered_causet,
-    destroy_manifold_cset,
-    generate_grid_from_brillouin_cell,
-    generate_grid_2d,
-    create_grid_causet_2D,
-    create_grid_causet_2D_polynomial_manifold
+gaussian_dist_cuts,
+create_random_layered_causet,
+make_data,
+random_causet_by_connectivity_distribution,
+gaussian_dist_cuts,
+create_random_layered_causet,
+destroy_manifold_cset,
+generate_grid_from_brillouin_cell,
+generate_grid_2d,
+create_grid_causet_2D,
+create_grid_causet_2D_polynomial_manifold
 end # module QuantumGrav

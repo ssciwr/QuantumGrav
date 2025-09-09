@@ -126,7 +126,7 @@ def test_dataset_base_process_chunk_zarr(
         float_type=torch.float32,
         int_type=torch.int64,
         validate_data=True,
-        n_processes=n,  # use the param
+        n_processes=n,
         chunksize=4,
     )
     with zarr.storage.LocalStore(datafiles[0], read_only=True) as raw_file:
