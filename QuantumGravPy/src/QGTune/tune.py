@@ -282,6 +282,12 @@ def build_search_space_with_dependencies(
             Defaults to False, meaning values for model will be taken from base settings.
         tune_training (bool, optional): Whether to tune training hyperparameters.
             Defaults to True, meaning values for training will be taken from search space.
+        base_settings_file (Path, optional): Path to the base settings YAML file.
+            This is required if either `tune_model` or `tune_training` is False.
+            Defaults to None.
+        built_search_space_file (Path, optional): Path to save the built search space
+            with dependencies applied. If None, the built search space will not be saved.
+            Defaults to None.
 
     Returns:
         dict: A dictionary representing the hyperparameter search space

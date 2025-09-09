@@ -1,16 +1,16 @@
 tune_model: false # whether to use search space for model settings
 tune_training: true # whether to use search space for training settings
-base_settings_path: "base_settings.yaml" # path to the base settings file
-search_space_path: "search_space.yaml" # path to the search space config file
-dependencies_path: "dependencies.yaml" # path to the dependencies config file
-built_search_space_path: "built_search_space.yaml" # path to save the built search space with dependencies applied
-study_name: "quantum_grav_study" # name of the Optuna study
-storage: experiments/results.log # storage file for the Optuna study, only supports JournalStorage for multi-process
-direction: "minimize" # direction of optimization ("minimize" or "maximize")
+base_settings_path: base_settings.yam # path to the base settings file
+search_space_path: search_space.yaml # path to the search space config file
+dependency_mapping_path: depmap.yaml # path to the dependency mapping file
+built_search_space_path: built_search_space.yaml # path to save the built search space with dependencies applied
+study_name: quantum_grav_study # name of the Optuna study
+storage: experiments/results.log # storage file for the Optuna study, only supports JournalStorage for multi-processing
+direction: minimize # direction of optimization ("minimize" or "maximize")
 n_trials: 20 # number of trials for hyperparameter tuning
 timeout: 600 # timeout in seconds for the study
 n_jobs: 1 # number of parallel jobs for multi-threading (set to 1 for single-threaded)
-n_processes: 4 # number of parallel processes for multi-processing
-n_iterations: 10 # number of iterations to run the tuning process (each iteration runs n_trials)
-best_trial_path: "best_trial.yaml" # path to save the best trial information
-best_param_path: "best_params.yaml" # path to save the best hyperparameters
+n_processes: 4 # number of parallel processes for multi-processing, each process runs n_trials * n_iterations/n_processes
+n_iterations: 8 # number of iterations to run the tuning process (each iteration runs n_trials)
+best_trial_path: best_trial.yaml # path to save the best trial information
+best_param_path: best_params.yaml # path to save the best hyperparameters

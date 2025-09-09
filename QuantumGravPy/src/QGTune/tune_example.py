@@ -48,7 +48,7 @@ def get_search_space_file(file_path):
             "n_layers": 3,
             "nn": [
                 {
-                    "in_dim": 784,
+                    "in_dim": 784,  # 28*28
                     "out_dim": [128, 256],
                     "dropout": {"type": "tuple", "value": [0.2, 0.5, 0.1]},
                 },
@@ -141,7 +141,7 @@ def define_small_model(config):
         dropout = config["model"]["nn"][i]["dropout"]
         layers.append(nn.Dropout(dropout))
 
-    layers.append(nn.Linear(out_dim, 10))  # classification of 10 digits
+    layers.append(nn.Linear(out_dim, 10))  # classification of 10 classes
     layers.append(nn.LogSoftmax(dim=1))
 
     return nn.Sequential(*layers)
@@ -245,7 +245,7 @@ def tune_integration(_, tuning_config):  # _ is the iteration index
         partial(objective, tuning_config=tuning_config),
         n_trials=tuning_config["n_trials"],
         timeout=tuning_config["timeout"],
-        n_jobs=tuning_config["n_jobs"],  # pass n_jobs to optimize method
+        n_jobs=tuning_config["n_jobs"],
     )
 
     pruned_trials = study.get_trials(
