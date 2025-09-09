@@ -1,6 +1,6 @@
 tune_model: false # whether to use search space for model settings
 tune_training: true # whether to use search space for training settings
-base_settings_path: base_settings.yam # path to the base settings file
+base_settings_path: base_settings.yaml # path to the base settings file
 search_space_path: search_space.yaml # path to the search space config file
 dependency_mapping_path: depmap.yaml # path to the dependency mapping file
 built_search_space_path: built_search_space.yaml # path to save the built search space with dependencies applied
