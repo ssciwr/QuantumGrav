@@ -432,7 +432,7 @@ class Trainer:
         self.latest_checkpoint = outpath
         torch.save(self.model.state_dict(), outpath)
 
-    def load_checkpoint(self, epoch: int) -> None:
+    def load_checkpoint(self, epoch: int, name_addition: str = "") -> None:
         """Load model checkpoint to the device given
 
         Args:
@@ -443,11 +443,11 @@ class Trainer:
         """
 
         if self.model is None:
-            raise RuntimeError("Model must be initialized before saving checkpoint.")
+            raise RuntimeError("Model must be initialized before loading checkpoint.")
 
         loadpath = (
             Path(self.checkpoint_path)
-            / f"{self.config['model']['name']}_epoch_{epoch}.pt"
+            / f"{self.config['model'].get('name', 'model')}_epoch_{epoch}_{name_addition}.pt"
         )
 
         if not loadpath.exists():

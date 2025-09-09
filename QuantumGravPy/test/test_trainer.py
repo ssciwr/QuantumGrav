@@ -192,6 +192,8 @@ def test_trainer_init_optimizer(config):
         validator=None,
         tester=None,
     )
+
+    # need a model to initialize the optimizer
     model = trainer.initialize_model()
     assert model is not None
     assert isinstance(model, QG.GNNModel)
@@ -297,6 +299,7 @@ def test_trainer_check_model_status(config):
     saved = trainer._check_model_status(loss)
     assert saved is False
 
+    # returns true when early stopping is triggereds
     trainer.early_stopping = lambda x: True
     loss = np.random.rand(10).tolist()
     saved = trainer._check_model_status(loss)
@@ -330,7 +333,7 @@ def test_trainer_load_checkpoint(config):
 
     assert trainer.model is not None
 
-    trainer.save_checkpoint()
+    trainer.save_checkpoint("test")
 
     original_weights = [param.clone() for param in trainer.model.parameters()]
 
@@ -339,15 +342,41 @@ def test_trainer_load_checkpoint(config):
         param.data.zero_()
 
     # Load the checkpoint
-    trainer.load_checkpoint(0)
+    trainer.load_checkpoint(0, "test")
 
     # Check if the model parameters are restored
-    for orig, loaded in zip(original_weights, trainer.model.parameters()):
-        assert torch.all(torch.eq(orig, loaded.data))
     assert trainer.epoch == 0
 
+    for orig, loaded in zip(original_weights, trainer.model.parameters()):
+        assert torch.all(torch.eq(orig, loaded.data))
 
-# there is no test for the working 'save_checkpoint' method, as it is tested in the _check_model_status method above
+    assert trainer.latest_checkpoint is not None
+
+
+def test_trainer_load_checkpoint_fails(config):
+    "Test loading a checkpoint that does not exist or when model is none"
+    trainer = QG.Trainer(
+        config,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    trainer.initialize_model()
+
+    assert trainer.model is not None
+
+    trainer.save_checkpoint("test")
+    with pytest.raises(FileNotFoundError, match="Checkpoint file .* does not exist."):
+        trainer.load_checkpoint(0, "non_existent")
+
+    trainer.model = None
+    with pytest.raises(
+        RuntimeError, match="Model must be initialized before loading checkpoint."
+    ):
+        trainer.load_checkpoint(0, "test")
 
 
 def test_trainer_check_model_status_no_model(config):
@@ -363,25 +392,6 @@ def test_trainer_check_model_status_no_model(config):
     with pytest.raises(
         ValueError,
         match="Model must be initialized before saving checkpoint.",
-    ):
-        trainer.save_checkpoint()
-
-
-def test_trainer_check_model_status_no_modelname(config):
-    trainer = QG.Trainer(
-        config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=lambda x: False,
-        validator=None,
-        tester=None,
-    )
-    trainer.initialize_model()
-    del trainer.config["model"]["name"]
-
-    with pytest.raises(
-        ValueError,
-        match="Model configuration must contain 'name' to save checkpoint.",
     ):
         trainer.save_checkpoint()
 
