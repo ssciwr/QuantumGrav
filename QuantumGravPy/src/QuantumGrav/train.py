@@ -23,11 +23,10 @@ class Trainer:
         self,
         config: dict[str, Any],
         # training and evaluation functions
-        criterion: Callable,
+        criterion: Callable[[Any, Data], torch.Tensor],
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]] | torch.Tensor], bool]
-        | None = None,
+        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
@@ -37,7 +36,7 @@ class Trainer:
             config (dict[str, Any]): The configuration dictionary.
             criterion (Callable): The loss function to use.
             apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
-            early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): A function for early stopping. Defaults to None.
+            early_stopping (Callable[[Collection[Any]], bool] | None, optional): A function for early stopping. Defaults to None.
             validator (DefaultValidator | None, optional): A validator for model evaluation. Defaults to None.
             tester (DefaultTester | None, optional): A tester for model evaluation. Defaults to None.
 

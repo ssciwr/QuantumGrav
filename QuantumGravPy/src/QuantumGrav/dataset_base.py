@@ -9,7 +9,7 @@ import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from joblib import delayed, Parallel
 
 
@@ -22,7 +22,7 @@ class QGDatasetBase:
         output: str | Path,
         mode: str = "hdf5",
         reader: Callable[
-            [h5py.File | zarr.abc.store.Store, torch.dtype, torch.dtype, bool],
+            [h5py.File | zarr.Group, torch.dtype, torch.dtype, bool],
             list[Data],
         ]
         | None = None,
@@ -39,7 +39,7 @@ class QGDatasetBase:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
             output (str | Path): The output directory where processed data will be stored.
             mode (str): File storage mode. 'zarr' or 'hdf5'
-            reader (Callable[[h5py.File, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
+            reader (Callable[[h5py.File | zarr.Group, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
@@ -219,8 +219,8 @@ class QGDatasetBase:
         self,
         raw_file: h5py.File,
         start: int,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     ) -> list[Data]:
         """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 
@@ -268,8 +268,8 @@ class QGDatasetBase:
         self,
         store: zarr.storage.LocalStore,
         start: int,
-        pre_transform: Callable[[Data], Data] | None = None,
-        pre_filter: Callable[[Data], bool] | None = None,
+        pre_transform: Callable[[Data | Collection], Data] | None = None,
+        pre_filter: Callable[[Data | Collection], bool] | None = None,
     ) -> list[Data]:
         """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 
