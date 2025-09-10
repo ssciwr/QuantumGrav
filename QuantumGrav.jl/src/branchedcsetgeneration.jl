@@ -16,8 +16,13 @@ The returned branch points are sorted by coordinate time.
 - `ArgumentError` if `n > length(sprinkling)` or `n < 0`
 """
 function generate_random_branch_points(sprinkling::Vector{CausalSets.Coordinates{N}}, n::Int; rng::Random.AbstractRNG = Random.default_rng()) where {N}
-    n > length(sprinkling) && throw(ArgumentError("Requested $n branch points, but sprinkling only has $(length(sprinkling)) elements."))
-    n < 0 && throw(ArgumentError("n must be at least 0, is $(n)."))
+    if n > length(sprinkling) 
+        throw(ArgumentError("Requested $n branch points, but sprinkling only has $(length(sprinkling)) elements."))
+    end
+
+    if n < 0
+        throw(ArgumentError("n must be at least 0, is $(n)."))
+    end
     
     idxs = rand(rng, 1:length(sprinkling), n)
     selected = sprinkling[idxs]
@@ -109,7 +114,7 @@ end
 """
     convert(BitArrayCauset, causet::BranchedManifoldCauset)
 
-Computes the causal matrix for a `BranchedManifoldCauset` and returns a `BitArrayCauset`.
+Computes the causal matrix for a `BranchedManifoldCauset` and returns a `BitArrayCauset`. Note: this function uses all available threads.
 """
 function Base.convert(::Type{CausalSets.BitArrayCauset}, causet::BranchedManifoldCauset{N})::CausalSets.BitArrayCauset where {N}
     atom_count = causet.atom_count
@@ -178,7 +183,7 @@ function make_branched_manifold_cset(
     r::Float64;
     d::Int64 = 2,
     type::Type{T} = Float32,
-)::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T,Vararg{T}}},Matrix{T}} where {T<:Number}
+)::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T,Vararg{T}}},Vector{Tuple{T,Vararg{T}}},Matrix{T}} where {T<:Number}
 
     if npoints <= 0
         throw(ArgumentError("npoints must be greater than 0, got $npoints"))
@@ -237,5 +242,5 @@ function make_branched_manifold_cset(
     # Construct the causal set from the manifold and sprinkling
     cset = BranchedManifoldCauset(polym, sprinkling, branch_points)
 
-    return CausalSets.BitArrayCauset(cset), sprinkling, type.(chebyshev_coefs)
+    return CausalSets.BitArrayCauset(cset), sprinkling, branch_points, type.(chebyshev_coefs)
 end
