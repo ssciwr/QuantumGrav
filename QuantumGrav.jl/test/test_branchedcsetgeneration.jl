@@ -100,10 +100,11 @@ end
     order = 4
     r = 1.5
 
-    cset, sprinkling, coefs = QuantumGrav.make_branched_manifold_cset(npoints, nbranchpoints, rng, order, r)
+    cset, sprinkling, branch_points, coefs = QuantumGrav.make_branched_manifold_cset(npoints, nbranchpoints, rng, order, r)
 
     @test cset isa CausalSets.BitArrayCauset
     @test length(sprinkling) == npoints
+    @test length(branch_points) == nbranchpoints
     @test size(coefs) == (order, order)
     @test cset.atom_count == npoints
 end
