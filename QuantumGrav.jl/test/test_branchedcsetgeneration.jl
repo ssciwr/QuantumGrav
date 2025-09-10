@@ -108,6 +108,20 @@ end
     @test cset.atom_count == npoints
 end
 
+@testitem "make_branched_manifold_cset_branches_implemented_correctly" tags = [:branchedcsetgeneration, :branch_points] setup = [branchedtests] begin
+    polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
+    x = (0.0, 0.0)
+    y = (0.0, 0.1)
+    z = (0.3, 0.2)
+    sprinkling = [x, y, z]
+    branch_points = [y]
+
+    manifold_causet = convert(CausalSets.BitArrayCauset, CausalSets.ManifoldCauset(polym, sprinkling))
+    branched_causet = convert(CausalSets.BitArrayCauset, QuantumGrav.BranchedManifoldCauset(polym, sprinkling, branch_points))
+    @test manifold_causet.future_relations[1][3]  # x and z are connected in ManifoldCauset
+    @test !branched_causet.future_relations[1][3] # x and z are disconnected in BranchedManifoldCauset because y cuts through
+end
+
 @testitem "make_branched_manifold_cset throws" tags = [:branchedcsetgeneration, :generation, :throws] setup = [branchedtests] begin
     order = 4
     r = 1.5
