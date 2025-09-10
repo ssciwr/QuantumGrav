@@ -101,12 +101,11 @@ class QGDataset(QGDatasetBase, Dataset):
                 num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
 
             else:
+                N = self._get_num_samples_per_file(Path(file).resolve().absolute())
+                num_chunks = N // self.chunksize
                 raw_file = zarr.storage.LocalStore(
                     str(Path(file).resolve().absolute()), read_only=True
                 )
-                root = zarr.open_group(raw_file, path="", mode="r")
-                N = int(root["num_samples"][0])
-                num_chunks = N // self.chunksize
 
             for i in range(0, num_chunks * self.chunksize, self.chunksize):
                 data = self.process_chunk(
@@ -137,7 +136,6 @@ class QGDataset(QGDatasetBase, Dataset):
 
         if idx < 0 or idx >= self._num_samples:
             raise IndexError("Index out of bounds.")
-
         # Load the data from the processed files
         datapoint = torch.load(
             Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
@@ -145,6 +143,12 @@ class QGDataset(QGDatasetBase, Dataset):
         if self.transform is not None:
             datapoint = self.transform(datapoint)
         return datapoint
+
+    def __getitem__(self, idx: int | Collection[int]) -> Data | Collection[Data]:
+        if isinstance(idx, int):
+            return self.get(idx)
+        else:
+            return [self.get(i) for i in idx]
 
     def len(self) -> int:
         """Get the number of samples in the dataset.

@@ -364,22 +364,16 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
 - `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
 - `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
-- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints`, the output directory as a node `output`, the file mode as a node `file_mode`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
+- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
 function make_data(
     transform::Function,
     prepare_output::Function,
     write_data::Function;
-    config::Dict{String,Any} = Dict{String,Any}(
-        "num_datapoints" => 1000,
-        "output" => "~/QuantumGrav/data",
-        "file_mode" => "w",
-        "seed" => 42,
-        "output_format" => "hdf5",
-    ),
+    config::Dict{String,Any} = Dict{String,Any}(),
 )
     # consistency checks
-    for key in ["num_datapoints", "output", "file_mode", "seed", "output_format"]
+    for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
             throw(ArgumentError("Configuration must contain the key: $key"))
         end
@@ -399,13 +393,73 @@ function make_data(
         mkpath(abspath(expanduser(config["output"])))
     end
 
-    function make_data_chunk(file, num_datapoints_chunks::Int64)
-        rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
+    datetime = Dates.now()
+    datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
+
+    # get the source code of the transform/prepare/write functions and write them to the data folder 
+    # to document how the data has been created
+    for func in [transform, prepare_output, write_data]
+        funcdata = first(methods(func)) # this assumes that all overloads of the passed functions are part of the same file
+        filepath = String(funcdata.file)
+        targetpath = joinpath(
+            abspath(expanduser(config["output"])),
+            splitext(basename(filepath))[1] * "_$(getpid()).jl",
+        )
+
+        if isfile(targetpath) == false
+            cp(filepath, targetpath)
+        end
+    end
+
+    # build the config file 
+    # get git info of QuantumGrav package 
+    pkg_id = Base.identify_package("QuantumGrav")
+    info = Pkg.dependencies()[pkg_id.uuid]
+    git_source = info.git_source
+    git_branch = info.git_revision
+    git_tree_hash = info.tree_hash
+    config["QuantumGrav"] = Dict(
+        "git_source" => git_source,
+        "git_branch" => git_branch,
+        "git_tree_hash" => git_tree_hash,
+    )
+
+    YAML.write_file(
+        joinpath(
+            abspath(expanduser(config["output"])),
+            "config_$(getpid())_$(datetime).yaml",
+        ),
+        config,
+    )
+
+    if config["output_format"] == "hdf5"
+        filepath = joinpath(
+            abspath(expanduser(config["output"])),
+            "data_$(getpid())_$(datetime).h5",
+        )
+
+        file = HDF5.h5open(filepath, get(config, "file_mode", "w"))
+    elseif config["output_format"] == "zarr"
+        filepath = joinpath(
+            abspath(expanduser(config["output"])),
+            "data_$(getpid())_$(datetime).zarr",
+        )
+
+        file = Zarr.DirectoryStore(filepath)
+    else
+        throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
+    end
+
+    # make data
+    # this must not go into the `make_data_file` function or each file will contain the same data
+    rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
+
+    function make_data_file(file, num_datapoints::Int64)
         data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
 
         @info "    Generating data on $(Threads.nthreads()) threads"
-        p = ProgressMeter.Progress(num_datapoints_chunks)
-        Threads.@threads for _ = 1:num_datapoints_chunks
+        p = ProgressMeter.Progress(num_datapoints)
+        Threads.@threads for _ = 1:num_datapoints
             t = Threads.threadid()
             rng = rngs[t]
             data_point = transform(config, rng)
@@ -415,7 +469,7 @@ function make_data(
         end
         ProgressMeter.finish!(p)
 
-        @info " Aggregating data from $(Threads.nthreads()) threads"
+        @info "    Aggregating data from $(Threads.nthreads()) threads"
         # aggregate everything int one big dictionary
         final_data = Dict{String,Any}()
         for thread_local_data in data
@@ -430,52 +484,11 @@ function make_data(
             end
         end
 
-        @info "Writing data chunk with $(num_datapoints_chunks) datapoints to file"
+        @info "    Writing data with $(num_datapoints) datapoints to file"
         # ... then write to file with the supplied write_data function
         write_data(file, config, final_data)
         final_data = nothing # clear the final_data to reduce memory usage
         return GC.gc() # run garbage collector to free memory
-    end
-
-    datetime = Dates.now()
-    datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
-
-    # get the source code of the transform/prepare/write functions and write them to the data folder 
-    # to document how the data has been created
-    for func in [transform, prepare_output, write_data]
-        funcdata = first(methods(func)) # this assumes that the function is not overloaded since we use this to determine the file path it's not a problem
-        filepath = String(funcdata.file)
-        targetpath = joinpath(
-            abspath(expanduser(config["output"])),
-            splitext(basename(filepath))[1] * "_$(getpid()).jl",
-        )
-        if isfile(targetpath) == false
-            cp(filepath, targetpath)
-        end
-    end
-
-    YAML.write_file(
-        joinpath(abspath(expanduser(config["output"])), "config_$(getpid()).yaml"),
-        config,
-    )
-
-    if config["output_format"] == "hdf5"
-        file = HDF5.h5open(
-            joinpath(
-                abspath(expanduser(config["output"])),
-                "data_$(getpid())_$(datetime).h5",
-            ),
-            config["file_mode"],
-        )
-    elseif config["output_format"] == "zarr"
-        filepath = joinpath(
-            abspath(expanduser(config["output"])),
-            "data_$(getpid())_$(datetime).zarr",
-        )
-
-        file = Zarr.DirectoryStore(filepath)
-    else
-        throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
     end
 
     # prepare the file: generate datasets, attributes, dataspaces... 
@@ -483,31 +496,14 @@ function make_data(
     prepare_output(file, config)
 
     num_datapoints = config["num_datapoints"]
-    num_datapoints_chunks = num_datapoints
-    # check if the data generation should be chunked
-    if "chunks" in keys(config)
-        num_chunks = config["chunks"]
-        num_datapoints_chunks = div(num_datapoints, num_chunks) # Computes num_datapoints/num_chunks, truncated to an integer.
-        final_chunksize = num_datapoints - num_chunks * num_datapoints_chunks # Computes the remaining number of datapoints that do not fit into a full chunk.
-    else
-        num_chunks = 1
-        final_chunksize = 0
-    end
 
-    # Multithreading enabled by default, use Threads.@threads for parallel data generation
-    for c = 1:num_chunks
-        @info "Generating data chunk $(c)/$(num_chunks) with $num_datapoints_chunks datapoints"
-        make_data_chunk(file, num_datapoints_chunks)
-    end
-
-    if final_chunksize > 0
-        @info "Generating final data chunk with $final_chunksize datapoints"
-        # handle the final chunk with the remaining datapoints
-        make_data_chunk(file, final_chunksize)
-    end
+    # make data file
+    @info "Generating file with $num_datapoints datapoints"
+    make_data_file(file, num_datapoints)
 
     if config["output_format"] == "hdf5"
         close(file)
-    end        # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
+    end
+    # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
 
 end

@@ -108,9 +108,15 @@ def test_dataset_base_process_chunk_hdf5(create_data_hdf5, read_data, n):
     assert all(isinstance(res, Data) for res in results)
 
 
+@pytest.mark.parametrize("mode", ["fallback", "normal"], ids=["fallback", "normal"])
 @pytest.mark.parametrize("n", [1, 2], ids=["sequential", "parallel"])
-def test_dataset_base_process_chunk_zarr(create_data_zarr, read_data, n):
-    datadir, datafiles = create_data_zarr
+def test_dataset_base_process_chunk_zarr(
+    read_data, create_data_zarr, create_data_zarr_basic, mode, n
+):
+    if mode == "fallback":
+        datadir, datafiles = create_data_zarr_basic
+    else:
+        datadir, datafiles = create_data_zarr
 
     dataset = QG.dataset_base.QGDatasetBase(
         input=datafiles,
@@ -120,17 +126,12 @@ def test_dataset_base_process_chunk_zarr(create_data_zarr, read_data, n):
         float_type=torch.float32,
         int_type=torch.int64,
         validate_data=True,
-        n_processes=1,
+        n_processes=n,
         chunksize=4,
     )
-
     with zarr.storage.LocalStore(datafiles[0], read_only=True) as raw_file:
         results = dataset.process_chunk_zarr(
-            raw_file,
-            0,
-            pre_transform=lambda x: x,
-            pre_filter=lambda x: True,
+            raw_file, 0, pre_transform=lambda x: x, pre_filter=lambda x: True
         )
-
     assert len(results) == 4
     assert all(isinstance(res, Data) for res in results)

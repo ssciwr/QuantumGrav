@@ -177,7 +177,7 @@ def create_data_hdf5(create_data):
 
 
 @pytest.fixture
-def create_data_zarr(create_data):
+def create_data_zarr_basic(create_data):
     path, datafiles, tmpdir, jl_generator = create_data
 
     for i in range(3):
@@ -235,12 +235,6 @@ def create_data_zarr(create_data):
             store, shape=(len(data)), chunks=(1,), name="atomcount", dtype="int32"
         )
 
-        num_samples = zarr.create_array(
-            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
-        )
-
-        num_samples[0] = len(data)
-
         for j, d in enumerate(data):
             adjmat = d["adjacency_matrix"].to_numpy()
             linkmat = d["link_matrix"].to_numpy()
@@ -256,6 +250,24 @@ def create_data_zarr(create_data):
             atomcount[j] = d["atomcount"]
 
         datafiles.append(zarr_file)
+    return tmpdir, datafiles
+
+
+@pytest.fixture
+def create_data_zarr(create_data_zarr_basic):
+    tmpdir, datafiles = create_data_zarr_basic
+
+    for file in datafiles:
+        # Save the data to an zarr file
+        store = zarr.storage.LocalStore(file, read_only=False)
+
+        dims = zarr.open_array(store, path="dimension")
+
+        num_samples = zarr.create_array(
+            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
+        )
+        num_samples[0] = dims.shape[0]
+
     return tmpdir, datafiles
 
 

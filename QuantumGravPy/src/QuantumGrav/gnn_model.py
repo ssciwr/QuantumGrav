@@ -52,15 +52,10 @@ class GNNModel(torch.nn.Module):
         Returns:
             torch.Tensor: Output of the GCN network.
         """
-        features = (
-            x.clone()
-        )  # Clone the input features to avoid modifying the original tensor
         # Apply each GCN layer to the input features
         for gnn_layer in self.gcn_net:
-            features = gnn_layer(
-                features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
-            )
-        return features
+            x = gnn_layer(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
+        return x
 
     def get_embeddings(
         self,
@@ -116,7 +111,7 @@ class GNNModel(torch.nn.Module):
 
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
-            graph_features = self.graph_features_net(graph_features)
+            graph_features = self.graph_features_net(graph_features.clone())
             embeddings = torch.cat(
                 (embeddings, graph_features), dim=-1
             )  # -1 -> last dim. This concatenates, but we also could sum them

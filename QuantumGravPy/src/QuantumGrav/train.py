@@ -74,7 +74,10 @@ class Trainer:
 
         # date and time of run:
         run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.data_path = Path(self.config["training"]["path"]) / run_date
+        self.data_path = (
+            Path(self.config["training"]["path"])
+            / f"{config['model'].get('name', 'run')}_{run_date}"
+        )
 
         if not self.data_path.exists():
             self.data_path.mkdir(parents=True)
@@ -177,6 +180,7 @@ class Trainer:
             pin_memory=self.config["training"].get("pin_memory", True),
             drop_last=self.config["training"].get("drop_last", False),
             prefetch_factor=self.config["training"].get("prefetch_factor", None),
+            shuffle=self.config["training"].get("shuffle", True),
         )
 
         val_loader = DataLoader(
@@ -186,6 +190,7 @@ class Trainer:
             pin_memory=self.config["validation"].get("pin_memory", True),
             drop_last=self.config["validation"].get("drop_last", False),
             prefetch_factor=self.config["validation"].get("prefetch_factor", None),
+            shuffle=self.config["validation"].get("shuffle", True),
         )
 
         test_loader = DataLoader(
@@ -195,6 +200,7 @@ class Trainer:
             pin_memory=self.config["testing"].get("pin_memory", True),
             drop_last=self.config["testing"].get("drop_last", False),
             prefetch_factor=self.config["testing"].get("prefetch_factor", None),
+            shuffle=self.config["testing"].get("shuffle", True),
         )
         self.logger.info(
             f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
@@ -258,21 +264,21 @@ class Trainer:
         losses = torch.zeros(
             len(train_loader), output_size, dtype=torch.float32, device=self.device
         )
-
+        self.logger.info(f"  Starting training epoch {self.epoch}")
         # training run
         for i, batch in enumerate(
             tqdm.tqdm(train_loader, desc=f"Training Epoch {self.epoch}")
         ):
+            self.logger.debug(f"    Moving batch {i} to device: {self.device}")
             optimizer.zero_grad()
-            self.logger.debug(f"  Moving batch to device: {self.device}")
 
             data = batch.to(self.device)
             outputs = self._evaluate_batch(model, data)
 
-            self.logger.debug("  Computing loss")
+            self.logger.debug("    Computing loss")
             loss = self.criterion(outputs, data)
 
-            self.logger.debug(f"  Backpropagating loss: {loss.item()}")
+            self.logger.debug(f"    Backpropagating loss: {loss.item()}")
             loss.backward()
 
             optimizer.step()
@@ -299,9 +305,14 @@ class Trainer:
 
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
-                self.logger.info(f"Early stopping at epoch {self.epoch}.")
-                self.save_checkpoint()
+                self.logger.debug(f"Early stopping at epoch {self.epoch}.")
+                self.save_checkpoint(name_addition="early_stopping")
                 return True
+
+            if self.early_stopping.found_better:
+                self.logger.debug(f"Found better model at epoch {self.epoch}.")
+                self.save_checkpoint(name_addition="current_best")
+                # not returning true because this is not the end of training
 
         return False
 
@@ -364,10 +375,6 @@ class Trainer:
             self.epoch += 1
 
         self.logger.info("Training process completed.")
-        self.logger.info("Saving model")
-
-        outpath = self.data_path / f"final_model_epoch={self.epoch}.pt"
-        torch.save(self.model.state_dict(), outpath)
 
         return total_training_data, self.validator.data if self.validator else []
 
@@ -396,9 +403,9 @@ class Trainer:
         test_result = self.tester.test(self.model, test_loader)
         self.tester.report(test_result)
         self.logger.info("Testing process completed.")
-        return test_result
+        return self.tester.data
 
-    def save_checkpoint(self):
+    def save_checkpoint(self, name_addition: str = ""):
         """Save model checkpoint.
 
         Raises:
@@ -409,27 +416,22 @@ class Trainer:
         if self.model is None:
             raise ValueError("Model must be initialized before saving checkpoint.")
 
-        if "name" not in self.config["model"]:
-            raise ValueError(
-                "Model configuration must contain 'name' to save checkpoint."
-            )
-
         self.logger.info(
-            f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.checkpoint_path}"
+            f"Saving checkpoint for model {self.config['model'].get('name', ' model')} at epoch {self.epoch} to {self.checkpoint_path}"
         )
         outpath = (
             self.checkpoint_path
-            / f"{self.config['model']['name']}_epoch_{self.epoch}.pt"
+            / f"{self.config['model'].get('name', 'model')}_epoch_{self.epoch}_{name_addition}.pt"
         )
 
         if outpath.exists() is False:
             outpath.parent.mkdir(parents=True, exist_ok=True)
-            self.logger.info(f"Created directory {outpath.parent} for checkpoint.")
+            self.logger.debug(f"Created directory {outpath.parent} for checkpoint.")
 
         self.latest_checkpoint = outpath
         torch.save(self.model.state_dict(), outpath)
 
-    def load_checkpoint(self, epoch: int) -> None:
+    def load_checkpoint(self, epoch: int, name_addition: str = "") -> None:
         """Load model checkpoint to the device given
 
         Args:
@@ -440,11 +442,11 @@ class Trainer:
         """
 
         if self.model is None:
-            raise RuntimeError("Model must be initialized before saving checkpoint.")
+            raise RuntimeError("Model must be initialized before loading checkpoint.")
 
         loadpath = (
             Path(self.checkpoint_path)
-            / f"{self.config['model']['name']}_epoch_{epoch}.pt"
+            / f"{self.config['model'].get('name', 'model')}_epoch_{epoch}_{name_addition}.pt"
         )
 
         if not loadpath.exists():

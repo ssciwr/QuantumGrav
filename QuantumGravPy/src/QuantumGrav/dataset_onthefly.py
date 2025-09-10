@@ -140,7 +140,7 @@ class QGDatasetOnthefly(Dataset):
                 # use primitve indexing here to avoid issues with julia arrays
                 if self.config["n_processes"] > 1:
                     self.databatch = Parallel(
-                        n_jobs=self.config["n_processes"], verbose=10
+                        n_jobs=self.config["n_processes"],
                     )(
                         delayed(self.transform)(raw_data[i])
                         for i in range(len(raw_data))
