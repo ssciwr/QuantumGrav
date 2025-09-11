@@ -1,5 +1,6 @@
 from typing import Any
 from collections.abc import Collection
+from pathlib import Path 
 
 import torch
 
@@ -17,7 +18,7 @@ class GNNModel(torch.nn.Module):
 
     def __init__(
         self,
-        gcn_net: list[QGGNN.GNNBlock],
+        encoder: list[QGGNN.GNNBlock],
         classifier: QGC.ClassifierBlock,
         pooling_layer: torch.nn.Module,
         graph_features_net: torch.nn.Module = torch.nn.Identity,
@@ -25,18 +26,18 @@ class GNNModel(torch.nn.Module):
         """Initialize the GNNModel.
 
         Args:
-            gcn_net (GCNBackbone): GCN backbone network.
+            encoder (GCNBackbone): GCN backbone network.
             classifier (ClassifierBlock): Classifier block.
             pooling_layer (torch.nn.Module): Pooling layer.
             graph_features_net (torch.nn.Module, optional): Graph features network. Defaults to torch.nn.Identity.
         """
         super().__init__()
-        self.gcn_net = torch.nn.ModuleList(gcn_net)
+        self.encoder = torch.nn.ModuleList(encoder)
         self.classifier = classifier
         self.graph_features_net = graph_features_net
         self.pooling_layer = pooling_layer
 
-    def _eval_gcn_net(
+    def _eval_encoder(
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
@@ -56,7 +57,7 @@ class GNNModel(torch.nn.Module):
             x.clone()
         )  # Clone the input features to avoid modifying the original tensor
         # Apply each GCN layer to the input features
-        for gnn_layer in self.gcn_net:
+        for gnn_layer in self.encoder:
             features = gnn_layer(
                 features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
             )
@@ -81,7 +82,7 @@ class GNNModel(torch.nn.Module):
             torch.Tensor: Embedding vector for the graph features.
         """
         # apply the GCN backbone to the node features
-        embeddings = self._eval_gcn_net(
+        embeddings = self._eval_encoder(
             x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
         )
 
@@ -137,18 +138,54 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: An instance of GNNModel.
         """
-        gcn_net = [QGGNN.GNNBlock.from_config(cfg) for cfg in config["gcn_net"]]
+        encoder = [QGGNN.GNNBlock.from_config(cfg) for cfg in config["encoder"]]
         classifier = QGC.ClassifierBlock.from_config(config["classifier"])
         pooling_layer = utils.get_registered_pooling_layer(config["pooling_layer"])
         graph_features_net = (
             QGF.GraphFeaturesBlock.from_config(config["graph_features_net"])
             if "graph_features_net" in config
-            else None
+            else torch.nn.Identity
         )
 
         return cls(
-            gcn_net=gcn_net,
+            encoder=encoder,
             classifier=classifier,
             pooling_layer=pooling_layer,
             graph_features_net=graph_features_net,
+        )
+
+    def save(self, path: str | Path) -> None: 
+        """Save the model state to file. This saves a dictionary structured like this: 
+         'encoder': self.encoder, 
+         'classifier': self.classifier, 
+         'pooling_layer': self.pooling_layer,
+         'graph_features_net': self.graph_features_net
+
+        Args:
+            path (str | Path): Path to save the model to
+        """
+        torch.save({
+            "encoder": self.encoder,
+            "classifier": self.classifier,
+            "pooling_layer": self.pooling_layer, 
+            "graph_features_net": self.graph_features_net
+        })
+
+    @classmethod 
+    def load(cls, path: str | Path) -> 'GNNModel':
+        """Load a model from file that has previously been save with the function 'save'.
+
+        Args:
+            path (str | Path): path to load the model from.
+
+        Returns:
+            GNNModel: model instance initialized with the sub-models loaded from file.
+        """
+        model_dict = torch.load(path, weights_only=False)
+
+        return cls(
+            model_dict['encoder'],
+            model_dict['classifier'],
+            model_dict['pooling_layer'],
+            model_dict['graph_features_net']
         )

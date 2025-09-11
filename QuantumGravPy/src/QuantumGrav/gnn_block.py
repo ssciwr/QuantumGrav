@@ -5,7 +5,7 @@ from . import utils
 
 # quality of life
 from typing import Any
-
+from pathlib import Path
 
 class GNNBlock(torch.nn.Module):
     """Graph Neural Network Block. Consists of a GNN layer, a normalizer, an activation function,
@@ -130,3 +130,26 @@ class GNNBlock(torch.nn.Module):
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
         )
+
+
+    def save(self, path: str | Path) -> None: 
+        """Save the model's state to file.
+
+        Args:
+            path (str | Path): path to save the model to.
+        """
+
+        torch.save(self.state_dict(), path)
+
+
+    @classmethod 
+    def from_file(cls, path: str | Path) -> 'GNNBlock':
+        """Load a model's state from file and create a new instance.
+
+        Args:
+            path (str | Path): path to the file to load the model from.
+
+        Returns:
+            GNNBlock: An instance of GNNBlock initialized with the data loaded from file.
+        """
+        return cls(torch.load(path, weights_only=False))
