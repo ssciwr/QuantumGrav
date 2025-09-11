@@ -168,7 +168,7 @@ class LinearSequential(torch.nn.Module):
             activation_kwargs=config.get("activation_kwargs", None),
         )
 
-    def save(self, path: str | Path) -> None: 
+    def save(self, path: str | Path) -> None:
         """Save the model's state to file.
 
         Args:
@@ -178,15 +178,16 @@ class LinearSequential(torch.nn.Module):
         torch.save(self, path)
 
     @classmethod
-    def load(cls, path: str | Path, device:torch.device=torch.cpu()) -> "LinearSequential":
+    def load(
+        cls, path: str | Path, device: torch.device = torch.device("cpu")
+    ) -> "LinearSequential":
         """Load a LinearSequential instance from file
 
         Args:
             path (str | Path): path to the file to load the model from
-            device (torch.device): device to put the model to. Defaults to toch.cpu()
+            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
         Returns:
             LinearSequential: An instance of LinearSequential initialized from the loaded data.
         """
         model = torch.load(path, map_location=device)
         return model
-

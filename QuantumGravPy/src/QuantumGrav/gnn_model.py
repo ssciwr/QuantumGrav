@@ -1,6 +1,6 @@
 from typing import Any
 from collections.abc import Collection
-from pathlib import Path 
+from pathlib import Path
 
 import torch
 
@@ -154,38 +154,43 @@ class GNNModel(torch.nn.Module):
             graph_features_net=graph_features_net,
         )
 
-    def save(self, path: str | Path) -> None: 
-        """Save the model state to file. This saves a dictionary structured like this: 
-         'encoder': self.encoder, 
-         'classifier': self.classifier, 
+    def save(self, path: str | Path) -> None:
+        """Save the model state to file. This saves a dictionary structured like this:
+         'encoder': self.encoder,
+         'classifier': self.classifier,
          'pooling_layer': self.pooling_layer,
          'graph_features_net': self.graph_features_net
 
         Args:
             path (str | Path): Path to save the model to
         """
-        torch.save({
-            "encoder": self.encoder,
-            "classifier": self.classifier,
-            "pooling_layer": self.pooling_layer, 
-            "graph_features_net": self.graph_features_net
-        }, path)
+        torch.save(
+            {
+                "encoder": self.encoder,
+                "classifier": self.classifier,
+                "pooling_layer": self.pooling_layer,
+                "graph_features_net": self.graph_features_net,
+            },
+            path,
+        )
 
-    @classmethod 
-    def load(cls, path: str | Path, device: torch.device=torch.cpu()) -> 'GNNModel':
+    @classmethod
+    def load(
+        cls, path: str | Path, device: torch.device = torch.device("cpu")
+    ) -> "GNNModel":
         """Load a model from file that has previously been save with the function 'save'.
 
         Args:
             path (str | Path): path to load the model from.
-            device (torch.device): device to put the model to. Defaults to toch.cpu()
+            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
         Returns:
             GNNModel: model instance initialized with the sub-models loaded from file.
         """
         model_dict = torch.load(path, map_location=device)
 
         return cls(
-            model_dict['encoder'],
-            model_dict['classifier'],
-            model_dict['pooling_layer'],
-            model_dict['graph_features_net']
+            model_dict["encoder"],
+            model_dict["classifier"],
+            model_dict["pooling_layer"],
+            model_dict["graph_features_net"],
         )

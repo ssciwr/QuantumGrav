@@ -7,6 +7,7 @@ from . import utils
 from typing import Any
 from pathlib import Path
 
+
 class GNNBlock(torch.nn.Module):
     """Graph Neural Network Block. Consists of a GNN layer, a normalizer, an activation function,
     and a residual connection. The gnn-layer is applied first, followed by the normalizer and activation function. The result is then projected from the input dimensions to the output dimensions using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
@@ -131,8 +132,7 @@ class GNNBlock(torch.nn.Module):
             activation_kwargs=config.get("activation_kwargs", {}),
         )
 
-
-    def save(self, path: str | Path) -> None: 
+    def save(self, path: str | Path) -> None:
         """Save the model's state to file.
 
         Args:
@@ -141,13 +141,15 @@ class GNNBlock(torch.nn.Module):
 
         torch.save(self, path)
 
-    @classmethod 
-    def load(cls, path: str | Path, device:torch.device=torch.cpu()) -> "GNNBlock":
+    @classmethod
+    def load(
+        cls, path: str | Path, device: torch.device = torch.device("cpu")
+    ) -> "GNNBlock":
         """Load a mode instance from file
 
         Args:
             path (str | Path): Path to the file to load.
-            device (torch.device): device to put the model to. Defaults to toch.cpu()
+            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
         Returns:
             GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
         """
