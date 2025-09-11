@@ -205,3 +205,12 @@ def test_linseq_from_config():
     assert linearseq.output_layers[0].out_channels == 2
     assert linearseq.output_layers[1].in_channels == 30
     assert linearseq.output_layers[1].out_channels == 3
+
+
+
+def test_linseq_saving(linearseq, tmp_path):
+    "test saving of the model"
+    linearseq.save(tmp_path / "model.pt")
+
+    assert (tmp_path / "model.pt").exists()
+    
