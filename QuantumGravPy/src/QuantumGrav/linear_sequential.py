@@ -175,4 +175,18 @@ class LinearSequential(torch.nn.Module):
             path (str | Path): path to save the model to.
         """
 
-        torch.save(self.state_dict(), path)
+        torch.save(self, path)
+
+    @classmethod
+    def load(cls, path: str | Path, device:torch.device=torch.cpu()) -> "LinearSequential":
+        """Load a LinearSequential instance from file
+
+        Args:
+            path (str | Path): path to the file to load the model from
+            device (torch.device): device to put the model to. Defaults to toch.cpu()
+        Returns:
+            LinearSequential: An instance of LinearSequential initialized from the loaded data.
+        """
+        model = torch.load(path, map_location=device)
+        return model
+

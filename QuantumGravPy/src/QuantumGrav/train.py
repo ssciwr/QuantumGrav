@@ -109,9 +109,6 @@ class Trainer:
         self.model = model
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
-        # except Exception as e:
-        #     self.logger.error(f"Error initializing model: {e}")
-        #     return None
 
     def initialize_optimizer(self) -> torch.optim.Optimizer | None:
         """Initialize the optimizer for training.
@@ -450,4 +447,4 @@ class Trainer:
         if not loadpath.exists():
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
-        self.model.load_state_dict(torch.load(loadpath, map_location=self.device))
+        self.model = gnn_model.GNNModel.load(loadpath)

@@ -139,4 +139,18 @@ class GNNBlock(torch.nn.Module):
             path (str | Path): path to save the model to.
         """
 
-        torch.save(self.state_dict(), path)
+        torch.save(self, path)
+
+    @classmethod 
+    def load(cls, path: str | Path, device:torch.device=torch.cpu()) -> "GNNBlock":
+        """Load a mode instance from file
+
+        Args:
+            path (str | Path): Path to the file to load.
+            device (torch.device): device to put the model to. Defaults to toch.cpu()
+        Returns:
+            GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
+        """
+
+        model = torch.load(path, map_location=device)
+        return model

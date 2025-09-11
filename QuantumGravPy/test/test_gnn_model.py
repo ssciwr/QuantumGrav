@@ -132,6 +132,7 @@ def test_gnn_model_get_embeddings(gnn_model):
 
 
 def test_gnn_model_forward(gnn_model):
+    "test gnn model forward run"
     x = torch.randn(5, 16)  # 5 nodes with 16 features each
     edge_index = torch.tensor(
         [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
@@ -146,6 +147,7 @@ def test_gnn_model_forward(gnn_model):
 
 
 def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
+    "test gnn model forward run with graph features"
     x = torch.randn(5, 16)  # 5 nodes with 16 features each
     edge_index = torch.tensor(
         [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
@@ -165,6 +167,7 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
 
 
 def test_gnn_model_creation_from_config(gnn_model_config):
+    "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
     assert isinstance(model.gcn_net, torch.nn.ModuleList)
     assert len(model.gcn_net) == 2  # Assuming two GNN blocks
@@ -182,3 +185,15 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     assert isinstance(output, list)
     assert output[0].shape == (2, 2)  # 2 graphs, 2 classes
     assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
+
+
+def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
+    "test saving and loading of the combined model" 
+    gnn_model_with_graph_features.save(tmp_path / "model.pt")
+
+    assert (tmp_path / "model.pt").exits()
+
+    loaded_gnn_model  = gnn_model.GNNModel.load(tmp_path / "model.pt")
+
+    assert gnn_model_with_graph_features.graph_graph_features_net is not None 
+    assert gnn_model_with_graph_features.state_dict() == loaded_gnn_model.state_dict()

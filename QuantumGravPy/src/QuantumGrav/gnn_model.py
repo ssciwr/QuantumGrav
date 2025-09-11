@@ -169,19 +169,19 @@ class GNNModel(torch.nn.Module):
             "classifier": self.classifier,
             "pooling_layer": self.pooling_layer, 
             "graph_features_net": self.graph_features_net
-        })
+        }, path)
 
     @classmethod 
-    def load(cls, path: str | Path) -> 'GNNModel':
+    def load(cls, path: str | Path, device: torch.device=torch.cpu()) -> 'GNNModel':
         """Load a model from file that has previously been save with the function 'save'.
 
         Args:
             path (str | Path): path to load the model from.
-
+            device (torch.device): device to put the model to. Defaults to toch.cpu()
         Returns:
             GNNModel: model instance initialized with the sub-models loaded from file.
         """
-        model_dict = torch.load(path, weights_only=False)
+        model_dict = torch.load(path, map_location=device)
 
         return cls(
             model_dict['encoder'],
