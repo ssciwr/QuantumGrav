@@ -168,8 +168,6 @@ class LinearSequential(torch.nn.Module):
             activation_kwargs=config.get("activation_kwargs", None),
         )
 
-
-
     def save(self, path: str | Path) -> None: 
         """Save the model's state to file.
 
@@ -178,15 +176,3 @@ class LinearSequential(torch.nn.Module):
         """
 
         torch.save(self.state_dict(), path)
-
-    @classmethod 
-    def from_file(cls, path: str | Path) -> 'LinearSequential':
-        """Load a model's state from file and create a new instance.
-
-        Args:
-            path (str | Path): path to the file to load the model from.
-
-        Returns:
-            LinearSequential: An instance of LinearSequential initialized with the data loaded from file.
-        """
-        return cls(torch.load(path, weights_only=False))
