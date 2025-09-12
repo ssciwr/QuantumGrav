@@ -280,7 +280,7 @@ def objective(trial, tuning_config):
 * `search_space` is a dictionary whose keys correspond to hyperparameter names.
 * `objective` is the function that will be used later for optimization
 * `trial` is an object of `optuna.trial.Trial`
-* `tuning_config` is the configuration dictionary while using `QGTune`, defined by users (see a full example at the end of section [Save best trial and best config](#save-best-trial-and-best-config))
+* `tuning_config` serves as the configuration dictionary for `QGTune`, defined by users (see a full example at the end of section [Save best trial and best config](#save-best-trial-and-best-config))
 * `search_space_file`, `depmap_file`, `base_config_file` are paths to the search space file, dependency file, and base config file, respectively. These paths can be specified in `tuning_config`.
 * `tune_model`: whether to tune the hyperparameters associated with the `model` part of the search space
 * `tune_training`: whether to tune the hyperparameters associated with the `training` part of the search space
