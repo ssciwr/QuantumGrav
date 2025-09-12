@@ -369,6 +369,4 @@ We also used Optuna's [multi-process optimization](https://optuna.readthedocs.io
 
 We used [optuna.pruners.MedianPruner](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.pruners.MedianPruner.html) when creating an Optuna study (`QGTune.tune.create_study()`). Support for additional pruners may be added in the future if required.
 
-Although users can specify `n_jobs` (for multi-threading) when running a study optimization, we recommend keeping `n_jobs` set to `1`. According to [Optuna's Multi-thread Optimization](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#multi-thread-optimization):
-
-> Multi-thread optimization has traditionally been inefficient in Python due to the Global Interpreter Lock (GIL). However, starting from Python 3.14 (pending official release), the GIL is expected to be removed. This change will make multi-threading a good option, especially for parallel optimization.
+Although users can specify `n_jobs` (for multi-threading) when running a study optimization, we recommend keeping `n_jobs` set to `1`, according to [Optuna's Multi-thread Optimization](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#multi-thread-optimization).
