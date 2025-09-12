@@ -2,7 +2,7 @@ import optuna.storages.journal
 import yaml
 from pathlib import Path
 import optuna
-from typing import Any, List
+from typing import Any, List, Dict
 import copy
 import sys
 
@@ -149,17 +149,17 @@ def _convert_to_suggestion(
 
 
 def get_suggestion(
-    config: dict, trial: optuna.trial.Trial, traced_param: list = []
-) -> dict:
+    config: Dict[str, Any], trial: optuna.trial.Trial, traced_param: list = []
+) -> Dict[str, Any]:
     """Get a dictionary of suggestions from a configuration dictionary.
 
     Args:
-        config (dict): The configuration dictionary.
+        config (Dict[str, Any]): The configuration dictionary.
         trial (optuna.trial.Trial): The Optuna trial object.
         traced_param (list, optional): The list of traced parameters.
 
     Returns:
-        dict: A dictionary of suggestions.
+        Dict[str, Any]: A dictionary of suggestions.
     """
     if isinstance(config, list):
         items = enumerate(config)
@@ -184,11 +184,11 @@ def get_suggestion(
     return suggestions
 
 
-def _resolve_dependencies(config: dict, ref_path: str) -> Any:
+def _resolve_dependencies(config: Dict[str, Any], ref_path: str) -> Any:
     """Resolve dependencies in a configuration.
 
     Args:
-        config (dict): The configuration dictionary.
+        config (Dict[str, Any]): The configuration dictionary.
         ref_path (str): The reference path to the current position in the config.
             E.g. `gcn_net[0].out_dim`
 
@@ -206,14 +206,14 @@ def _resolve_dependencies(config: dict, ref_path: str) -> Any:
     return current
 
 
-def _walk_to_ref(node: Any, walk_path: List[str], config: dict) -> None:
+def _walk_to_ref(node: Any, walk_path: List[str], config: Dict[str, Any]) -> None:
     """A recursive function to walk to a reference in a
     dependency dictionary and resolve dependencies.
 
     Args:
         node (Any): The current node in the dependency dictionary.
         walk_path (List[str]): The path that has been walked so far.
-        config (dict): The configuration dictionary.
+        config (Dict[str, Any]): The configuration dictionary.
     """
     if isinstance(node, dict):
         items = node.items()
@@ -234,27 +234,32 @@ def _walk_to_ref(node: Any, walk_path: List[str], config: dict) -> None:
             parent[key] = resolved_value
 
 
-def apply_dependencies(config: dict, depmap: dict) -> dict:
+def apply_dependencies(
+    config: Dict[str, Any], depmap: Dict[str, Any]
+) -> Dict[str, Any]:
     """Apply dependencies from a dependency map to a configuration dictionary.
 
     Args:
-        config (dict): The configuration dictionary.
-        depmap (dict): The dependency map.
+        config (Dict[str, Any]): The configuration dictionary.
+        depmap (Dict[str, Any]): The dependency map.
             E.g. {"model.gcn_net[0].in_dim": "data.num_node_features"}
 
     Returns:
-        dict: The configuration dictionary with dependencies applied.
+        Dict[str, Any]: The configuration dictionary with dependencies applied.
     """
     _walk_to_ref(depmap, [], config)
     return config
 
 
-def load_yaml(file: Path | str, description: str) -> dict:
+def load_yaml(file: Path | str, description: str) -> Dict[str, Any]:
     """Load a YAML file, raising an error if it doesn't exist.
 
     Args:
         file (Path | str): Path to the YAML file.
         description (str): Description of the file for error messages.
+
+    Returns:
+        Dict[str, Any]: The contents of the YAML file as a dictionary.
     """
     if not file or not Path(str(file)).exists():
         raise FileNotFoundError(f"{description} file {file} does not exist.")
@@ -270,7 +275,7 @@ def build_search_space_with_dependencies(
     tune_training: bool = True,
     base_settings_file: Path = None,
     built_search_space_file: Path = None,
-) -> dict:
+) -> Dict[str, Any]:
     """Build a hyperparameter search space from a YAML configuration file
     and a dependency map file, using an Optuna trial object.
 
@@ -290,7 +295,7 @@ def build_search_space_with_dependencies(
             Defaults to None.
 
     Returns:
-        dict: A dictionary representing the hyperparameter search space
+        Dict[str, Any]: A dictionary representing the hyperparameter search space
             with dependencies applied.
     """
     search_space = load_yaml(search_space_file, description="Search space")
@@ -318,23 +323,23 @@ def build_search_space_with_dependencies(
     return search_space_with_deps
 
 
-def get_tuning_settings(tuning_config_path: Path) -> dict:
+def get_tuning_settings(tuning_config_path: Path) -> Dict[str, Any]:
     """Get hyperparameter tuning settings from a YAML configuration file.
 
     Args:
         tuning_config_path (Path): Path to the tuning configuration YAML file.
 
     Returns:
-        dict: A dictionary containing the tuning settings.
+        Dict[str, Any]: A dictionary containing the tuning settings.
     """
     return load_yaml(tuning_config_path, description="Tuning config")
 
 
-def create_study(tuning_config: dict) -> None:
+def create_study(tuning_config: Dict[str, Any]) -> None:
     """Create an Optuna study and save to a specified storage.
 
     Args:
-        tuning_config (dict): The configuration dictionary for tuning settings.
+        tuning_config (Dict[str, Any]): The configuration dictionary for tuning settings.
     """
     storage = tuning_config.get("storage")
     study_name = tuning_config.get("study_name")
