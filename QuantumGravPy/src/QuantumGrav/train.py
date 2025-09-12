@@ -364,7 +364,7 @@ class Trainer:
         self.logger.info("Saving model")
 
         outpath = self.data_path / f"final_model_epoch={self.epoch}.pt"
-        torch.save(self.model.state_dict(), outpath)
+        self.model.save(outpath)
 
         return total_training_data, self.validator.data if self.validator else []
 

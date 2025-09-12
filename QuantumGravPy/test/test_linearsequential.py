@@ -216,4 +216,6 @@ def test_linseq_save_load(linearseq, tmp_path):
 
     loaded_linseq = QG.LinearSequential.load(tmp_path / "model.pt")
 
-    assert loaded_linseq.state_dict() == linearseq.state_dict()
+    assert loaded_linseq.state_dict().keys() == linearseq.state_dict().keys()
+    for k in loaded_linseq.state_dict().keys():
+        assert torch.equal(loaded_linseq.state_dict()[k], linearseq.state_dict()[k])

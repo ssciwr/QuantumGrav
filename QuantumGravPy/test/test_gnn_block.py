@@ -139,11 +139,14 @@ def test_gnn_block_from_config(gnn_block_config):
     assert isinstance(gnn_block.activation, torch.nn.ReLU)
     assert isinstance(gnn_block.projection, torch.nn.Linear)
 
+
 def test_gnn_block_save_load(gnn_block, tmp_path):
     "test saving and loading of the gnn_block"
 
     gnn_block.save(tmp_path / "model.pt")
     assert (tmp_path / "model.pt").exists()
-    
+
     loaded_gnn_block = QG.GNNBlock.load(tmp_path / "model.pt")
-    assert loaded_gnn_block.state_dict() == gnn_block.state_dict()
+    assert loaded_gnn_block.state_dict().keys() == gnn_block.state_dict().keys()
+    for k in loaded_gnn_block.state_dict().keys():
+        assert torch.equal(loaded_gnn_block.state_dict()[k], gnn_block.state_dict()[k])
