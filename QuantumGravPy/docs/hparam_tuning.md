@@ -12,8 +12,6 @@ To use Optuna, we first need to define the hyperparameter search space with meth
 * `suggest_float()`: suggest a value for the floating point parameter
 * `suggest_int()`: suggest a value for the integer parameter
 
-Normally, users can call Optuna's suggestion functions directly when creating, training, validating, or testing their models (see [Optuna's code examples](https://optuna.org/#code_examples)). However, since the `QuantumGrav` package allows these steps to be configured via a YAML file, it is more convenient to handle hyperparameter tuning the same way.
-
 To define search space in `QuantumGrav`, users need three setting files:
 
 * Base setting file: contains all configurations for using the `QuantumGrav` Python package (see [the configuration `dict`](./training_a_model.md#the-configuration-dict)). The hyperparameter values in this file will serve as defaults when users want to enable only a subset of the search space (see details in [Build Optuna search space](#build-optuna-search-space)).
