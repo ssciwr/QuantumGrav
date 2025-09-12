@@ -18,11 +18,11 @@ class LinearSequential(torch.nn.Module):
         self,
         input_dim: int,
         output_dims: list[int],
-        hidden_dims: list[int] = None,
+        hidden_dims: list[int] | None = None,
         activation: type[torch.nn.Module] = torch.nn.ReLU,
-        backbone_kwargs: list[dict] = None,
-        output_kwargs: list[dict] = None,
-        activation_kwargs: list[dict] = None,
+        backbone_kwargs: list[dict] | None = None,
+        output_kwargs: list[dict] | None = None,
+        activation_kwargs: list[dict] | None = None,
     ):
         """Create a LinearSequential object with a backbone and multiple output layers. All layers are of type `Linear` with an activation function in between (the backbone) and a set of linear output layers.
 
@@ -189,5 +189,5 @@ class LinearSequential(torch.nn.Module):
         Returns:
             LinearSequential: An instance of LinearSequential initialized from the loaded data.
         """
-        model = torch.load(path, map_location=device)
+        model = torch.load(path, map_location=device, weights_only=False)
         return model

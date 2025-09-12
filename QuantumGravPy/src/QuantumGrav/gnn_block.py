@@ -154,5 +154,5 @@ class GNNBlock(torch.nn.Module):
             GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
         """
 
-        model = torch.load(path, map_location=device)
+        model = torch.load(path, map_location=device, weights_only=False)
         return model

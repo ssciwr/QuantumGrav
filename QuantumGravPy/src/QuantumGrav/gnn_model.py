@@ -186,7 +186,7 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: model instance initialized with the sub-models loaded from file.
         """
-        model_dict = torch.load(path, map_location=device)
+        model_dict = torch.load(path, map_location=device, weights_only=False)
 
         return cls(
             model_dict["encoder"],
