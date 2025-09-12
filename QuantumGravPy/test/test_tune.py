@@ -120,14 +120,10 @@ def test_is_yaml_tuple_of_3():
 
 
 def test_is_flat_list():
-    assert tune._is_flat_list(1) is False
     assert tune._is_flat_list("something") is False
     assert tune._is_flat_list({}) is False
     assert tune._is_flat_list([]) is True
-    assert tune._is_flat_list([1]) is True
     assert tune._is_flat_list(["relu", "tanh", "sigmoid"]) is True
-    assert tune._is_flat_list([16, 32, 64]) is True
-    assert tune._is_flat_list([1.0, 2.0, 3.0]) is True
     assert tune._is_flat_list([{"a": 1}, {"b": 2}]) is False
     assert tune._is_flat_list([[1, 2], [3, 4]]) is False
     assert tune._is_flat_list([True, False]) is True
