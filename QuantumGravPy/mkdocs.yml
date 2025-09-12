@@ -5,6 +5,7 @@ nav:
   - Datasets and Preprocessing: datasets_and_preprocessing.md
   - Graph Neural Network models: models.md
   - Model Training: training_a_model.md
+  - Hyperparameter Tuning: hparam_tuning.md
   - API documentation: api.md
   - License: license.md
 theme: 
