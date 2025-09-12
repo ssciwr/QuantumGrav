@@ -29,6 +29,7 @@ from .evaluate import (
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
+from .linear_sequential import LinearSequential
 
 __all__ = [
     # datasets
@@ -54,6 +55,7 @@ __all__ = [
     "ClassifierBlock",
     "GraphFeaturesBlock",
     "GNNModel",
+    "LinearSequential",
     # training
     "Trainer",
     "TrainerDDP",
