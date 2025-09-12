@@ -277,7 +277,7 @@ def objective(trial, tuning_config):
   ...
 ```
 
-* The return `search_space` is a dictionary with keys are hyperparameter names
+* `search_space` is a dictionary whose keys correspond to hyperparameter names.
 * `objective` is the function that will be used later for optimization
 * `trial` is an object of `optuna.trial.Trial`
 * `tuning_config` is the configuration dictionary while using `QGTune`, defined by users (see a full example at the end of section [Save best trial and best config](#save-best-trial-and-best-config))
