@@ -149,12 +149,12 @@ def _convert_to_suggestion(
 
 
 def get_suggestion(
-    config: Dict[str, Any], trial: optuna.trial.Trial, traced_param: list = []
+    config: Dict[str, Any] | List, trial: optuna.trial.Trial, traced_param: list = []
 ) -> Dict[str, Any]:
     """Get a dictionary of suggestions from a configuration dictionary.
 
     Args:
-        config (Dict[str, Any]): The configuration dictionary.
+        config (Dict[str, Any] | List): The configuration dictionary or list.
         trial (optuna.trial.Trial): The Optuna trial object.
         traced_param (list, optional): The list of traced parameters.
 
