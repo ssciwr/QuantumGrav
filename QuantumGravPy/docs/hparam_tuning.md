@@ -334,7 +334,7 @@ best_param_path: best_params.yaml # path to save the best hyperparameters
 
 ## An example of tuning with QGTune
 
-We have provided an example in the [tune_example.py](../src/QGTune/tune_example.py) file to demonstrate the functionality of `QGTune`.
+We have provided an example in the [tune_example.py](./examples/tune_example.py) file to demonstrate the functionality of `QGTune`.
 
 In this example, we created sample config for tuning, search space, dependency mapping, and base settings. A small model is also defined based on [Optuna's PyTorch example](https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py).
 
