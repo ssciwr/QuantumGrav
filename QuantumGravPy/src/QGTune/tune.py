@@ -207,8 +207,8 @@ def _resolve_dependencies(config: Dict[str, Any], ref_path: str) -> Any:
 
 
 def _walk_to_ref(node: Any, walk_path: List[str], config: Dict[str, Any]) -> None:
-    """A recursive function to walk to a reference in a
-    dependency dictionary and resolve dependencies.
+    """Walk recursively to a reference in a dependency dictionary
+    and resolve dependencies.
 
     Args:
         node (Any): The current node in the dependency dictionary.
