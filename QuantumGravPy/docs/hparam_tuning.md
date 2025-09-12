@@ -249,9 +249,9 @@ If `storage` is assigned to `None` (or `null` in YAML file), the study will be s
 
 For simplicity while working with multi-processing, we only support storage with [Optuna's JournalStorage](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.storages.JournalStorage.html).
 
-### Build Optuna search space
+### Build an Optuna search space
 
-To build Optuna search space with `QGTune`, users can use `build_search_space_with_dependencies()` function as in the following example:
+To build an Optuna search space with `QGTune`, users can use `build_search_space_with_dependencies()` function as in the following example:
 
 ```python
 from QGTune import tune
