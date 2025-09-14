@@ -1,17 +1,32 @@
 using Pkg: Pkg
-Pkg.activate(@__DIR__)
+Pkg.activate(joinpath(@__DIR__, ".."))
 using Random: Random
-using LinearAlgebra: LinearAlgebra
-using Distributions: Distributions
+using LinearAlgebra
+using Distributions
 
-function transitive_reduction!(adj::AbstractArray{T}) where {T}
+function transitive_reduction!(mat::AbstractArray{T,N}) where {T,N}
+    n = size(mat, 1)
+    for i in 1:n
+        for j in (i + 1):n
+            if mat[i, j] == 1
+                # If any intermediate node k exists with i → k and k → j, remove i → j
+                for k in (i + 1):(j - 1)
+                    if mat[i, k] == 1 && mat[k, j] == 1
+                        mat[i, j] = 0 # remove intermediate nodes
+                        break
+                    end
+                end
+            end
+        end
+    end
 end
 
-function transitive_closure!(adj::AbstractArray{T}) where {T}
+function transitive_closure!(adj::AbstractArray{T,N}) where {T,N}
 end
 
 function check_num_paths(i::Int64, j::Int64, adj::Matrix{T})::Int64 where {T}
-    # TODO: check that this thing works as it should! 
+    # FIXME: check that this thing works as it should! Currently, transitive closure still changes 
+    # the final matrix when this is used to check for existing paths
 
     # this assumes topological ordering of nodes
     # check that there is not path from i to j <=> a possible link i -> j is not redundant
@@ -29,7 +44,7 @@ function check_num_paths(i::Int64, j::Int64, adj::Matrix{T})::Int64 where {T}
         return num_paths
     end
 
-    return check_row(adj[i, :], j, 0)
+    return check_row(adj[i, :], j, 0) #FIXME: this is probably the issue
 end
 
 testmat = zeros(Int64, 10, 10)
@@ -81,4 +96,26 @@ for i in 1:10
 end
 
 display(adj)
+display(paths)
+
+reduced = deepcopy(adj)
+transitive_reduction!(reduced)
+display(reduced)
+
+paths = zeros(Int64, 10, 10)
+for i in 1:10
+    for j in (i + 1):10
+        p = check_num_paths(i, j, reduced)
+        paths[i, j] = p
+    end
+end
+display(paths)
+
+paths = zeros(Int64, 10, 10)
+for i in 1:10
+    for j in (i + 1):10
+        p = check_num_paths(i, j, adj)
+        paths[i, j] = p
+    end
+end
 display(paths)
