@@ -15,6 +15,8 @@ from datetime import datetime
 from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 
+import optuna
+
 
 class Trainer:
     """Trainer class for training and evaluating GNN models."""
@@ -309,12 +311,15 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
+        trial: optuna.trial.Trial | None = None,
     ) -> Tuple[torch.Tensor, Collection[Any]]:
         """Run the training process.
 
         Args:
             train_loader (DataLoader): The data loader for the training set.
             val_loader (DataLoader): The data loader for the validation set.
+            trial (optuna.trial.Trial | None, optional): An Optuna trial
+                for hyperparameter tuning. Defaults to None.
 
         Returns:
             Tuple[Collection[Any], Collection[Any]]: The training and validation results.
@@ -354,6 +359,16 @@ class Trainer:
             if self.validator is not None:
                 validation_result = self.validator.validate(self.model, val_loader)
                 self.validator.report(validation_result)
+
+                # integrate Optuna here for hyperparameter tuning
+                if trial is not None:
+                    avg_sigma_loss = self.validator.data[self.epoch]
+                    avg_loss = avg_sigma_loss[0]
+                    trial.report(avg_loss, self.epoch)
+
+                    # Handle pruning based on the intermediate value.
+                    if trial.should_prune():
+                        raise optuna.exceptions.TrialPruned()
 
             should_stop = self._check_model_status(
                 self.validator.data if self.validator else total_training_data,
