@@ -17,11 +17,11 @@ class LinearSequential(torch.nn.Module):
         self,
         input_dim: int,
         output_dims: list[int],
-        hidden_dims: list[int] = None,
+        hidden_dims: list[int] | None = None,
         activation: type[torch.nn.Module] = torch.nn.ReLU,
-        backbone_kwargs: list[dict] = None,
-        output_kwargs: list[dict] = None,
-        activation_kwargs: list[dict] = None,
+        backbone_kwargs: list[dict] | None = None,
+        output_kwargs: list[dict] | None = None,
+        activation_kwargs: list[dict] | None = None,
     ):
         """Create a LinearSequential object with a backbone and multiple output layers. All layers are of type `Linear` with an activation function in between (the backbone) and a set of linear output layers.
 
@@ -110,7 +110,7 @@ class LinearSequential(torch.nn.Module):
         self.output_layers = torch.nn.ModuleList(output_layers)
 
     def _handle_kwargs(
-        self, kwarglist: list[dict], name: str, needed: int
+        self, kwarglist: list[dict] | None, name: str, needed: int
     ) -> list[dict]:
         """
         handle kwargs for the backbone or activation functions.
