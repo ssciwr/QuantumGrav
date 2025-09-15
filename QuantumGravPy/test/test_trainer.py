@@ -299,7 +299,7 @@ def test_trainer_check_model_status(config):
     saved = trainer._check_model_status(loss)
     assert saved is False
 
-    # returns true when early stopping is triggereds
+    # returns true when early stopping is triggered
     trainer.early_stopping = lambda x: True
     loss = np.random.rand(10).tolist()
     saved = trainer._check_model_status(loss)
