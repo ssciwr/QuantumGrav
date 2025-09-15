@@ -153,12 +153,12 @@ class QGDatasetBase:
                 except Exception:
                     raise
         elif self.mode == "zarr":
-            group = zarr.open_group(
-                zarr.storage.LocalStore(filepath, read_only=True),
-                path="",
-                mode="r",
-            )
             try:
+                group = zarr.open_group(
+                    zarr.storage.LocalStore(filepath, read_only=True),
+                    path="",
+                    mode="r",
+                )
                 # note that fallback returns an int directly,
                 # while for try_find_numsamples we need to index into the result
                 s = try_find_numsamples(group)
@@ -171,7 +171,15 @@ class QGDatasetBase:
                     else:
                         raise RuntimeError("Unable to determine number of samples.")
             except Exception:
-                raise
+                # we need an extra fallback for zarr b/c Julia Zarr and python Zarr
+                # can differ in layout - Julia Zarr does not have to have a group
+                try:
+                    store = zarr.storage.LocalStore(filepath, read_only=True)
+                    arr = zarr.open_array(store, path="adjacency_matrix")
+                    s = max(arr.shape)
+                    return s
+                except Exception:
+                    raise
         else:
             raise ValueError("mode must be 'hdf5' or 'zarr'")
 
