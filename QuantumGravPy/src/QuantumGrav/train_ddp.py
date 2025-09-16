@@ -59,7 +59,7 @@ class TrainerDDP(train.Trainer):
         criterion: Callable,
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
