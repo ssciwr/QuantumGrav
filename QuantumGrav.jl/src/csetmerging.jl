@@ -1,61 +1,4 @@
-"""
-merge_csets(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64) 
-    -> BitArrayCauset
 
-Merge two causal sets `cset1Raw` and `cset2Raw` into a single causal set by placing them
-on the diagonal of a larger causet and connecting them with random links in the upper-right
-block with probability `link_probability`. Transitive closure is applied after merging.
-
-Note: The actual degree of connectivity is underestimated unless `link_probability` is 0 or 1,
-since transitive completion will overwrite the sparsity induced by random linking.
-
-# Arguments
-- `cset1Raw`: First input causal set (converted to `BitArrayCauset` if necessary)
-- `cset2Raw`: Second input causal set (converted to `BitArrayCauset` if necessary)
-- `link_probability`: Probability with which to add links from `cset1Raw` to `cset2Raw` (must be in [0, 1])
-
-# Returns
-- A `BitArrayCauset` representing the merged and transitively closed causal set
-
-# Throws
-- `ArgumentError` if `link_probability` is not in the interval [0, 1]
-"""
-function merge_csets(cset1Raw::CausalSets.AbstractCauset, cset2Raw::CausalSets.AbstractCauset, link_probability::Float64)
-    if link_probability < 0.0 || link_probability > 1.0
-        throw(ArgumentError("link_probability must be between 0 and 1. Got $link_probability."))
-    end
-
-    cset1 = typeof(cset1Raw) === CausalSets.BitArrayCauset ? cset1Raw : convert(CausalSets.BitArrayCauset, cset1Raw)
-    cset2 = typeof(cset2Raw) === CausalSets.BitArrayCauset ? cset2Raw : convert(CausalSets.BitArrayCauset, cset2Raw)
-
-    atom_count_merged = cset1.atom_count + cset2.atom_count
-    graph_merged = CausalSets.empty_graph(atom_count_merged)
-    tcg_merged = CausalSets.empty_graph(atom_count_merged)
-
-    for i in 1:cset1.atom_count
-        row = falses(atom_count_merged)
-        row[1:cset1.atom_count] .= cset1.future_relations[i]
-        graph_merged.edges[i] = row
-    end
-    for i in 1:cset2.atom_count
-        row = falses(atom_count_merged)
-        row[cset1.atom_count + 1:end] .= cset2.future_relations[i]
-        graph_merged.edges[cset1.atom_count + i] = row
-    end
-
-    # Add random links in upper right block
-    for i in 1:cset1.atom_count
-        for j in 1:cset2.atom_count
-            if rand() < link_probability
-                graph_merged.edges[i][cset1.atom_count + j] = true
-            end
-        end
-    end
-
-    CausalSets.transitive_closure!(graph_merged, tcg_merged)
-    
-    return CausalSets.to_bitarray_causet(tcg_merged)
-end
 
 """
 insert_cset(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64; rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing) 
@@ -80,30 +23,44 @@ Transitive closure is applied after insertion.
 - `ArgumentError` if `link_probability` is not in the interval [0, 1]
 - `ArgumentError` if `position` is not in the valid range `0 ≤ position ≤ atom_count of cset1Raw`
 """
-function insert_cset(   cset1Raw::CausalSets.AbstractCauset, 
-                        cset2Raw::CausalSets.AbstractCauset, 
-                        link_probability::Float64; 
-                        rng::Random.AbstractRNG=Random.GLOBAL_RNG,
-                        position::Union{Nothing, Int64}=nothing)::CausalSets.BitArrayCauset
+function insert_cset(
+    cset1Raw::CausalSets.AbstractCauset,
+    cset2Raw::CausalSets.AbstractCauset,
+    link_probability::Float64;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+    position::Union{Nothing,Int64} = nothing,
+)::CausalSets.BitArrayCauset
     if link_probability < 0.0 || link_probability > 1.0
-        throw(ArgumentError("link_probability must be between 0 and 1. Got $link_probability."))
+        throw(
+            ArgumentError(
+                "link_probability must be between 0 and 1. Got $link_probability.",
+            ),
+        )
     end
-    
-    cset1 = isa(cset1Raw, CausalSets.BitArrayCauset) ? cset1Raw : convert(CausalSets.BitArrayCauset, cset1Raw)
-    cset2 = isa(cset2Raw, CausalSets.BitArrayCauset) ? cset2Raw : convert(CausalSets.BitArrayCauset, cset2Raw)
+
+    cset1 =
+        isa(cset1Raw, CausalSets.BitArrayCauset) ? cset1Raw :
+        convert(CausalSets.BitArrayCauset, cset1Raw)
+    cset2 =
+        isa(cset2Raw, CausalSets.BitArrayCauset) ? cset2Raw :
+        convert(CausalSets.BitArrayCauset, cset2Raw)
 
     n1, n2 = cset1.atom_count, cset2.atom_count
     N = n1 + n2
 
     insert_pos = isnothing(position) ? rand(rng, 0:n1) : position  # Insert cset2 between indices insert_pos and insert_pos + 1
 
-    (insert_pos < 0 || insert_pos > n1) && throw(ArgumentError("position must be between 0 and atom_count of cset1Raw = $(n1). Got $(insert_pos)."))
+    (insert_pos < 0 || insert_pos > n1) && throw(
+        ArgumentError(
+            "position must be between 0 and atom_count of cset1Raw = $(n1). Got $(insert_pos).",
+        ),
+    )
 
     # Compute new index mapping
     # Atoms before insert_pos stay the same
     # Then cset2 atoms
     # Then remaining cset1 atoms get shifted by n2
-    idx_map_cset1 = [i <= insert_pos ? i : i + n2 for i in 1:n1]
+    idx_map_cset1 = [i <= insert_pos ? i : i + n2 for i = 1:n1]
     idx_map_cset2 = insert_pos .+ (1:n2)
 
     graph_merged = CausalSets.empty_graph(N)
@@ -134,10 +91,10 @@ function insert_cset(   cset1Raw::CausalSets.AbstractCauset,
     end
 
     # Link insertion
-        inserted_range = insert_pos .+ (1:n2)
+    inserted_range = insert_pos .+ (1:n2)
 
     # Links from before to inserted
-    for i in 1:insert_pos
+    for i = 1:insert_pos
         for j in inserted_range
             if !graph_merged.edges[i][j] && rand(rng) < link_probability
                 graph_merged.edges[i][j] = true
@@ -147,7 +104,7 @@ function insert_cset(   cset1Raw::CausalSets.AbstractCauset,
 
     # Links from inserted to after
     for i in inserted_range
-        for j in (insert_pos + n2 + 1):N
+        for j = (insert_pos+n2+1):N
             if !graph_merged.edges[i][j] && rand(rng) < link_probability
                 graph_merged.edges[i][j] = true
             end
@@ -156,6 +113,44 @@ function insert_cset(   cset1Raw::CausalSets.AbstractCauset,
 
     CausalSets.transitive_closure!(graph_merged, tcg_merged)
     return CausalSets.to_bitarray_causet(tcg_merged)
+end
+
+
+"""
+merge_csets(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64) 
+    -> BitArrayCauset
+
+Merge two causal sets `cset1Raw` and `cset2Raw` into a single causal set by placing them
+on the diagonal of a larger causet and connecting them with random links in the upper-right
+block with probability `link_probability`. Transitive closure is applied after merging.
+
+Note: The actual degree of connectivity is underestimated unless `link_probability` is 0 or 1,
+since transitive completion will overwrite the sparsity induced by random linking.
+
+# Arguments
+- `cset1Raw`: First input causal set (converted to `BitArrayCauset` if necessary)
+- `cset2Raw`: Second input causal set (converted to `BitArrayCauset` if necessary)
+- `link_probability`: Probability with which to add links from `cset1Raw` to `cset2Raw` (must be in [0, 1])
+
+# Returns
+- A `BitArrayCauset` representing the merged and transitively closed causal set
+
+# Throws
+- `ArgumentError` if `link_probability` is not in the interval [0, 1]
+"""
+function merge_csets(
+    cset1Raw::CausalSets.AbstractCauset,
+    cset2Raw::CausalSets.AbstractCauset,
+    link_probability::Float64;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+)::CausalSets.BitArrayCauset
+    return insert_cset(
+        cset1Raw,
+        cset2Raw,
+        link_probability;
+        rng = rng,
+        position = cset1Raw.atom_count,
+    )
 end
 
 """
@@ -198,20 +193,28 @@ function insert_KR_into_manifoldlike(
     order::Int64,
     r::Float64,
     link_probability::Float64;
-    rng::Random.AbstractRNG=Random.GLOBAL_RNG,
-    position::Union{Nothing, Int64}=nothing,
-    n2_rel::Float64=0.05,
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+    position::Union{Nothing,Int64} = nothing,
+    n2_rel::Float64 = 0.05,
     d::Int64 = 2,
     type::Type{T} = Float32,
-    p::Float64 = 0.5
-)::Tuple{CausalSets.BitArrayCauset, Bool, Matrix{T}} where T
+    p::Float64 = 0.5,
+)::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
 
     n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
 
-    cset1Raw, _, _ = make_manifold_cset(npoints, rng, order, r;  d = d, type = type)
+    cset1Raw, _, _ = make_manifold_cset(npoints, rng, order, r; d = d, type = type)
     n2 = max(1, round(Int, n2_rel * npoints))  # Ensure at least 1
 
     cset2Raw, _ = create_random_layered_causet(n2, 3; p = p)
 
-    return insert_cset(cset1Raw, cset2Raw, link_probability; rng = rng, position = position), true, stack(make_pseudosprinkling(npoints + n2, d, -1.0, 1.0, type; rng = rng), dims = 1)
+    return insert_cset(
+        cset1Raw,
+        cset2Raw,
+        link_probability;
+        rng = rng,
+        position = position,
+    ),
+    true,
+    stack(make_pseudosprinkling(npoints + n2, d, -1.0, 1.0, type; rng = rng), dims = 1)
 end
