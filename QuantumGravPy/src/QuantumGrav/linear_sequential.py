@@ -111,7 +111,7 @@ class LinearSequential(torch.nn.Module):
         self.output_layers = torch.nn.ModuleList(output_layers)
 
     def _handle_kwargs(
-        self, kwarglist: list[dict], name: str, needed: int
+        self, kwarglist: list[dict] | None, name: str, needed: int
     ) -> list[dict]:
         """
         handle kwargs for the backbone or activation functions.

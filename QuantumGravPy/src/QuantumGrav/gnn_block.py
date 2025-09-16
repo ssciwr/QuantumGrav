@@ -92,19 +92,18 @@ class GNNBlock(torch.nn.Module):
             torch.Tensor: The output node features.
         """
 
-        x_res = x
         # convolution, then normalize and apply nonlinearity
-        x = self.conv(x, edge_index, **kwargs)
-        x = self.normalizer(x)
-        x = self.activation(x)
+        x_res = self.conv(x, edge_index, **kwargs)
+        x_res = self.normalizer(x_res)
+        x_res = self.activation(x_res)
 
         # Residual connection
-        x = x + self.projection(x_res)
+        x_res = x_res + self.projection(x)
 
         # Apply dropout as regularization
-        x = self.dropout(x)
+        x_res = self.dropout(x_res)
 
-        return x
+        return x_res
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "GNNBlock":

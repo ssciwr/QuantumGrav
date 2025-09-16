@@ -95,6 +95,15 @@ class DummyEvaluator:
         self.data.append((avg, sigma))
 
 
+class DummyEarlyStopping:
+    def __init__(self):
+        self.best_score = np.inf
+        self.found_better = False
+
+    def __call__(self, _) -> bool:
+        return False
+
+
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
     loss = torch.nn.MSELoss()(x[0], data.y.to(torch.float32))
@@ -237,7 +246,7 @@ def test_trainer_ddp_check_model_status(config, make_dataloader):
         config,
         compute_loss,
         apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=lambda x: False,
+        early_stopping=DummyEarlyStopping(),
         validator=DummyEvaluator(),  # type: ignore
         tester=DummyEvaluator(),  # type: ignore
     )
@@ -276,7 +285,7 @@ def test_trainer_ddp_run_training(config, make_dataset):
         config,
         compute_loss,
         apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=lambda x: False,
+        early_stopping=DummyEarlyStopping(),
         validator=DummyEvaluator(),  # type: ignore
         tester=DummyEvaluator(),  # type: ignore
     )

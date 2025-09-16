@@ -19,9 +19,9 @@ class GNNModel(torch.nn.Module):
     def __init__(
         self,
         encoder: list[QGGNN.GNNBlock],
-        classifier: QGC.ClassifierBlock,
-        pooling_layer: torch.nn.Module,
-        graph_features_net: torch.nn.Module = torch.nn.Identity,
+        classifier: QGC.ClassifierBlock | None,
+        pooling_layer: torch.nn.Module | None,
+        graph_features_net: torch.nn.Module | None = torch.nn.Identity(),
     ):
         """Initialize the GNNModel.
 
@@ -41,7 +41,7 @@ class GNNModel(torch.nn.Module):
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
-        gcn_kwargs: dict[Any, Any] = None,
+        gcn_kwargs: dict[Any, Any] | None = None,
     ) -> torch.Tensor:
         """Evaluate the GCN network on the input data.
 
@@ -53,10 +53,8 @@ class GNNModel(torch.nn.Module):
         Returns:
             torch.Tensor: Output of the GCN network.
         """
-        features = (
-            x.clone()
-        )  # Clone the input features to avoid modifying the original tensor
         # Apply each GCN layer to the input features
+        features = x
         for gnn_layer in self.encoder:
             features = gnn_layer(
                 features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
@@ -67,9 +65,9 @@ class GNNModel(torch.nn.Module):
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
-        batch: torch.Tensor = None,
-        gcn_kwargs: dict = None,
-    ):
+        batch: torch.Tensor | None = None,
+        gcn_kwargs: dict | None = None,
+    ) -> torch.Tensor:
         """Get embeddings from the GCN model.
 
         Args:
@@ -95,8 +93,8 @@ class GNNModel(torch.nn.Module):
         x: torch.Tensor,
         edge_index: torch.Tensor,
         batch: torch.Tensor,
-        graph_features: torch.Tensor = None,
-        gcn_kwargs: dict[Any, Any] = None,
+        graph_features: torch.Tensor | None = None,
+        gcn_kwargs: dict[Any, Any] | None = None,
     ) -> torch.Tensor | Collection[torch.Tensor]:
         """Forward run of the gnn model with optional graph features.
         First execute the graph-neural network backbone, then process the graph features, and finally apply the classifier.
@@ -144,7 +142,7 @@ class GNNModel(torch.nn.Module):
         graph_features_net = (
             QGF.GraphFeaturesBlock.from_config(config["graph_features_net"])
             if "graph_features_net" in config
-            else torch.nn.Identity
+            else torch.nn.Identity()
         )
 
         return cls(
