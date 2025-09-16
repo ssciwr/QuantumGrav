@@ -1,7 +1,3 @@
-import torch
-from torch_geometric.data import Data, Dataset
-from torch_geometric.loader import DataLoader
-
 from collections.abc import Collection
 from typing import Callable, Any, Tuple
 
@@ -14,6 +10,10 @@ from datetime import datetime
 
 from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
+
+import torch
+from torch_geometric.data import Data, Dataset
+from torch_geometric.loader import DataLoader
 
 
 class Trainer:
