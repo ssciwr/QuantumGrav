@@ -1,10 +1,5 @@
 from typing import Callable, Any, Tuple
-import torch
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-from torch_geometric.data import Dataset
-from torch_geometric.loader import DataLoader
+from collections.abc import Collection
 
 import numpy as np
 import os
@@ -12,6 +7,13 @@ import os
 from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 from . import train
+
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch_geometric.data import Dataset
+from torch_geometric.loader import DataLoader
+import optuna
 
 
 def initialize_ddp(
@@ -58,7 +60,7 @@ class TrainerDDP(train.Trainer):
         criterion: Callable,
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
@@ -223,11 +225,11 @@ class TrainerDDP(train.Trainer):
         )
         return train_loader, val_loader, test_loader
 
-    def _check_model_status(self, eval_data: list[Any]) -> bool:
+    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
         """Check the status of the model during evaluation.
 
         Args:
-            eval_data (list[Any]): The evaluation data to check.
+            eval_data (list[Any] | torch.Tensor): The evaluation data to check.
 
         Returns:
             bool: Whether the model training should stop.
@@ -237,20 +239,55 @@ class TrainerDDP(train.Trainer):
             should_stop = super()._check_model_status(eval_data)
         return should_stop
 
+    def save_checkpoint(self, name_addition: str = ""):
+        """Save model checkpoint.
+
+        Raises:
+            ValueError: If the model is not initialized.
+            ValueError: If the model configuration does not contain 'name'.
+            ValueError: If the training configuration does not contain 'checkpoint_path'.
+        """
+        if self.rank == 0:
+            if self.model is None:
+                raise ValueError("Model must be initialized before saving checkpoint.")
+
+            if "name" not in self.config["model"]:
+                raise ValueError(
+                    "Model configuration must contain 'name' to save checkpoint."
+                )
+
+            self.logger.info(
+                f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.checkpoint_path}"
+            )
+            outpath = (
+                self.checkpoint_path
+                / f"{self.config['model']['name']}_epoch_{self.epoch}_{name_addition}.pt"
+            )
+
+            if outpath.exists() is False:
+                outpath.parent.mkdir(parents=True, exist_ok=True)
+                self.logger.info(f"Created directory {outpath.parent} for checkpoint.")
+
+            self.latest_checkpoint = outpath
+            torch.save(self.model, outpath)
+
     def run_training(
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
-    ) -> Tuple[list[Any], list[Any]]:
+        trial: optuna.trial.Trial | None = None,
+    ) -> Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]:
         """
         Run the training loop for the distributed model. This will synchronize for validation. No testing is performed in this function. The model will only be checkpointed and early stopped on the 'rank' 0 process.
 
         Args:
             train_loader (DataLoader): The training data loader.
             val_loader (DataLoader): The validation data loader.
+            trial (optuna.trial.Trial | None, optional): An Optuna trial for hyperparameter optimization.
+                Defaults to None.
 
         Returns:
-            Tuple[list[Any], list[Any]]: The training and validation results.
+            Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]: The training and validation results.
         """
 
         self.model = self.initialize_model()
@@ -260,8 +297,8 @@ class TrainerDDP(train.Trainer):
         self.logger.info("Starting training process.")
 
         total_training_data = []
-        all_training_data = [None for _ in range(self.world_size)]
-        all_validation_data = [None for _ in range(self.world_size)]
+        all_training_data: list[Any] = [None for _ in range(self.world_size)]
+        all_validation_data: list[Any] = [None for _ in range(self.world_size)]
         for _ in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
@@ -275,6 +312,16 @@ class TrainerDDP(train.Trainer):
                 validation_result = self.validator.validate(self.model, val_loader)
                 if self.rank == 0:
                     self.validator.report(validation_result)
+
+                    # integrate Optuna here for hyperparameter tuning
+                    if trial is not None:
+                        avg_sigma_loss = self.validator.data[self.epoch]
+                        avg_loss = avg_sigma_loss[0]
+                        trial.report(avg_loss, self.epoch)
+
+                        # Handle pruning based on the intermediate value.
+                        if trial.should_prune():
+                            raise optuna.exceptions.TrialPruned()
 
             dist.barrier()  # Ensure all processes have completed the epoch before checking status
             should_stop = self._check_model_status(
@@ -299,4 +346,5 @@ class TrainerDDP(train.Trainer):
             all_validation_data, self.validator.data if self.validator else []
         )
         self.logger.info("Training process completed.")
+
         return all_training_data, all_validation_data

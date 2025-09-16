@@ -12,7 +12,7 @@ Inputs:
 Returns:
     cuts :: Vector{Int} — list of cut indices separating layers (length n-1)
 """
-function gaussian_dist_cuts(N::Int64, n::Int64, σ::Float64; rng=Random.GLOBAL_RNG)
+function gaussian_dist_cuts(N::Int64, n::Int64, σ::Float64; rng = Random.GLOBAL_RNG)
     if N < 2 * σ * n
         @warn "N is less than 2×σ×n; partitions may be biased to have more points in earlier layers than in later ones."
     end
@@ -54,8 +54,15 @@ Notes:
     The `standard_deviation` keyword controls the spread of the Gaussian in partitioning; if not provided, defaults to `0.1 * N / n`.
     Layer sizes are resampled until within bounds to avoid bias from clamping.
 """
-function create_random_layered_causet(N::Int64, n::Int64; p::Float64 = 0.5, rng = Random.GLOBAL_RNG, standard_deviation::Union{Float64,Nothing} = nothing)
-    
+
+function create_random_layered_causet(
+    N::Int64,
+    n::Int64;
+    p::Float64 = 0.5,
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+    standard_deviation::Union{Float64,Nothing} = nothing,
+)
+
     if N < n
         throw(ArgumentError("N (number of atoms) must be at least n (number of layers)."))
     end
@@ -81,8 +88,8 @@ function create_random_layered_causet(N::Int64, n::Int64; p::Float64 = 0.5, rng 
 
     layers = Vector{Vector{Int}}(undef, n)
     idx = 1
-    for i in 1:n
-        layers[i] = collect(idx:(idx + sizes[i] - 1))
+    for i = 1:n
+        layers[i] = collect(idx:(idx+sizes[i]-1))
         idx += sizes[i]
     end
 
@@ -90,7 +97,7 @@ function create_random_layered_causet(N::Int64, n::Int64; p::Float64 = 0.5, rng 
     tcg = CausalSets.empty_graph(N)     # covering relations
 
     # Random links between successive layers
-    for i in 1:(n-1)
+    for i = 1:(n-1)
         for a in layers[i], b in layers[i+1]
             if rand(rng) < p
                 graph.edges[a][b] = true
@@ -103,7 +110,7 @@ function create_random_layered_causet(N::Int64, n::Int64; p::Float64 = 0.5, rng 
     atoms_per_layer = length.(layers)
 
     # Transitive closure
-    CausalSets.transitive_closure!(graph,tcg)
+    CausalSets.transitive_closure!(graph, tcg)
 
     return CausalSets.to_bitarray_causet(tcg), atoms_per_layer
 end

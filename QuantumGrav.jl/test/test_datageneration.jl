@@ -125,7 +125,6 @@ end
     end
 
     function prepare_output(file, config::Dict)
-        println("file: ", file)
         root = Zarr.zgroup(file)
         compressor = Zarr.BloscCompressor(cname = "zstd", clevel = 3, shuffle = true)
         Zarr.zcreate(
@@ -327,6 +326,7 @@ end
 
 @testitem "test_make_data_hdf5_works" tags = [:featuregeneration] setup =
     [makeDataFunctionsHDF5] begin
+
     config = Dict(
         "num_datapoints" => 10,
         "output" => joinpath(tempdir(), "test_data"),
@@ -335,27 +335,46 @@ end
         "seed" => 42,
         "output_format" => "hdf5",
     )
+
+    if isdir(abspath(expanduser(config["output"])))
+        rm(abspath(expanduser(config["output"])); recursive = true)
+    end
+
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
 
-    outputcontent = readdir(config["output"])
+    outputcontent = readdir(abspath(expanduser(config["output"])))
     @test true in [occursin(".h5", file) for file in outputcontent]
     @test true in [occursin(".yaml", file) for file in outputcontent]
     @test true in [occursin(".jl", file) for file in outputcontent]
 
-    file = [f for f in outputcontent if occursin(".h5", f)][1]
+    # check config file
+    cfg_file = filter(x -> occursin(".yaml", x), readdir(config["output"]))[1]
+    open(joinpath(config["output"], cfg_file)) do file
+        config_data = YAML.load(file)
+        @test config_data["num_datapoints"] == 10
+        @test config_data["output_format"] == "hdf5"
+        @test haskey(config_data, "QuantumGrav")
+        @test haskey(config_data["QuantumGrav"], "git_source")
+        @test haskey(config_data["QuantumGrav"], "git_branch")
+        @test haskey(config_data["QuantumGrav"], "git_tree_hash")
+    end
 
+    file = [f for f in outputcontent if occursin(".h5", f) && occursin("$(getpid())", f)][1]
     QuantumGrav.HDF5.h5open(joinpath(config["output"], file), "r") do file
         @test haskey(file, "adjacency_matrices")
         @test size(file["adjacency_matrices"]) == (100, 100, 10)
     end
 
-    rm(config["output"]; recursive = true) # Clean up the output directory
+    if isdir(config["output"])
+        rm(config["output"]; recursive = true)
+    end
 end
 
 
 
 @testitem "test_make_data_zarr_works" tags = [:featuregeneration] setup =
     [makeDataFunctionsZarr] begin
+
     config = Dict(
         "num_datapoints" => 10,
         "output" => joinpath(tempdir(), "test_data"),
@@ -365,19 +384,39 @@ end
         "output_format" => "zarr",
     )
 
+
+    if isdir(abspath(expanduser(config["output"])))
+        rm(abspath(expanduser(config["output"])); recursive = true)
+    end
+
     QuantumGrav.make_data(transform, prepare_output, write_data; config = config)
 
-    outputcontent = readdir(config["output"])
+    outputcontent = readdir(abspath(expanduser(config["output"])))
     @test true in [occursin(".zarr", file) for file in outputcontent]
     @test true in [occursin(".yaml", file) for file in outputcontent]
     @test true in [occursin(".jl", file) for file in outputcontent]
 
-    file = [f for f in outputcontent if occursin(".zarr", f)][1]
+    # check config file 
+    cfg_file = filter(x -> occursin(".yaml", x), readdir(config["output"]))[1]
+    open(joinpath(config["output"], cfg_file)) do file
+        config_data = YAML.load(file)
+        @test config_data["num_datapoints"] == 10
+        @test config_data["output_format"] == "zarr"
+        @test haskey(config_data, "QuantumGrav")
+        @test haskey(config_data["QuantumGrav"], "git_source")
+        @test haskey(config_data["QuantumGrav"], "git_branch")
+        @test haskey(config_data["QuantumGrav"], "git_tree_hash")
+    end
+
+    file =
+        [f for f in outputcontent if occursin(".zarr", f) && occursin("$(getpid())", f)][1]
 
     store = Zarr.DirectoryStore(joinpath(tempdir(), "test_data", file))
     adj = Zarr.zopen(store, "r"; path = "adjacency_matrices")
 
     @assert size(adj) == (100, 100, 10)
 
-    rm(config["output"]; recursive = true) # Clean up the output directory
+    if isdir(config["output"])
+        rm(config["output"]; recursive = true)
+    end
 end

@@ -183,6 +183,7 @@ def test_linseq_backward_pass(linearseq):
 
 
 def test_linseq_from_config():
+    "test construction of a linearsequential instance from config dict"
     config = {
         "input_dim": 10,
         "hidden_dims": [20, 30],
@@ -205,3 +206,16 @@ def test_linseq_from_config():
     assert linearseq.output_layers[0].out_channels == 2
     assert linearseq.output_layers[1].in_channels == 30
     assert linearseq.output_layers[1].out_channels == 3
+
+
+def test_linseq_save_load(linearseq, tmp_path):
+    "test saving of the linearseq model"
+    linearseq.save(tmp_path / "model.pt")
+
+    assert (tmp_path / "model.pt").exists()
+
+    loaded_linseq = QG.LinearSequential.load(tmp_path / "model.pt")
+
+    assert loaded_linseq.state_dict().keys() == linearseq.state_dict().keys()
+    for k in loaded_linseq.state_dict().keys():
+        assert torch.equal(loaded_linseq.state_dict()[k], linearseq.state_dict()[k])

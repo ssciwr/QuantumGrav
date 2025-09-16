@@ -1,3 +1,4 @@
+from .julia_worker import JuliaWorker
 from .utils import (
     register_activation,
     register_gnn_layer,
@@ -12,7 +13,6 @@ from .utils import (
     list_registered_activations,
     list_registered_gnn_layers,
 )
-from .julia_worker import JuliaWorker
 from .dataset_ondisk import QGDataset
 from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly
@@ -29,6 +29,7 @@ from .evaluate import (
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
+from .linear_sequential import LinearSequential
 
 __all__ = [
     # datasets
@@ -54,6 +55,7 @@ __all__ = [
     "ClassifierBlock",
     "GraphFeaturesBlock",
     "GNNModel",
+    "LinearSequential",
     # training
     "Trainer",
     "TrainerDDP",

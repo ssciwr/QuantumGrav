@@ -10,10 +10,10 @@ class GraphFeaturesBlock(QGLS.LinearSequential):
         self,
         input_dim: int,
         output_dim: int,
-        hidden_dims: list[int] = None,
-        activation: torch.nn.Module = torch.nn.ReLU,
-        layer_kwargs: list[dict] = None,
-        activation_kwargs: dict = None,
+        hidden_dims: list[int] | None = None,
+        activation: type[torch.nn.Module] = torch.nn.ReLU,
+        layer_kwargs: list[dict] | None = None,
+        activation_kwargs: dict | None = None,
     ):
         """Create a GraphFeaturesBlock instance. This will create at least one hidden layer and one output layer, with the specified input and output dimensions.
 
@@ -33,9 +33,9 @@ class GraphFeaturesBlock(QGLS.LinearSequential):
             hidden_dims=hidden_dims,
             activation=activation,
             backbone_kwargs=layer_kwargs,
-            output_kwargs=[layer_kwargs[-1]]
-            if layer_kwargs and len(layer_kwargs) > 0
-            else None,
+            output_kwargs=[
+                layer_kwargs[-1] if layer_kwargs and len(layer_kwargs) > 0 else None
+            ],
             activation_kwargs=activation_kwargs,
         )
 
@@ -46,8 +46,8 @@ class GraphFeaturesBlock(QGLS.LinearSequential):
         Returns:
             torch.Tensor: Output tensor with shape (batch_size, output_dim).
         """
-        x = super().forward(x)
-        return x[0] if isinstance(x, list) else x
+        res = super().forward(x)
+        return res[0] if isinstance(res, list) else res
 
     @classmethod
     def from_config(cls, config: dict) -> "GraphFeaturesBlock":
