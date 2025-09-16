@@ -320,7 +320,7 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
-    ) -> Tuple[torch.Tensor, Collection[Any]]:
+    ) -> Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]:
         """Run the training process.
 
         Args:
@@ -328,7 +328,7 @@ class Trainer:
             val_loader (DataLoader): The data loader for the validation set.
 
         Returns:
-            Tuple[Collection[Any], Collection[Any]]: The training and validation results.
+            Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]: The training and validation results.
         """
         self.logger.info("Starting training process.")
         # training loop

@@ -242,7 +242,7 @@ class TrainerDDP(train.Trainer):
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
-    ) -> Tuple[torch.Tensor, Collection[Any]]:
+    ) -> Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]:
         """
         Run the training loop for the distributed model. This will synchronize for validation. No testing is performed in this function. The model will only be checkpointed and early stopped on the 'rank' 0 process.
 
@@ -251,7 +251,7 @@ class TrainerDDP(train.Trainer):
             val_loader (DataLoader): The validation data loader.
 
         Returns:
-            Tuple[torch.Tensor, Collection[Any]]: The training and validation results.
+            Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]: The training and validation results.
         """
 
         self.model = self.initialize_model()
@@ -261,8 +261,8 @@ class TrainerDDP(train.Trainer):
         self.logger.info("Starting training process.")
 
         total_training_data = []
-        all_training_data = []
-        all_validation_data = []
+        all_training_data: list[Any] = [None for _ in range(self.world_size)]
+        all_validation_data: list[Any] = [None for _ in range(self.world_size)]
         for _ in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
@@ -300,4 +300,5 @@ class TrainerDDP(train.Trainer):
             all_validation_data, self.validator.data if self.validator else []
         )
         self.logger.info("Training process completed.")
-        return torch.cat(all_training_data), all_validation_data
+
+        return all_training_data, all_validation_data
