@@ -5,6 +5,7 @@ from . import utils
 
 # quality of life
 from typing import Any
+from pathlib import Path
 
 
 class GNNBlock(torch.nn.Module):
@@ -129,3 +130,28 @@ class GNNBlock(torch.nn.Module):
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
         )
+
+    def save(self, path: str | Path) -> None:
+        """Save the model's state to file.
+
+        Args:
+            path (str | Path): path to save the model to.
+        """
+
+        torch.save(self, path)
+
+    @classmethod
+    def load(
+        cls, path: str | Path, device: torch.device = torch.device("cpu")
+    ) -> "GNNBlock":
+        """Load a mode instance from file
+
+        Args:
+            path (str | Path): Path to the file to load.
+            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
+        Returns:
+            GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
+        """
+
+        model = torch.load(path, map_location=device, weights_only=False)
+        return model

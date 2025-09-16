@@ -113,9 +113,6 @@ class Trainer:
         self.model = model
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
-        # except Exception as e:
-        #     self.logger.error(f"Error initializing model: {e}")
-        #     return None
 
     def initialize_optimizer(self) -> torch.optim.Optimizer | None:
         """Initialize the optimizer for training.
@@ -389,6 +386,10 @@ class Trainer:
             self.epoch += 1
 
         self.logger.info("Training process completed.")
+        self.logger.info("Saving model")
+
+        outpath = self.data_path / f"final_model_epoch={self.epoch}.pt"
+        self.model.save(outpath)
 
         return total_training_data, self.validator.data if self.validator else []
 
@@ -443,7 +444,7 @@ class Trainer:
             self.logger.debug(f"Created directory {outpath.parent} for checkpoint.")
 
         self.latest_checkpoint = outpath
-        torch.save(self.model.state_dict(), outpath)
+        self.model.save(outpath)
 
     def load_checkpoint(self, epoch: int, name_addition: str = "") -> None:
         """Load model checkpoint to the device given
@@ -466,4 +467,4 @@ class Trainer:
         if not loadpath.exists():
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
-        self.model.load_state_dict(torch.load(loadpath, map_location=self.device))
+        self.model = gnn_model.GNNModel.load(loadpath)

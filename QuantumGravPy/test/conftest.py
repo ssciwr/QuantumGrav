@@ -433,7 +433,7 @@ def make_dataloader(create_data_hdf5, make_dataset):
 @pytest.fixture
 def model_config_eval():
     return {
-        "gcn_net": [
+        "encoder": [
             {
                 "in_dim": 2,
                 "out_dim": 8,

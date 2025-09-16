@@ -239,6 +239,38 @@ class TrainerDDP(train.Trainer):
             should_stop = super()._check_model_status(eval_data)
         return should_stop
 
+    def save_checkpoint(self, name_addition: str = ""):
+        """Save model checkpoint.
+
+        Raises:
+            ValueError: If the model is not initialized.
+            ValueError: If the model configuration does not contain 'name'.
+            ValueError: If the training configuration does not contain 'checkpoint_path'.
+        """
+        if self.rank == 0:
+            if self.model is None:
+                raise ValueError("Model must be initialized before saving checkpoint.")
+
+            if "name" not in self.config["model"]:
+                raise ValueError(
+                    "Model configuration must contain 'name' to save checkpoint."
+                )
+
+            self.logger.info(
+                f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.checkpoint_path}"
+            )
+            outpath = (
+                self.checkpoint_path
+                / f"{self.config['model']['name']}_epoch_{self.epoch}_{name_addition}.pt"
+            )
+
+            if outpath.exists() is False:
+                outpath.parent.mkdir(parents=True, exist_ok=True)
+                self.logger.info(f"Created directory {outpath.parent} for checkpoint.")
+
+            self.latest_checkpoint = outpath
+            torch.save(self.model, outpath)
+
     def run_training(
         self,
         train_loader: DataLoader,
