@@ -78,14 +78,7 @@ class QGDatasetBase:
         for filepath in self.input:
             if not Path(filepath).exists():
                 raise FileNotFoundError(f"Input file {filepath} does not exist.")
-
-            if mode == "hdf5":
-                with h5py.File(filepath, "r") as f:
-                    self._num_samples += int(f["num_causal_sets"][()])
-            else:
-                with zarr.storage.LocalStore(filepath, read_only=True) as store:
-                    root = zarr.open_group(store, path="", mode="r")
-                    self._num_samples += int(root["num_samples"][0])
+            self._num_samples += self._get_num_samples_per_file(filepath)
 
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
@@ -106,6 +99,89 @@ class QGDatasetBase:
 
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
                 yaml.dump(self.metadata, f)
+
+    def _get_num_samples_per_file(self, filepath: str | Path) -> int:
+        """Get the number of samples in a given file.
+
+        Args:
+            filepath (str | Path): The path to the file.
+
+        Raises:
+            ValueError: If the file is not a valid HDF5 or Zarr file.
+
+        Returns:
+            int: The number of samples in the file.
+        """
+
+        # try to find the sample number from a dedicated dataset
+        def try_find_numsamples(f):
+            s = None
+            for name in ["num_causal_sets", "num_samples"]:
+                if name in f:
+                    s = f[name]
+                    break
+            return s
+
+        # ... if that fails, we try to read it from any scalar dataset.
+        # ... if we can´t because they are of unequal sizes, we return None
+        # ... to indicate an unresolvable state
+        def fallback(f) -> int | None:
+            # find scalar datasets and use their sizes to determine size
+            shapes = [f[k].shape[0] for k in f.keys() if len(f[k].shape) == 1]
+            max_shape = max(shapes)
+            min_shape = min(shapes)
+            if max_shape != min_shape:
+                return None
+            else:
+                return max_shape
+
+        # same logic for Zarr and HDF5
+        if self.mode == "hdf5":
+            with h5py.File(filepath, "r") as f:
+                try:
+                    # note that fallback returns an int directly,
+                    # while for try_find_numsamples we need to index into the result
+                    s = try_find_numsamples(f)
+                    if s is not None:
+                        return s[()]
+                    else:
+                        s = fallback(f)
+                        if s is not None:
+                            return s
+                        else:
+                            raise RuntimeError("Unable to determine number of samples.")
+                except Exception:
+                    raise
+        elif self.mode == "zarr":
+            try:
+                group = zarr.open_group(
+                    zarr.storage.LocalStore(filepath, read_only=True),
+                    path="",
+                    mode="r",
+                )
+                # note that fallback returns an int directly,
+                # while for try_find_numsamples we need to index into the result
+                s = try_find_numsamples(group)
+                if s is not None:
+                    return s[0]
+                else:
+                    s = fallback(group)
+                    if s is not None:
+                        return s
+                    else:
+                        raise RuntimeError("Unable to determine number of samples.")
+            except Exception:
+                # we need an extra fallback for zarr b/c Julia Zarr and python Zarr
+                # can differ in layout - Julia Zarr does not have to have a group
+                try:
+                    store = zarr.storage.LocalStore(filepath, read_only=True)
+                    arr = zarr.open_array(store, path="adjacency_matrix")
+                    s = max(arr.shape)
+                    return s
+                except Exception:
+                    raise
+        else:
+            raise ValueError("mode must be 'hdf5' or 'zarr'")
 
     @property
     def processed_dir(self) -> str | None:
@@ -189,7 +265,7 @@ class QGDatasetBase:
 
         results = []
         if self.n_processes > 1:
-            results = Parallel(n_jobs=self.n_processes, verbose=10)(
+            results = Parallel(n_jobs=self.n_processes)(
                 delayed(process_item)(datapoint) for datapoint in data
             )
         else:
@@ -214,12 +290,12 @@ class QGDatasetBase:
         Returns:
             list[Data]: The processed data or None if the chunk is empty.
         """
-        root = zarr.open_group(store, path="", mode="r")
-        N = int(root["num_samples"][0])
+        N = self._get_num_samples_per_file(store.root)
+        rootgroup = zarr.open_group(store.root)
 
         def process_item(i: int):
             item = self.data_reader(
-                root,
+                rootgroup,
                 i,
                 self.float_type,
                 self.int_type,
@@ -232,7 +308,7 @@ class QGDatasetBase:
             return item
 
         if self.n_processes > 1:
-            results = Parallel(n_jobs=self.n_processes, verbose=10)(
+            results = Parallel(n_jobs=self.n_processes)(
                 delayed(process_item)(i)
                 for i in range(start, min(start + self.chunksize, N))
             )

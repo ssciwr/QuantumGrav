@@ -1,10 +1,5 @@
 from typing import Callable, Any, Tuple
-import torch
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-from torch_geometric.data import Dataset
-from torch_geometric.loader import DataLoader
+from collections.abc import Collection
 
 import numpy as np
 import os
@@ -13,6 +8,11 @@ from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 from . import train
 
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch_geometric.data import Dataset
+from torch_geometric.loader import DataLoader
 import optuna
 
 
@@ -60,7 +60,7 @@ class TrainerDDP(train.Trainer):
         criterion: Callable,
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[list[dict[str, Any]]], bool] | None = None,
+        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
         validator: DefaultValidator | None = None,
         tester: DefaultTester | None = None,
     ):
@@ -225,11 +225,11 @@ class TrainerDDP(train.Trainer):
         )
         return train_loader, val_loader, test_loader
 
-    def _check_model_status(self, eval_data: list[Any]) -> bool:
+    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
         """Check the status of the model during evaluation.
 
         Args:
-            eval_data (list[Any]): The evaluation data to check.
+            eval_data (list[Any] | torch.Tensor): The evaluation data to check.
 
         Returns:
             bool: Whether the model training should stop.
@@ -244,7 +244,7 @@ class TrainerDDP(train.Trainer):
         train_loader: DataLoader,
         val_loader: DataLoader,
         trial: optuna.trial.Trial | None = None,
-    ) -> Tuple[list[Any], list[Any]]:
+    ) -> Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]:
         """
         Run the training loop for the distributed model. This will synchronize for validation. No testing is performed in this function. The model will only be checkpointed and early stopped on the 'rank' 0 process.
 
@@ -255,7 +255,7 @@ class TrainerDDP(train.Trainer):
                 Defaults to None.
 
         Returns:
-            Tuple[list[Any], list[Any]]: The training and validation results.
+            Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]: The training and validation results.
         """
 
         self.model = self.initialize_model()
@@ -265,8 +265,8 @@ class TrainerDDP(train.Trainer):
         self.logger.info("Starting training process.")
 
         total_training_data = []
-        all_training_data = [None for _ in range(self.world_size)]
-        all_validation_data = [None for _ in range(self.world_size)]
+        all_training_data: list[Any] = [None for _ in range(self.world_size)]
+        all_validation_data: list[Any] = [None for _ in range(self.world_size)]
         for _ in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
@@ -314,4 +314,5 @@ class TrainerDDP(train.Trainer):
             all_validation_data, self.validator.data if self.validator else []
         )
         self.logger.info("Training process completed.")
+
         return all_training_data, all_validation_data
