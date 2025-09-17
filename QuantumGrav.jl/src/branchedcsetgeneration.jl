@@ -1,3 +1,5 @@
+using Random
+using CausalSets
 """
     generate_random_branch_points(nPoints::Int, nTuples::Int; d::Int64 = 2, rng::AbstractRNG = Random.default_rng())
         -> Tuple{Vector{Coordinates{d}}, Vector{Tuple{Coordinates{d}, Coordinates{d}}}}
@@ -307,21 +309,22 @@ function propagate_ray(
     branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},
     y::CausalSets.Coordinates{2},
 )::Vector{CausalSets.Coordinates{2}}
+    local_branch_point_tuples = copy(branch_point_tuples)
     pos = x
     path = [x]
     tmax = y[1]
     while pos[1] < tmax
-        hit = intersections_with_cuts(manifold, pos, slope, branch_point_tuples, y)
-        if hit === nothing
+        hit = intersections_with_cuts(manifold, pos, slope, local_branch_point_tuples, y)
+        if isnothing(hit)
             # No more intersections: propagate straight to tmax
             Δt = tmax - pos[1]
-            newpos = CausalSets.Coordinates{2}((tmax, pos[2] + slope*Δt))
-            push!(path, newpos)
+            pos = CausalSets.Coordinates{2}((tmax, pos[2] + slope*Δt))
+            push!(path, pos)
             continue
         end
 
         intersection, idx = hit
-        (p, q) = branch_point_tuples[idx]
+        (p, q) = local_branch_point_tuples[idx]
         # Move to intersection point
         push!(path, intersection)
 
@@ -344,26 +347,35 @@ function propagate_ray(
             pos = CausalSets.Coordinates{2}((tmax, x_at_tmax))
             push!(path, pos)
         end
+        local_branch_point_tuples = deleteat!(local_branch_point_tuples, idx)
     end
     return path
 end
 
 """
-    propagate_wedge(manifold, x, branch_point_tuples, tmax) -> Bool
+    in_wedge_of(manifold, branch_point_tuples, x, y) -> Bool
 
-Propagate the causal diamond of event `x` forward in time to `tmax`, taking into
-account branch cuts. Both the left- and right-going null rays are followed, with
-deflections at cuts handled as in `propagate_ray`. If the left ray overtakes
-the right ray (wedge collapse), the function returns `false`.
+Checks whether the event `y` lies inside the wedge (causal future) of `x` in the presence of branch cuts.
+This is done by propagating both the left- and right-moving null rays from `x` to the coordinate time of `y`,
+accounting for deflections at each cut (using `propagate_ray`). The wedge is considered open if, at all times up to `y[1]`,
+the left-moving ray remains to the left of (or coincident with) the right-moving ray.
 
 # Arguments
-- `manifold`: The background manifold.
-- `x::Coordinates{2}`: Starting event.
-- `branch_point_tuples`: Vector of cut segments.
-- `tmax::Float64`: Final time (usually `y[1]`).
+- `manifold`: The background manifold (typically a 2D spacetime).
+- `branch_point_tuples::Vector{Tuple{Coordinates{2}, Coordinates{2}}}`: Vector of branch cut segments (each as a tuple of two coordinates).
+- `x::Coordinates{2}`: The initial event (wedge apex).
+- `y::Coordinates{2}`: The final event (target for the wedge, only the time coordinate is used).
 
 # Returns
-- `Bool`: `true` if the wedge remains open until `tmax`, else `false`.
+- `Bool`: `true` if the wedge remains open until `y`, i.e., the left and right null rays do not cross before reaching `y[1]`;
+  `false` if the wedge collapses (left ray overtakes right ray).
+
+# Notes
+- Internally, both left- and right-moving null rays are propagated from `x` to the time of `y` using `propagate_ray`,
+  which handles deflections at each cut by continuing from the appropriate endpoint of the cut.
+- At each segment endpoint and at each time where one ray changes direction, the function interpolates the position of the other ray
+  and checks for wedge collapse by comparing the x-coordinates of the left and right rays.
+- If at any such time the left ray is to the right of the right ray (i.e., `x_left > x_right`), the wedge is considered closed and the function returns `false`.
 """
 function in_wedge_of(
     manifold::CausalSets.AbstractManifold,
