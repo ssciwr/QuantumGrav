@@ -19,6 +19,10 @@ def gnn_block_config():
             32,
         ],
         "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+        "projection_args": [16, 32],
+        "projection_kwargs": {
+            "bias": False,
+        },
         "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
     }
 
