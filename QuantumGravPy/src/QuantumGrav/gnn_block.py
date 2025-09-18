@@ -21,12 +21,14 @@ class GNNBlock(torch.nn.Module):
         gnn_layer_type: torch.nn.Module = tgnn.conv.GCNConv,
         normalizer: torch.nn.Module = torch.nn.Identity,
         activation: torch.nn.Module = torch.nn.ReLU,
-        gnn_layer_args: list[Any] = None,
-        gnn_layer_kwargs: dict[str, Any] = None,
-        norm_args: list[Any] = None,
-        norm_kwargs: dict[str, Any] = None,
-        activation_args: list[Any] = None,
-        activation_kwargs: dict[str, Any] = None,
+        gnn_layer_args: list[Any] | None = None,
+        gnn_layer_kwargs: dict[str, Any] | None = None,
+        norm_args: list[Any] | None = None,
+        norm_kwargs: dict[str, Any] | None = None,
+        activation_args: list[Any] | None = None,
+        activation_kwargs: dict[str, Any] | None = None,
+        projection_args: list[Any] | None = None,
+        projection_kwargs: dict[str, Any] | None = None,
     ):
         """Create a GNNBlock instance.
 
@@ -43,6 +45,9 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs (dict[str, Any], optional): Additional keyword arguments for the normalizer layer. Defaults to None.
             activation_args (list[Any], optional): Additional arguments for the activation function. Defaults to None.
             activation_kwargs (dict[str, Any], optional): Additional keyword arguments for the activation function. Defaults to None.
+            projection_args (list[Any], optional): Additional arguments for the projection layer. Defaults to None.
+            projection_kwargs (dict[str, Any], optional): Additional keyword arguments for the projection layer. Defaults to None.
+
         """
         super().__init__()
 
@@ -72,7 +77,10 @@ class GNNBlock(torch.nn.Module):
         )
 
         if in_dim != out_dim:
-            self.projection = torch.nn.Linear(in_dim, out_dim)
+            self.projection = torch.nn.Linear(
+                *(projection_args if projection_args is not None else []),
+                **(projection_kwargs if projection_kwargs is not None else {}),
+            )
         else:
             self.projection = torch.nn.Identity()
 
@@ -129,6 +137,8 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs=config.get("norm_kwargs", {}),
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
+            projection_args=config.get("projection_args", []),
+            projection_kwargs=config.get("projection_kwargs", {}),
         )
 
     def save(self, path: str | Path) -> None:

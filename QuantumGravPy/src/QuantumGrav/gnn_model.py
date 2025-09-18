@@ -142,6 +142,7 @@ class GNNModel(torch.nn.Module):
         graph_features_net = (
             QGF.GraphFeaturesBlock.from_config(config["graph_features_net"])
             if "graph_features_net" in config
+            and config["graph_features_net"] is not None
             else torch.nn.Identity()
         )
 

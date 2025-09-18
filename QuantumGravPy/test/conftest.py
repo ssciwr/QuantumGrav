@@ -344,6 +344,8 @@ def gnn_block():
             32,
         ],
         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
+        projection_args=[16, 32],
+        projection_kwargs={"bias": False},
     )
 
 
@@ -445,6 +447,10 @@ def model_config_eval():
                     8,
                 ],
                 "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "projection_args": [2, 8],
+                "projection_kwargs": {
+                    "bias": False,
+                },
                 "gnn_layer_kwargs": {
                     "cached": False,
                     "bias": True,
@@ -462,6 +468,10 @@ def model_config_eval():
                     12,
                 ],
                 "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "projection_args": [8, 12],
+                "projection_kwargs": {
+                    "bias": False,
+                },
                 "gnn_layer_kwargs": {
                     "cached": False,
                     "bias": True,
