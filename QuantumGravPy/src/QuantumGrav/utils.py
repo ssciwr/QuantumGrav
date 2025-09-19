@@ -32,17 +32,11 @@ pooling_layers: dict[str, Any] = {
 }
 
 pooling_aggregations: dict[str, Callable] = {
-    "mean": torch.mean,
-    "max": torch.max,
-    "sum": torch.sum,
     "cat0": torch.cat,
     "cat1": partial(torch.cat, dim=1),
 }
 
 graph_features_aggregations: dict[str, Callable] = {
-    "mean": torch.mean,
-    "max": torch.max,
-    "sum": torch.sum,
     "cat0": torch.cat,
     "cat1": partial(torch.cat, dim=1),
 }

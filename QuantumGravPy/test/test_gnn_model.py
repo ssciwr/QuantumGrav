@@ -94,6 +94,8 @@ def gnn_model_config():
             },
         ],
         "pooling_layers": ["mean"],
+        "aggregate_pooling": "test_registered",
+        "aggregate_graph_features": "test_registered",
         "graph_features_net": {
             "input_dim": 10,
             "hidden_dims": [24, 8],
@@ -139,8 +141,10 @@ def test_gnn_model_creation(gnn_model):
 def test_gnn_model_creation_pooling_aggregation_missing(gnn_model_config):
     """Test the creation of GNNModel with missing aggregation function."""
 
+    QG.register_pooling_aggregation("test_registered", torch.cat)
+
+    QG.register_graph_features_aggregation("test_registered", torch.cat)
     gnn_model_config["pooling_layers"].append("max")
-    gnn_model_config["aggregate_graph_features"] = "mean"
 
     model = QG.GNNModel.from_config(gnn_model_config)
 
@@ -148,7 +152,8 @@ def test_gnn_model_creation_pooling_aggregation_missing(gnn_model_config):
         torch_geometric.nn.global_mean_pool,
         torch_geometric.nn.global_max_pool,
     ]
-    assert model.aggregate_graph_features == torch.mean
+
+    assert model.aggregate_graph_features == torch.cat
 
 
 def test_gnn_model_get_embeddings(gnn_model):
