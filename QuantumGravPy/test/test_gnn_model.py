@@ -254,13 +254,8 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
 
     assert loaded_keys == original_keys
 
-    # TODO: fix this
-    # assert (
-    #     loaded_gnn_model.state_dict().keys()
-    #     == gnn_model_with_graph_features.state_dict().keys()
-    # )
-    # for k in loaded_gnn_model.state_dict().keys():
-    #     assert torch.equal(
-    #         loaded_gnn_model.state_dict()[k],
-    #         gnn_model_with_graph_features.state_dict()[k],
-    #     )
+    for k in loaded_gnn_model.state_dict().keys():
+        assert torch.equal(
+            loaded_gnn_model.state_dict()[k],
+            gnn_model_with_graph_features.state_dict()[k],
+        )
