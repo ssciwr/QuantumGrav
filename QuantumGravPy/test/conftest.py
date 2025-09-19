@@ -479,18 +479,22 @@ def model_config_eval():
                 },
             },
         ],
-        "classifier": {
-            "input_dim": 12,
-            "output_dims": [
-                3,
-            ],
-            "hidden_dims": [24, 16],
-            "activation": "relu",
-            "backbone_kwargs": [{}, {}],
-            "output_kwargs": [{}],
-            "activation_kwargs": [{"inplace": False}],
-        },
-        "pooling_layer": "mean",
+        "downstream_tasks": [
+            {
+                "input_dim": 12,
+                "output_dims": [
+                    3,
+                ],
+                "hidden_dims": [24, 16],
+                "activation": "relu",
+                "backbone_kwargs": [{}, {}],
+                "output_kwargs": [{}],
+                "activation_kwargs": [{"inplace": False}],
+            },
+        ],
+        "pooling_layers": [
+            "mean",
+        ],
     }
 
 
