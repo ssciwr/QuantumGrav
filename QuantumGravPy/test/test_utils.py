@@ -97,8 +97,8 @@ def test_get_registered_activation():
 
 def test_get_registered_pooling_aggregation():
     """Test retrieval of registered pooling aggregation functions."""
-    mean = QG.get_pooling_aggregation("mean")
-    assert mean == torch.mean
+    cat = QG.get_pooling_aggregation("cat0")
+    assert cat == torch.cat
 
     not_registered_mean = QG.get_pooling_aggregation("non_existent")
     assert not_registered_mean is None
@@ -107,8 +107,8 @@ def test_get_registered_pooling_aggregation():
 def test_get_registered_graph_features_aggregation():
     """Test retrieval of registered graph features aggregation functions."""
 
-    mean = QG.get_graph_features_aggregation("mean")
-    assert mean == torch.mean
+    cat0 = QG.get_graph_features_aggregation("cat0")
+    assert cat0 == torch.cat
 
     not_registered_mean = QG.get_graph_features_aggregation("non_existent")
     assert not_registered_mean is None
