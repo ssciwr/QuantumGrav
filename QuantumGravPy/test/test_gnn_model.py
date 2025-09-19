@@ -4,6 +4,10 @@ import torch_geometric
 import pytest
 
 
+def cat_graph_features(*features):
+    return torch.cat(features, dim=1)
+
+
 @pytest.fixture
 def gnn_model(gnn_block, classifier_block, pooling_layer, graph_features_net):
     return QG.GNNModel(
@@ -30,6 +34,7 @@ def gnn_model_with_graph_features(
             classifier_block_graphfeatures,
         ],
         pooling_layers=[pooling_layer],
+        aggregate_graph_features=cat_graph_features,
         graph_features_net=graph_features_net,
     )
 
@@ -129,6 +134,21 @@ def test_gnn_model_creation(gnn_model):
     assert gnn_model.downstream_tasks[1].output_layers[1].in_channels == 12
     assert gnn_model.downstream_tasks[1].output_layers[0].out_channels == 2
     assert gnn_model.downstream_tasks[1].output_layers[1].out_channels == 3
+
+
+def test_gnn_model_creation_pooling_aggregation_missing(gnn_model_config):
+    """Test the creation of GNNModel with missing aggregation function."""
+
+    gnn_model_config["pooling_layers"].append("max")
+    gnn_model_config["aggregate_graph_features"] = "mean"
+
+    model = QG.GNNModel.from_config(gnn_model_config)
+
+    assert model.pooling_layers == [
+        torch_geometric.nn.global_mean_pool,
+        torch_geometric.nn.global_max_pool,
+    ]
+    assert model.aggregate_graph_features == torch.mean
 
 
 def test_gnn_model_get_embeddings(gnn_model):
@@ -234,6 +254,7 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
 
     assert loaded_keys == original_keys
 
+    # TODO: fix this
     # assert (
     #     loaded_gnn_model.state_dict().keys()
     #     == gnn_model_with_graph_features.state_dict().keys()

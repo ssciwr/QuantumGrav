@@ -1,7 +1,8 @@
+from functools import partial
 import torch
 import torch_geometric.nn as tgnn
 
-from typing import Any
+from typing import Any, Callable
 
 gnn_layers: dict[str, type[torch.nn.Module]] = {
     "gcn": tgnn.conv.GCNConv,
@@ -30,6 +31,22 @@ pooling_layers: dict[str, Any] = {
     "sum": tgnn.global_add_pool,
 }
 
+pooling_aggregations: dict[str, Callable] = {
+    "mean": torch.mean,
+    "max": torch.max,
+    "sum": torch.sum,
+    "cat0": torch.cat,
+    "cat1": partial(torch.cat, dim=1),
+}
+
+graph_features_aggregations: dict[str, Callable] = {
+    "mean": torch.mean,
+    "max": torch.max,
+    "sum": torch.sum,
+    "cat0": torch.cat,
+    "cat1": partial(torch.cat, dim=1),
+}
+
 
 def list_registered_pooling_layers() -> list[str]:
     """List all registered pooling layers."""
@@ -49,6 +66,24 @@ def list_registered_normalizers() -> list[str]:
 def list_registered_activations() -> list[str]:
     """List all registered activation layers."""
     return list(activation_layers.keys())
+
+
+def list_registered_graph_features_aggregations() -> list[str]:
+    """List all registered graph features aggregation functions.
+
+    Returns:
+        list[str]: A list of registered graph features aggregation function names.
+    """
+    return list(graph_features_aggregations.keys())
+
+
+def list_registered_pooling_aggregations() -> list[str]:
+    """List all registered pooling aggregation functions.
+
+    Returns:
+        list[str]: A list of registered pooling aggregation function names.
+    """
+    return list(pooling_aggregations.keys())
 
 
 def register_pooling_layer(
@@ -111,6 +146,44 @@ def register_activation(
     activation_layers[activation_name] = activation_layer
 
 
+def register_graph_features_aggregation(
+    aggregation_name: str, aggregation_function: Callable
+) -> None:
+    """Register a graph features aggregation function with the module
+
+    Args:
+        aggregation_name (str): The name of the graph features aggregation function.
+        aggregation_function (Callable): The graph features aggregation function to register.
+
+    Raises:
+        ValueError: If the graph features aggregation function is already registered.
+    """
+    if aggregation_name in graph_features_aggregations:
+        raise ValueError(
+            f"Graph features aggregation '{aggregation_name}' is already registered."
+        )
+    graph_features_aggregations[aggregation_name] = aggregation_function
+
+
+def register_pooling_aggregation(
+    aggregation_name: str, aggregation_function: Callable
+) -> None:
+    """Register a pooling aggregation function with the module
+
+    Args:
+        aggregation_name (str): The name of the pooling aggregation function.
+        aggregation_function (Callable): The pooling aggregation function to register.
+
+    Raises:
+        ValueError: If the pooling aggregation function is already registered.
+    """
+    if aggregation_name in pooling_aggregations:
+        raise ValueError(
+            f"Pooling aggregation '{aggregation_name}' is already registered."
+        )
+    pooling_aggregations[aggregation_name] = aggregation_function
+
+
 def get_registered_pooling_layer(name: str) -> torch.nn.Module | None:
     """Get a registered pooling layer by name.
 
@@ -156,3 +229,31 @@ def get_registered_activation(name: str) -> type[torch.nn.Module] | None:
         type[torch.nn.Module] | None: The registered activation layer named `name`, or None if not found.
     """
     return activation_layers[name] if name in activation_layers else None
+
+
+def get_pooling_aggregation(name: str) -> Callable | None:
+    """Get a registered pooling aggregation function by name.
+
+    Args:
+        name (str): The name of the pooling aggregation function.
+
+    Returns:
+        Callable: Function to aggregate pooling layer outputs.
+    """
+    return pooling_aggregations[name] if name in pooling_aggregations else None
+
+
+def get_graph_features_aggregation(name: str) -> Callable | None:
+    """Get a registered graph features aggregation function by name.
+
+    Args:
+        name (str): The name of the graph features aggregation function.
+
+    Returns:
+        Callable | None: Function to aggregate graph features outputs, or None if not found.
+    """
+    return (
+        graph_features_aggregations[name]
+        if name in graph_features_aggregations
+        else None
+    )

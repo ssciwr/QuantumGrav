@@ -201,12 +201,18 @@ class GNNModel(torch.nn.Module):
             and config["graph_features_net"] is not None
             else None
         )
+        aggregate_pooling = utils.get_pooling_aggregation(config["aggregate_pooling"])
+        aggregate_graph_features = utils.get_graph_features_aggregation(
+            config["aggregate_graph_features"]
+        )
 
         return cls(
             encoder=encoder,
             downstream_tasks=downstream_tasks,
             pooling_layers=pooling_layers,
             graph_features_net=graph_features_net,
+            aggregate_graph_features=aggregate_graph_features,
+            aggregate_pooling=aggregate_pooling,
         )
 
     def save(self, path: str | Path) -> None:
