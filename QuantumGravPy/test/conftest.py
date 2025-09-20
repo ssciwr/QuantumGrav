@@ -351,31 +351,27 @@ def gnn_block():
 
 @pytest.fixture
 def classifier_block():
-    return QG.ClassifierBlock(
+    return QG.LinearSequential(
         input_dim=32,
         hidden_dims=[24, 12],
-        output_dims=[2, 3],
+        output_dim=3,
         activation=torch.nn.ReLU,
         backbone_kwargs=[{}, {}],
         activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
+        output_kwargs={},
     )
 
 
 @pytest.fixture
 def classifier_block_graphfeatures():
-    return QG.ClassifierBlock(
+    return QG.LinearSequential(
         input_dim=64,
         hidden_dims=[24, 12],
-        output_dims=[2, 3],
+        output_dim=3,
         activation=torch.nn.ReLU,
         backbone_kwargs=[{}, {}],
         activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
+        output_kwargs={},
     )
 
 
@@ -386,12 +382,13 @@ def pooling_layer():
 
 @pytest.fixture
 def graph_features_net():
-    return QG.GraphFeaturesBlock(
+    return QG.LinearSequential(
         input_dim=10,
         output_dim=32,
         hidden_dims=[24, 8],
         activation=torch.nn.ReLU,
-        layer_kwargs=[{}, {}],
+        backbone_kwargs=[{}, {}],
+        output_kwargs={},
         activation_kwargs=[
             {"inplace": False},
         ],
