@@ -81,7 +81,7 @@ def list_registered_pooling_aggregations() -> list[str]:
 
 
 def register_pooling_layer(
-    pooling_layer_name: str, pooling_layer: torch.nn.Module
+    pooling_layer_name: str, pooling_layer: type[torch.nn.Module] | Callable
 ) -> None:
     """Register a pooling layer with the module
 
@@ -141,7 +141,7 @@ def register_activation(
 
 
 def register_graph_features_aggregation(
-    aggregation_name: str, aggregation_function: Callable
+    aggregation_name: str, aggregation_function: type[torch.nn.Module] | Callable
 ) -> None:
     """Register a graph features aggregation function with the module
 
@@ -178,14 +178,14 @@ def register_pooling_aggregation(
     pooling_aggregations[aggregation_name] = aggregation_function
 
 
-def get_registered_pooling_layer(name: str) -> torch.nn.Module | None:
+def get_registered_pooling_layer(name: str) -> type[torch.nn.Module] | Callable | None:
     """Get a registered pooling layer by name.
 
     Args:
         name (str): The name of the pooling layer.
 
     Returns:
-        torch.nn.Module | None: The registered pooling layer named `name`, or None if not found.
+        type[torch.nn.Module] | Callable | None: The registered pooling layer named `name`, or None if not found.
     """
     return pooling_layers[name] if name in pooling_layers else None
 
@@ -225,26 +225,28 @@ def get_registered_activation(name: str) -> type[torch.nn.Module] | None:
     return activation_layers[name] if name in activation_layers else None
 
 
-def get_pooling_aggregation(name: str) -> Callable | None:
+def get_pooling_aggregation(name: str) -> type[torch.nn.Module] | Callable | None:
     """Get a registered pooling aggregation function by name.
 
     Args:
         name (str): The name of the pooling aggregation function.
 
     Returns:
-        Callable: Function to aggregate pooling layer outputs.
+        type[torch.nn.Module] | Callable: Function to aggregate pooling layer outputs.
     """
     return pooling_aggregations[name] if name in pooling_aggregations else None
 
 
-def get_graph_features_aggregation(name: str) -> Callable | None:
+def get_graph_features_aggregation(
+    name: str,
+) -> type[torch.nn.Module] | Callable | None:
     """Get a registered graph features aggregation function by name.
 
     Args:
         name (str): The name of the graph features aggregation function.
 
     Returns:
-        Callable | None: Function to aggregate graph features outputs, or None if not found.
+        type[torch.nn.Module] | Callable | None: Function to aggregate graph features outputs, or None if not found.
     """
     return (
         graph_features_aggregations[name]

@@ -1,12 +1,10 @@
-from typing import Any, Callable
-from collections.abc import Collection
+from typing import Any, Callable, Sequence
 from pathlib import Path
 
 import torch
 
 from . import utils
-from . import classifier_block as QGC
-from . import graphfeatures_block as QGF
+from . import linear_sequential as QGLS
 from . import gnn_block as QGGNN
 
 
@@ -18,9 +16,9 @@ class GNNModel(torch.nn.Module):
 
     def __init__(
         self,
-        encoder: list[QGGNN.GNNBlock],
-        downstream_tasks: list[torch.nn.Module],
-        pooling_layers: list[torch.nn.Module],
+        encoder: Sequence[QGGNN.GNNBlock],
+        downstream_tasks: Sequence[torch.nn.Module],
+        pooling_layers: Sequence[torch.nn.Module],
         aggregate_pooling: torch.nn.Module | Callable | None = None,
         graph_features_net: torch.nn.Module | None = None,
         aggregate_graph_features: torch.nn.Module | Callable | None = None,
@@ -29,17 +27,17 @@ class GNNModel(torch.nn.Module):
 
         Args:
             encoder (GCNBackbone): GCN backbone network.
-            downstream_tasks (list[torch.nn.Module]): Downstream task blocks.
-            pooling_layers (list[torch.nn.Module]): Pooling layers. Defaults to None.
+            downstream_tasks (Sequence[torch.nn.Module]): Downstream task blocks.
+            pooling_layers (Sequence[torch.nn.Module]): Pooling layers. Defaults to None.
             aggregate_pooling (torch.nn.Module | Callable | None): Aggregation of pooling layer output. Defaults to None.
             graph_features_net (torch.nn.Module, optional): Graph features network. Defaults to None.
             aggregate_graph_features (torch.nn.Module | Callable | None): Aggregation of graph features. Defaults to None.
         """
         super().__init__()
         self.encoder = torch.nn.ModuleList(encoder)
-        self.downstream_tasks = downstream_tasks
+        self.downstream_tasks = torch.nn.ModuleList(downstream_tasks)
         self.graph_features_net = graph_features_net
-        self.pooling_layers = pooling_layers
+        self.pooling_layers = torch.nn.ModuleList(pooling_layers)
         self.aggregate_pooling = aggregate_pooling
         self.aggregate_graph_features = aggregate_graph_features
 
@@ -110,10 +108,10 @@ class GNNModel(torch.nn.Module):
         edge_index: torch.Tensor,
         batch: torch.Tensor,
         graph_features: torch.Tensor | None = None,
-        downstream_task_args: list[tuple | list] | None = None,
-        downstream_task_kwargs: list[dict] | None = None,
+        downstream_task_args: Sequence[tuple | list] | None = None,
+        downstream_task_kwargs: Sequence[dict] | None = None,
         gcn_kwargs: dict[Any, Any] | None = None,
-    ) -> Collection[torch.Tensor]:
+    ) -> Sequence[torch.Tensor]:
         """Forward run of the gnn model with optional graph features.
         # First execute the graph-neural network backbone, then process the graph features, and finally apply the downstream tasks.
 
@@ -122,12 +120,12 @@ class GNNModel(torch.nn.Module):
             edge_index (torch.Tensor): Graph connectivity information.
             batch (torch.Tensor): Batch vector for pooling.
             graph_features (torch.Tensor | None, optional): Additional graph features. Defaults to None.
-            downstream_task_args (list[tuple] | None, optional): Arguments for downstream tasks. Defaults to None.
-            downstream_task_kwargs (list[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
+            downstream_task_args (Sequence[tuple] | None, optional): Arguments for downstream tasks. Defaults to None.
+            downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
             gcn_kwargs (dict[Any, Any] | None, optional): Additional arguments for the GCN. Defaults to None.
 
         Returns:
-            Collection[torch.Tensor]: Raw output of downstream tasks.
+            Sequence[torch.Tensor]: Raw output of downstream tasks.
         """
         # apply the GCN backbone to the node features
         embeddings = self.get_embeddings(x, edge_index, batch, gcn_kwargs=gcn_kwargs)
@@ -166,14 +164,12 @@ class GNNModel(torch.nn.Module):
         else:
             downstream_task_kwargs = [{} for _ in self.downstream_tasks]
 
-        for downstream_task, downstream_task_args, downstream_task_kwargs in zip(
+        for task, task_args, task_kwargs in zip(
             self.downstream_tasks,
             downstream_task_args,
             downstream_task_kwargs,
         ):
-            res = downstream_task(
-                embeddings, *downstream_task_args, **downstream_task_kwargs
-            )
+            res = task(embeddings, *task_args, **task_kwargs)
             output.append(res)
 
         return output
@@ -188,19 +184,36 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: An instance of GNNModel.
         """
+
+        # create encoder
         encoder = [QGGNN.GNNBlock.from_config(cfg) for cfg in config["encoder"]]
+
+        # create downstream tasks
         downstream_tasks = [
-            QGC.ClassifierBlock.from_config(cfg) for cfg in config["downstream_tasks"]
+            QGLS.LinearSequential.from_config(cfg) for cfg in config["downstream_tasks"]
         ]  # TODO: generalize this!
-        pooling_layers = [
-            utils.get_registered_pooling_layer(cfg) for cfg in config["pooling_layers"]
-        ]
+
+        # make pooling layers
+        pooling_layers = []
+        for pool_cfg in config["pooling_layers"]:
+            pooling_layer = utils.get_registered_pooling_layer(pool_cfg["type"])
+            if pooling_layer is None:
+                raise ValueError(
+                    f"Pooling layer '{pool_cfg['type']}' is not registered."
+                )
+            pooling_layers.append(
+                pooling_layer(**(pool_cfg["kwargs"] if "kwargs" in pool_cfg else {}))
+            )
+
+        # make graph features network and aggregations
         graph_features_net = (
-            QGF.GraphFeaturesBlock.from_config(config["graph_features_net"])
+            QGLS.LinearSequential.from_config(config["graph_features_net"])
             if "graph_features_net" in config
             and config["graph_features_net"] is not None
             else None
         )
+
+        # aggregations
         aggregate_pooling = utils.get_pooling_aggregation(config["aggregate_pooling"])
         aggregate_graph_features = utils.get_graph_features_aggregation(
             config["aggregate_graph_features"]
@@ -218,9 +231,11 @@ class GNNModel(torch.nn.Module):
     def save(self, path: str | Path) -> None:
         """Save the model state to file. This saves a dictionary structured like this:
          'encoder': self.encoder,
-         'classifier': self.classifier,
-         'pooling_layer': self.pooling_layer,
-         'graph_features_net': self.graph_features_net
+         'downstream_tasks': self.downstream_tasks,
+         'pooling_layers': self.pooling_layers,
+         'graph_features_net': self.graph_features_net,
+         'aggregate_graph_features': self.aggregate_graph_features,
+         'aggregate_pooling': self.aggregate_pooling,
 
         Args:
             path (str | Path): Path to save the model to
