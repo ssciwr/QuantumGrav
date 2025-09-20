@@ -159,7 +159,6 @@ class GNNModel(torch.nn.Module):
             x, edge_index, batch, gcn_kwargs=embedding_kwargs
         )
 
-        print("embeddings shape: ", embeddings.shape)
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
             graph_features = self.graph_features_net(graph_features)
