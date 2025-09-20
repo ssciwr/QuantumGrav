@@ -116,13 +116,13 @@ def test_gnn_model_creation(gnn_model):
     assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
     assert len(gnn_model.encoder) == 1  # Assuming one GNN block
     assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
-    assert isinstance(gnn_model.downstream_tasks[0], QG.ClassifierBlock)
-    assert isinstance(gnn_model.downstream_tasks[1], QG.ClassifierBlock)
+    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
+    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
 
     assert gnn_model.pooling_layers[0] == torch_geometric.nn.global_mean_pool
     assert gnn_model.pooling_layers[1] == torch_geometric.nn.global_mean_pool
     assert gnn_model.aggregate_pooling == torch.cat
-    assert isinstance(gnn_model.graph_features_net, QG.GraphFeaturesBlock)
+    assert isinstance(gnn_model.graph_features_net, QG.LinearSequential)
 
     # assert sizes and properties of the components
     assert gnn_model.encoder[0].in_dim == 16
@@ -222,11 +222,11 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     assert len(model.encoder) == 2  # Assuming two GNN blocks
 
     for task in model.downstream_tasks:
-        assert isinstance(task, QG.ClassifierBlock)
+        assert isinstance(task, QG.LinearSequential)
 
     assert model.pooling_layers == [torch_geometric.nn.global_mean_pool]
 
-    assert isinstance(model.graph_features_net, QG.GraphFeaturesBlock)
+    assert isinstance(model.graph_features_net, QG.LinearSequential)
 
     x = torch.randn(5, 16)  # 5 nodes with 16 features each
     edge_index = torch.tensor(

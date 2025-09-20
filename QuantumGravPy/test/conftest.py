@@ -479,25 +479,31 @@ def model_config_eval():
         "downstream_tasks": [
             {
                 "input_dim": 12,
-                "output_dims": [
-                    3,
-                ],
+                "output_dim": 3,
                 "hidden_dims": [24, 16],
                 "activation": "relu",
                 "backbone_kwargs": [{}, {}],
-                "output_kwargs": [{}],
+                "output_kwargs": {},
                 "activation_kwargs": [{"inplace": False}],
             },
         ],
         "pooling_layers": [
-            "mean",
+            {
+                "type": "mean",
+                "kwargs": {},
+            }
         ],
+        "aggregate_pooling": "test_registered",
     }
 
 
 @pytest.fixture
 def gnn_model_eval(model_config_eval):
     """Fixture to create a GNNModel for evaluation."""
+    QG.utils.register_pooling_aggregation(
+        "test_registered", lambda x: torch.sum(torch.cat(x, dim=1), dim=1)
+    )
+
     model = QG.GNNModel.from_config(
         model_config_eval,
     )

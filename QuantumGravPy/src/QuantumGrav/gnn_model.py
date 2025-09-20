@@ -8,6 +8,19 @@ from . import linear_sequential as QGLS
 from . import gnn_block as QGGNN
 
 
+class PoolingWrapper(torch.nn.Module):
+    """Wrapper to make pooling functions compatible with ModuleList."""
+
+    def __init__(self, pooling_fn: Callable):
+        super().__init__()
+        self.pooling_fn = pooling_fn
+
+    def forward(
+        self, x: torch.Tensor, batch: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        return self.pooling_fn(x, batch)
+
+
 class GNNModel(torch.nn.Module):
     """Torch module for the full GCN model, which consists of a GCN backbone, a set of downstream tasks, and a pooling layer, augmented with optional graph features network.
     Args:
@@ -37,13 +50,27 @@ class GNNModel(torch.nn.Module):
         self.encoder = torch.nn.ModuleList(encoder)
         self.downstream_tasks = torch.nn.ModuleList(downstream_tasks)
         self.graph_features_net = graph_features_net
-        self.pooling_layers = torch.nn.ModuleList(pooling_layers)
+        self.pooling_layers = torch.nn.ModuleList(
+            [
+                p if isinstance(p, torch.nn.Module) else PoolingWrapper(p)
+                for p in pooling_layers
+            ]
+        )
         self.aggregate_pooling = aggregate_pooling
         self.aggregate_graph_features = aggregate_graph_features
 
         if self.aggregate_pooling is None and len(self.pooling_layers) > 1:
             raise ValueError(
                 "If multiple pooling layers are defined, an aggregation method must be provided."
+            )
+
+        graph_processors = [self.graph_features_net, self.aggregate_graph_features]
+
+        if any([g is not None for g in graph_processors]) and not all(
+            g is not None for g in graph_processors
+        ):
+            raise ValueError(
+                "If graph features are to be used, both a graph features network and an aggregation method must be provided."
             )
 
     def _eval_encoder(
@@ -92,11 +119,11 @@ class GNNModel(torch.nn.Module):
         embeddings = self._eval_encoder(
             x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
         )
-
         # pool everything together into a single graph representation
         pooled_embeddings = [
             pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
         ]
+
         if self.aggregate_pooling is not None:
             return self.aggregate_pooling(pooled_embeddings)
         else:
@@ -110,7 +137,7 @@ class GNNModel(torch.nn.Module):
         graph_features: torch.Tensor | None = None,
         downstream_task_args: Sequence[tuple | list] | None = None,
         downstream_task_kwargs: Sequence[dict] | None = None,
-        gcn_kwargs: dict[Any, Any] | None = None,
+        embedding_kwargs: dict[Any, Any] | None = None,
     ) -> Sequence[torch.Tensor]:
         """Forward run of the gnn model with optional graph features.
         # First execute the graph-neural network backbone, then process the graph features, and finally apply the downstream tasks.
@@ -122,53 +149,40 @@ class GNNModel(torch.nn.Module):
             graph_features (torch.Tensor | None, optional): Additional graph features. Defaults to None.
             downstream_task_args (Sequence[tuple] | None, optional): Arguments for downstream tasks. Defaults to None.
             downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
-            gcn_kwargs (dict[Any, Any] | None, optional): Additional arguments for the GCN. Defaults to None.
+            embedding_kwargs (dict[Any, Any] | None, optional): Additional arguments for the GCN. Defaults to None.
 
         Returns:
             Sequence[torch.Tensor]: Raw output of downstream tasks.
         """
         # apply the GCN backbone to the node features
-        embeddings = self.get_embeddings(x, edge_index, batch, gcn_kwargs=gcn_kwargs)
+        embeddings = self.get_embeddings(
+            x, edge_index, batch, gcn_kwargs=embedding_kwargs
+        )
 
+        print("embeddings shape: ", embeddings.shape)
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
-            if (
-                self.graph_features_net is not None
-                and self.aggregate_graph_features is not None
-            ):
-                graph_features = self.graph_features_net(graph_features)
-                embeddings = self.aggregate_graph_features(embeddings, graph_features)
-            else:
-                raise ValueError(
-                    "Graph features network or aggregation function is not defined, but graph features should be used"
-                )
+            graph_features = self.graph_features_net(graph_features)
+            embeddings = self.aggregate_graph_features(embeddings, graph_features)
 
         # downstream tasks are given out as is, no softmax or other assumptions
         output = []
 
-        if downstream_task_args is not None:
-            downstream_task_args = [
-                downstream_task_args[i] if downstream_task_args[i] is not None else []
-                for i in range(1, len(self.downstream_tasks))
-            ]
-        else:
-            downstream_task_args = [[] for _ in self.downstream_tasks]
+        for i, task in enumerate(self.downstream_tasks):
+            if downstream_task_args is not None:
+                task_args = downstream_task_args[i]
+                if task_args is None:
+                    task_args = []
+            else:
+                task_args = []
 
-        if downstream_task_kwargs is not None:
-            downstream_task_kwargs = [
-                downstream_task_kwargs[i]
-                if downstream_task_kwargs[i] is not None
-                else {}
-                for i in range(1, len(self.downstream_tasks))
-            ]
-        else:
-            downstream_task_kwargs = [{} for _ in self.downstream_tasks]
+            if downstream_task_kwargs is not None:
+                task_kwargs = downstream_task_kwargs[i]
+                if task_kwargs is None:
+                    task_kwargs = {}
+            else:
+                task_kwargs = {}
 
-        for task, task_args, task_kwargs in zip(
-            self.downstream_tasks,
-            downstream_task_args,
-            downstream_task_kwargs,
-        ):
             res = task(embeddings, *task_args, **task_kwargs)
             output.append(res)
 
@@ -197,28 +211,44 @@ class GNNModel(torch.nn.Module):
         pooling_layers = []
         for pool_cfg in config["pooling_layers"]:
             pooling_layer = utils.get_registered_pooling_layer(pool_cfg["type"])
+            print("pool_cfg: ", pool_cfg, "pooling_layer:", pooling_layer)
             if pooling_layer is None:
                 raise ValueError(
                     f"Pooling layer '{pool_cfg['type']}' is not registered."
                 )
-            pooling_layers.append(
-                pooling_layer(**(pool_cfg["kwargs"] if "kwargs" in pool_cfg else {}))
-            )
+
+            if isinstance(pooling_layer, torch.nn.Module):
+                pooling_layers.append(
+                    pooling_layer(
+                        *pool_cfg["args"] if "args" in pool_cfg else [],
+                        **(pool_cfg["kwargs"] if "kwargs" in pool_cfg else {}),
+                    )
+                )
+            else:
+                pooling_layers.append(pooling_layer)
 
         # make graph features network and aggregations
-        graph_features_net = (
-            QGLS.LinearSequential.from_config(config["graph_features_net"])
-            if "graph_features_net" in config
-            and config["graph_features_net"] is not None
-            else None
-        )
+
+        if "graph_features_net" in config:
+            graph_features_net = QGLS.LinearSequential.from_config(
+                config["graph_features_net"]
+            )
+        else:
+            graph_features_net = None
 
         # aggregations
         aggregate_pooling = utils.get_pooling_aggregation(config["aggregate_pooling"])
-        aggregate_graph_features = utils.get_graph_features_aggregation(
-            config["aggregate_graph_features"]
-        )
 
+        if graph_features_net is not None:
+            aggregate_graph_features = utils.get_graph_features_aggregation(
+                config["aggregate_graph_features"]
+            )
+        else:
+            aggregate_graph_features = None
+
+        print("pooling_layers:", pooling_layers)
+        print("graph_features_net:", graph_features_net)
+        print("aggregate_graph_features:", aggregate_graph_features)
         return cls(
             encoder=encoder,
             downstream_tasks=downstream_tasks,
