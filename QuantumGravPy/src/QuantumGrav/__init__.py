@@ -23,9 +23,7 @@ from .dataset_ondisk import QGDataset
 from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly
 from .gnn_model import GNNModel
-from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
-from .graphfeatures_block import GraphFeaturesBlock
 from .evaluate import (
     DefaultEvaluator,
     DefaultTester,
@@ -64,8 +62,6 @@ __all__ = [
     "list_registered_pooling_aggregations",
     # models
     "GNNBlock",
-    "ClassifierBlock",
-    "GraphFeaturesBlock",
     "GNNModel",
     "LinearSequential",
     # training
