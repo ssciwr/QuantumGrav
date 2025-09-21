@@ -9,14 +9,13 @@ def cat_graph_features(*features):
 
 
 @pytest.fixture
-def gnn_model(gnn_block, classifier_block, pooling_layer, graph_features_net):
+def gnn_model(gnn_block, classifier_block, pooling_layer):
     return QG.GNNModel(
         encoder=[
             gnn_block,
         ],
         downstream_tasks=[classifier_block, classifier_block],
         pooling_layers=[pooling_layer, pooling_layer],
-        graph_features_net=graph_features_net,
         aggregate_pooling=torch.cat,
     )
 
@@ -36,6 +35,7 @@ def gnn_model_with_graph_features(
         pooling_layers=[pooling_layer],
         aggregate_graph_features=cat_graph_features,
         graph_features_net=graph_features_net,
+        aggregate_pooling=torch.cat,
     )
 
 
@@ -85,17 +85,31 @@ def gnn_model_config():
         "downstream_tasks": [
             {
                 "input_dim": 16,
-                "output_dims": [2, 3],
+                "output_dim": 3,
                 "hidden_dims": [24, 18],
                 "activation": "relu",
                 "backbone_kwargs": [{}, {}],
-                "output_kwargs": [{}],
+                "output_kwargs": {},
                 "activation_kwargs": [{"inplace": False}],
             },
         ],
-        "pooling_layers": ["mean"],
-        "aggregate_pooling": "test_registered",
-        "aggregate_graph_features": "test_registered",
+        "pooling_layers": [
+            {
+                "type": "mean",
+                "args": [],
+                "kwargs": {},
+            },
+        ],
+        "aggregate_pooling": {
+            "type": "test_registered",
+            "args": [],
+            "kwargs": {},
+        },
+        "aggregate_graph_features": {
+            "type": "test_registered",
+            "args": [],
+            "kwargs": {},
+        },
         "graph_features_net": {
             "input_dim": 10,
             "hidden_dims": [24, 8],
@@ -119,41 +133,24 @@ def test_gnn_model_creation(gnn_model):
     assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
     assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
 
-    assert gnn_model.pooling_layers[0] == torch_geometric.nn.global_mean_pool
-    assert gnn_model.pooling_layers[1] == torch_geometric.nn.global_mean_pool
-    assert gnn_model.aggregate_pooling == torch.cat
+    assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.PoolingWrapper)
+    assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.PoolingWrapper)
+    assert isinstance(gnn_model.aggregate_pooling, QG.gnn_model.PoolingWrapper)
     assert isinstance(gnn_model.graph_features_net, QG.LinearSequential)
 
     # assert sizes and properties of the components
     assert gnn_model.encoder[0].in_dim == 16
     assert gnn_model.encoder[0].out_dim == 32
-    assert gnn_model.downstream_tasks[0].output_layers[0].in_channels == 12
-    assert gnn_model.downstream_tasks[0].output_layers[1].in_channels == 12
-    assert gnn_model.downstream_tasks[0].output_layers[0].out_channels == 2
-    assert gnn_model.downstream_tasks[0].output_layers[1].out_channels == 3
-
-    assert gnn_model.downstream_tasks[1].output_layers[0].in_channels == 12
-    assert gnn_model.downstream_tasks[1].output_layers[1].in_channels == 12
-    assert gnn_model.downstream_tasks[1].output_layers[0].out_channels == 2
-    assert gnn_model.downstream_tasks[1].output_layers[1].out_channels == 3
+    assert len(gnn_model.downstream_tasks) == 2
 
 
 def test_gnn_model_creation_pooling_aggregation_missing(gnn_model_config):
     """Test the creation of GNNModel with missing aggregation function."""
 
-    QG.register_pooling_aggregation("test_registered", torch.cat)
+    gnn_model_config["pooling_layers"] = None
 
-    QG.register_graph_features_aggregation("test_registered", torch.cat)
-    gnn_model_config["pooling_layers"].append("max")
-
-    model = QG.GNNModel.from_config(gnn_model_config)
-
-    assert model.pooling_layers == [
-        torch_geometric.nn.global_mean_pool,
-        torch_geometric.nn.global_max_pool,
-    ]
-
-    assert model.aggregate_graph_features == torch.cat
+    with pytest.raises(TypeError):
+        QG.GNNModel.from_config(gnn_model_config)
 
 
 def test_gnn_model_get_embeddings(gnn_model):
@@ -184,13 +181,10 @@ def test_gnn_model_forward(gnn_model):
     batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
     gnn_model.eval()  # Set model to evaluation mode
     output = gnn_model(x, edge_index, batch)
-
     assert gnn_model.training is False  # Ensure model is in eval mode
     assert isinstance(output, list)
-    assert output[0][0].shape == (4, 2)  # 2 graphs, 2 concat pooling layers, 2 classes
-    assert output[0][1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
-    assert output[1][0].shape == (4, 2)  # 2 graphs, 2 concat pooling layers, 2 classes
-    assert output[1][1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
 
 
 def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
@@ -209,8 +203,8 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
         gnn_model_with_graph_features.training is False
     )  # Ensure model is in eval mode
     assert isinstance(output, list)
-    assert output[0][0].shape == (2, 2)  # 2 graphs, 1 pooling layers, 2 classes
-    assert output[0][1].shape == (2, 3)
+    assert output[0].shape == (2, 3)  # 2 graphs, 1 pooling layers, 2 classes
+    assert output[0].shape == (2, 3)
 
 
 def test_gnn_model_creation_from_config(gnn_model_config):

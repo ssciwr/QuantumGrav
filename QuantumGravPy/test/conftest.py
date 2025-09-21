@@ -478,6 +478,7 @@ def model_config_eval():
         ],
         "downstream_tasks": [
             {
+                "type": "LinearSequential",
                 "input_dim": 12,
                 "output_dim": 3,
                 "hidden_dims": [24, 16],
@@ -494,7 +495,11 @@ def model_config_eval():
                 "kwargs": {},
             }
         ],
-        "aggregate_pooling": "cat_mean",
+        "aggregate_pooling": {
+            "type": "cat_mean",
+            "args": [],
+            "kwargs": {},
+        },
     }
 
 
