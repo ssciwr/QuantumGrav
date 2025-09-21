@@ -9,7 +9,7 @@ def linseq_params():
     return {
         "input_dim": 10,
         "hidden_dims": [20, 30],
-        "output_dims": 3,
+        "output_dim": 3,
         "activation": torch.nn.ReLU,
         "backbone_kwargs": [{}, {}],
         "output_kwargs": {},
@@ -25,7 +25,7 @@ def linearseq(linseq_params):
     return QG.linear_sequential.LinearSequential(
         input_dim=params["input_dim"],
         hidden_dims=params["hidden_dims"],
-        output_dim=params["output_dims"],
+        output_dim=params["output_dim"],
         activation=params["activation"],
         backbone_kwargs=params["backbone_kwargs"],
         output_kwargs=params["output_kwargs"],
@@ -37,7 +37,7 @@ def test_linseq_creation(linseq_params):
     linearseq = QG.linear_sequential.LinearSequential(
         input_dim=linseq_params["input_dim"],
         hidden_dims=linseq_params["hidden_dims"],
-        output_dim=linseq_params["output_dims"],
+        output_dim=linseq_params["output_dim"],
         activation=linseq_params["activation"],
         backbone_kwargs=linseq_params["backbone_kwargs"],
         output_kwargs=linseq_params["output_kwargs"],
@@ -90,7 +90,7 @@ def test_linseq_invalid_hidden_dims(linseq_params):
         QG.linear_sequential.LinearSequential(
             input_dim=linseq_params["input_dim"],
             hidden_dims=[-1, 3],
-            output_dim=linseq_params["output_dims"],
+            output_dim=linseq_params["output_dim"],
             activation=linseq_params["activation"],
             backbone_kwargs=linseq_params["backbone_kwargs"],
             output_kwargs=linseq_params["output_kwargs"],
@@ -118,7 +118,7 @@ def test_linseq_forward_pass_with_kwargs(linseq_params):
     cl = QG.linear_sequential.LinearSequential(
         input_dim=linseq_params["input_dim"],
         hidden_dims=linseq_params["hidden_dims"],
-        output_dim=linseq_params["output_dims"],
+        output_dim=linseq_params["output_dim"],
         activation=linseq_params["activation"],
         backbone_kwargs=backbone_kwargs,
         output_kwargs=output_kwargs,

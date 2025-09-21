@@ -253,3 +253,24 @@ def get_graph_features_aggregation(
         if name in graph_features_aggregations
         else None
     )
+
+
+def verify_config_node(cfg) -> bool:
+    """Verify that a config node has the required keys.
+
+    Args:
+        cfg (dict): The config node to verify.
+
+    Returns:
+        bool: True if the config node is valid, False otherwise.
+    """
+    required_keys = {"type", "args", "kwargs"}
+    if not isinstance(cfg, dict):
+        return False
+    if not required_keys.issubset(cfg.keys()):
+        return False
+    if not isinstance(cfg["args"], list):
+        return False
+    if not isinstance(cfg["kwargs"], dict):
+        return False
+    return True

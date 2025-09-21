@@ -496,7 +496,7 @@ def model_config_eval():
             }
         ],
         "aggregate_pooling": {
-            "type": "cat_mean",
+            "type": "cat1",
             "args": [],
             "kwargs": {},
         },
@@ -506,9 +506,6 @@ def model_config_eval():
 @pytest.fixture
 def gnn_model_eval(model_config_eval):
     """Fixture to create a GNNModel for evaluation."""
-
-    if "cat_mean" not in QG.utils.list_registered_pooling_aggregations():
-        QG.utils.register_pooling_aggregation("cat_mean", lambda x: torch.cat(x, dim=1))
 
     model = QG.GNNModel.from_config(
         model_config_eval,

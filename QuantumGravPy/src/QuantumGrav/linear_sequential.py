@@ -36,7 +36,7 @@ class LinearSequential(torch.nn.Module):
 
         Raises:
             ValueError: If hidden_dims contains non-positive integers.
-            ValueError: If output_dims is a non-positive integer.
+            ValueError: If output_dim is a non-positive integer.
         """
         super().__init__()
 

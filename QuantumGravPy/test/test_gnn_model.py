@@ -1,6 +1,5 @@
 import QuantumGrav as QG
 import torch
-import torch_geometric
 import pytest
 
 
@@ -101,12 +100,12 @@ def gnn_model_config():
             },
         ],
         "aggregate_pooling": {
-            "type": "test_registered",
+            "type": "cat1",
             "args": [],
             "kwargs": {},
         },
         "aggregate_graph_features": {
-            "type": "test_registered",
+            "type": "cat1",
             "args": [],
             "kwargs": {},
         },
@@ -136,7 +135,6 @@ def test_gnn_model_creation(gnn_model):
     assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.PoolingWrapper)
     assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.PoolingWrapper)
     assert isinstance(gnn_model.aggregate_pooling, QG.gnn_model.PoolingWrapper)
-    assert isinstance(gnn_model.graph_features_net, QG.LinearSequential)
 
     # assert sizes and properties of the components
     assert gnn_model.encoder[0].in_dim == 16
@@ -218,7 +216,8 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     for task in model.downstream_tasks:
         assert isinstance(task, QG.LinearSequential)
 
-    assert model.pooling_layers == [torch_geometric.nn.global_mean_pool]
+    for pooling in model.pooling_layers:
+        assert isinstance(pooling, QG.gnn_model.PoolingWrapper)
 
     assert isinstance(model.graph_features_net, QG.LinearSequential)
 
@@ -231,8 +230,7 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     output = model(x, edge_index, batch)
     assert model.training is False  # Ensure model is in eval mode
     assert isinstance(output, list)
-    assert output[0][0].shape == (2, 2)  # 2 graphs, 2 classes
-    assert output[0][1].shape == (2, 3)  # 2 graphs, 3 classes
+    assert output[0].shape == (2, 3)  # 2 graphs, 3 classes
 
 
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):

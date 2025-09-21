@@ -236,6 +236,8 @@ class GNNModel(torch.nn.Module):
         # make pooling layers
         pooling_layers = []
         for pool_cfg in config["pooling_layers"]:
+            if not utils.verify_config_node(pool_cfg):
+                raise ValueError("The config for a pooling layer is invalid.")
             pooling_layer = utils.get_registered_pooling_layer(pool_cfg["type"])
             if pooling_layer is None:
                 raise ValueError(
@@ -254,6 +256,9 @@ class GNNModel(torch.nn.Module):
 
         # graph aggregation pooling
         cfg = config["aggregate_pooling"]
+        if not utils.verify_config_node(cfg):
+            raise ValueError("The config for 'aggregate_pooling' is invalid.")
+
         aggregate_pooling = utils.get_pooling_aggregation(cfg["type"])
         args = cfg["args"] if "args" in cfg else []
         kwargs = cfg["kwargs"] if "kwargs" in cfg else {}
@@ -273,14 +278,21 @@ class GNNModel(torch.nn.Module):
             graph_features_net = None
 
         if graph_features_net is not None:
-            aggregate_graph_features = utils.get_graph_features_aggregation(
-                config["aggregate_graph_features"]
-            )
+            cfg = config["aggregate_graph_features"]
+
+            if not utils.verify_config_node(cfg):
+                raise ValueError(
+                    "The config for 'aggregate_graph_features' is invalid."
+                )
+
+            aggregate_graph_features = utils.get_graph_features_aggregation(cfg["type"])
             if aggregate_graph_features is not None:
                 if isinstance(aggregate_graph_features, torch.nn.Module):
                     args = cfg["args"] if "args" in cfg else []
                     kwargs = cfg["kwargs"] if "kwargs" in cfg else {}
                     aggregate_graph_features = aggregate_graph_features(*args, **kwargs)
+            else:
+                aggregate_graph_features = None
         else:
             aggregate_graph_features = None
 

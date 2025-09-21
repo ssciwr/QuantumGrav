@@ -112,3 +112,37 @@ def test_get_registered_graph_features_aggregation():
 
     not_registered_mean = QG.get_graph_features_aggregation("non_existent")
     assert not_registered_mean is None
+
+
+def test_verify_config_node():
+    """Test verification of config node."""
+    valid_cfg = {
+        "type": "gcn",
+        "args": [16, 32],
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(valid_cfg) is True
+
+    invalid_cfg_missing_key = {
+        "args": [16, 32],
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(invalid_cfg_missing_key) is False
+
+    invalid_cfg = {
+        "type": "gcn",
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(invalid_cfg) is False
+
+    invalid_cfg = {
+        "type": "gcn",
+        "args": [16, 32],
+    }
+    assert QG.utils.verify_config_node(invalid_cfg) is False
