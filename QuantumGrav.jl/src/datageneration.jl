@@ -356,22 +356,8 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
     return isempty(finite_dists) ? 0 : Int32(maximum(finite_dists))
 end
 
-"""
-    make_data(transform::Function, prepare_output::Function, write_data::Function, config::Dict{String, Any})
 
-Create data using the transform function and write it to an HDF5 file. The HDF5 file is prepared using the `prepare_output` function, and the data is written using the `write_data` function.
-In order to work, transform must return a `Dict{String, Any}` containing the name and individual data elements. Only primitive types and arrays thereof are supported as values.
-The write_data function must accept the HDF5 file and the data dictionary to be written as arguments.
-
-# Arguments:
-- `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
-- `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
-- `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
-- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
-"""
-
-
-function prepare_dataproduction(config::Dict{String,Any} = Dict{String,Any}())
+function prepare_dataproduction(config::Dict{String,Any}, func_to_copy::Function)
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
@@ -379,37 +365,27 @@ function prepare_dataproduction(config::Dict{String,Any} = Dict{String,Any}())
         end
     end
 
-    # check return type 
-    if Dict in Base.return_types(transform, (Dict{String,Any}, Random.Xoshiro)) == false
-        throw(
-            ArgumentError(
-                "The transform function must return a Dict{String, Any} containing the name and individual data element. Only primitive types and arrays thereof are supported as values.",
-            ),
-        )
-    end
 
     # make directory to put data into
     if !isdir(abspath(expanduser(config["output"])))
         mkpath(abspath(expanduser(config["output"])))
     end
 
+    # get the source code of the prepare/write functions and write them to the data folder 
+    # to document how the data has been created
+    funcdata = first(methods(func_to_copy)) # this assumes that all overloads of the passed functions are part of the same file
+    filepath = String(funcdata.file)
+    targetpath = joinpath(
+        abspath(expanduser(config["output"])),
+        splitext(basename(filepath))[1] * "_$(getpid()).jl",
+    )
+
+    if isfile(targetpath) == false
+        cp(filepath, targetpath)
+    end
+
     datetime = Dates.now()
     datetime = Dates.format(datetime, "yyyy-mm-dd_HH-MM-SS")
-
-    # get the source code of the transform/prepare/write functions and write them to the data folder 
-    # to document how the data has been created
-    for func in [transform, prepare_output, write_data]
-        funcdata = first(methods(func)) # this assumes that all overloads of the passed functions are part of the same file
-        filepath = String(funcdata.file)
-        targetpath = joinpath(
-            abspath(expanduser(config["output"])),
-            splitext(basename(filepath))[1] * "_$(getpid()).jl",
-        )
-
-        if isfile(targetpath) == false
-            cp(filepath, targetpath)
-        end
-    end
 
     # build the config file 
     # get git info of QuantumGrav package 
@@ -451,40 +427,5 @@ function prepare_dataproduction(config::Dict{String,Any} = Dict{String,Any}())
     end
 
     return filepath, file
-
-    # # prepare the file: generate datasets, attributes, dataspaces... 
-    # @info "Preparing output file"
-    # prepare_output(file, config)
-
-    # num_datapoints = config["num_datapoints"]
-
-    # # make data file
-    # @info "Generating file with $num_datapoints datapoints"
-    # testdict = transform(config, rng) # get this as a test to get out the keys, 
-
-    # data = Dict(k => typeof(v)[] for (k, v) in testdict)
-    # @info "    Generating data"
-    # ProgressMeter.@showprogress for i = 1:num_datapoints
-    #     if i % 25 == 0
-    #         @info "    Generated datapoint $i / $num_datapoints"
-    #     end
-
-    #     data_point = transform(config, rng)
-    #     # Store or process the generated data point as needed
-    #     for (k, v) in data_point
-    #         push!(data[k], v)
-    #     end
-    # end
-
-    # @info "    Writing data with $(num_datapoints) datapoints to file"
-    # # ... then write to file with the supplied write_data function
-    # write_data(file, config, data)
-    # data = nothing # clear the data to reduce memory usage
-    # return GC.gc() # run garbage collector to free memory
-
-    # if config["output_format"] == "hdf5"
-    #     close(file)
-    # end
-    # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
 
 end
