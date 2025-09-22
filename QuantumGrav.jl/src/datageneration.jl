@@ -306,7 +306,9 @@ function make_adj(
         throw(ArgumentError("The causal set must not be empty."))
     end
 
-    return (x -> transpose(hcat(x...)))(c.future_relations)
+    return (x -> SparseArrays.SparseMatrixCSC{type}(transpose(hcat(x...))))(
+        c.future_relations,
+    )
 end
 
 """
