@@ -479,6 +479,10 @@ function make_data(
     data = Dict(k => typeof(v)[] for (k, v) in testdict)
     @info "    Generating data"
     ProgressMeter.@showprogress for i = 1:num_datapoints
+        if i % 25 == 0
+            @info "    Generated datapoint $i / $num_datapoints"
+        end
+
         data_point = transform(config, rng)
         # Store or process the generated data point as needed
         for (k, v) in data_point
