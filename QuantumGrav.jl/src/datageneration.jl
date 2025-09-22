@@ -477,8 +477,9 @@ function make_data(
     testdict = transform(config, rng) # get this as a test to get out the keys, 
 
     data = Dict(k => typeof(v)[] for (k, v) in testdict)
-    @info "    Generating data on $(Threads.nthreads()) threads"
-    ProgressMeter.@showprogress for _ = 1:num_datapoints
+    @info "    Generating data"
+    ProgressMeter.@showprogress for i = 1:num_datapoints
+        println("    Generating data point $i")
         data_point = transform(config, rng)
         # Store or process the generated data point as needed
         for (k, v) in data_point
