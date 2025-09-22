@@ -298,14 +298,15 @@ Creates an adjacency matrix from a causet's future relations.
 Converts the causet's future_relations to a sparse matrix format by 
 horizontally concatenating, transposing, and converting to the specified type.
 """
-function make_adj(c::CausalSets.AbstractCauset; type::Type{T} = Float32) where {T<:Number}
+function make_adj(
+    c::CausalSets.AbstractCauset;
+    type::Type{T} = Float32,
+)::AbstractMatrix{T} where {T<:Number}
     if c.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
 
-    return (x -> SparseArrays.SparseMatrixCSC{type}(transpose(hcat(x...))))(
-        c.future_relations,
-    )
+    return (x -> transpose(hcat(x...)))(c.future_relations)
 end
 
 """
@@ -366,10 +367,25 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
 - `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
+
+"""
+    make_data(transform::Function, prepare_output::Function, write_data::Function, config::Dict{String, Any})
+
+Create data using the transform function and write it to an HDF5 file. The HDF5 file is prepared using the `prepare_output` function, and the data is written using the `write_data` function.
+In order to work, transform must return a `Dict{String, Any}` containing the name and individual data elements. Only primitive types and arrays thereof are supported as values.
+The write_data function must accept the HDF5 file and the data dictionary to be written as arguments.
+
+# Arguments:
+- `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
+- `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
+- `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
+- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
+"""
 function make_data(
     transform::Function,
     prepare_output::Function,
     write_data::Function;
+    rng::Random.AbstractRNG = Random.Xoshiro(1234),
     config::Dict{String,Any} = Dict{String,Any}(),
 )
     # consistency checks
@@ -450,47 +466,6 @@ function make_data(
         throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
     end
 
-    # make data
-    # this must not go into the `make_data_file` function or each file will contain the same data
-    rngs = [Random.Xoshiro(config["seed"] + i) for i = 1:Threads.nthreads()]
-
-    function make_data_file(file, num_datapoints::Int64)
-        data = [Dict{String,Any}[] for _ = 1:Threads.nthreads()] # Stores thread-local data points for parallel processing.
-
-        @info "    Generating data on $(Threads.nthreads()) threads"
-        p = ProgressMeter.Progress(num_datapoints)
-        Threads.@threads for _ = 1:num_datapoints
-            t = Threads.threadid()
-            rng = rngs[t]
-            data_point = transform(config, rng)
-            # Store or process the generated data point as needed
-            push!(data[t], data_point)
-            ProgressMeter.next!(p) # Update the progress meter
-        end
-        ProgressMeter.finish!(p)
-
-        @info "    Aggregating data from $(Threads.nthreads()) threads"
-        # aggregate everything int one big dictionary
-        final_data = Dict{String,Any}()
-        for thread_local_data in data
-            for datapoint in thread_local_data
-                for (key, value) in datapoint
-                    if haskey(final_data, key) == false
-                        final_data[key] = []
-                    end
-                    push!(final_data[key], value)
-                    value = nothing # clear the value to reduce memory usage
-                end
-            end
-        end
-
-        @info "    Writing data with $(num_datapoints) datapoints to file"
-        # ... then write to file with the supplied write_data function
-        write_data(file, config, final_data)
-        final_data = nothing # clear the final_data to reduce memory usage
-        return GC.gc() # run garbage collector to free memory
-    end
-
     # prepare the file: generate datasets, attributes, dataspaces... 
     @info "Preparing output file"
     prepare_output(file, config)
@@ -499,7 +474,23 @@ function make_data(
 
     # make data file
     @info "Generating file with $num_datapoints datapoints"
-    make_data_file(file, num_datapoints)
+    testdict = transform(config, rng) # get this as a test to get out the keys, 
+
+    data = Dict(k => typeof(v)[] for (k, v) in testdict)
+    @info "    Generating data on $(Threads.nthreads()) threads"
+    for _ = 1:num_datapoints
+        data_point = transform(config, rng)
+        # Store or process the generated data point as needed
+        for (k, v) in data_point
+            push!(data[k], v)
+        end
+    end
+
+    @info "    Writing data with $(num_datapoints) datapoints to file"
+    # ... then write to file with the supplied write_data function
+    write_data(file, config, data)
+    data = nothing # clear the data to reduce memory usage
+    return GC.gc() # run garbage collector to free memory
 
     if config["output_format"] == "hdf5"
         close(file)
