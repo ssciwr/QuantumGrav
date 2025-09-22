@@ -357,7 +357,7 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
 end
 
 
-function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Array{Function})
+function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector{Any})
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
