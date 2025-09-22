@@ -286,7 +286,7 @@ class GNNModel(torch.nn.Module):
         )
 
         # make graph features network and aggregations
-        if "graph_features_net" in config:
+        if "graph_features_net" in config and config["graph_features_net"] is not None:
             graph_features_net = QGLS.LinearSequential.from_config(
                 config["graph_features_net"]
             )
