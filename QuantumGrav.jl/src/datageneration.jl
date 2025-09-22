@@ -376,8 +376,10 @@ function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector{
     for func_to_copy in funcs_to_copy
         funcdata = first(methods(func_to_copy)) # this assumes that all overloads of the passed functions are part of the same file
         filepath = String(funcdata.file)
-        targetpath =
-            joinpath(abspath(expanduser(config["output"])), splitext(basename(filepath))[1])
+        targetpath = joinpath(
+            abspath(expanduser(config["output"])),
+            splitext(basename(filepath))[1]*".jl",
+        )
         if isfile(targetpath) == false
             cp(filepath, targetpath)
         end
