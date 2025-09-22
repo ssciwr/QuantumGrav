@@ -370,26 +370,8 @@ The write_data function must accept the HDF5 file and the data dictionary to be 
 - `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
 """
 
-"""
-    make_data(transform::Function, prepare_output::Function, write_data::Function, config::Dict{String, Any})
 
-Create data using the transform function and write it to an HDF5 file. The HDF5 file is prepared using the `prepare_output` function, and the data is written using the `write_data` function.
-In order to work, transform must return a `Dict{String, Any}` containing the name and individual data elements. Only primitive types and arrays thereof are supported as values.
-The write_data function must accept the HDF5 file and the data dictionary to be written as arguments.
-
-# Arguments:
-- `transform`: Function to generate a single datapoint. Needed signature: `transform(config:Dict{String,String}, rng::Random.AbstractRNG)::Dict{String, Any}`
-- `prepare_output`: Function to prepare the HDF5 file for writing data.Needed signature: `prepare_file(file::IO, config::Dict{String,String})`
-- `write_data`: Function to write the generated data to the HDF5 file. Needed signature:  `write_data(file::IO, config::Dict{String,String}, final_data::Dict{String, Any})`
-- `config`: Configuration dictionary containing various settings for data generation. The settings contained are not completely specified a priori and can be specific to the passed-in functions. This dictionary will be augmented with information about the current commit hash and branch name of the QuantumGrav package, and written to a YAML file in the output directory. It is expected to contain the number of datapoints as a node `num_datapoints` and the output directory as a node `output`. The seed for the random number generator is expected to be passed in as a node `seed`. If the data generation should be chunked, the number of chunks can be specified with the node `chunks`.
-"""
-function make_data(
-    transform::Function,
-    prepare_output::Function,
-    write_data::Function;
-    rng::Random.AbstractRNG = Random.Xoshiro(1234),
-    config::Dict{String,Any} = Dict{String,Any}(),
-)
+function prepare_dataproduction(config::Dict{String,Any} = Dict{String,Any}())
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
@@ -468,39 +450,41 @@ function make_data(
         throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
     end
 
-    # prepare the file: generate datasets, attributes, dataspaces... 
-    @info "Preparing output file"
-    prepare_output(file, config)
+    return filepath, file
 
-    num_datapoints = config["num_datapoints"]
+    # # prepare the file: generate datasets, attributes, dataspaces... 
+    # @info "Preparing output file"
+    # prepare_output(file, config)
 
-    # make data file
-    @info "Generating file with $num_datapoints datapoints"
-    testdict = transform(config, rng) # get this as a test to get out the keys, 
+    # num_datapoints = config["num_datapoints"]
 
-    data = Dict(k => typeof(v)[] for (k, v) in testdict)
-    @info "    Generating data"
-    ProgressMeter.@showprogress for i = 1:num_datapoints
-        if i % 25 == 0
-            @info "    Generated datapoint $i / $num_datapoints"
-        end
+    # # make data file
+    # @info "Generating file with $num_datapoints datapoints"
+    # testdict = transform(config, rng) # get this as a test to get out the keys, 
 
-        data_point = transform(config, rng)
-        # Store or process the generated data point as needed
-        for (k, v) in data_point
-            push!(data[k], v)
-        end
-    end
+    # data = Dict(k => typeof(v)[] for (k, v) in testdict)
+    # @info "    Generating data"
+    # ProgressMeter.@showprogress for i = 1:num_datapoints
+    #     if i % 25 == 0
+    #         @info "    Generated datapoint $i / $num_datapoints"
+    #     end
 
-    @info "    Writing data with $(num_datapoints) datapoints to file"
-    # ... then write to file with the supplied write_data function
-    write_data(file, config, data)
-    data = nothing # clear the data to reduce memory usage
-    return GC.gc() # run garbage collector to free memory
+    #     data_point = transform(config, rng)
+    #     # Store or process the generated data point as needed
+    #     for (k, v) in data_point
+    #         push!(data[k], v)
+    #     end
+    # end
 
-    if config["output_format"] == "hdf5"
-        close(file)
-    end
+    # @info "    Writing data with $(num_datapoints) datapoints to file"
+    # # ... then write to file with the supplied write_data function
+    # write_data(file, config, data)
+    # data = nothing # clear the data to reduce memory usage
+    # return GC.gc() # run garbage collector to free memory
+
+    # if config["output_format"] == "hdf5"
+    #     close(file)
+    # end
     # Zarr stores do not require explicit closing, as they do not maintain open file handles like HDF5 files.
 
 end
