@@ -146,3 +146,22 @@ def test_verify_config_node():
         "args": [16, 32],
     }
     assert QG.utils.verify_config_node(invalid_cfg) is False
+
+    wrong_type_cfg = {
+        "type": "gcn",
+        "args": [16, 32],
+        "kwargs": [1, 2, 3],
+    }
+
+    assert QG.utils.verify_config_node(wrong_type_cfg) is False
+
+    wrong_type_cfg = {
+        "type": "gcn",
+        "args": "not a list",
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(wrong_type_cfg) is False
+
+    assert QG.utils.verify_config_node("not a dict") is False
