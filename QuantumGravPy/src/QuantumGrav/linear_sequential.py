@@ -92,14 +92,16 @@ class LinearSequential(torch.nn.Module):
         """
         handle kwargs for the backbone or activation functions.
         """
+
+        if kwarglist is None:
+            kwarglist = [{}] * needed
+        elif len(kwarglist) == 1:
+            kwarglist = kwarglist * needed
+
         if len(kwarglist) != needed:
             raise ValueError(
                 f"{name} must be a list of dictionaries with the same length as hidden_dims"
             )
-        elif kwarglist is None:
-            kwarglist = [{}] * needed
-        elif len(kwarglist) == 1:
-            kwarglist = kwarglist * needed
 
         return kwarglist
 
