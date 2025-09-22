@@ -351,31 +351,27 @@ def gnn_block():
 
 @pytest.fixture
 def classifier_block():
-    return QG.ClassifierBlock(
+    return QG.LinearSequential(
         input_dim=32,
         hidden_dims=[24, 12],
-        output_dims=[2, 3],
+        output_dim=3,
         activation=torch.nn.ReLU,
         backbone_kwargs=[{}, {}],
         activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
+        output_kwargs={},
     )
 
 
 @pytest.fixture
 def classifier_block_graphfeatures():
-    return QG.ClassifierBlock(
+    return QG.LinearSequential(
         input_dim=64,
         hidden_dims=[24, 12],
-        output_dims=[2, 3],
+        output_dim=3,
         activation=torch.nn.ReLU,
         backbone_kwargs=[{}, {}],
         activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
+        output_kwargs={},
     )
 
 
@@ -386,12 +382,13 @@ def pooling_layer():
 
 @pytest.fixture
 def graph_features_net():
-    return QG.GraphFeaturesBlock(
+    return QG.LinearSequential(
         input_dim=10,
         output_dim=32,
         hidden_dims=[24, 8],
         activation=torch.nn.ReLU,
-        layer_kwargs=[{}, {}],
+        backbone_kwargs=[{}, {}],
+        output_kwargs={},
         activation_kwargs=[
             {"inplace": False},
         ],
@@ -479,24 +476,37 @@ def model_config_eval():
                 },
             },
         ],
-        "classifier": {
-            "input_dim": 12,
-            "output_dims": [
-                3,
-            ],
-            "hidden_dims": [24, 16],
-            "activation": "relu",
-            "backbone_kwargs": [{}, {}],
-            "output_kwargs": [{}],
-            "activation_kwargs": [{"inplace": False}],
+        "downstream_tasks": [
+            {
+                "type": "LinearSequential",
+                "input_dim": 12,
+                "output_dim": 3,
+                "hidden_dims": [24, 16],
+                "activation": "relu",
+                "backbone_kwargs": [{}, {}],
+                "output_kwargs": {},
+                "activation_kwargs": [{"inplace": False}],
+            },
+        ],
+        "pooling_layers": [
+            {
+                "type": "mean",
+                "args": [],
+                "kwargs": {},
+            }
+        ],
+        "aggregate_pooling": {
+            "type": "cat1",
+            "args": [],
+            "kwargs": {},
         },
-        "pooling_layer": "mean",
     }
 
 
 @pytest.fixture
 def gnn_model_eval(model_config_eval):
     """Fixture to create a GNNModel for evaluation."""
+
     model = QG.GNNModel.from_config(
         model_config_eval,
     )

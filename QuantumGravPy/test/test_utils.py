@@ -93,3 +93,75 @@ def test_get_registered_activation():
 
     not_registered_activation = QG.get_registered_activation("non_existent")
     assert not_registered_activation is None
+
+
+def test_get_registered_pooling_aggregation():
+    """Test retrieval of registered pooling aggregation functions."""
+    cat = QG.get_pooling_aggregation("cat0")
+    assert cat == torch.cat
+
+    not_registered_mean = QG.get_pooling_aggregation("non_existent")
+    assert not_registered_mean is None
+
+
+def test_get_registered_graph_features_aggregation():
+    """Test retrieval of registered graph features aggregation functions."""
+
+    cat0 = QG.get_graph_features_aggregation("cat0")
+    assert cat0 == torch.cat
+
+    not_registered_mean = QG.get_graph_features_aggregation("non_existent")
+    assert not_registered_mean is None
+
+
+def test_verify_config_node():
+    """Test verification of config node."""
+    valid_cfg = {
+        "type": "gcn",
+        "args": [16, 32],
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(valid_cfg) is True
+
+    invalid_cfg_missing_key = {
+        "args": [16, 32],
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(invalid_cfg_missing_key) is False
+
+    invalid_cfg = {
+        "type": "gcn",
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(invalid_cfg) is False
+
+    invalid_cfg = {
+        "type": "gcn",
+        "args": [16, 32],
+    }
+    assert QG.utils.verify_config_node(invalid_cfg) is False
+
+    wrong_type_cfg = {
+        "type": "gcn",
+        "args": [16, 32],
+        "kwargs": [1, 2, 3],
+    }
+
+    assert QG.utils.verify_config_node(wrong_type_cfg) is False
+
+    wrong_type_cfg = {
+        "type": "gcn",
+        "args": "not a list",
+        "kwargs": {
+            "activation": "relu",
+        },
+    }
+    assert QG.utils.verify_config_node(wrong_type_cfg) is False
+
+    assert QG.utils.verify_config_node("not a dict") is False

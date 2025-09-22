@@ -106,8 +106,11 @@ class DummyEarlyStopping:
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
-    loss = torch.nn.MSELoss()(x[0], data.y.to(torch.float32))
-    return loss
+    all_losses = torch.zeros(1)
+    for task_output in x:
+        loss = torch.nn.MSELoss()(task_output[0], data.y.to(torch.float32))
+        all_losses += loss
+    return all_losses
 
 
 def reader(f: h5py.File, idx: int, float_dtype, int_dtype, validate) -> Data:

@@ -1,18 +1,21 @@
 import QuantumGrav as QG
 import torch
-import torch_geometric
 import pytest
 
 
+def cat_graph_features(*features):
+    return torch.cat(features, dim=1)
+
+
 @pytest.fixture
-def gnn_model(gnn_block, classifier_block, pooling_layer, graph_features_net):
+def gnn_model(gnn_block, classifier_block, pooling_layer):
     return QG.GNNModel(
         encoder=[
             gnn_block,
         ],
-        classifier=classifier_block,
-        pooling_layer=pooling_layer,
-        graph_features_net=graph_features_net,
+        downstream_tasks=[classifier_block, classifier_block],
+        pooling_layers=[pooling_layer, pooling_layer],
+        aggregate_pooling=torch.cat,
     )
 
 
@@ -24,9 +27,14 @@ def gnn_model_with_graph_features(
         encoder=[
             gnn_block,
         ],
-        classifier=classifier_block_graphfeatures,
-        pooling_layer=pooling_layer,
+        downstream_tasks=[
+            classifier_block_graphfeatures,
+            classifier_block_graphfeatures,
+        ],
+        pooling_layers=[pooling_layer],
+        aggregate_graph_features=cat_graph_features,
         graph_features_net=graph_features_net,
+        aggregate_pooling=torch.cat,
     )
 
 
@@ -73,16 +81,34 @@ def gnn_model_config():
                 },
             },
         ],
-        "classifier": {
-            "input_dim": 16,
-            "output_dims": [2, 3],
-            "hidden_dims": [24, 18],
-            "activation": "relu",
-            "backbone_kwargs": [{}, {}],
-            "output_kwargs": [{}],
-            "activation_kwargs": [{"inplace": False}],
+        "downstream_tasks": [
+            {
+                "input_dim": 16,
+                "output_dim": 3,
+                "hidden_dims": [24, 18],
+                "activation": "relu",
+                "backbone_kwargs": [{}, {}],
+                "output_kwargs": {},
+                "activation_kwargs": [{"inplace": False}],
+            },
+        ],
+        "pooling_layers": [
+            {
+                "type": "mean",
+                "args": [],
+                "kwargs": {},
+            },
+        ],
+        "aggregate_pooling": {
+            "type": "cat1",
+            "args": [],
+            "kwargs": {},
         },
-        "pooling_layer": "mean",
+        "aggregate_graph_features": {
+            "type": "cat1",
+            "args": [],
+            "kwargs": {},
+        },
         "graph_features_net": {
             "input_dim": 10,
             "hidden_dims": [24, 8],
@@ -103,17 +129,26 @@ def test_gnn_model_creation(gnn_model):
     assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
     assert len(gnn_model.encoder) == 1  # Assuming one GNN block
     assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
-    assert isinstance(gnn_model.classifier, QG.ClassifierBlock)
-    assert gnn_model.pooling_layer == torch_geometric.nn.global_mean_pool
-    assert isinstance(gnn_model.graph_features_net, QG.GraphFeaturesBlock)
+    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
+    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
+
+    assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.PoolingWrapper)
+    assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.PoolingWrapper)
+    assert isinstance(gnn_model.aggregate_pooling, QG.gnn_model.PoolingWrapper)
 
     # assert sizes and properties of the components
     assert gnn_model.encoder[0].in_dim == 16
     assert gnn_model.encoder[0].out_dim == 32
-    assert gnn_model.classifier.output_layers[0].in_channels == 12
-    assert gnn_model.classifier.output_layers[1].in_channels == 12
-    assert gnn_model.classifier.output_layers[0].out_channels == 2
-    assert gnn_model.classifier.output_layers[1].out_channels == 3
+    assert len(gnn_model.downstream_tasks) == 2
+
+
+def test_gnn_model_creation_pooling_aggregation_missing(gnn_model_config):
+    """Test the creation of GNNModel with missing aggregation function."""
+
+    gnn_model_config["pooling_layers"] = None
+
+    with pytest.raises(TypeError):
+        QG.GNNModel.from_config(gnn_model_config)
 
 
 def test_gnn_model_get_embeddings(gnn_model):
@@ -128,11 +163,11 @@ def test_gnn_model_get_embeddings(gnn_model):
     output = gnn_model.get_embeddings(x, edge_index, batch)
     assert gnn_model.training is False  # Ensure model is in eval mode
     assert isinstance(output, torch.Tensor)
-    assert output.shape == (2, 32)  # pooled across nodes -> two graphs
+    assert output.shape == (4, 32)  # concatenated over pooling layers
 
     output_single = gnn_model.get_embeddings(x, edge_index)  # no batch -> single graph
     assert isinstance(output_single, torch.Tensor)
-    assert output_single.shape == (1, 32)  # pooled across nodes -> single graph
+    assert output_single.shape == (2, 32)  # concatenated over pooling layers
 
 
 def test_gnn_model_forward(gnn_model):
@@ -146,8 +181,8 @@ def test_gnn_model_forward(gnn_model):
     output = gnn_model(x, edge_index, batch)
     assert gnn_model.training is False  # Ensure model is in eval mode
     assert isinstance(output, list)
-    assert output[0].shape == (2, 2)  # 2 graphs, 2 classes
-    assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
 
 
 def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
@@ -166,18 +201,26 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
         gnn_model_with_graph_features.training is False
     )  # Ensure model is in eval mode
     assert isinstance(output, list)
-    assert output[0].shape == (2, 2)  # 2 graphs, 2 classes
-    assert output[1].shape == (2, 3)
+    assert output[0].shape == (2, 3)  # 2 graphs, 1 pooling layers, 2 classes
+    assert output[0].shape == (2, 3)
 
 
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
+
     assert isinstance(model.encoder, torch.nn.ModuleList)
+
     assert len(model.encoder) == 2  # Assuming two GNN blocks
-    assert isinstance(model.classifier, QG.ClassifierBlock)
-    assert model.pooling_layer == torch_geometric.nn.global_mean_pool
-    assert isinstance(model.graph_features_net, QG.GraphFeaturesBlock)
+
+    for task in model.downstream_tasks:
+        assert isinstance(task, QG.LinearSequential)
+
+    for pooling in model.pooling_layers:
+        assert isinstance(pooling, QG.gnn_model.PoolingWrapper)
+
+    assert isinstance(model.graph_features_net, QG.LinearSequential)
+
     x = torch.randn(5, 16)  # 5 nodes with 16 features each
     edge_index = torch.tensor(
         [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
@@ -187,8 +230,7 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     output = model(x, edge_index, batch)
     assert model.training is False  # Ensure model is in eval mode
     assert isinstance(output, list)
-    assert output[0].shape == (2, 2)  # 2 graphs, 2 classes
-    assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
+    assert output[0].shape == (2, 3)  # 2 graphs, 3 classes
 
 
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
@@ -200,10 +242,15 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
     loaded_gnn_model = QG.GNNModel.load(tmp_path / "model.pt")
 
     assert gnn_model_with_graph_features.graph_features_net is not None
-    assert (
-        loaded_gnn_model.state_dict().keys()
-        == gnn_model_with_graph_features.state_dict().keys()
+    assert len(loaded_gnn_model.state_dict().keys()) == len(
+        gnn_model_with_graph_features.state_dict().keys()
     )
+
+    loaded_keys = set(loaded_gnn_model.state_dict().keys())
+    original_keys = set(gnn_model_with_graph_features.state_dict().keys())
+
+    assert loaded_keys == original_keys
+
     for k in loaded_gnn_model.state_dict().keys():
         assert torch.equal(
             loaded_gnn_model.state_dict()[k],
