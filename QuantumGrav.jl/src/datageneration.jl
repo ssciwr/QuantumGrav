@@ -478,7 +478,7 @@ function make_data(
 
     data = Dict(k => typeof(v)[] for (k, v) in testdict)
     @info "    Generating data on $(Threads.nthreads()) threads"
-    for _ = 1:num_datapoints
+    ProgressMeter.@showprogress for _ = 1:num_datapoints
         data_point = transform(config, rng)
         # Store or process the generated data point as needed
         for (k, v) in data_point
