@@ -357,7 +357,7 @@ function max_pathlen(adj_matrix, topo_order::Vector{Int}, source::Int)
 end
 
 
-function prepare_dataproduction(config::Dict{String,Any}, func_to_copy::Function)
+function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Array{Function})
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
@@ -373,15 +373,15 @@ function prepare_dataproduction(config::Dict{String,Any}, func_to_copy::Function
 
     # get the source code of the prepare/write functions and write them to the data folder 
     # to document how the data has been created
-    funcdata = first(methods(func_to_copy)) # this assumes that all overloads of the passed functions are part of the same file
-    filepath = String(funcdata.file)
-    targetpath = joinpath(
-        abspath(expanduser(config["output"])),
-        splitext(basename(filepath))[1] * "_$(getpid()).jl",
-    )
-
-    if isfile(targetpath) == false
-        cp(filepath, targetpath)
+    for func_to_copy in funcs_to_copy
+        funcdata = first(methods(func_to_copy)) # this assumes that all overloads of the passed functions are part of the same file
+        filepath = String(funcdata.file)
+        targetpath = joinpath(
+            abspath(expanduser(config["output"])),
+            splitext(basename(filepath))[1] * "_$(getpid())" * "_$(funcdata.name).jl",
+        )
+        if isfile(targetpath) == false && cp(filepath, targetpath)
+        end
     end
 
     datetime = Dates.now()
