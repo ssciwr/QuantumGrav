@@ -380,7 +380,8 @@ function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector{
             abspath(expanduser(config["output"])),
             splitext(basename(filepath))[1] * "_$(getpid())" * "_$(funcdata.name).jl",
         )
-        if isfile(targetpath) == false && cp(filepath, targetpath)
+        if isfile(targetpath) == false
+            cp(filepath, targetpath)
         end
     end
 
