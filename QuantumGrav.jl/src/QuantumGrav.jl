@@ -26,6 +26,7 @@ include("graph_utils.jl")
 export make_polynomial_manifold_cset,
     make_adj,
     max_pathlen,
+    transitive_reduction!,
     sample_bitarray_causet_by_connectivity,
     gaussian_dist_cuts,
     create_random_layered_causet,
@@ -38,5 +39,6 @@ export make_polynomial_manifold_cset,
     generate_grid_from_brillouin_cell,
     generate_grid_2d,
     create_grid_causet_2D,
-    create_grid_causet_2D_polynomial_manifold
+    create_grid_causet_2D_polynomial_manifold,
+    prepare_dataproduction
 end # module QuantumGrav

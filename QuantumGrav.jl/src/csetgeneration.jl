@@ -9,8 +9,11 @@ Chebyshev series with exponentially decaying coefficients.
 - `seed::Int`: Seed for pseudo-random number generation to ensure reproducibility.
 - `order::Int`: Truncation order of the Chebyshev expansion (number of basis functions in each direction). Must be > 0.
 - `r::Float64`: Decay base for Chebyshev coefficients. Must be > 1 to ensure exponential convergence; defines the radius of analyticity in the complex plane.
+
+# Keyword arguments
 - `d::Int64`: Dimension of the manifold, defaults to 2. Currently, only 2D is supported.
 - `type::Type{T}`: Type to which the sprinkling coordinates will be converted (default is Float32).
+
 # Returns
 - A tuple `(cset, sprinkling, chebyshev_coefs)` where:
     - `cset`: The generated causal set.

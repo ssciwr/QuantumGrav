@@ -68,11 +68,11 @@ def test_juliaworker_jl_call(jlcall_args, jl_vars):
     assert all(
         key in batch[0]
         for key in [
-            "manifold",
-            "boundary",
             "dimension",
             "atomcount",
             "adjacency_matrix",
             "link_matrix",
+            "max_pathlen_future",
+            "max_pathlen_past",
         ]
     )

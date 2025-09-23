@@ -55,118 +55,48 @@ Returns:
 function (gen::Generator)(batchsize::Int)
 
     # set of manifolds and boundaries to choose from
-    manifolds =
-        ["Minkowski", "DeSitter", "AntiDeSitter", "HyperCylinder", "Torus", "Random"]
-    boundaries = ["CausalDiamond", "TimeBoundary", "BoxBoundary"]
-
     # min, max sizes of the causal sets. 
     min_atomcount = 5
     max_atomcount = 15
 
     # rng and distributions for the random generation
     rng = Random.Xoshiro(gen.seed)
-    dim_distr = Distributions.DiscreteUniform(2, 4)
-    manifold_distr = Distributions.DiscreteUniform(1, 6)
-    boundary_distr = Distributions.DiscreteUniform(1, 3)
     atomcount_distr = Distributions.DiscreteUniform(min_atomcount, max_atomcount)
-    dist = Distributions.Beta(2, 2) # distribution for connectivity_goal
 
     # make a bunch of datapoints
     batch = Vector{Dict{String,Any}}(undef, batchsize)
     for i = 1:batchsize
         data = Dict{String,Any}()
-        ok = false
-        max_iter = 20
         type = Float32
-        e = nothing
-        cset = nothing
-        sprinkling = nothing
-        dimension = nothing
-        manifold_id = nothing
-        boundary_id = nothing
-        atomcount = nothing
-
-        # try to create a valid causal set. Since not all combinations are valid, we try multiple times until we find a valid one. 
-        while ok == false && max_iter > 0
-            # decrement the max_iter counter
-            max_iter -= 1
-
-            # choose all the parameters randomly for the causal set
-            dimension = rand(rng, dim_distr)
-            manifold_id = Distributions.rand(rng, manifold_distr)
-            manifold = manifolds[manifold_id]
-            boundary_id = Distributions.rand(rng, boundary_distr)
-            boundary = boundaries[boundary_id]
-            atomcount = Distributions.rand(rng, atomcount_distr)
-
-
-            # make dataset 
-            try
-                # make data needed 
-                cset, converged, sprinkling = QG.make_simple_cset(
-                    manifold,
-                    boundary,
-                    atomcount,
-                    dimension,
-                    dist,
-                    100, # number of iterations for the MCMC algorithm 
-                    rng;
-                    type = type,
-                    abs_tol = 0.01,
-                )
-                ok = true
-                e = nothing
-            catch error
-                ok = false
-                e = error
-                cset = nothing
-                sprinkling = nothing
-            end
-
-
-            if max_iter <= 0
-                break
-            end
-        end
-
-        if e !== nothing
-            throw(
-                ErrorException(
-                    "Failed to create a valid causal set after multiple attempts: $e",
-                ),
-            )
-        end
+        atomcount = rand(rng, atomcount_distr)
+        dim = 2
+        # choose all the parameters randomly for the causal set
+        cset, _, __ =
+            QG.make_polynomial_manifold_cset(atomcount, rng, 5, 2.0; d = dim, type = type)
 
         # make the data: adjacency matrix and the other stuff
         adjacency_matrix = QG.make_adj(cset, type = type)
+
         link_matrix = deepcopy(adjacency_matrix)
         QG.transitive_reduction!(link_matrix)
+
         max_pathlen_future = [
             QG.max_pathlen(adjacency_matrix, collect(1:size(adjacency_matrix, 1)), i)
             for i = 1:cset.atom_count
         ]
+
         max_pathlen_past = [
             QG.max_pathlen(adjacency_matrix', collect(1:size(adjacency_matrix, 2)), i)
             for i = 1:cset.atom_count
         ]
 
         # fill the data dictionary with the generated data
-        data["manifold"] = manifold_id
-        data["boundary"] = boundary_id
-        data["dimension"] = dimension
+        data["dimension"] = dim
         data["atomcount"] = atomcount
         data["adjacency_matrix"] = Matrix(adjacency_matrix)
         data["link_matrix"] = Matrix(link_matrix)
         data["max_pathlen_future"] = max_pathlen_future
         data["max_pathlen_past"] = max_pathlen_past
-
-        if e !== nothing
-            throw(
-                ErrorException(
-                    "Failed to create a valid causal set after multiple attempts: $e",
-                ),
-            )
-        end
 
         batch[i] = data
     end
