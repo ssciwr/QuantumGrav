@@ -9,4 +9,5 @@ include("./test_layeredgeneration.jl")
 include("./test_csetmerging.jl")
 include("./test_destroy_cset.jl")
 include("./test_grid_like_causets.jl")
+include("./test/graph_utils.jl")
 @run_package_tests

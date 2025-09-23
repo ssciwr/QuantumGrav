@@ -69,7 +69,7 @@ function (gen::Generator)(batchsize::Int)
     manifold_distr = Distributions.DiscreteUniform(1, 6)
     boundary_distr = Distributions.DiscreteUniform(1, 3)
     atomcount_distr = Distributions.DiscreteUniform(min_atomcount, max_atomcount)
-    dist = Distributions.Beta(2,2) # distribution for connectivity_goal
+    dist = Distributions.Beta(2, 2) # distribution for connectivity_goal
 
     # make a bunch of datapoints
     batch = Vector{Dict{String,Any}}(undef, batchsize)
@@ -108,7 +108,7 @@ function (gen::Generator)(batchsize::Int)
                     boundary,
                     atomcount,
                     dimension,
-                    dist, 
+                    dist,
                     100, # number of iterations for the MCMC algorithm 
                     rng;
                     type = type,
@@ -138,8 +138,9 @@ function (gen::Generator)(batchsize::Int)
         end
 
         # make the data: adjacency matrix and the other stuff
-        link_matrix = QG.make_link_matrix(cset, type = type)
         adjacency_matrix = QG.make_adj(cset, type = type)
+        link_matrix = deepcopy(adjacency_matrix)
+        QG.transitive_reduction!(link_matrix)
         max_pathlen_future = [
             QG.max_pathlen(adjacency_matrix, collect(1:size(adjacency_matrix, 1)), i)
             for i = 1:cset.atom_count
