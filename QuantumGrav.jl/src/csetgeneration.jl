@@ -1,5 +1,5 @@
 """
-    make_manifold_cset(npoints::Int64, rng::Random.AbstractRNG, order::Int64, r::Float64, d::Int64=2, type::Type{T}=Float32)::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T, Vargarg{T}}},Matrix{T}} where {T<:Number}
+    make_polynomial_manifold_cset(npoints::Int64, rng::Random.AbstractRNG, order::Int64, r::Float64, d::Int64=2, type::Type{T}=Float32)::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T, Vargarg{T}}},Matrix{T}} where {T<:Number}
 
 Generate a causal set by sampling from a positive polynomial constructed via a truncated 
 Chebyshev series with exponentially decaying coefficients.

@@ -23,10 +23,10 @@ include("destroy_manifold_like_cset.jl")
 include("grid_like_causets.jl")
 include("graph_utils.jl")
 
-export make_polynomial_manifold_cset,
-    make_adj,
+export make_adj,
     max_pathlen,
     transitive_reduction!,
+    make_polynomial_manifold_cset,
     sample_bitarray_causet_by_connectivity,
     gaussian_dist_cuts,
     create_random_layered_causet,

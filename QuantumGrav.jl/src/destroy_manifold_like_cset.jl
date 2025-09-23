@@ -25,7 +25,7 @@ Starts from a manifold-like causal set and destroys its manifoldlike structure b
 - `ArgumentError`: if `num_flips > size*(size-1)/2`.
 
 # Behavior
-This function generates a manifold-like causal set using `make_manifold_cset`, then randomly selects `num_flips` pairs of elements (edges) and flips their causal relation (adding or removing the edge). After all flips, it applies transitive closure to ensure the causality structure is consistent, and returns the final causal set as a `BitArrayCauset`.
+This function generates a manifold-like causal set using `make_polynomial_manifold_cset`, then randomly selects `num_flips` pairs of elements (edges) and flips their causal relation (adding or removing the edge). After all flips, it applies transitive closure to ensure the causality structure is consistent, and returns the final causal set as a `BitArrayCauset`.
 """
 function destroy_manifold_cset(
     size::Int64,
