@@ -5,10 +5,10 @@
 Copy the sourcecode files of the functions in the arguments to a targetpath.
 
 # Arguments: 
-funcs_to_copy::Vector{Function} list of functions to copy the sourcecode files of 
+funcs_to_copy::Vector list of functions to copy the sourcecode files of 
 targetpath::String local path to copy the files to
 """
-function copy_sourcecode(funcs_to_copy::Vector{Function}, targetpath::String)
+function copy_sourcecode(funcs_to_copy::Vector, targetpath::String)
 
     # get the source code of the prepare/write functions and write them to the data folder 
     # to document how the data has been created
@@ -58,7 +58,7 @@ Prepare the data production process from the config dict supplied.
 config::Dict{String, Any} Config file defining the data generation system
 funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained 
 """
-function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector{Function})
+function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector)
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
