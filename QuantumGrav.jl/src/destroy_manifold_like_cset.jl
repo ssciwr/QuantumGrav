@@ -27,36 +27,43 @@ Starts from a manifold-like causal set and destroys its manifoldlike structure b
 # Behavior
 This function generates a manifold-like causal set using `make_manifold_cset`, then randomly selects `num_flips` pairs of elements (edges) and flips their causal relation (adding or removing the edge). After all flips, it applies transitive closure to ensure the causality structure is consistent, and returns the final causal set as a `BitArrayCauset`.
 """
-function destroy_manifold_cset(size::Int64,
+function destroy_manifold_cset(
+    size::Int64,
     num_flips::Int64,
     rng::Random.AbstractRNG,
     order::Int64,
     r::Float64;
     d::Int64 = 2,
-    type::Type{T} = Float32,)::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T,Vararg{T}}},Matrix{T}} where {T<:Number}
+    type::Type{T} = Float32,
+)::Tuple{CausalSets.BitArrayCauset,Vector{Tuple{T,Vararg{T}}},Matrix{T}} where {T<:Number}
     if num_flips < 1
         throw(ArgumentError("num_flips must be at least 1, is $(num_flips)"))
     end
     if num_flips > size * (size - 1) ÷ 2
-        throw(ArgumentError("num_flips cannot exceed number of possible edges $(size*(size-1)/2), is $(num_flips)"))
+        throw(
+            ArgumentError(
+                "num_flips cannot exceed number of possible edges $(size*(size-1)/2), is $(num_flips)",
+            ),
+        )
     end
-    cset, sprinkling, chebyshev_coefs = make_manifold_cset(size, rng, order, r; d = d, type = type)
+    cset, sprinkling, chebyshev_coefs =
+        make_polynomial_manifold_cset(size, rng, order, r; d = d, type = type)
 
     destroyed_cset = CausalSets.empty_graph(size)
     destroyed_tcg = CausalSets.empty_graph(size)
-    for i in 1:size
-        for j in i+1:size
+    for i = 1:size
+        for j = (i+1):size
             destroyed_cset.edges[i][j] = cset.future_relations[i][j]
         end
     end
 
-    for flip in 1:num_flips
-        i = rand(rng, 1:size-1)
-        j = rand(rng, i+1:size)
+    for flip = 1:num_flips
+        i = rand(rng, 1:(size-1))
+        j = rand(rng, (i+1):size)
         destroyed_cset.edges[i][j] = ! destroyed_cset.edges[i][j]
     end
 
-    CausalSets.transitive_closure!(destroyed_cset,destroyed_tcg)
+    CausalSets.transitive_closure!(destroyed_cset, destroyed_tcg)
 
-    return CausalSets.to_bitarray_causet(destroyed_tcg), sprinkling, chebyshev_coefs 
+    return CausalSets.to_bitarray_causet(destroyed_tcg), sprinkling, chebyshev_coefs
 end

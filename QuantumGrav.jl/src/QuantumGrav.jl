@@ -16,20 +16,16 @@ import Pkg ## needed for make_data
 include("utils.jl")
 include("csetgeneration.jl")
 include("layeredgeneration.jl")
-include("datageneration.jl")
+include("preparation.jl")
 include("csetgenerationbyconnectivity.jl")
 include("csetmerging.jl")
 include("destroy_manifold_like_cset.jl")
 include("grid_like_causets.jl")
+include("graph_utils.jl")
 
-export make_simple_cset,
-    make_manifold_cset,
-    make_general_cset,
-    make_link_matrix,
+export make_polynomial_manifold_cset,
     make_adj,
     max_pathlen,
-    calculate_angles,
-    calculate_distances,
     sample_bitarray_causet_by_connectivity,
     gaussian_dist_cuts,
     create_random_layered_causet,
