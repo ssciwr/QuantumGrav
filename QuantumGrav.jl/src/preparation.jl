@@ -5,10 +5,10 @@
 Copy the sourcecode files of the functions in the arguments to a targetpath.
 
 # Arguments: 
-funcs_to_copy::Vector{Any} list of functions to copy the sourcecode files of 
+funcs_to_copy::Vector{Function} list of functions to copy the sourcecode files of 
 targetpath::String local path to copy the files to
 """
-function copy_sourcecode(funcs_to_copy::Vector{Any}, targetpath::String)
+function copy_sourcecode(funcs_to_copy::Vector{Function}, targetpath::String)
 
     # get the source code of the prepare/write functions and write them to the data folder 
     # to document how the data has been created
@@ -16,10 +16,9 @@ function copy_sourcecode(funcs_to_copy::Vector{Any}, targetpath::String)
         funcdata = first(methods(func_to_copy)) # this assumes that all overloads of the passed functions are part of the same file
         filepath = String(funcdata.file)
 
-        targetpath = joinpath(targetpath, splitext(basename(filepath))[1] * ".jl")
-
-        if isfile(targetpath) == false
-            cp(filepath, targetpath)
+        tgt = joinpath(targetpath, splitext(basename(filepath))[1] * ".jl")
+        if isfile(tgt) == false
+            cp(filepath, tgt)
         end
     end
 
@@ -59,12 +58,16 @@ Prepare the data production process from the config dict supplied.
 config::Dict{String, Any} Config file defining the data generation system
 funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained 
 """
-function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector{Any})
+function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector{Function})
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
             throw(ArgumentError("Configuration must contain the key: $key"))
         end
+    end
+
+    if length(funcs_to_copy) == 0
+        throw(ArgumentError("No functions to copy"))
     end
 
     targetpath = abspath(expanduser(config["output"]))

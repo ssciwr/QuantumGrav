@@ -40,5 +40,7 @@ export make_polynomial_manifold_cset,
     generate_grid_2d,
     create_grid_causet_2D,
     create_grid_causet_2D_polynomial_manifold,
-    prepare_dataproduction
+    prepare_dataproduction,
+    copy_sourcecode,
+    get_git_info!
 end # module QuantumGrav
