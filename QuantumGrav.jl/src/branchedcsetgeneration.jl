@@ -40,6 +40,82 @@ function is_colinear_overlapping_with_segments(seg::Tuple{CausalSets.Coordinates
 end
 
 """
+    interpolate_point(x, y, interm, idx_in)
+
+Linearly interpolate along the segment from `x` to `y` (each `Coordinates{d}`) to the position
+where the `idx_in`-th coordinate equals `interm`. Returns the full interpolated point.
+
+# Arguments
+- `x, y::Coordinates{d}`: Endpoints of the segment.
+- `interm::Float64`: Target value along the `idx_in`-th coordinate.
+- `idx_in::Int`: Index of the coordinate (1-based).
+
+# Returns
+- `Coordinates{d}`: The interpolated point.
+
+# Throws
+- `ArgumentError` if the `idx_in`-th coordinates of `x` and `y` are (numerically) equal.
+"""
+function interpolate_point(x::CausalSets.Coordinates{N},
+                           y::CausalSets.Coordinates{N},
+                           interm::Float64,
+                           idx_in::Int64;
+                           idx_out::Union{Nothing,Int64}=nothing)::Union{CausalSets.Coordinates{N}, Float64} where {N}
+    Δ = y[idx_in] - x[idx_in]
+    if abs(Δ) < 1e-12
+        throw(ArgumentError("Cannot interpolate: segment is parallel to axis $idx_in."))
+    end
+    α = (interm - x[idx_in]) / Δ
+    if isnothing(idx_out)
+        return CausalSets.Coordinates{N}(ntuple(i -> x[i] + α*(y[i]-x[i]), N))
+    else
+        return x[idx_out] + α*(y[idx_out]-x[idx_out])
+    end
+end
+
+# Helper: check if two segments [a,b], [c,d] in 2D intersect
+function segments_intersect(seg1::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}, seg2::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}; tolerance::Float64=1e-12)
+    ts1 = [point[1] for point in seg1]
+    xs1 = [point[2] for point in seg1]
+    ts2 = [point[1] for point in seg2]
+    xs2 = [point[2] for point in seg2]
+    
+    if min(ts1...) > max(ts2...) || min(ts2...) > max(ts1...) || min(xs1...) > max(xs2...) || min(xs2...) > max(xs1...) 
+        return false, nothing
+    end
+    
+    # Represent as: x1 + α*(y1-x1), x2 + β*(y2-x2), s,t in [0,1]
+    # Solve: x1 + α*(y1-x1) = x2 + β*(y2-x2)
+    # => 2x2 system for s,t
+    dx1 = xs1[2]-xs1[1]
+    dx2 = xs2[2]-xs2[1]
+    dt1 = ts1[2]-ts1[1]
+    dt2 = ts2[2]-ts2[1]
+    det = dt1 * dx2 - dt2 * dx1
+
+    if abs(det) < tolerance
+        # Colinear: check 1D overlap in both coordinates
+        if max(min(ts1...), min(ts2...)) <= min(max(ts1...), max(ts2...)) + tolerance && 
+            max(min(xs1...), min(xs2...)) <= min(max(xs1...), max(xs2...)) + tolerance
+            return true, nothing
+        else
+            return false, nothing
+        end
+    end
+
+    α = (dt2 * (xs1[1] - xs2[1]) + dx2 * (ts2[1] - ts1[1])) / det
+    β = (dt1 * (xs1[1] - xs2[1]) + dx1 * (ts2[1] - ts1[1])) / det
+
+    if -tolerance <= α <= 1 + tolerance && -tolerance <= β <= 1 + tolerance
+            t_int = ts1[1] + α * (ts1[2] - ts1[1])
+            x_int = xs1[1] + α * (xs1[2] - xs1[1])
+            return true, Coordinates{2}((t_int, x_int))
+    else
+        return false, nothing
+    end
+end
+
+"""
     generate_random_branch_points(nPoints::Int, nTuples::Int; d::Int64 = 2, rng::AbstractRNG = Random.default_rng())
         -> Tuple{Vector{Coordinates{d}}, Vector{Tuple{Coordinates{d}, Coordinates{d}}}}
 Randomly generates `nPoints` distinct coordinate points and `nTuples` pairs of coordinate points in the hypercube `[-1,1]^d`. The returned branch points are sorted by coordinate time.
@@ -187,94 +263,55 @@ function filter_sprinkling_near_cuts(
 end
 
 """
-    intersections_with_cuts(manifold, ray_origin, slope, branch_point_tuples, y) -> Union{Tuple{Coordinates{2}, Int}, Nothing}
+    next_intersection(manifold, branch_point_tuples, x, y, slope) -> Union{Tuple{Coordinates{2}, Int}, Nothing}
 
 Compute the earliest intersection between a null ray (with slope ±1) starting from `ray_origin` and any branch cut segment in `branch_point_tuples`, restricted to occur before the event `y`.
 
 # Arguments
 - `manifold`: The background manifold (used for causal ordering).
-- `ray_origin::Coordinates{2}`: The starting point of the null ray.
+- `x::Coordinates{2}`: The starting point of the null ray.
+- `y::Coordinates{2}`: The event restricting the search; only intersections in the causal past of `y` are considered.
 - `slope::Float64`: Slope of the null ray; should be ±1.
 - `branch_point_tuples`: Vector of cut segments, each as a tuple `(p, q)` of `Coordinates{2}`.
-- `y::Coordinates{2}`: The event restricting the search; only intersections in the causal past of `y` are considered.
 
 # Returns
 - Either `nothing` if no valid intersection is found, or a tuple `(intersection::Coordinates{2}, index::Int)` where `intersection` is the earliest intersection point and `index` is the 1-based index of the cut segment intersected.
-
-# Notes
-- The null ray is parameterized as `t = t₀ + a`, `x = x₀ + slope*a`, with `a ≥ 0`, starting from `ray_origin = (t₀, x₀)`.
-- Each branch cut is a segment from `p` to `q`, parameterized by `s ∈ [0, 1]`.
-- The function solves for intersections between the ray and each segment, only accepting those in the future of `ray_origin` (i.e., `a ≥ 0`) and in the causal past of `y`.
-- Only intersections occurring before the coordinate time of `y` are considered, and the earliest such intersection (smallest `t`) is returned.
 """
-function intersections_with_cuts(
+function next_intersection(
     manifold::CausalSets.AbstractManifold,
-    ray_origin::CausalSets.Coordinates{2},
-    slope::Float64,
     branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},
-    y::CausalSets.Coordinates{2};
+    x::CausalSets.Coordinates{2},
+    y::CausalSets.Coordinates{2},
+    slope::Float64;
+    null_separated::Bool=false,
     tolerance::Float64 = 1e-12
 )::Union{Tuple{CausalSets.Coordinates{2},Int}, Nothing}
-    backward = ray_origin[1] > y[1]
-    dir_sign = backward ? -1. : 1.
-
     best_intersection = nothing
     best_index = nothing
-    best_time = backward ? -Inf : Inf
-    t0, x0 = ray_origin
-    for (idx, (p, q)) in enumerate(branch_point_tuples)
-        t1, x1 = p
-        t2, x2 = q
-        # Parametrize the segment: (x(t), t(t)) = p + s*(q - p), s in [0,1]
-        dx = x2 - x1
-        dt = t2 - t1
-        # Parametrize the ray: t = t0 + a, x = x0 + slope*a, a >= 0 (or a <= 0 for backward)
-        # Solve for intersection: x0 + slope*a = x1 + s*dx and t0 + a = t1 + s*dt
-        # From the two equations:
-        # a = t1 + s*dt - t0
-        # x0 + slope*a = x1 + s*dx
-        # Substitute a:
-        # x0 + slope*(t1 + s*dt - t0) = x1 + s*dx
-        # Rearranged:
-        # slope*t1 + slope*s*dt - slope*t0 + x0 = x1 + s*dx
-        # Collect terms with s:
-        # s*(slope*dt - dx) = x1 - x0 - slope*(t1 - t0)
-        denom = slope*dt - dx
-        # If denom is zero, lines are parallel or colinear
-        if abs(denom) < tolerance
-            continue
-        end
-        s = (x1 - x0 - slope*(t1 - t0)) / denom
-        a = t1 + s*dt - t0
-        # Check if s in [0,1] and a is in the correct direction (dir_sign * a >= -tolerance)
-        if -tolerance <= s <= 1.0 + tolerance && dir_sign * a >= -tolerance
-            intersection_point = CausalSets.Coordinates{2}((t0 + a, x0 + slope*a))
-            if (!backward && CausalSets.in_past_of(manifold, intersection_point, y)) ||
-                (backward  && CausalSets.in_past_of(manifold, y, intersection_point))
-                if dir_sign * (t0 + a) < dir_sign * best_time
-                    best_time = t0 + a
-                    best_intersection = intersection_point
-                    best_index = idx
-                elseif (t0 + a) == best_time
-                    pt_idx_new = dir_sign * slope > 0 ? argmin([points[2] for points in branch_point_tuples[idx]]) : argmax([points[2] for points in branch_point_tuples[idx]])
-                    pt_idx_old = dir_sign * slope > 0 ? argmin([points[2] for points in branch_point_tuples[best_index]]) : argmax([points[2] for points in branch_point_tuples[best_index]])
-                    if branch_point_tuples[idx][pt_idx_new][1] < branch_point_tuples[best_index][pt_idx_old][1]
-                        best_time = t0 + a
-                        best_intersection = intersection_point
-                        best_index = idx
-                    end
-                end
+    best_time = nothing
+
+    backward = y[1] < x[1]
+    dir_sign = backward ? -1. : 1
+
+    # Compute the endpoint of the ray segment as (y[1], ray_origin[2] + slope * (y[1] - ray_origin[1]))
+    ray_end = CausalSets.Coordinates{2}((y[1], x[2] + slope * (y[1] - x[1])))
+    ray_segment = (x, ray_end)
+
+    for (idx, cut) in enumerate(branch_point_tuples)
+        ok, pt = segments_intersect(ray_segment, cut; tolerance=tolerance)
+        if ok && pt !== nothing && dir_sign * x[1] - tolerance <= dir_sign * pt[1] <= dir_sign * y[1] + tolerance &&
+            (null_separated ? true : (backward ? in_past_of(manifold, y, pt) : in_past_of(manifold, pt, y)))
+            if best_intersection === nothing ||
+                (dir_sign * pt[1] < dir_sign * best_time) 
+                best_intersection, best_index = pt, idx
+                best_time = pt[1]
             end
         end
     end
-    if best_intersection !== nothing
-        return (best_intersection, best_index)
-    else
-        return nothing
-    end
+
+    return isnothing(best_intersection) ? nothing : (best_intersection, best_index)
 end
 
-# Compute the two intersection points of the future lightcone of x and the past lightcone of y in 2D Minkowski spacetime
 """
     diamond_corners(x::CausalSets.Coordinates{2}, y::CausalSets.Coordinates{2}) -> Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}
 
@@ -314,11 +351,11 @@ A cut crosses the diamond if:
 
 Returns true if the cut crosses the diamond, false otherwise.
 """
-function cut_crosses_diamond(manifold::CausalSets.AbstractManifold, x::CausalSets.Coordinates{2}, y::CausalSets.Coordinates{2}, cut::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}})
+function cut_crosses_diamond(manifold::CausalSets.AbstractManifold, x::CausalSets.Coordinates{2}, y::CausalSets.Coordinates{2}, cut::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}; tolerance::Float64=1e-12)
     (b1, b2) = cut
 
-    # Check if endpoints are on different sides of y[2]
-    if (b1[2] - y[2]) * (b2[2] - y[2]) > 0
+    # Check if endpoints are on different sides of y[2] and x[2]
+    if (b1[2] - y[2]) * (b2[2] - y[2]) > 0 && (b1[2] - x[2]) * (b2[2] - x[2]) > 0 && (b1[2] - x[2]) * (b1[2] - y[2]) > 0
         return false
     end
 
@@ -333,13 +370,10 @@ function cut_crosses_diamond(manifold::CausalSets.AbstractManifold, x::CausalSet
         return false
     end
 
-    # Interpolate time at which cut crosses spatial position of upper corner y[2]
-    s = (y[2] - b1[2]) / Δx
-    t_cross = b1[1] + s * (b2[1] - b1[1])
-
     # Cut crosses diamond if crossing time is between x[1] (lower corner) and y[1] (upper corner)
-    return x[1] < t_cross && t_cross < y[1]
+    return segments_intersect(cut, (x, y); tolerance=tolerance)[1]
 end
+
 
 """
     intersected_cut_crosses_diamond(
@@ -413,82 +447,6 @@ function intersected_cut_crosses_diamond(
 end
 
 """
-    interpolate_point(x, y, interm, idx_in)
-
-Linearly interpolate along the segment from `x` to `y` (each `Coordinates{d}`) to the position
-where the `idx_in`-th coordinate equals `interm`. Returns the full interpolated point.
-
-# Arguments
-- `x, y::Coordinates{d}`: Endpoints of the segment.
-- `interm::Float64`: Target value along the `idx_in`-th coordinate.
-- `idx_in::Int`: Index of the coordinate (1-based).
-
-# Returns
-- `Coordinates{d}`: The interpolated point.
-
-# Throws
-- `ArgumentError` if the `idx_in`-th coordinates of `x` and `y` are (numerically) equal.
-"""
-function interpolate_point(x::CausalSets.Coordinates{N},
-                           y::CausalSets.Coordinates{N},
-                           interm::Float64,
-                           idx_in::Int64;
-                           idx_out::Union{Nothing,Int64}=nothing)::Union{CausalSets.Coordinates{N}, Float64} where {N}
-    Δ = y[idx_in] - x[idx_in]
-    if abs(Δ) < 1e-12
-        throw(ArgumentError("Cannot interpolate: segment is parallel to axis $idx_in."))
-    end
-    α = (interm - x[idx_in]) / Δ
-    if isnothing(idx_out)
-        return CausalSets.Coordinates{N}(ntuple(i -> x[i] + α*(y[i]-x[i]), N))
-    else
-        return x[idx_out] + α*(y[idx_out]-x[idx_out])
-    end
-end
-
-# Helper: check if two segments [a,b], [c,d] in 2D intersect
-function segments_intersect(seg1::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}, seg2::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}; tolerance::Float64=1e-12)
-    ts1 = [point[1] for point in seg1]
-    xs1 = [point[2] for point in seg1]
-    ts2 = [point[1] for point in seg2]
-    xs2 = [point[2] for point in seg2]
-    
-    if min(ts1...) > max(ts2...) || min(ts2...) > max(ts1...) || min(xs1...) > max(xs2...) || min(xs2...) > max(xs1...) 
-        return false, nothing
-    end
-    
-    # Represent as: x1 + α*(y1-x1), x2 + β*(y2-x2), s,t in [0,1]
-    # Solve: x1 + α*(y1-x1) = x2 + β*(y2-x2)
-    # => 2x2 system for s,t
-    dx1 = xs1[2]-xs1[1]
-    dx2 = xs2[2]-xs2[1]
-    dt1 = ts1[2]-ts1[1]
-    dt2 = ts2[2]-ts2[1]
-    det = dt1 * dx2 - dt2 * dx1
-
-    if abs(det) < tolerance
-        # Colinear: check 1D overlap in both coordinates
-        if max(min(ts1...), min(ts2...)) <= min(max(ts1...), max(ts2...)) + tolerance && 
-            max(min(xs1...), min(xs2...)) <= min(max(xs1...), max(xs2...)) + tolerance
-            return true, nothing
-        else
-            return false, nothing
-        end
-    end
-
-    α = (dt2 * (xs1[1] - xs2[1]) + dx2 * (ts2[1] - ts1[1])) / det
-    β = (dt1 * (xs1[1] - xs2[1]) + dx1 * (ts2[1] - ts1[1])) / det
-
-    if -tolerance <= α <= 1 + tolerance && -tolerance <= β <= 1 + tolerance
-            t_int = ts1[1] + α * (ts1[2] - ts1[1])
-            x_int = xs1[1] + α * (xs1[2] - xs1[1])
-            return true, Coordinates{2}((t_int, x_int))
-    else
-        return false, nothing
-    end
-end
-
-"""
     propagate_ray(manifold, x, slope, branch_point_tuples, tmax) -> Vector{Coordinates{2}}
 
 Propagate a null ray starting at event `x` with slope `±1` through
@@ -524,7 +482,7 @@ function propagate_ray(
     tfin = y[1]
     tol = 1e-12
     while dir_sign * pos[1] < dir_sign * tfin
-        hit = intersections_with_cuts(manifold, pos, slope, local_branch_point_tuples, y)
+        hit = next_intersection(manifold, local_branch_point_tuples, pos, y, slope)
         if isnothing(hit)
             # No more intersections: propagate straight to tfin
             Δt = tfin - pos[1]
@@ -757,11 +715,11 @@ function CausalSets.in_past_of(
     end
 
     # Check whether causal diamond edges are inhibited by cuts
-    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Int}}}(undef, 2)
-    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Int}}}(undef, 2)
+    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Int}}}(undef, 2) # save in case we can reuse this in in_wedge_of
+    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Int}}}(undef, 2) # save in case we can reuse this in in_wedge_of
     for i in 1:2 
-        past_intersections[i] = intersections_with_cuts(manifold, x, (-1.)^i, branch_point_tuples, corners[i])
-        future_intersections[i] = intersections_with_cuts(manifold, corners[i], (-1.)^(i+1), branch_point_tuples, y)
+        past_intersections[i] = next_intersection(manifold, branch_point_tuples, x, corners[i], (-1.)^i; null_separated = true)
+        future_intersections[i] = next_intersection(manifold, branch_point_tuples, y, corners[i], (-1.)^(i+1); null_separated = true)
         if isnothing(past_intersections[i]) && isnothing(future_intersections[i])
             return true
         end
@@ -947,7 +905,7 @@ function make_branched_manifold_cset(
     d::Int64 = 2,
     tolerance::Float64=1e-12,
     type::Type{T} = Float32
-)::Tuple{CausalSets.BitArrayCauset, Vector{Tuple{T,Vararg{T}}}, Tuple{Vector{Tuple{T,Vararg{T}}}, Vector{Tuple{Tuple{T,Vararg{T}}, Tuple{T,Vararg{T}}}}},Matrix{T}} where {T<:Number}
+)::Tuple{CausalSets.BitArrayCauset, Vector{Tuple{T,Vararg{T}}}, Tuple{Vector{Tuple{T,Vararg{T}}}, Vector{Tuple{Tuple{T,Vararg{T}}, Tuple{T,Vararg{T}}}}},Matrix{T}} where {T<:Number} #)::Tuple{CausalSets.BitArrayCauset, Vector{CausalSets.Coordinates{2}}, Tuple{Vector{CausalSets.Coordinates{2}}, Vector{Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}},Matrix{T}} where {T<:Number}
 
     if npoints <= 0
         throw(ArgumentError("npoints must be greater than 0, got $npoints"))
