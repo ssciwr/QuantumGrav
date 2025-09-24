@@ -1,109 +1,14 @@
-
 """
-    PseudoManifold{N}
-
-A pseudo-manifold structure representing a random manifold in N dimensions.
-This is used as an alternative to the geometric manifolds provided by CausalSets
-when working with randomly generated causets.
-
-# Type Parameters
-- `N`: The dimension of the manifold
-"""
-struct PseudoManifold{N} <: CausalSets.AbstractManifold{N} end
-
-"""
-    get_manifold_name(type::Type, d)
-
-Returns the string name of a manifold type for a given dimension.
-
-# Arguments
-- `type`: The manifold type (e.g., CausalSets.MinkowskiManifold{d})
-- `d`: The dimension of the manifold
-
-# Returns
-- `String`: The name of the manifold ("Minkowski", "DeSitter", etc.)
-"""
-function get_manifold_name(type::Type)
-    Dict(
-        CausalSets.MinkowskiManifold{2} => "Minkowski",
-        CausalSets.DeSitterManifold{2} => "DeSitter",
-        CausalSets.AntiDeSitterManifold{2} => "AntiDeSitter",
-        CausalSets.HypercylinderManifold{2} => "HyperCylinder",
-        CausalSets.TorusManifold{2} => "Torus",
-        PseudoManifold{2} => "Random",
-        CausalSets.MinkowskiManifold{3} => "Minkowski",
-        CausalSets.DeSitterManifold{3} => "DeSitter",
-        CausalSets.AntiDeSitterManifold{3} => "AntiDeSitter",
-        CausalSets.HypercylinderManifold{3} => "HyperCylinder",
-        CausalSets.TorusManifold{3} => "Torus",
-        PseudoManifold{3} => "Random",
-        CausalSets.MinkowskiManifold{4} => "Minkowski",
-        CausalSets.DeSitterManifold{4} => "DeSitter",
-        CausalSets.AntiDeSitterManifold{4} => "AntiDeSitter",
-        CausalSets.HypercylinderManifold{4} => "HyperCylinder",
-        CausalSets.TorusManifold{4} => "Torus",
-        PseudoManifold{4} => "Random",
-    )[type]
-end
-
-"""
-    make_manifold(name::String, d::Int) -> CausalSets.AbstractManifold
-Creates a manifold object based on its name and dimension.
-# Arguments
-- `name::String`: Name of the manifold ("Minkowski", "DeSitter", etc.)
-- `d::Int`: Dimension of the manifold (2, 3, or 4)
-# Returns
-- `CausalSets.AbstractManifold`: The constructed manifold object    
-"""
-function make_manifold(name::String, d::Int)::CausalSets.AbstractManifold
-    if d < 2 || d > 4
-        throw(ArgumentError("Unsupported manifold dimension: $d"))
-    end
-
-    return Dict(
-        "Minkowski" => CausalSets.MinkowskiManifold{d}(),
-        "DeSitter" => CausalSets.DeSitterManifold{d}(1.0),
-        "AntiDeSitter" => CausalSets.AntiDeSitterManifold{d}(1.0),
-        "HyperCylinder" => CausalSets.HypercylinderManifold{d}(1.0),
-        "Torus" => CausalSets.TorusManifold{d}(1.0),
-        "Random" => PseudoManifold{d}(),
-    )[name]
-end
-
-"""
-    get_manifold_encoding
-
-A dictionary mapping manifold names to their integer encodings.
-Used for converting between string representations and numeric codes
-for different spacetime manifolds.
-
-# Mappings
-- "Minkowski" => 1
-- "HyperCylinder" => 2  
-- "DeSitter" => 3
-- "AntiDeSitter" => 4
-- "Torus" => 5
-- "Random" => 6
-"""
-get_manifold_encoding = Dict(
-    "Minkowski" => 1,
-    "DeSitter" => 3,
-    "AntiDeSitter" => 4,
-    "HyperCylinder" => 2,
-    "Torus" => 5,
-    "Random" => 6,
-)
-
-get_boundary_encoding = Dict("CausalDiamond" => 1, "TimeBoundary" => 2, "BoxBoundary" => 3)
-
-"""
-    make_manifold(i::Int, d::Int) -> CausalSets.AbstractManifold
+    make_manifold(i::Int, d::Int; size::Float64=1.0) -> CausalSets.AbstractManifold
 
 Creates a manifold object based on an integer encoding and dimension.
 
 # Arguments
 - `i`: Integer encoding of the manifold type (1-6)
 - `d`: Dimension of the manifold
+
+# Keyword Arguments 
+- `size`: Manifold size parameter (dependent on desired manifold, see docs of CausalSets.jl)
 
 # Returns
 - `CausalSets.AbstractManifold`: The constructed manifold object
@@ -114,116 +19,163 @@ Creates a manifold object based on an integer encoding and dimension.
 - 3: De Sitter manifold
 - 4: Anti-de Sitter manifold
 - 5: Torus manifold
-- 6: Pseudo manifold (random)
 
 # Throws
 - `ErrorException`: If manifold encoding `i` is not supported (not 1-6)
 """
-function make_manifold(i::Int, d::Int)::CausalSets.AbstractManifold
+function make_manifold(i::Int, d::Int; size::Float64 = 1.0)::CausalSets.AbstractManifold
+
+    if i < 1 || i > 5
+        throw(ArgumentError("Unsupported manifold encoding: $i"))
+    end
 
     if d < 2 || d > 4
         throw(ArgumentError("Unsupported manifold dimension: $d"))
     end
 
     Dict(
-        1 => CausalSets.MinkowskiManifold{d}(),
-        2 => CausalSets.HypercylinderManifold{d}(1.0),
-        3 => CausalSets.DeSitterManifold{d}(1.0),
-        4 => CausalSets.AntiDeSitterManifold{d}(1.0),
-        5 => CausalSets.TorusManifold{d}(1.0),
-        6 => PseudoManifold{d}(),
-    )[i]
+        1 => () -> CausalSets.MinkowskiManifold{d}(),
+        2 => () -> CausalSets.HypercylinderManifold{d}(size),
+        3 => () -> CausalSets.DeSitterManifold{d}(size),
+        4 => () -> CausalSets.AntiDeSitterManifold{d}(size),
+        5 => () -> CausalSets.TorusManifold{d}(size),
+    )[i]()
 end
 
 """
-    make_boundary(name::String, d::Int) -> CausalSets.AbstractBoundary
-Creates a boundary object based on its name and dimension.
-# Arguments
-- `name::String`: Name of the boundary ("CausalDiamond", "TimeBoundary", "BoxBoundary")
-- `d::Int`: Dimension of the boundary (2, 3, or 4)
+    make_manifold(name::String, d::Int; size::Float64 = 1.0)
+
+Creates a manifold object based on an integer encoding and dimension.
+
+# Arguments:
+- `name`: Name of the manifold to be created. not case sensitive
+- `d`: Dimension of the manifold
+
+# Keyword Arguments 
+- `size`: Manifold size parameter (dependent on desired manifold, see docs of CausalSets.jl)
+
 # Returns
-- `CausalSets.AbstractBoundary`: The constructed boundary object
+- `CausalSets.AbstractManifold`: The constructed manifold object
+
+# Manifold Encodings
+- minkowski: Minkowski manifold
+- hypercylinder: Hypercylinder manifold  
+- desitter: De Sitter manifold
+- antidesitter: Anti-de Sitter manifold
+- torus: Torus manifold
+
+# Throws
+- `ErrorException`: If manifold encoding `i` is not supported (not 1-6)
 """
-function make_boundary(name::String, d::Int)::CausalSets.AbstractBoundary
+function make_manifold(
+    name::String,
+    d::Int;
+    size::Float64 = 1.0,
+)::CausalSets.AbstractManifold
+
+    namedict = Dict(
+        "minkowski" => 1,
+        "hypercylinder" => 2,
+        "desitter" => 3,
+        "antidesitter" => 4,
+        "torus" => 5,
+    )
+
+    if haskey(namedict, lowercase(name)) == false
+        throw(ArgumentError("Unsupported manifold name: $name"))
+    end
+
+    return make_manifold(namedict[lowercase(name)], d; size = size)
+
+end
+
+
+"""
+    make_boundary(i::Int, d::Int; limits::Union{Tuple{Vararg{Float64}}, Nothing, Float64} = nothing)
+
+Create a CausalSets.AbstractBoundary object from given parameters
+
+# Arguments:
+- `i`: boundary indicator
+- `d`: dimensionality of the underlying manifold
+
+# Keyword arguments: 
+- `limits`: Boundary edges, defaults to nothing. Dependent on the boundary type to be created. Defaults are: 
+   - CausalDiamond: 1.0
+   - TimeBoundary: (-1.0, 1.0)
+   - BoxBoundary: d-dimensional box of size (-0.49, 0.49) in each dimension
+
+# Boundary encodings
+- 1: CausalDiamondBoundary
+- 2: TimeBoundary
+- 3: BoxBoundary
+"""
+function make_boundary(
+    i::Int,
+    d::Int;
+    limits::Union{Tuple{Vararg{Float64}},Nothing,Float64} = nothing,
+)::CausalSets.AbstractBoundary
     if d < 2 || d > 4
         throw(ArgumentError("Unsupported boundary dimension: $d"))
+    end
+
+    if i < 1 || i > 3
+        throw(ArgumentError("Unsupported boundary encoding: $i"))
+    end
+
+    if limits === nothing
+        if i == 1
+            limits = 1.0
+        elseif i == 2
+            limits = (-1.0, 1.0)
+        else
+            limits = ((([-0.49 for i = 1:d]...,), ([0.49 for i = 1:d]...,)))
+        end
     end
 
     return Dict(
-        "CausalDiamond" => CausalSets.CausalDiamondBoundary{d}(1.0),
-        "TimeBoundary" => CausalSets.TimeBoundary{d}(-1.0, 1.0), # check if this makes sense
-        "BoxBoundary" => CausalSets.BoxBoundary{d}((
-            ([-0.49 for i = 1:d]...,),
-            ([0.49 for i = 1:d]...,),
-        )),
-    )[name]
-end
-
-"""
-    make_boundary(i::Int, d::Int) -> CausalSets.AbstractBoundary
-Creates a boundary object based on an integer encoding and dimension.
-# Arguments
-- `i`: Integer encoding of the boundary type (1-3)
-- `d`: Dimension of the boundary (2, 3, or 4)
-# Returns
-- `CausalSets.AbstractBoundary`: The constructed boundary object
-"""
-function make_boundary(i::Int, d::Int)::CausalSets.AbstractBoundary
-    if d < 2 || d > 4
-        throw(ArgumentError("Unsupported boundary dimension: $d"))
-    end
-
-    Dict(
-        1 => CausalSets.CausalDiamondBoundary{d}(1.0),
-        2 => CausalSets.TimeBoundary{d}(-1.0, 1.0), # check if this makes sense
-        3 => CausalSets.BoxBoundary{d}((
-            ([-0.49 for i = 1:d]...,),
-            ([0.49 for i = 1:d]...,),
-        )),
-    )[i]
+        1 => () -> CausalSets.CausalDiamondBoundary{d}(limits),
+        2 => () -> CausalSets.TimeBoundary{d}(limits...),
+        3 => () -> CausalSets.BoxBoundary{d}(limits),
+    )[i]()
 end
 
 
-
-
-
 """
-    resize(m::AbstractArray{T}, new_size::Tuple) -> AbstractArray{T}
+    make_boundary(name::String, d::Int; limits::Union{Tuple{Vararg{Float64}}, Nothing, Float64} = nothing)
 
-Resizes an array to a new size, either by truncating or zero-padding.
+Create a CausalSets.AbstractBoundary object from given parameters
 
-# Arguments
-- `m::AbstractArray{T}`: The input array to resize
-- `new_size::Tuple`: The target dimensions
+# Arguments:
+- `name`: name of the boundary type to create. not case sensitive
+- `d`: dimensionality of the underlying manifold
 
-# Returns
-- `AbstractArray{T}`: Resized array of the same type as input
+# Keyword arguments:
+- `limits`: Boundary edges, defaults to nothing. Dependent on the boundary type to be created. Defaults are: 
+   - CausalDiamond: 1.0
+   - TimeBoundary: (-1.0, 1.0)
+   - BoxBoundary: d-dimensional box of size (-0.49, 0.49) in each dimension
 
-# Notes
-- If new size is larger, pads with zeros (preserving sparsity for sparse arrays)
-- If new size is smaller, truncates the array
-- Maintains the original array type (dense or sparse)
+# Boundary names
+- causaldiamond: CausalDiamondBoundary
+- timeboundary: TimeBoundary
+- boxboundary: BoxBoundary
 """
-function resize(m::AbstractArray{T}, new_size::Tuple)::AbstractArray{T} where {T<:Number}
+function make_boundary(
+    name::String,
+    d::Int;
+    limits::Union{Tuple{Vararg{Float64}},Nothing,Float64} = nothing,
+)::CausalSets.AbstractBoundary
 
-    if any(size(m) .< new_size) && any(size(m) .> new_size)
-        throw(
-            ArgumentError(
-                "Cannot resize array to a smaller size in some dimensions while enlarging it in others.",
-            ),
-        )
+    namedict = Dict("causaldiamond" => 1, "timeboundary" => 2, "boxboundary" => 3)
+
+    if haskey(namedict, lowercase(name)) == false
+        throw(ArgumentError("Unsupported boundary name: $name"))
     end
 
-    if any(size(m) .< new_size)
-        resized_m =
-            m isa SparseArrays.AbstractSparseArray ? SparseArrays.spzeros(T, new_size...) :
-            zeros(T, new_size...)
-        @inbounds resized_m[tuple([1:n for n in size(m)]...)...] .= m
-        return resized_m
-    else
-        return @inbounds m[tuple([1:n for n in new_size]...)...]
-    end
+    return make_boundary(namedict[lowercase(name)], d; limits = limits)
 end
+
 
 """
     make_pseudosprinkling(n, d, box_min, box_max, type; rng) -> Vector{Vector{T}}

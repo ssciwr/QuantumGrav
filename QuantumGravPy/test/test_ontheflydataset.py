@@ -19,12 +19,12 @@ def test_onthefly_dataset_creation_works(
     assert all(
         key in data[0]
         for key in [
-            "manifold",
-            "boundary",
             "dimension",
             "atomcount",
             "adjacency_matrix",
             "link_matrix",
+            "max_pathlen_future",
+            "max_pathlen_past",
         ]
     )
     assert ontheflydataset.config == jlcall_args
@@ -84,4 +84,4 @@ def test_onthefly_dataset_processing(
 
     assert isinstance(datapoint, Data)
     assert datapoint.x.shape[1] == 2  # 2 degrees of freedom
-    assert datapoint.y.shape == (3,)  # manifold, boundary, dimension
+    assert datapoint.y.shape == (1,)  # dimension
