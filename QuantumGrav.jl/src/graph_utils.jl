@@ -78,12 +78,14 @@ end
 """
     transitive_reduction!(mat::AbstractMatrix)
 
-Compute the transitive reduction of the input matrix, such that only connections (i,j) remain that have a max pathlen of 1
+Compute the transitive reduction of the input matrix, such that only connections (i,j) remain that have a max pathlen of 1. This assumes that the input matrix is upper triangular, i.e., a topologically ordered DAG. If that is not the case, the results will be incorrect.
 
 # Arguments
 - `mat::AbstractMatrix`: The input matrix to compute the transitive reduction on
 """
 function transitive_reduction!(mat::AbstractMatrix)
+
+    # transitive reduction
     n = size(mat, 1)
     @inbounds for i = 1:n
         for j = (i+1):n

@@ -25,6 +25,10 @@ Creates a manifold object based on an integer encoding and dimension.
 """
 function make_manifold(i::Int, d::Int; size::Float64 = 1.0)::CausalSets.AbstractManifold
 
+    if i < 1 || i > 5
+        throw(ArgumentError("Unsupported manifold encoding: $i"))
+    end
+
     if d < 2 || d > 4
         throw(ArgumentError("Unsupported manifold dimension: $d"))
     end
@@ -77,6 +81,10 @@ function make_manifold(
         "torus" => 5,
     )
 
+    if haskey(namedict, lowercase(name)) == false
+        throw(ArgumentError("Unsupported manifold name: $name"))
+    end
+
     return make_manifold(namedict[lowercase(name)], d; size = size)
 
 end
@@ -109,6 +117,10 @@ function make_boundary(
 )::CausalSets.AbstractBoundary
     if d < 2 || d > 4
         throw(ArgumentError("Unsupported boundary dimension: $d"))
+    end
+
+    if i < 1 || i > 3
+        throw(ArgumentError("Unsupported boundary encoding: $i"))
     end
 
     if limits === nothing
@@ -154,7 +166,12 @@ function make_boundary(
     d::Int;
     limits::Union{Tuple{Vararg{Float64}},Nothing,Float64} = nothing,
 )::CausalSets.AbstractBoundary
+
     namedict = Dict("causaldiamond" => 1, "timeboundary" => 2, "boxboundary" => 3)
+
+    if haskey(namedict, lowercase(name)) == false
+        throw(ArgumentError("Unsupported boundary name: $name"))
+    end
 
     return make_boundary(namedict[lowercase(name)], d; limits = limits)
 end

@@ -33,7 +33,17 @@ config::Dict{String, Any} Config dictionary to put the git data into
 """
 function get_git_info!(config::Dict{String,Any})
     pkg_id = Base.identify_package("QuantumGrav")
-    info = Pkg.dependencies()[pkg_id.uuid]
+
+    if pkg_id === nothing
+        throw(ErrorException("QuantumGrav not found in current environment"))
+    end
+
+    info = get(Pkg.dependencies(), pkg_id.uuid, nothing)
+
+    if info === nothing
+        throw(ErrorException("QuantumGrav dependency info not found"))
+    end
+
     git_source = info.git_source
     git_branch = info.git_revision
     git_tree_hash = info.tree_hash

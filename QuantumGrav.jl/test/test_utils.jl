@@ -22,7 +22,7 @@ end
         QuantumGrav.make_boundary("CausalDiamond", 4),
         CausalSets.CausalDiamondBoundary{4},
     )
-    @test_throws KeyError QuantumGrav.make_boundary("UnknownBoundary", 2)
+    @test_throws ArgumentError QuantumGrav.make_boundary("UnknownBoundary", 2)
     @test_throws ArgumentError QuantumGrav.make_boundary("CausalDiamond", 1)
 end
 
@@ -62,6 +62,10 @@ end
         CausalSets.HypercylinderManifold{4},
     )
     @test isa(QuantumGrav.make_manifold("Torus", 4), CausalSets.TorusManifold{4})
+
+    @test_throws ArgumentError QuantumGrav.make_manifold("Minkowski", 0)
+
+    @test_throws ArgumentError QuantumGrav.make_manifold("UnknownManifold", 2)
 end
 
 @testitem "test_make_pseudosprinkling" tags = [:utils] setup = [importModules] begin
