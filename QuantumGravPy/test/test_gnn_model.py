@@ -41,6 +41,9 @@ def gnn_model_with_graph_features(
 @pytest.fixture
 def gnn_model_config():
     config = {
+        "active_tasks": [
+            1,
+        ],
         "encoder": [
             {
                 "in_dim": 16,
@@ -82,6 +85,15 @@ def gnn_model_config():
             },
         ],
         "downstream_tasks": [
+            {
+                "input_dim": 16,
+                "output_dim": 3,
+                "hidden_dims": [24, 18],
+                "activation": "relu",
+                "backbone_kwargs": [{}, {}],
+                "output_kwargs": {},
+                "activation_kwargs": [{"inplace": False}],
+            },
             {
                 "input_dim": 16,
                 "output_dim": 3,
@@ -180,9 +192,46 @@ def test_gnn_model_forward(gnn_model):
     gnn_model.eval()  # Set model to evaluation mode
     output = gnn_model(x, edge_index, batch)
     assert gnn_model.training is False  # Ensure model is in eval mode
-    assert isinstance(output, list)
+    assert isinstance(output, dict)
     assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
     assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+
+
+def test_gnn_model_forward_set_active(gnn_model):
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    gnn_model.eval()  # Set model to evaluation mode
+    assert gnn_model.training is False  # Ensure model is in eval mode
+
+    assert gnn_model.active_tasks == [0, 1]
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 2
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+    assert 0 in gnn_model.active_tasks
+    assert 1 in gnn_model.active_tasks
+
+    gnn_model.set_task_inactive(1)
+    assert gnn_model.active_tasks == [0]
+
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 1
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert 1 not in gnn_model.active_tasks
+    assert 1 not in output
+
+    gnn_model.set_task_active(1)
+    assert gnn_model.active_tasks == [0, 1]
+
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 2
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+    assert 0 in gnn_model.active_tasks
+    assert 1 in gnn_model.active_tasks
 
 
 def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
@@ -200,15 +249,18 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
     assert (
         gnn_model_with_graph_features.training is False
     )  # Ensure model is in eval mode
-    assert isinstance(output, list)
+    assert isinstance(output, dict)
     assert output[0].shape == (2, 3)  # 2 graphs, 1 pooling layers, 2 classes
-    assert output[0].shape == (2, 3)
+    assert output[1].shape == (2, 3)
 
 
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
 
+    assert model.active_tasks == [
+        1,
+    ]
     assert isinstance(model.encoder, torch.nn.ModuleList)
 
     assert len(model.encoder) == 2  # Assuming two GNN blocks
@@ -229,8 +281,9 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     model.eval()  # Set model to evaluation mode
     output = model(x, edge_index, batch)
     assert model.training is False  # Ensure model is in eval mode
-    assert isinstance(output, list)
-    assert output[0].shape == (2, 3)  # 2 graphs, 3 classes
+    assert isinstance(output, dict)
+    assert 0 not in output
+    assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
 
 
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):

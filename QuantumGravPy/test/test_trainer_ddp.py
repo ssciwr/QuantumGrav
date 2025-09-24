@@ -104,11 +104,11 @@ class DummyEarlyStopping:
         return False
 
 
-def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
+def compute_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
     all_losses = torch.zeros(1)
-    for task_output in x:
-        loss = torch.nn.MSELoss()(task_output[0], data.y.to(torch.float32))
+    for task_output in x.values():
+        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))
         all_losses += loss
     return all_losses
 

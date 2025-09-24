@@ -33,12 +33,13 @@ class GNNModel(torch.nn.Module):
         aggregate_pooling: torch.nn.Module | Callable | None = None,
         graph_features_net: torch.nn.Module | None = None,
         aggregate_graph_features: torch.nn.Module | Callable | None = None,
+        active_tasks: list[int] | None = None,
     ):
         """Initialize the GNNModel.
 
         Args:
             encoder (GCNBackbone): GCN backbone network.
-            downstream_tasks (Sequence[torch.nn.Module]): Downstream task blocks.
+            downstream_tasks (Sequence[torch.nn.Module]): Downstream task blocks. These are assumed to be independent of each other.
             pooling_layers (Sequence[torch.nn.Module]): Pooling layers. Defaults to None.
             aggregate_pooling (torch.nn.Module | Callable | None): Aggregation of pooling layer output. Defaults to None.
             graph_features_net (torch.nn.Module, optional): Graph features network. Defaults to None.
@@ -57,6 +58,13 @@ class GNNModel(torch.nn.Module):
 
         if len(self.downstream_tasks) == 0:
             raise ValueError("At least one downstream task must be provided.")
+
+        if active_tasks is None:
+            self.active_tasks = list(range(0, len(self.downstream_tasks)))
+        else:
+            if any([i >= len(self.downstream_tasks) or i < 0 for i in active_tasks]):
+                raise ValueError("Invalid active_tasks indices.")
+            self.active_tasks = active_tasks
 
         # set up pooling layers and their aggregation
         self.pooling_layers = torch.nn.ModuleList(
@@ -102,6 +110,24 @@ class GNNModel(torch.nn.Module):
             raise ValueError(
                 "If graph features are to be used, both a graph features network and an aggregation method must be provided."
             )
+
+    def set_task_active(self, i: int) -> None:
+        """Set a downstream task as active.
+
+        Args:
+            i (int): Index of the downstream task to activate.
+        """
+        if i not in self.active_tasks:
+            self.active_tasks.append(i)
+
+    def set_task_inactive(self, i: int) -> None:
+        """Set a downstream task as inactive.
+
+        Args:
+            i (int): Index of the downstream task to deactivate.
+        """
+        if i in self.active_tasks:
+            self.active_tasks.remove(i)
 
     def _eval_encoder(
         self,
@@ -156,6 +182,47 @@ class GNNModel(torch.nn.Module):
 
         return self.aggregate_pooling(pooled_embeddings)
 
+    def compute_downstream_tasks(
+        self,
+        x: torch.Tensor,
+        downstream_task_args: Sequence[tuple | list] | None = None,
+        downstream_task_kwargs: Sequence[dict] | None = None,
+    ) -> dict[int, torch.Tensor]:
+        """Compute the outputs of the downstream tasks. Only the active tasks will be computed.
+
+        Args:
+            x (torch.Tensor): Input embeddings tensor
+            downstream_task_args (Sequence[tuple | list] | None, optional): Arguments for downstream tasks. Defaults to None.
+            downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
+
+        Returns:
+            Sequence[torch.Tensor]: Outputs of the downstream tasks.
+        """
+
+        output = {}
+
+        for i in self.active_tasks:
+            task = self.downstream_tasks[i]
+
+            if downstream_task_args is not None and i < len(downstream_task_args):
+                task_args = downstream_task_args[i]
+                if task_args is None:
+                    task_args = []
+            else:
+                task_args = []
+
+            if downstream_task_kwargs is not None and i < len(downstream_task_kwargs):
+                task_kwargs = downstream_task_kwargs[i]
+                if task_kwargs is None:
+                    task_kwargs = {}
+            else:
+                task_kwargs = {}
+
+            res = task(x, *task_args, **task_kwargs)
+            output[i] = res
+
+        return output
+
     def forward(
         self,
         x: torch.Tensor,
@@ -165,7 +232,7 @@ class GNNModel(torch.nn.Module):
         downstream_task_args: Sequence[tuple | list] | None = None,
         downstream_task_kwargs: Sequence[dict] | None = None,
         embedding_kwargs: dict[Any, Any] | None = None,
-    ) -> Sequence[torch.Tensor]:
+    ) -> dict[int, torch.Tensor]:
         """Forward run of the gnn model with optional graph features.
         # First execute the graph-neural network backbone, then process the graph features, and finally apply the downstream tasks.
 
@@ -192,27 +259,11 @@ class GNNModel(torch.nn.Module):
             embeddings = self.aggregate_graph_features(embeddings, graph_features)
 
         # downstream tasks are given out as is, no softmax or other assumptions
-        output = []
-
-        for i, task in enumerate(self.downstream_tasks):
-            if downstream_task_args is not None:
-                task_args = downstream_task_args[i]
-                if task_args is None:
-                    task_args = []
-            else:
-                task_args = []
-
-            if downstream_task_kwargs is not None:
-                task_kwargs = downstream_task_kwargs[i]
-                if task_kwargs is None:
-                    task_kwargs = {}
-            else:
-                task_kwargs = {}
-
-            res = task(embeddings, *task_args, **task_kwargs)
-            output.append(res)
-
-        return output
+        return self.compute_downstream_tasks(
+            embeddings,
+            downstream_task_args=downstream_task_args,
+            downstream_task_kwargs=downstream_task_kwargs,
+        )
 
     @classmethod
     def _cfg_helper(
@@ -302,6 +353,8 @@ class GNNModel(torch.nn.Module):
         else:
             aggregate_graph_features = None
 
+        active_tasks = config.get("active_tasks", None)
+
         # return the model
         return cls(
             encoder=encoder,
@@ -310,6 +363,7 @@ class GNNModel(torch.nn.Module):
             graph_features_net=graph_features_net,
             aggregate_graph_features=aggregate_graph_features,
             aggregate_pooling=aggregate_pooling,
+            active_tasks=active_tasks,
         )
 
     def save(self, path: str | Path) -> None:
