@@ -96,16 +96,11 @@ class QGDataset(QGDatasetBase, Dataset):
         # process data files
         k = 0  # index to create the filenames for the processed data
         for file in self.input:
-            if self.mode == "hdf5":
-                raw_file = h5py.File(str(Path(file).resolve().absolute()), "r")
-                num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
-
-            else:
-                N = self._get_num_samples_per_file(Path(file).resolve().absolute())
-                num_chunks = N // self.chunksize
-                raw_file = zarr.storage.LocalStore(
-                    str(Path(file).resolve().absolute()), read_only=True
-                )
+            N = self._get_num_samples_per_file(Path(file).resolve().absolute())
+            num_chunks = N // self.chunksize
+            raw_file = zarr.storage.LocalStore(
+                str(Path(file).resolve().absolute()), read_only=True
+            )
 
             for i in range(0, num_chunks * self.chunksize, self.chunksize):
                 data = self.process_chunk(
@@ -137,11 +132,20 @@ class QGDataset(QGDatasetBase, Dataset):
         if idx < 0 or idx >= self._num_samples:
             raise IndexError("Index out of bounds.")
         # Load the data from the processed files
-        datapoint = torch.load(
-            Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
-        )
+        if Path(self.processed_dir) / f"data_{idx}.pt".exists():
+            datapoint = torch.load(
+                Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
+            )
+        else:
+            # TODO: open the data file, pull out raw data, pass to transform
+            pass
         if self.transform is not None:
             datapoint = self.transform(datapoint)
+
+        if isinstance(datapoint, Data) is False:
+            raise ValueError(
+                "Data point is not of type Data, either pre_transform hasn´t finished or transform doesn't return 'Data'"
+            )
         return datapoint
 
     def __getitem__(self, idx: int | Collection[int]) -> Data | Collection[Data]:
