@@ -353,7 +353,7 @@ class GNNModel(torch.nn.Module):
         else:
             aggregate_graph_features = None
 
-        active_tasks = config.get("active_tasks", None)
+        active_tasks = [cfg.get("active", False) for cfg in config["downstream_tasks"]]
 
         # return the model
         return cls(
