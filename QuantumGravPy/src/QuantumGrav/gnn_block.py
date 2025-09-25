@@ -78,8 +78,16 @@ class GNNBlock(torch.nn.Module):
 
         if in_dim != out_dim:
             self.projection = torch.nn.Linear(
-                *(projection_args if projection_args is not None else []),
-                **(projection_kwargs if projection_kwargs is not None else {}),
+                *(
+                    projection_args
+                    if projection_args is not None
+                    else [in_dim, out_dim]
+                ),
+                **(
+                    projection_kwargs
+                    if projection_kwargs is not None
+                    else {"bias": False}
+                ),
             )
         else:
             self.projection = torch.nn.Identity()
