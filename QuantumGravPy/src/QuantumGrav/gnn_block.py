@@ -145,8 +145,8 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs=config.get("norm_kwargs", {}),
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
-            projection_args=config.get("projection_args", []),
-            projection_kwargs=config.get("projection_kwargs", {}),
+            projection_args=config.get("projection_args", None),
+            projection_kwargs=config.get("projection_kwargs", None),
         )
 
     def save(self, path: str | Path) -> None:

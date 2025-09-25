@@ -85,11 +85,6 @@ class GNNModel(torch.nn.Module):
         else:
             self.aggregate_pooling = aggregate_pooling
 
-        if self.aggregate_pooling is None and len(self.pooling_layers) > 1:
-            raise ValueError(
-                "If multiple pooling layers are defined, an aggregation method must be provided."
-            )
-
         # set up graph features processing if provided
         self.graph_features_net = graph_features_net
 
