@@ -36,11 +36,12 @@ from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .linear_sequential import LinearSequential
 
 __all__ = [
+    # julia interface
+    "JuliaWorker",
     # datasets
     "QGDataset",
     "QGDatasetInMemory",
     "QGDatasetOnthefly",
-    "JuliaWorker",
     # module registration
     "register_activation",
     "register_gnn_layer",
