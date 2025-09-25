@@ -60,10 +60,8 @@ class GNNModel(torch.nn.Module):
             raise ValueError("At least one downstream task must be provided.")
 
         if active_tasks is None:
-            self.active_tasks = list(range(0, len(self.downstream_tasks)))
+            self.active_tasks = [True] * len(self.downstream_tasks)
         else:
-            if any([i >= len(self.downstream_tasks) or i < 0 for i in active_tasks]):
-                raise ValueError("Invalid active_tasks indices.")
             self.active_tasks = active_tasks
 
         # set up pooling layers and their aggregation
@@ -117,8 +115,8 @@ class GNNModel(torch.nn.Module):
         Args:
             i (int): Index of the downstream task to activate.
         """
-        if i not in self.active_tasks:
-            self.active_tasks.append(i)
+
+        self.active_tasks[i] = True
 
     def set_task_inactive(self, i: int) -> None:
         """Set a downstream task as inactive.
@@ -126,8 +124,7 @@ class GNNModel(torch.nn.Module):
         Args:
             i (int): Index of the downstream task to deactivate.
         """
-        if i in self.active_tasks:
-            self.active_tasks.remove(i)
+        self.active_tasks[i] = False
 
     def _eval_encoder(
         self,
@@ -201,25 +198,28 @@ class GNNModel(torch.nn.Module):
 
         output = {}
 
-        for i in self.active_tasks:
-            task = self.downstream_tasks[i]
+        for i in range(len(self.downstream_tasks)):
+            if self.active_tasks[i]:
+                task = self.downstream_tasks[i]
 
-            if downstream_task_args is not None and i < len(downstream_task_args):
-                task_args = downstream_task_args[i]
-                if task_args is None:
+                if downstream_task_args is not None and i < len(downstream_task_args):
+                    task_args = downstream_task_args[i]
+                    if task_args is None:
+                        task_args = []
+                else:
                     task_args = []
-            else:
-                task_args = []
 
-            if downstream_task_kwargs is not None and i < len(downstream_task_kwargs):
-                task_kwargs = downstream_task_kwargs[i]
-                if task_kwargs is None:
+                if downstream_task_kwargs is not None and i < len(
+                    downstream_task_kwargs
+                ):
+                    task_kwargs = downstream_task_kwargs[i]
+                    if task_kwargs is None:
+                        task_kwargs = {}
+                else:
                     task_kwargs = {}
-            else:
-                task_kwargs = {}
 
-            res = task(x, *task_args, **task_kwargs)
-            output[i] = res
+                res = task(x, *task_args, **task_kwargs)
+                output[i] = res
 
         return output
 

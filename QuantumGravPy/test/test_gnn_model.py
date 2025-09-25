@@ -93,6 +93,7 @@ def gnn_model_config():
                 "backbone_kwargs": [{}, {}],
                 "output_kwargs": {},
                 "activation_kwargs": [{"inplace": False}],
+                "active": False,
             },
             {
                 "input_dim": 16,
@@ -102,6 +103,7 @@ def gnn_model_config():
                 "backbone_kwargs": [{}, {}],
                 "output_kwargs": {},
                 "activation_kwargs": [{"inplace": False}],
+                "active": True,
             },
         ],
         "pooling_layers": [
@@ -206,32 +208,24 @@ def test_gnn_model_forward_set_active(gnn_model):
     gnn_model.eval()  # Set model to evaluation mode
     assert gnn_model.training is False  # Ensure model is in eval mode
 
-    assert gnn_model.active_tasks == [0, 1]
+    assert gnn_model.active_tasks == [True, True]
     output = gnn_model(x, edge_index, batch)
     assert len(output) == 2
     assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
     assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
-    assert 0 in gnn_model.active_tasks
-    assert 1 in gnn_model.active_tasks
 
     gnn_model.set_task_inactive(1)
-    assert gnn_model.active_tasks == [0]
-
+    assert gnn_model.active_tasks == [True, False]
     output = gnn_model(x, edge_index, batch)
     assert len(output) == 1
     assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
-    assert 1 not in gnn_model.active_tasks
-    assert 1 not in output
 
     gnn_model.set_task_active(1)
-    assert gnn_model.active_tasks == [0, 1]
-
+    assert gnn_model.active_tasks == [True, True]
     output = gnn_model(x, edge_index, batch)
     assert len(output) == 2
     assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
     assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
-    assert 0 in gnn_model.active_tasks
-    assert 1 in gnn_model.active_tasks
 
 
 def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
@@ -258,9 +252,7 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
 
-    assert model.active_tasks == [
-        1,
-    ]
+    assert model.active_tasks == [False, True]
     assert isinstance(model.encoder, torch.nn.ModuleList)
 
     assert len(model.encoder) == 2  # Assuming two GNN blocks
