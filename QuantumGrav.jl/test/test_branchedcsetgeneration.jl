@@ -252,8 +252,6 @@ end
     manifold = CausalSets.MinkowskiManifold{2}()
     @test QuantumGrav.cut_crosses_diamond(manifold, x, y, cut1)
     @test !QuantumGrav.cut_crosses_diamond(manifold, x, y, cut2)
-    # Throws for bad tolerance
-    @test_throws ArgumentError QuantumGrav.cut_crosses_diamond(manifold, x, y, cut1; tolerance=0)
 end
 
 @testitem "cut_crosses_diamond_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
