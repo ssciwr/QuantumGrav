@@ -29,16 +29,19 @@ pooling_layers: dict[str, Any] = {
     "mean": tgnn.global_mean_pool,
     "max": tgnn.global_max_pool,
     "sum": tgnn.global_add_pool,
+    "identity": torch.nn.Identity,
 }
 
 pooling_aggregations: dict[str, Callable] = {
     "cat0": torch.cat,
     "cat1": partial(torch.cat, dim=1),
+    "identity": torch.nn.Identity(),
 }
 
 graph_features_aggregations: dict[str, Callable] = {
     "cat0": torch.cat,
     "cat1": partial(torch.cat, dim=1),
+    "identity": torch.nn.Identity(),
 }
 
 
