@@ -116,7 +116,7 @@ This provides all the necessary parameters for a training run, and as such has a
 ```yaml 
 model:
   name: "QuantumGravTest"
-  gcn_net:
+  encoder:
     - in_dim: 12
       out_dim: 128
       dropout: 0.3

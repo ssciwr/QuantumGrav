@@ -5,6 +5,7 @@ from . import utils
 
 # quality of life
 from typing import Any
+from pathlib import Path
 
 
 class GNNBlock(torch.nn.Module):
@@ -17,15 +18,17 @@ class GNNBlock(torch.nn.Module):
         in_dim: int,
         out_dim: int,
         dropout: float = 0.3,
-        gnn_layer_type: torch.nn.Module = tgnn.conv.GCNConv,
-        normalizer: torch.nn.Module = torch.nn.Identity,
-        activation: torch.nn.Module = torch.nn.ReLU,
-        gnn_layer_args: list[Any] = None,
-        gnn_layer_kwargs: dict[str, Any] = None,
-        norm_args: list[Any] = None,
-        norm_kwargs: dict[str, Any] = None,
-        activation_args: list[Any] = None,
-        activation_kwargs: dict[str, Any] = None,
+        gnn_layer_type: type[torch.nn.Module] = tgnn.conv.GCNConv,
+        normalizer: type[torch.nn.Module] = torch.nn.Identity,
+        activation: type[torch.nn.Module] = torch.nn.ReLU,
+        gnn_layer_args: list[Any] | None = None,
+        gnn_layer_kwargs: dict[str, Any] | None = None,
+        norm_args: list[Any] | None = None,
+        norm_kwargs: dict[str, Any] | None = None,
+        activation_args: list[Any] | None = None,
+        activation_kwargs: dict[str, Any] | None = None,
+        projection_args: list[Any] | None = None,
+        projection_kwargs: dict[str, Any] | None = None,
     ):
         """Create a GNNBlock instance.
 
@@ -42,6 +45,9 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs (dict[str, Any], optional): Additional keyword arguments for the normalizer layer. Defaults to None.
             activation_args (list[Any], optional): Additional arguments for the activation function. Defaults to None.
             activation_kwargs (dict[str, Any], optional): Additional keyword arguments for the activation function. Defaults to None.
+            projection_args (list[Any], optional): Additional arguments for the projection layer. Defaults to None.
+            projection_kwargs (dict[str, Any], optional): Additional keyword arguments for the projection layer. Defaults to None.
+
         """
         super().__init__()
 
@@ -71,7 +77,10 @@ class GNNBlock(torch.nn.Module):
         )
 
         if in_dim != out_dim:
-            self.projection = torch.nn.Linear(in_dim, out_dim)
+            self.projection = torch.nn.Linear(
+                *(projection_args if projection_args is not None else []),
+                **(projection_kwargs if projection_kwargs is not None else {}),
+            )
         else:
             self.projection = torch.nn.Identity()
 
@@ -91,19 +100,18 @@ class GNNBlock(torch.nn.Module):
             torch.Tensor: The output node features.
         """
 
-        x_res = x
         # convolution, then normalize and apply nonlinearity
-        x = self.conv(x, edge_index, **kwargs)
-        x = self.normalizer(x)
-        x = self.activation(x)
+        x_res = self.conv(x, edge_index, **kwargs)
+        x_res = self.normalizer(x_res)
+        x_res = self.activation(x_res)
 
         # Residual connection
-        x = x + self.projection(x_res)
+        x_res = x_res + self.projection(x)
 
         # Apply dropout as regularization
-        x = self.dropout(x)
+        x_res = self.dropout(x_res)
 
-        return x
+        return x_res
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "GNNBlock":
@@ -129,4 +137,31 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs=config.get("norm_kwargs", {}),
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
+            projection_args=config.get("projection_args", []),
+            projection_kwargs=config.get("projection_kwargs", {}),
         )
+
+    def save(self, path: str | Path) -> None:
+        """Save the model's state to file.
+
+        Args:
+            path (str | Path): path to save the model to.
+        """
+
+        torch.save(self, path)
+
+    @classmethod
+    def load(
+        cls, path: str | Path, device: torch.device = torch.device("cpu")
+    ) -> "GNNBlock":
+        """Load a mode instance from file
+
+        Args:
+            path (str | Path): Path to the file to load.
+            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
+        Returns:
+            GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
+        """
+
+        model = torch.load(path, map_location=device, weights_only=False)
+        return model

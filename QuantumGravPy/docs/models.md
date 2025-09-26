@@ -243,7 +243,7 @@ All model components can be created from configuration dictionaries, making it e
 ```python
 # Example full model configuration
 {
-    "gcn_net": [
+    "encoder": [
         {
             "in_dim": 8,
             "out_dim": 64,
@@ -275,7 +275,7 @@ All model components can be created from configuration dictionaries, making it e
 }
 ```
 
-This configuration-based approach aligns with the overall philosophy of QuantumGravPy, which emphasizes a separation between configuration and code to facilitate rapid experimentation and reproducibility. Note how the number of blocks in the `gcn_net` part of the config determines the architecture of the backbone model - each block will create a `GNNBlock` instance, and the data is processed through them sequentially. In the same way, the number of `hidden_dims` will make the linear models deeper or shallower, and the supplied numbers determine the model width. 
+This configuration-based approach aligns with the overall philosophy of QuantumGravPy, which emphasizes a separation between configuration and code to facilitate rapid experimentation and reproducibility. Note how the number of blocks in the `encoder` part of the config determines the architecture of the backbone model - each block will create a `GNNBlock` instance, and the data is processed through them sequentially. In the same way, the number of `hidden_dims` will make the linear models deeper or shallower, and the supplied numbers determine the model width. 
 The output dim in `classifier` determines the number of classification tasks. 
 
 Note that right now, only the `ClassifierBlock` is explicitly supported. 
@@ -290,7 +290,7 @@ To extract the embeddings from a trained model for reuse, you can use the `get_e
 ## Full config example: 
 A full configuration that defines a model as it would appear in a YAML config file  could read:
 ```yaml 
-  gcn_net:
+  encoder:
     - in_dim: 12
       out_dim: 128
       dropout: 0.3

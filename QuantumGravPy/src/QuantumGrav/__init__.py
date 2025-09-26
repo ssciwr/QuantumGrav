@@ -1,25 +1,29 @@
+from .julia_worker import JuliaWorker
 from .utils import (
     register_activation,
     register_gnn_layer,
     register_normalizer,
     register_pooling_layer,
+    register_graph_features_aggregation,
+    register_pooling_aggregation,
     get_registered_gnn_layer,
     get_registered_normalizer,
     get_registered_activation,
     get_registered_pooling_layer,
+    get_graph_features_aggregation,
+    get_pooling_aggregation,
     list_registered_pooling_layers,
     list_registered_normalizers,
     list_registered_activations,
     list_registered_gnn_layers,
+    list_registered_graph_features_aggregations,
+    list_registered_pooling_aggregations,
 )
-from .julia_worker import JuliaWorker
 from .dataset_ondisk import QGDataset
 from .dataset_inmemory import QGDatasetInMemory
 from .dataset_onthefly import QGDatasetOnthefly
 from .gnn_model import GNNModel
-from .classifier_block import ClassifierBlock
 from .gnn_block import GNNBlock
-from .graphfeatures_block import GraphFeaturesBlock
 from .evaluate import (
     DefaultEvaluator,
     DefaultTester,
@@ -29,6 +33,7 @@ from .evaluate import (
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
+from .linear_sequential import LinearSequential
 
 __all__ = [
     # datasets
@@ -41,19 +46,24 @@ __all__ = [
     "register_gnn_layer",
     "register_normalizer",
     "register_pooling_layer",
+    "register_graph_features_aggregation",
+    "register_pooling_aggregation",
     "get_registered_gnn_layer",
     "get_registered_normalizer",
     "get_registered_activation",
     "get_registered_pooling_layer",
+    "get_graph_features_aggregation",
+    "get_pooling_aggregation",
     "list_registered_pooling_layers",
     "list_registered_normalizers",
     "list_registered_activations",
     "list_registered_gnn_layers",
+    "list_registered_graph_features_aggregations",
+    "list_registered_pooling_aggregations",
     # models
     "GNNBlock",
-    "ClassifierBlock",
-    "GraphFeaturesBlock",
     "GNNModel",
+    "LinearSequential",
     # training
     "Trainer",
     "TrainerDDP",

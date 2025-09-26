@@ -36,7 +36,9 @@ def basic_transform():
 
         # Concatenate all node features
         x = torch.cat(node_features, dim=1)
-        classes = [raw["manifold"], raw["boundary"], raw["dimension"]]
+        classes = [
+            raw["dimension"],
+        ]
         y = torch.tensor(classes, dtype=torch.long)
         data = Data(
             x=x,
@@ -55,8 +57,6 @@ def basic_converter():
     def converter(raw: jcall.DictValue) -> dict:
         # convert the raw data dictionary from Julia into a standard Python dictionary
         return {
-            "manifold": int(raw["manifold"]),
-            "boundary": int(raw["boundary"]),
             "dimension": int(raw["dimension"]),
             "atomcount": int(raw["atomcount"]),
             "adjacency_matrix": raw["adjacency_matrix"].to_numpy(),
@@ -151,8 +151,6 @@ def create_data_hdf5(create_data):
             f.create_dataset("link_matrix", (len(data), 15, 15), dtype="float32")
             f.create_dataset("max_pathlen_future", (len(data), 15), dtype="float32")
             f.create_dataset("max_pathlen_past", (len(data), 15), dtype="float32")
-            f.create_dataset("manifold", (len(data),), dtype="int32")
-            f.create_dataset("boundary", (len(data),), dtype="int32")
             f.create_dataset("dimension", (len(data),), dtype="int32")
             f.create_dataset("atomcount", (len(data),), dtype="int32")
 
@@ -166,8 +164,6 @@ def create_data_hdf5(create_data):
                 f["link_matrix"][j, 0 : link.shape[0], 0 : link.shape[1]] = link
                 f["max_pathlen_future"][j, 0 : max_path_f.shape[0]] = max_path_f
                 f["max_pathlen_past"][j, 0 : max_path_p.shape[0]] = max_path_p
-                f["manifold"][j] = d["manifold"]
-                f["boundary"][j] = d["boundary"]
                 f["dimension"][j] = d["dimension"]
                 f["atomcount"][j] = d["atomcount"]
             f["num_causal_sets"] = len(data)
@@ -177,7 +173,7 @@ def create_data_hdf5(create_data):
 
 
 @pytest.fixture
-def create_data_zarr(create_data):
+def create_data_zarr_basic(create_data):
     path, datafiles, tmpdir, jl_generator = create_data
 
     for i in range(3):
@@ -219,14 +215,6 @@ def create_data_zarr(create_data):
             dtype="float32",
         )
 
-        manifold = zarr.create_array(
-            store, shape=(len(data)), chunks=(1,), name="manifold", dtype="int32"
-        )
-
-        boundary = zarr.create_array(
-            store, shape=(len(data)), chunks=(1,), name="boundary", dtype="int32"
-        )
-
         dimension = zarr.create_array(
             store, shape=(len(data)), chunks=(1,), name="dimension", dtype="int32"
         )
@@ -234,12 +222,6 @@ def create_data_zarr(create_data):
         atomcount = zarr.create_array(
             store, shape=(len(data)), chunks=(1,), name="atomcount", dtype="int32"
         )
-
-        num_samples = zarr.create_array(
-            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
-        )
-
-        num_samples[0] = len(data)
 
         for j, d in enumerate(data):
             adjmat = d["adjacency_matrix"].to_numpy()
@@ -250,12 +232,28 @@ def create_data_zarr(create_data):
             link[j, 0 : linkmat.shape[0], 0 : linkmat.shape[1]] = linkmat
             maxpathlen_future[j, 0 : max_path_f.shape[0]] = max_path_f
             max_pathlen_past[j, 0 : max_path_p.shape[0]] = max_path_p
-            manifold[j] = d["manifold"]
-            boundary[j] = d["boundary"]
             dimension[j] = d["dimension"]
             atomcount[j] = d["atomcount"]
 
         datafiles.append(zarr_file)
+    return tmpdir, datafiles
+
+
+@pytest.fixture
+def create_data_zarr(create_data_zarr_basic):
+    tmpdir, datafiles = create_data_zarr_basic
+
+    for file in datafiles:
+        # Save the data to an zarr file
+        store = zarr.storage.LocalStore(file, read_only=False)
+
+        dims = zarr.open_array(store, path="dimension")
+
+        num_samples = zarr.create_array(
+            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
+        )
+        num_samples[0] = dims.shape[0]
+
     return tmpdir, datafiles
 
 
@@ -282,18 +280,16 @@ def read_data():
 
         x = torch.cat(node_features, dim=1)
 
-        manifold = f["manifold"][idx]
-        boundary = f["boundary"][idx]
         dimension = f["dimension"][idx]
 
-        if (
-            isinstance(manifold, np.ndarray)
-            and isinstance(boundary, np.ndarray)
-            and isinstance(dimension, np.ndarray)
-        ):
-            value_list = [manifold.item(), boundary.item(), dimension.item()]
+        if isinstance(dimension, np.ndarray):
+            value_list = [
+                dimension.item(),
+            ]
         else:
-            value_list = [manifold, boundary, dimension]
+            value_list = [
+                dimension,
+            ]
 
         data = Data(
             x=x,
@@ -332,36 +328,34 @@ def gnn_block():
             32,
         ],
         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
+        projection_args=[16, 32],
+        projection_kwargs={"bias": False},
     )
 
 
 @pytest.fixture
 def classifier_block():
-    return QG.ClassifierBlock(
+    return QG.LinearSequential(
         input_dim=32,
         hidden_dims=[24, 12],
-        output_dims=[2, 3],
+        output_dim=3,
         activation=torch.nn.ReLU,
         backbone_kwargs=[{}, {}],
         activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
+        output_kwargs={},
     )
 
 
 @pytest.fixture
 def classifier_block_graphfeatures():
-    return QG.ClassifierBlock(
+    return QG.LinearSequential(
         input_dim=64,
         hidden_dims=[24, 12],
-        output_dims=[2, 3],
+        output_dim=3,
         activation=torch.nn.ReLU,
         backbone_kwargs=[{}, {}],
         activation_kwargs=[{"inplace": False}],
-        output_kwargs=[
-            {},
-        ],
+        output_kwargs={},
     )
 
 
@@ -372,12 +366,13 @@ def pooling_layer():
 
 @pytest.fixture
 def graph_features_net():
-    return QG.GraphFeaturesBlock(
+    return QG.LinearSequential(
         input_dim=10,
         output_dim=32,
         hidden_dims=[24, 8],
         activation=torch.nn.ReLU,
-        layer_kwargs=[{}, {}],
+        backbone_kwargs=[{}, {}],
+        output_kwargs={},
         activation_kwargs=[
             {"inplace": False},
         ],
@@ -421,7 +416,7 @@ def make_dataloader(create_data_hdf5, make_dataset):
 @pytest.fixture
 def model_config_eval():
     return {
-        "gcn_net": [
+        "encoder": [
             {
                 "in_dim": 2,
                 "out_dim": 8,
@@ -433,6 +428,10 @@ def model_config_eval():
                     8,
                 ],
                 "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "projection_args": [2, 8],
+                "projection_kwargs": {
+                    "bias": False,
+                },
                 "gnn_layer_kwargs": {
                     "cached": False,
                     "bias": True,
@@ -450,6 +449,10 @@ def model_config_eval():
                     12,
                 ],
                 "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "projection_args": [8, 12],
+                "projection_kwargs": {
+                    "bias": False,
+                },
                 "gnn_layer_kwargs": {
                     "cached": False,
                     "bias": True,
@@ -457,24 +460,37 @@ def model_config_eval():
                 },
             },
         ],
-        "classifier": {
-            "input_dim": 12,
-            "output_dims": [
-                3,
-            ],
-            "hidden_dims": [24, 16],
-            "activation": "relu",
-            "backbone_kwargs": [{}, {}],
-            "output_kwargs": [{}],
-            "activation_kwargs": [{"inplace": False}],
+        "downstream_tasks": [
+            {
+                "type": "LinearSequential",
+                "input_dim": 12,
+                "output_dim": 3,
+                "hidden_dims": [24, 16],
+                "activation": "relu",
+                "backbone_kwargs": [{}, {}],
+                "output_kwargs": {},
+                "activation_kwargs": [{"inplace": False}],
+            },
+        ],
+        "pooling_layers": [
+            {
+                "type": "mean",
+                "args": [],
+                "kwargs": {},
+            }
+        ],
+        "aggregate_pooling": {
+            "type": "cat1",
+            "args": [],
+            "kwargs": {},
         },
-        "pooling_layer": "mean",
     }
 
 
 @pytest.fixture
 def gnn_model_eval(model_config_eval):
     """Fixture to create a GNNModel for evaluation."""
+
     model = QG.GNNModel.from_config(
         model_config_eval,
     )

@@ -19,6 +19,10 @@ def gnn_block_config():
             32,
         ],
         "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+        "projection_args": [16, 32],
+        "projection_kwargs": {
+            "bias": False,
+        },
         "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
     }
 
@@ -129,6 +133,7 @@ def test_gnn_block_backward(gnn_block):
 
 
 def test_gnn_block_from_config(gnn_block_config):
+    "test construction of model from config"
     gnn_block = QG.GNNBlock.from_config(gnn_block_config)
     assert gnn_block.in_dim == gnn_block_config["in_dim"]
     assert gnn_block.out_dim == gnn_block_config["out_dim"]
@@ -137,3 +142,15 @@ def test_gnn_block_from_config(gnn_block_config):
     assert isinstance(gnn_block.normalizer, torch.nn.BatchNorm1d)
     assert isinstance(gnn_block.activation, torch.nn.ReLU)
     assert isinstance(gnn_block.projection, torch.nn.Linear)
+
+
+def test_gnn_block_save_load(gnn_block, tmp_path):
+    "test saving and loading of the gnn_block"
+
+    gnn_block.save(tmp_path / "model.pt")
+    assert (tmp_path / "model.pt").exists()
+
+    loaded_gnn_block = QG.GNNBlock.load(tmp_path / "model.pt")
+    assert loaded_gnn_block.state_dict().keys() == gnn_block.state_dict().keys()
+    for k in loaded_gnn_block.state_dict().keys():
+        assert torch.equal(loaded_gnn_block.state_dict()[k], gnn_block.state_dict()[k])
