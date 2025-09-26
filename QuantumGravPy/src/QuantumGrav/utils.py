@@ -2,7 +2,7 @@ from functools import partial
 import torch
 import torch_geometric.nn as tgnn
 
-from typing import Any, Callable
+from typing import Callable
 
 gnn_layers: dict[str, type[torch.nn.Module]] = {
     "gcn": tgnn.conv.GCNConv,
@@ -25,20 +25,23 @@ activation_layers: dict[str, type[torch.nn.Module]] = {
     "identity": torch.nn.Identity,
 }
 
-pooling_layers: dict[str, Any] = {
+pooling_layers: dict[str, Callable | type[torch.nn.Module]] = {
     "mean": tgnn.global_mean_pool,
     "max": tgnn.global_max_pool,
     "sum": tgnn.global_add_pool,
+    "identity": torch.nn.Identity,
 }
 
-pooling_aggregations: dict[str, Callable] = {
+pooling_aggregations: dict[str, Callable | type[torch.nn.Module]] = {
     "cat0": torch.cat,
     "cat1": partial(torch.cat, dim=1),
+    "identity": torch.nn.Identity,
 }
 
-graph_features_aggregations: dict[str, Callable] = {
+graph_features_aggregations: dict[str, Callable | type[torch.nn.Module]] = {
     "cat0": torch.cat,
     "cat1": partial(torch.cat, dim=1),
+    "identity": torch.nn.Identity,
 }
 
 

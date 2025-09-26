@@ -78,8 +78,16 @@ class GNNBlock(torch.nn.Module):
 
         if in_dim != out_dim:
             self.projection = torch.nn.Linear(
-                *(projection_args if projection_args is not None else []),
-                **(projection_kwargs if projection_kwargs is not None else {}),
+                *(
+                    projection_args
+                    if projection_args is not None
+                    else [in_dim, out_dim]
+                ),
+                **(
+                    projection_kwargs
+                    if projection_kwargs is not None
+                    else {"bias": False}
+                ),
             )
         else:
             self.projection = torch.nn.Identity()
@@ -137,8 +145,8 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs=config.get("norm_kwargs", {}),
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
-            projection_args=config.get("projection_args", []),
-            projection_kwargs=config.get("projection_kwargs", {}),
+            projection_args=config.get("projection_args", None),
+            projection_kwargs=config.get("projection_kwargs", None),
         )
 
     def save(self, path: str | Path) -> None:
