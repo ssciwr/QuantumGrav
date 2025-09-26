@@ -1179,7 +1179,7 @@ function propagate_ray(
         end
 
         # Check if candidate lies within causal diamond of (x,y)
-        if point_in_diamond(manifold, candidate, x, y; check_causal_relation = false)
+        if point_in_diamond(manifold, candidate, backward ? y : x, backward ? x : y; check_causal_relation = false)
             pos = candidate
             push!(path, pos)
             local_branch_point_tuples = deleteat!(local_branch_point_tuples, idx)
@@ -1187,9 +1187,10 @@ function propagate_ray(
         end
 
         # Compute diamond corners
-        left_corner, right_corner = isnothing(corners) ? diamond_corners(manifold, x, y; check_causal_relation = false) : corners
+        left_corner, right_corner = isnothing(corners) ? diamond_corners(manifold, backward ? y : x, backward ? x : y; check_causal_relation = false) : corners
         # Define opposite boundary edges
         opposite_diamond_edges = (backward && slope > 0.) || (!backward && slope < 0.) ? [(x, right_corner), (right_corner, y)] : [(x, left_corner), (left_corner, y)]
+        
         # Find intersection point of (intersection, candidate) with these edges if existent
         for edge in opposite_diamond_edges # If intersection is on the side opposite to the ray slope, ray ends.
             intersect, pt = segments_intersect((intersection, candidate), edge, tolerance = tolerance)
@@ -1354,12 +1355,29 @@ function in_wedge_of(
     # This checks if a continuous null curve can connect x to y along the left-moving direction,
     # i.e., the wedge is open.
     left_forward = propagate_ray(manifold, x, y, -1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance)
-    if left_forward[end][2] > y[2]
+    if left_forward[end][2] > y[2] || left_forward[end][1] < y[1]
         return false
     end
 
+    right_forward = propagate_ray(manifold, x, y, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance)
+    if right_forward[end][2] < y[2] || left_forward[end][1] < y[1]
+        return false
+    end
+
+    for i in 1:length(left_forward)-1
+        for j in 1:length(right_forward)-1
+            intersect, pt = segments_intersect(
+                (left_forward[i], left_forward[i+1]), 
+                (right_forward[j], right_forward[j+1]); 
+                tolerance = tolerance)
+            if intersect && pt != x && pt != y
+                return false
+            end
+        end
+    end
+
     left_backward = propagate_ray(manifold, y, x, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance)
-    if left_backward[end][2] > x[2]
+    if left_backward[end][2] > x[2] || left_backward[end][1] > x[1]
         return false
     end
 
@@ -1373,7 +1391,6 @@ function in_wedge_of(
             end
         end
     end
-    return false
 end
 
 """

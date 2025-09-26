@@ -303,6 +303,13 @@ end
     @test path[end][1] === y[1]
     @test length(path) === 2
 
+    # backwards
+    path_b = QuantumGrav.propagate_ray(manifold, y, x, +1.0, Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}[])
+    @test path_b[1] === y
+    @test path_b[end][1] === x[1]
+    @test length(path_b) === 2
+
+
     # Completely intersected (spacelike)
     cut1 = (CausalSets.Coordinates{2}((1.0, -1.1)), CausalSets.Coordinates{2}((1.0, 1.1)))
     path1 = QuantumGrav.propagate_ray(manifold, x, y, 1.0, [cut1])
@@ -310,12 +317,24 @@ end
     @test path1[end] == CausalSets.Coordinates{2}((1., -1.))
     @test length(path1) == 3
 
-    # Completely intersected (timelike)
+    # backwards
+    path1_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, [cut1])
+    @test path1_b[1] === y
+    @test path1_b[end] === CausalSets.Coordinates{2}((1.0, 1.0))
+    @test length(path1_b) === 3
+
+    # Completely intersected but not in the way of ray (timelike)
     cut2 = (CausalSets.Coordinates{2}((0., -0.1)), CausalSets.Coordinates{2}((2.0, 0.1)))
     path2 = QuantumGrav.propagate_ray(manifold, x, y, 1.0, [cut2])
     @test path2[1] == x
-    @test path2[end][2] != y[2]
+    @test path2[end][1] == y[1]
     @test length(path2) == 2
+
+    # backwards
+    path2_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, [cut2])
+    @test path2_b[1] === y
+    @test path2_b[end][1] == x[1]
+    @test length(path2_b) === 2
 
     # Halfway intersected such that y can still be reached (spacelike)
     cut3 = (CausalSets.Coordinates{2}((1.0, -0.9)), CausalSets.Coordinates{2}((1.0, 1.1)))
@@ -324,12 +343,24 @@ end
     @test path3[end][1] == y[1]
     @test length(path3) == 4
 
+    # backwards
+    path3_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, [cut3])
+    @test path3_b[1] === y
+    @test path3_b[end][1] == x[1]
+    @test length(path3_b) === 2
+
     # Halfway intersected such that y can still be reached (timelike, one intersection with diamond edges)
     cut4 = (CausalSets.Coordinates{2}((0.0, 0.1)), CausalSets.Coordinates{2}((1., 0.2)))
     path4 = QuantumGrav.propagate_ray(manifold, x, y, 1.0, [cut4])
     @test path4[1] == x
     @test path4[end][1] == y[1]
     @test length(path4) == 4
+
+    # backwards
+    path4_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, [cut4])
+    @test path4_b[1] === y
+    @test path4_b[end][1] == x[1]
+    @test length(path4_b) === 2
 
     # Halfway intersected such that y can still be reached (timelike, one intersection with diamond edges)
     cut5 = (CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((2., 0.5)))
@@ -338,12 +369,24 @@ end
     @test path5[end] == CausalSets.Coordinates{2}((2., 0.5))
     @test length(path5) == 3
 
+    # backwards
+    path5_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, [cut5])
+    @test path5_b[1] === y
+    @test path5_b[end][1] == x[1]
+    @test length(path5_b) === 2
+
     # Intersected by two cuts which don't cross diamond alone but conspire to inhibit reaching y[1]
     cuts6 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((0.9, 0.5))), (CausalSets.Coordinates{2}((1.0, 0.8)), CausalSets.Coordinates{2}((1.0, -2.0)))]
     path6 = QuantumGrav.propagate_ray(manifold, x, y, 1.0, cuts6)
     @test path6[1] == x
     @test path6[end] == CausalSets.Coordinates{2}((1., -1.))
     @test length(path6) == 5
+
+        # backwards
+    path6_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, cuts6)
+    @test path6_b[1] === y
+    @test path6_b[end][1] != x[1]
+    @test length(path6_b) === 5
 end
 
 @testitem "propagate_ray_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
@@ -407,41 +450,74 @@ end
     cuts5 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((2., 0.5)))]
     @test QuantumGrav.in_wedge_of(manifold, cuts5, x, y)
 
-    # Intersected by two cuts which don't cross diamond alone and do not conspire to inhibit reaching y
+    # Intersected by two cuts which don't cross diamond alone, but conspire to inhibit reaching y
     cuts6 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((0.9, 0.5))), (CausalSets.Coordinates{2}((1.0, 0.8)), CausalSets.Coordinates{2}((1.0, -2.0)))]
     @test !QuantumGrav.in_wedge_of(manifold, cuts6, x, y)
 
     # Intersected by two cuts which don't cross diamond alone and do not conspire to inhibit reaching y
-    cuts7 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((0.9, 0.5))), (CausalSets.Coordinates{2}((0.0, 1.)), CausalSets.Coordinates{2}((1.0, -2.0)))]
-    @test !QuantumGrav.in_wedge_of(manifold, cuts6, x, y)
+    cuts7 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((0.9, 0.5))), (CausalSets.Coordinates{2}((1.0, 0.5)), CausalSets.Coordinates{2}((1.0, -2.0)))]
+    @test QuantumGrav.in_wedge_of(manifold, cuts7, x, y)
 end
 
-@testitem "in_wedge_of" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
+@testitem "in_wedge_of_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
-    # Wedge open: no cuts
     manifold = CausalSets.MinkowskiManifold{2}()
-    @test QuantumGrav.in_wedge_of(manifold, [], x, y)
-    # Wedge closed by cut
-    cuts = [(CausalSets.Coordinates{2}((1.0, -1.1)), CausalSets.Coordinates{2}((1.0, 1.1)))]
-    @test !QuantumGrav.in_wedge_of(manifold, cuts, x, y)
+    no_cuts = Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}[]
     # Throws for bad tolerance
-    @test_throws ArgumentError QuantumGrav.in_wedge_of(manifold, cuts, x, y; tolerance=0)
+    tolerance = 0.
+    @test_throws ArgumentError QuantumGrav.in_wedge_of(manifold, no_cuts, x, y; tolerance=tolerance)
 end
 
 @testitem "in_past_of (branched)" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
-    single = [CausalSets.Coordinates{2}((1.0, 0.5))]
-    finite = [(CausalSets.Coordinates{2}((1.0,-1.1)), CausalSets.Coordinates{2}((1.0,1.1)))]
-    branch_info = (single, finite)
     manifold = CausalSets.MinkowskiManifold{2}()
-    # Blocked by finite cut
-    @test !CausalSets.in_past_of(manifold, branch_info, x, y)
-    # No obstruction
-    @test CausalSets.in_past_of(manifold, ([], []), x, y)
+    # No cuts: straight without obstructions
+    no_timelike_cuts = CausalSets.Coordinates{2}[]
+    no_finite_cuts = Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}[]
+    @test CausalSets.in_past_of(manifold, (no_timelike_cuts, no_finite_cuts), x, y)
+
+    # Completely intersected (spacelike)
+    cuts1 = [(CausalSets.Coordinates{2}((1.0, -1.1)), CausalSets.Coordinates{2}((1.0, 1.1)))]
+    @test !CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts1), x, y)
+
+    # Completely intersected (timelike)
+    cuts2 = [(CausalSets.Coordinates{2}((0., -0.1)), CausalSets.Coordinates{2}((2.0, 0.1)))]
+    @test !CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts2), x, y)
+
+    # Halfway intersected such that y can still be reached (spacelike)
+    cuts3 = [(CausalSets.Coordinates{2}((1.0, -0.9)), CausalSets.Coordinates{2}((1.0, 1.1)))]
+    @test CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts3), x, y)
+
+    # Halfway intersected such that y can still be reached (timelike, one intersection with diamond edges)
+    cuts4 = [(CausalSets.Coordinates{2}((0.0, 0.1)), CausalSets.Coordinates{2}((1., 0.2)))]
+    @test CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts4), x, y)
+
+    # Halfway intersected such that y can still be reached (timelike, two intersections with diamond edges)
+    cuts5 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((2., 0.5)))]
+    @test CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts5), x, y)
+
+    # Intersected by two cuts which don't cross diamond alone, but conspire to inhibit reaching y
+    cuts6 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((0.9, 0.5))), (CausalSets.Coordinates{2}((1.0, 0.8)), CausalSets.Coordinates{2}((1.0, -2.0)))]
+    @test !CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts6), x, y)
+
+    # Intersected by two cuts which don't cross diamond alone and do not conspire to inhibit reaching y
+    cuts7 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((0.9, 0.5))), (CausalSets.Coordinates{2}((1.0, 0.5)), CausalSets.Coordinates{2}((1.0, -2.0)))]
+    @test CausalSets.in_past_of(manifold, (no_timelike_cuts, cuts7), x, y)
+
+    # fully intersected by timelike boundary-connecting cut
+    y2 = CausalSets.Coordinates((2.0, 1.0))
+    timelike_cuts1 = [CausalSets.Coordinates{2}((0.0, 0.5))]
+    @test !CausalSets.in_past_of(manifold, (timelike_cuts1, no_finite_cuts), x, y2)
+
+    # fully intersected by timelike boundary-connecting cut
+    y2 = CausalSets.Coordinates((2.0, 1.0))
+    timelike_cuts1 = [CausalSets.Coordinates{2}((0.0, 0.5))]
+    @test !CausalSets.in_past_of(manifold, (timelike_cuts1, no_finite_cuts), x, y2)
+end
+
+@testitem "in_past_of (branched) throws" tags=[:branchedcsetgeneration, :throws] setup=[branchedtests] begin
     # Throws for N != 2
     x3 = CausalSets.Coordinates{3}((0.0,0.0,0.0))
     y3 = CausalSets.Coordinates{3}((1.0,0.0,0.0))
@@ -449,31 +525,36 @@ end
     branch_info3 = (CausalSets.Coordinates{3}[], Tuple{CausalSets.Coordinates{3},CausalSets.Coordinates{3}}[])
     @test_throws ArgumentError CausalSets.in_past_of(manifold3, branch_info3, x3, y3)
     # Throws for bad tolerance
-    @test_throws ArgumentError CausalSets.in_past_of(manifold, branch_info, x, y; tolerance=0)
+    x = CausalSets.Coordinates{2}((0.0, 0.0))
+    y = CausalSets.Coordinates{2}((2.0, 0.0))
+    no_timelike_cuts = CausalSets.Coordinates{2}[]
+    no_finite_cuts = Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}[]
+    manifold = CausalSets.MinkowskiManifold{2}()
+    tolerance = 0.0
+    @test_throws ArgumentError CausalSets.in_past_of(manifold, (no_timelike_cuts, no_finite_cuts), x, y; tolerance=tolerance)
 end
 
 @testitem "BranchedManifoldCauset constructor and in_past_of_unchecked" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
     polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
     coords = [CausalSets.Coordinates{2}((i / 10, 0.0)) for i in 1:10]
-    branch_points = ([coords[3], coords[4]], [])
+    branch_points = ([coords[3], coords[4]], [(coords[3], coords[4])])
     causet = QuantumGrav.BranchedManifoldCauset(polym, branch_points, coords)
     @test causet isa QuantumGrav.BranchedManifoldCauset
     @test causet.atom_count == length(coords)
     @test causet.sprinkling[1] isa CausalSets.Coordinates{2}
     # in_past_of_unchecked
-    @test !CausalSets.in_past_of_unchecked(causet, 1, 3)
-    @test !CausalSets.in_past_of_unchecked(causet, 1, 2)
+    @test CausalSets.in_past_of_unchecked(causet, 1, 3)
+    @test CausalSets.in_past_of_unchecked(causet, 1, 2)
+    @test !CausalSets.in_past_of_unchecked(causet, 3, 2)
 end
 
 @testitem "convert to BitArrayCauset" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
     polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((0.0, 0.1))
     z = CausalSets.Coordinates{2}((0.1, 0.2))
     sprinkling = [x, y, z]
-    branch_points = ([y], [])
+    branch_points = ([CausalSets.Coordinates{2}((0.0, 0.15))], [(CausalSets.Coordinates{2}((0.1, 0.0)),CausalSets.Coordinates{2}((0.1, 0.3)))])
     causet = QuantumGrav.BranchedManifoldCauset(polym, branch_points, sprinkling)
     bitcset = CausalSets.BitArrayCauset(causet)
     @test bitcset isa CausalSets.BitArrayCauset
@@ -482,22 +563,45 @@ end
     @test bitcset.past_relations[3][1] == false
 end
 
+@testitem "convert to BitArrayCauset throws" tags=[:branchedcsetgeneration, :throws] setup=[branchedtests] begin
+    # Throws for bad tolerance
+    polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
+    x = CausalSets.Coordinates{2}((0.0, 0.0))
+    y = CausalSets.Coordinates{2}((0.0, 0.1))
+    z = CausalSets.Coordinates{2}((0.1, 0.2))
+    sprinkling = [x, y, z]
+    branch_points = ([CausalSets.Coordinates{2}((0.0, 0.15))], [(CausalSets.Coordinates{2}((0.1, 0.0)),CausalSets.Coordinates{2}((0.1, 0.3)))])
+    causet = QuantumGrav.BranchedManifoldCauset(polym, branch_points, sprinkling)
+    tolerance = 0.
+    @test_throws ArgumentError CausalSets.BitArrayCauset(causet; tolerance = tolerance)
+end
+
 @testitem "make_branched_manifold_cset" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
     npoints = 30
-    nbranchpoints = 3
+    n_vertical_cuts = 3
+    n_finite_cuts = 2
     order = 3
     r = 1.2
-    cset, sprinkling, branch_points, coefs = QuantumGrav.make_branched_manifold_cset(npoints, nbranchpoints, rng, order, r)
+    cset, sprinkling, branch_points, coefs = QuantumGrav.make_branched_manifold_cset(npoints, n_vertical_cuts, n_finite_cuts, rng, order, r)
     @test cset isa CausalSets.BitArrayCauset
-    @test length(sprinkling) == npoints
-    @test length(branch_points[1]) + length(branch_points[2]) == nbranchpoints
+    @test length(sprinkling) <= npoints
+    @test length(branch_points[1]) == 3
+    @test length(branch_points[2]) == 2
     @test size(coefs) == (order, order)
     @test cset.atom_count == npoints
+end
+
+@testitem "make_branched_manifold_cset" tags=[:branchedcsetgeneration, :throws] setup=[branchedtests] begin
     # Throws for bad arguments
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(0, 0, rng, order, r)
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 11, rng, order, r)
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, -1, rng, order, r)
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, rng, 0, r)
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, rng, order, 0.5)
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, rng, order, r; d=3)
+    npoints = 30
+    n_vertical_cuts = 3
+    n_finite_cuts = 2
+    order = 3
+    r = 1.2
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(0, 0, 1, rng, order, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, -3, 1, rng, order, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 0, -1, rng, order, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, 1, rng, 0, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, 1, rng, order, 0.5)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, 1, rng, order, r; d=3)
 end
