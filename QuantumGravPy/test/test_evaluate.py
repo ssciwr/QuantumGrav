@@ -268,6 +268,8 @@ def test_f1_evaluator_report(caplog):
     )
 
     assert len(evaluator.data) == 0
+
+    # create fake data
     avg_losses = np.random.rand(10)
     std_losses = np.random.rand(10)
     f1_scores_weighted = np.random.rand(10)
@@ -286,17 +288,30 @@ def test_f1_evaluator_report(caplog):
         }
     )
 
+    # assign data
     evaluator.data = f1_scores
     assert len(evaluator.data["avg_loss"]) == 10
 
+    # check report output
     with caplog.at_level(logging.INFO):
         evaluator.report(f1_scores)
 
         # Test specific content
-        assert f"test avg loss: {f1_scores.loc[9, 'avg_loss']:.4f} +/- {f1_scores.loc[9, 'std_loss']:.4f}" in caplog.text
-        assert f"test f1 score per class: {f1_scores.loc[9, 'f1_per_class']}" in caplog.text
-        assert f"test f1 score unweighted: {f1_scores.loc[9, 'f1_unweighted']}" in caplog.text
-        assert f"test f1 score weighted: {f1_scores.loc[9, 'f1_weighted']}" in caplog.text
+        assert (
+            f"test avg loss: {f1_scores.loc[9, 'avg_loss']:.4f} +/- {f1_scores.loc[9, 'std_loss']:.4f}"
+            in caplog.text
+        )
+        assert (
+            f"test f1 score per class: {f1_scores.loc[9, 'f1_per_class']}"
+            in caplog.text
+        )
+        assert (
+            f"test f1 score unweighted: {f1_scores.loc[9, 'f1_unweighted']}"
+            in caplog.text
+        )
+        assert (
+            f"test f1 score weighted: {f1_scores.loc[9, 'f1_weighted']}" in caplog.text
+        )
         assert f"test f1 score micro: {f1_scores.loc[9, 'f1_micro']}" in caplog.text
 
 
