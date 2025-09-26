@@ -153,3 +153,106 @@ def test_default_early_stopping_check(caplog):
 
         assert early_stopping.current_patience == 0  # Patience should be exhausted
         assert "Early stopping patience decreased: 1 -> 0" in caplog.text
+
+
+def test_f1_evaluator_creation(gnn_model_eval):
+    """Test the F1Evaluator class."""
+    device = torch.device("cpu")
+    evaluator = QG.F1Evaluator(
+        device=device,
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        prefix="test",
+    )
+
+    assert evaluator.device == device
+    assert evaluator.apply_model is not None
+
+
+def test_f1_evaluator_evaluate(make_dataloader, gnn_model_eval):
+    "test F1Evaluator.evaluate() method"
+    dataloader = make_dataloader
+    device = torch.device("cpu")
+    model = gnn_model_eval.to(device)
+    evaluator = QG.F1Evaluator(
+        device=device,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+    )
+    f1_scores = evaluator.evaluate(model, dataloader)
+    assert len(f1_scores) == len(dataloader)
+    assert torch.Tensor(f1_scores).dtype == torch.float32
+
+
+def test_f1_evaluator_report(caplog):
+    "test F1Evaluator.report() method"
+    device = torch.device("cpu")
+    evaluator = QG.F1Evaluator(
+        device=device,
+        apply_model=None,
+    )
+    assert len(evaluator.data) == 0
+    f1_scores = np.random.rand(100)
+    expected_avg = np.mean(f1_scores)
+    expected_std = np.std(f1_scores)
+
+    with caplog.at_level(logging.INFO):
+        evaluator.report(f1_scores)
+        assert evaluator.data == [
+            (expected_avg, expected_std),
+        ]
+
+        # Test specific content
+        assert f"Average F1 score: {expected_avg}" in caplog.text
+        assert f"Standard deviation: {expected_std}" in caplog.text
+        # TODO: add more tests for F1Evaluator, F1Validator, F1Tester, AccuracyEvaluator, AccuracyValidator, AccuracyTester
+
+
+def test_accuracy_evaluator_creation(gnn_model_eval):
+    "test AccuracyEvaluator creation"
+    """Test the AccuracyEvaluator class."""
+    device = torch.device("cpu")
+    evaluator = QG.AccuracyEvaluator(
+        device=device,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+    )
+
+    assert evaluator.device == device
+    assert evaluator.apply_model is not None
+
+
+def test_accuracy_evaluator_evaluate(make_dataloader, gnn_model_eval):
+    "test AccuracyEvaluator.evaluate() method"
+    dataloader = make_dataloader
+    device = torch.device("cpu")
+    model = gnn_model_eval.to(device)
+    evaluator = QG.AccuracyEvaluator(
+        device=device,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+    )
+    accuracies = evaluator.evaluate(model, dataloader)
+    assert len(accuracies) == len(dataloader)
+    assert torch.Tensor(accuracies).dtype == torch.float32
+
+
+def test_accuracy_evaluator_report(caplog):
+    "test AccuracyEvaluator.report() method"
+    device = torch.device("cpu")
+    evaluator = QG.AccuracyEvaluator(
+        device=device,
+        apply_model=None,
+    )
+    assert len(evaluator.data) == 0
+    accuracies = np.random.rand(100)
+    expected_avg = np.mean(accuracies)
+    expected_std = np.std(accuracies)
+
+    with caplog.at_level(logging.INFO):
+        evaluator.report(accuracies)
+        assert evaluator.data == [
+            (expected_avg, expected_std),
+        ]
+
+        # Test specific content
+        assert f"Average accuracy: {expected_avg}" in caplog.text
+        assert f"Standard deviation: {expected_std}" in caplog.text
+        # TODO: add more output tests
