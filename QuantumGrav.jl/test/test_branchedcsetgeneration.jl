@@ -59,7 +59,7 @@ end
     y = CausalSets.Coordinates{2}((1.0, 2.0))
     # Interpolate t=0.5 along segment
     p = QuantumGrav.interpolate_point(x, y, 0.5, 1)
-    @test p ≈ CausalSets.Coordinates{2}((0.5, 1.0))
+    @test p == CausalSets.Coordinates{2}((0.5, 1.0))
     # Interpolate x at t=0.5
     xval = QuantumGrav.interpolate_point(x, y, 0.5, 1; idx_out=2)
     @test xval ≈ 1.0
