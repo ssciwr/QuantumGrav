@@ -1,11 +1,53 @@
 import logging
 import QuantumGrav as QG
-from torch_geometric.data import Data
-import torch
 import numpy as np
+import pytest
+import pandas as pd
+
+import torch
+from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
+
+
+def bc_transform(data: Data) -> Data:
+    """A simple transform that makes the data 1D."""
+    data.y = data.y[:, 0]
+    return data
+
+
+@pytest.fixture
+def make_dataset_bc(create_data_hdf5, read_data):
+    datadir, datafiles = create_data_hdf5
+
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=datadir,
+        reader=read_data,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=4,
+        transform=bc_transform,
+        pre_transform=lambda x: x,
+        pre_filter=lambda x: True,
+    )
+    return dataset
+
+
+@pytest.fixture
+def gnn_model_eval_bc(model_config_eval):
+    """Fixture to create a GNNModel for evaluation."""
+    model_config_eval["downstream_tasks"][0]["output_dim"] = 1
+    model = QG.GNNModel.from_config(
+        model_config_eval,
+    )
+    model.eval()
+    return model
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
+    print("shape: ", x[0].shape, data.y.shape)
     """Compute the loss between predictions and targets."""
     loss = torch.nn.MSELoss()(x[0], data.y.to(torch.float32))
     return loss
@@ -161,7 +203,7 @@ def test_f1_evaluator_creation(gnn_model_eval):
     evaluator = QG.F1Evaluator(
         device=device,
         criterion=compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
         prefix="test",
     )
 
@@ -169,42 +211,93 @@ def test_f1_evaluator_creation(gnn_model_eval):
     assert evaluator.apply_model is not None
 
 
-def test_f1_evaluator_evaluate(make_dataloader, gnn_model_eval):
+def test_f1_evaluator_evaluate(make_dataset_bc, gnn_model_eval_bc):
     "test F1Evaluator.evaluate() method"
-    dataloader = make_dataloader
+    dataloader = DataLoader(
+        make_dataset_bc,
+        batch_size=4,
+        shuffle=True,
+        drop_last=True,  # Ensure all batches are of the same size. last batches that are bad need to be handled by hand
+    )
     device = torch.device("cpu")
-    model = gnn_model_eval.to(device)
+    model = gnn_model_eval_bc.to(device)
     evaluator = QG.F1Evaluator(
         device=device,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(
+            data.x, data.edge_index, data.batch
+        ),  # Assuming binary classification
+        prefix="test",
     )
     f1_scores = evaluator.evaluate(model, dataloader)
-    assert len(f1_scores) == len(dataloader)
-    assert torch.Tensor(f1_scores).dtype == torch.float32
+    f1_scores.columns == [
+        "loss",
+        "output",
+        "target",
+        "f1_per_class",
+        "f1_unweighted",
+        "f1_weighted",
+        "f1_micro",
+    ]
+
+    # only need to check one column for the length
+    assert isinstance(f1_scores, pd.DataFrame)
+    assert len(f1_scores["loss"]) == len(dataloader) * 4  # batch size
+    assert torch.Tensor(f1_scores["loss"]).dtype == torch.float32
+
+    for col in [
+        "f1_unweighted",
+        "f1_weighted",
+        "f1_micro",
+    ]:
+        assert f1_scores[col].min() >= 0.0
+        assert f1_scores[col].max() <= 1.0
 
 
 def test_f1_evaluator_report(caplog):
     "test F1Evaluator.report() method"
+
     device = torch.device("cpu")
     evaluator = QG.F1Evaluator(
         device=device,
-        apply_model=None,
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(
+            data.x, data.edge_index, data.batch
+        ),  # Assuming binary classification
+        prefix="test",
     )
+
     assert len(evaluator.data) == 0
-    f1_scores = np.random.rand(100)
-    expected_avg = np.mean(f1_scores)
-    expected_std = np.std(f1_scores)
+    avg_losses = np.random.rand(10)
+    std_losses = np.random.rand(10)
+    f1_scores_weighted = np.random.rand(10)
+    f1_scores_unweighted = np.random.rand(10)
+    f1_scores_micro = np.random.rand(10)
+    f1_scores_per_class = np.random.rand(10, 2)
+
+    f1_scores = pd.DataFrame(
+        {
+            "avg_loss": avg_losses,
+            "std_loss": std_losses,
+            "f1_weighted": f1_scores_weighted,
+            "f1_unweighted": f1_scores_unweighted,
+            "f1_micro": f1_scores_micro,
+            "f1_per_class": list(f1_scores_per_class),
+        }
+    )
+
+    evaluator.data = f1_scores
+    assert len(evaluator.data["avg_loss"]) == 10
 
     with caplog.at_level(logging.INFO):
         evaluator.report(f1_scores)
-        assert evaluator.data == [
-            (expected_avg, expected_std),
-        ]
 
         # Test specific content
-        assert f"Average F1 score: {expected_avg}" in caplog.text
-        assert f"Standard deviation: {expected_std}" in caplog.text
-        # TODO: add more tests for F1Evaluator, F1Validator, F1Tester, AccuracyEvaluator, AccuracyValidator, AccuracyTester
+        assert f"test avg loss: {f1_scores.loc[9, 'avg_loss']:.4f} +/- {f1_scores.loc[9, 'std_loss']:.4f}" in caplog.text
+        assert f"test f1 score per class: {f1_scores.loc[9, 'f1_per_class']}" in caplog.text
+        assert f"test f1 score unweighted: {f1_scores.loc[9, 'f1_unweighted']}" in caplog.text
+        assert f"test f1 score weighted: {f1_scores.loc[9, 'f1_weighted']}" in caplog.text
+        assert f"test f1 score micro: {f1_scores.loc[9, 'f1_micro']}" in caplog.text
 
 
 def test_accuracy_evaluator_creation(gnn_model_eval):

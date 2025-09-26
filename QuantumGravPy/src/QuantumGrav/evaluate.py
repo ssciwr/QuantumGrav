@@ -289,6 +289,7 @@ class F1Evaluator(DefaultEvaluator):
                 target.append(data.y.cpu())
 
                 outputs = ((torch.sigmoid(predictions[0].squeeze()) > 0.5).long()).cpu()
+
                 output.append(outputs)
 
                 if loss.isnan().any():
@@ -335,6 +336,11 @@ class F1Evaluator(DefaultEvaluator):
             weighted,
             micro,
         ]
+
+        current_data["f1_per_class"] = [per_class] * len(current_data)
+        current_data["f1_unweighted"] = [unweighted] * len(current_data)
+        current_data["f1_weighted"] = [weighted] * len(current_data)
+        current_data["f1_micro"] = [micro] * len(current_data)
 
         return current_data
 
