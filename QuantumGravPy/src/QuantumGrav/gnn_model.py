@@ -212,7 +212,6 @@ class GNNModel(torch.nn.Module):
                         task_kwargs = {}
                 else:
                     task_kwargs = {}
-
                 res = task(x, *task_args, **task_kwargs)
                 output[i] = res
 
@@ -244,6 +243,7 @@ class GNNModel(torch.nn.Module):
             Sequence[torch.Tensor]: Raw output of downstream tasks.
         """
         # apply the GCN backbone to the node features
+
         embeddings = self.get_embeddings(
             x, edge_index, batch, gcn_kwargs=embedding_kwargs
         )

@@ -3,6 +3,8 @@ import QuantumGrav as QG
 from torch_geometric.data import Data
 import torch
 import numpy as np
+import pandas as pd
+import pytest
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
@@ -118,41 +120,129 @@ def test_default_early_stopping_creation():
     assert early_stopping.patience == patience
     assert early_stopping.delta == delta
     assert early_stopping.window == window
+    assert early_stopping.best_score == np.inf
+    assert early_stopping.current_patience == patience
+    assert early_stopping.metric == "loss"
+    assert early_stopping.smoothing is False
+    assert early_stopping.found_better is False
+    assert early_stopping.logger is not None
 
 
-def test_default_early_stopping_check(caplog):
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_check(smoothed):
     """Test the check method of DefaultEarlyStopping."""
     patience = 2
     delta = 1e-4
-    window = 3
+    window = 5
 
-    early_stopping = QG.DefaultEarlyStopping(patience, delta, window)
+    early_stopping = QG.DefaultEarlyStopping(
+        patience, delta, window, smoothing=smoothed
+    )
     early_stopping.best_score = float("inf")
 
-    # Simulate some validation losses
-    losses = [0.1, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04]
+    early_stopping.best_score = 0.06
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                0.1,
+                0.09,
+                0.08,
+                0.07,
+            ]
+        }
+    )
 
-    with caplog.at_level(logging.INFO):
-        assert early_stopping(losses) is False  # Not enough data to decide
-        assert early_stopping.best_score != float("inf")  # Best score should be updated
-        assert early_stopping.current_patience == 2
-        assert (
-            "Early stopping patience reset: 2 -> 2, early stopping best score updated: "
-            in caplog.text
-        )
+    assert early_stopping(losses) is False
+    assert early_stopping.current_patience == 1
+    assert early_stopping.best_score == 0.06
 
-    working_losses = [2 * x for x in losses]
 
-    with caplog.at_level(logging.INFO):
-        assert early_stopping(working_losses) is False  # Should trigger early stoppin
-        assert early_stopping.current_patience == 1  # Patience should be reset
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_reset(smoothed):
+    patience = 2
+    delta = 1e-4
+    window = 5
 
-        assert "Early stopping patience decreased:" in caplog.text
+    early_stopping = QG.DefaultEarlyStopping(
+        patience, delta, window, smoothing=smoothed
+    )
+    early_stopping.best_score = 0.09
+    early_stopping.current_patience = 1
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                0.1,
+                0.09,
+                0.08,
+                0.07,
+            ]
+        }
+    )
 
-        assert early_stopping(working_losses) is True  # Should trigger early stoppin
+    assert early_stopping(losses) is False
+    assert early_stopping.best_score < 0.09  # Best score should be updated
+    assert early_stopping.current_patience == 2
 
-        assert early_stopping.current_patience == 0  # Patience should be exhausted
-        assert "Early stopping patience decreased: 1 -> 0" in caplog.text
+
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_triggered(smoothed):
+    patience = 1
+    delta = 1e-4
+    window = 5
+
+    early_stopping = QG.DefaultEarlyStopping(
+        patience, delta, window, smoothing=smoothed
+    )
+    early_stopping.best_score = 0.09
+    early_stopping.current_patience = 1
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                1.1,
+                1.09,
+                1.08,
+                1.07,
+            ]
+        }
+    )
+
+    assert early_stopping(losses) is True
+    assert early_stopping.best_score == 0.09  # Best score should be updated
+    assert early_stopping.current_patience == 0
+
+
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_criterion(smoothed):
+    patience = 1
+    delta = 1e-4
+    window = 5
+    early_stopping = QG.DefaultEarlyStopping(
+        patience,
+        delta,
+        window,
+        smoothing=smoothed,
+        criterion=lambda x, d: bool(d[x.metric].mean() < 2),
+    )
+    early_stopping.best_score = 0.09
+    early_stopping.current_patience = 1
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                1.1,
+                1.09,
+                1.08,
+                1.07,
+            ]
+        }
+    )
+
+    assert early_stopping(losses) is True
+    assert early_stopping.best_score == 0.09  # Best score should be updated
+    assert early_stopping.current_patience == 0
 
 
 def test_f1_evaluator_creation(gnn_model_eval):
@@ -167,6 +257,20 @@ def test_f1_evaluator_creation(gnn_model_eval):
 
     assert evaluator.device == device
     assert evaluator.apply_model is not None
+    assert evaluator.prefix == "test"
+    pd.testing.assert_frame_equal(
+        evaluator.data,
+        pd.DataFrame(
+            columns=[
+                "avg_loss",
+                "std_loss",
+                "f1_per_class",
+                "f1_unweighted",
+                "f1_weighted",
+                "f1_micro",
+            ],
+        ),
+    )
 
 
 def test_f1_evaluator_evaluate(make_dataloader, gnn_model_eval):
@@ -176,11 +280,15 @@ def test_f1_evaluator_evaluate(make_dataloader, gnn_model_eval):
     model = gnn_model_eval.to(device)
     evaluator = QG.F1Evaluator(
         device=device,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0][
+            :, 0
+        ],
+        prefix="test",
     )
     f1_scores = evaluator.evaluate(model, dataloader)
-    assert len(f1_scores) == len(dataloader)
-    assert torch.Tensor(f1_scores).dtype == torch.float32
+    assert len(f1_scores) == len(dataloader) * 4  # 4 == batchsize
+    assert len(evaluator.data) == 1
 
 
 def test_f1_evaluator_report(caplog):
@@ -188,36 +296,65 @@ def test_f1_evaluator_report(caplog):
     device = torch.device("cpu")
     evaluator = QG.F1Evaluator(
         device=device,
-        apply_model=None,
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        prefix="test",
     )
     assert len(evaluator.data) == 0
-    f1_scores = np.random.rand(100)
-    expected_avg = np.mean(f1_scores)
-    expected_std = np.std(f1_scores)
+    data = pd.DataFrame(
+        {
+            "avg_loss": 0.55,
+            "std_loss": 0.01,
+            "f1_per_class": [0.1543, 0.2222],
+            "f1_unweighted": 0.188,
+            "f1_weighted": 0.23423,
+            "f1_micro": 0.188,
+        }
+    )
+
+    evaluator.data = data
 
     with caplog.at_level(logging.INFO):
-        evaluator.report(f1_scores)
-        assert evaluator.data == [
-            (expected_avg, expected_std),
-        ]
-
+        evaluator.report(
+            pd.DataFrame({"loss": [0.1, 0.2], "output": [1, 0], "target": [0, 0]})
+        )
         # Test specific content
-        assert f"Average F1 score: {expected_avg}" in caplog.text
-        assert f"Standard deviation: {expected_std}" in caplog.text
-        # TODO: add more tests for F1Evaluator, F1Validator, F1Tester, AccuracyEvaluator, AccuracyValidator, AccuracyTester
+        assert f"test avg loss: {data['avg_loss'].iloc[-1]}" in caplog.text
+        assert (
+            f"test f1 score per class: {data['f1_per_class'].iloc[-1]}" in caplog.text
+        )
+        assert (
+            f"test f1 score unweighted: {data['f1_unweighted'].iloc[-1]}" in caplog.text
+        )
+        assert f"test f1 score weighted: {data['f1_weighted'].iloc[-1]}" in caplog.text
+        assert f"test f1 score micro: {data['f1_micro'].iloc[-1]}" in caplog.text
 
 
-def test_accuracy_evaluator_creation(gnn_model_eval):
-    "test AccuracyEvaluator creation"
-    """Test the AccuracyEvaluator class."""
+def test_accuracy_evaluator_creation():
+    """Test the AccuracyEvaluator class creation"""
     device = torch.device("cpu")
     evaluator = QG.AccuracyEvaluator(
         device=device,
+        criterion=compute_loss,
         apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        prefix="test",
     )
 
     assert evaluator.device == device
     assert evaluator.apply_model is not None
+    assert evaluator.prefix == "test"
+    pd.testing.assert_frame_equal(
+        evaluator.data,
+        pd.DataFrame(
+            columns=[
+                "avg_loss",
+                "std_loss",
+                "accuracy",
+                "mse",
+                "mae",
+            ],
+        ),
+    )
 
 
 def test_accuracy_evaluator_evaluate(make_dataloader, gnn_model_eval):
@@ -227,11 +364,15 @@ def test_accuracy_evaluator_evaluate(make_dataloader, gnn_model_eval):
     model = gnn_model_eval.to(device)
     evaluator = QG.AccuracyEvaluator(
         device=device,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0][
+            :, 0
+        ],
+        prefix="test",
     )
-    accuracies = evaluator.evaluate(model, dataloader)
-    assert len(accuracies) == len(dataloader)
-    assert torch.Tensor(accuracies).dtype == torch.float32
+    f1_scores = evaluator.evaluate(model, dataloader)
+    assert len(f1_scores) == len(dataloader) * 4  # 4 == batchsize
+    assert len(evaluator.data) == 1
 
 
 def test_accuracy_evaluator_report(caplog):
@@ -239,20 +380,35 @@ def test_accuracy_evaluator_report(caplog):
     device = torch.device("cpu")
     evaluator = QG.AccuracyEvaluator(
         device=device,
-        apply_model=None,
+        criterion=compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        prefix="test",
     )
     assert len(evaluator.data) == 0
-    accuracies = np.random.rand(100)
-    expected_avg = np.mean(accuracies)
-    expected_std = np.std(accuracies)
+    data = pd.DataFrame(
+        {
+            "avg_loss": 0.5513,
+            "std_loss": 0.0133,
+            "accuracy": 0.1881,
+            "mse": 0.2342,
+            "mae": 0.1885,
+        },
+        index=[
+            0,
+        ],
+    )
+
+    evaluator.data = data
 
     with caplog.at_level(logging.INFO):
-        evaluator.report(accuracies)
-        assert evaluator.data == [
-            (expected_avg, expected_std),
-        ]
-
+        evaluator.report(
+            pd.DataFrame({"loss": [0.1, 0.2], "output": [1, 0], "target": [0, 0]})
+        )
         # Test specific content
-        assert f"Average accuracy: {expected_avg}" in caplog.text
-        assert f"Standard deviation: {expected_std}" in caplog.text
-        # TODO: add more output tests
+        assert (
+            f"test avg loss: {data['avg_loss'].iloc[-1]} +/- {data['std_loss'].iloc[-1]}"
+            in caplog.text
+        )
+        assert f"test accuracy: {data['accuracy'].iloc[-1]}" in caplog.text
+        assert f"test mse: {data['mse'].iloc[-1]}" in caplog.text
+        assert f"test mae: {data['mae'].iloc[-1]}" in caplog.text

@@ -1,5 +1,5 @@
 import torch
-from typing import Callable, Any, Iterable, Sequence
+from typing import Callable, Any
 import torch_geometric
 import numpy as np
 import pandas as pd
@@ -10,19 +10,22 @@ import tqdm
 
 class DefaultEvaluator:
     def __init__(
-        self, device, criterion: Callable, apply_model: Callable | None = None
+        self,
+        device: str | torch.device | int,
+        criterion: Callable,
+        apply_model: Callable | None = None,
     ):
         """Default evaluator for model evaluation.
 
         Args:
-            device (_type_): The device to run the evaluation on.
+            device (str | torch.device | int): The device to run the evaluation on.
             criterion (Callable): The loss function to use for evaluation.
             apply_model (Callable): A function to apply the model to the data.
         """
         self.criterion = criterion
         self.apply_model = apply_model
         self.device = device
-        self.data = []
+        self.data: pd.DataFrame | list = []
         self.logger = logging.getLogger(__name__)
 
     def evaluate(
@@ -55,7 +58,11 @@ class DefaultEvaluator:
         return current_data
 
     def report(self, data: list | pd.Series | torch.Tensor | np.ndarray) -> None:
-        """Report the evaluation results to stdout"""
+        """Report the evaluation results.
+
+        Args:
+            data (list | pd.Series | torch.Tensor | np.ndarray): The evaluation results.
+        """
 
         if isinstance(data, torch.Tensor):
             data = data.cpu().numpy()
@@ -68,17 +75,31 @@ class DefaultEvaluator:
         avg = np.mean(data)
         sigma = np.std(data)
         self.logger.info(f"Average loss: {avg}, Standard deviation: {sigma}")
-        self.data.append((avg, sigma))
+
+        if isinstance(self.data, list):
+            self.data.append((avg, sigma))
+        else:
+            self.data = pd.concat(
+                [
+                    self.data,
+                    pd.DataFrame({"loss": avg, "std": sigma}, index=[0]),
+                ],
+                axis=0,
+                ignore_index=True,
+            )
 
 
 class DefaultTester(DefaultEvaluator):
     def __init__(
-        self, device, criterion: Callable, apply_model: Callable | None = None
+        self,
+        device: str | torch.device | int,
+        criterion: Callable,
+        apply_model: Callable | None = None,
     ):
         """Default tester for model testing.
 
         Args:
-            device (_type_): The device to run the testing on.
+            device (str | torch.device | int,): The device to run the testing on.
             criterion (Callable): The loss function to use for testing.
             apply_model (Callable): A function to apply the model to the data.
         """
@@ -102,9 +123,25 @@ class DefaultTester(DefaultEvaluator):
 
 
 class DefaultValidator(DefaultEvaluator):
+    """Default validator for model validation.
+
+    Args:
+        DefaultEvaluator (_type_): _description_
+    """
+
     def __init__(
-        self, device, criterion: Callable, apply_model: Callable | None = None
+        self,
+        device: str | torch.device | int,
+        criterion: Callable,
+        apply_model: Callable | None = None,
     ):
+        """Default validator for model validation.
+
+        Args:
+            device (str | torch.device | int,): The device to run the validation on.
+            criterion (Callable): The loss function to use for validation.
+            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
+        """
         super().__init__(device, criterion, apply_model)
 
     def validate(
@@ -123,14 +160,20 @@ class DefaultValidator(DefaultEvaluator):
         return self.evaluate(model, data_loader)
 
 
+# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
 class DefaultEarlyStopping:
     """Early stopping based on a validation metric."""
 
+    # put this into the package
     def __init__(
         self,
         patience: int,
         delta: float = 1e-4,
         window=7,
+        metric: str = "loss",
+        smoothing: bool = False,
+        criterion: Callable = lambda x, d: x.current_patience <= 0,
+        init_best_score: float = np.inf,
     ):
         """Early stopping initialization.
 
@@ -138,65 +181,43 @@ class DefaultEarlyStopping:
             patience (int): Number of epochs with no improvement after which training will be stopped.
             delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
             window (int, optional): Size of the moving window for smoothing. Defaults to 7.
+            metric (str, optional): Metric to monitor for early stopping. Defaults to "loss".
+            smoothing (bool, optional): Whether to apply smoothed mean to the metric to dampen fluctuations. Defaults to False.
+            criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
         """
         self.patience = patience
         self.current_patience = patience
         self.delta = delta
-        self.best_score = np.inf
         self.window = window
         self.found_better = False
+        self.metric = metric
+        self.best_score = init_best_score
+        self.smoothing = smoothing
         self.logger = logging.getLogger(__name__)
+        self.criterion = criterion
 
-    def __call__(self, data: Iterable | pd.DataFrame | pd.Series) -> bool:
-        """Check if early stopping criteria are met.
+    def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
+        """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
+        patience is reset and 'found_better' is set to True. Otherwise, if the number of datapoints in 'data' is greater than self.window, the patience is decremented.
 
         Args:
-            data: Iterable of validation metrics, e.g., list of scalars, list of tuples, Dataframe, numpy array...
+            data (pd.DataFrame | pd.Series): Recorded evaluation metrics in a pandas structure.
 
         Returns:
-            bool: True if training should be stopped, False otherwise.
+            bool: True if early stopping criteria are met, False otherwise.
         """
-        window = min(self.window, len(data))
-        smoothed = pd.Series(data).rolling(window=window, min_periods=1).mean()
-        if smoothed.iloc[-1] < self.best_score - self.delta:
-            self.logger.info(
-                f"Early stopping patience reset: {self.current_patience} -> {self.patience}, early stopping best score updated: {self.best_score} -> {smoothed.iloc[-1]}"
-            )
-            self.best_score = smoothed.iloc[-1]
-            self.current_patience = self.patience
-            self.found_better = True
-        else:
-            self.logger.info(
-                f"Early stopping patience decreased: {self.current_patience} -> {self.current_patience - 1}"
-            )
-            self.current_patience -= 1
-            self.found_better = False
-
-        return self.current_patience <= 0
-
-
-# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
-class PandasEarlyStopping(DefaultEarlyStopping):
-    # put this into the package
-    def __init__(
-        self, patience: int, delta: float = 1e-4, window=7, metric: str = "loss"
-    ):
-        super().__init__(
-            patience=patience,
-            delta=delta,
-            window=window,
-        )
-        self.metric = metric
-        self.best_score = -np.inf  # we want to maximize the metric
-
-    def __call__(self, data: Sequence | pd.DataFrame | pd.Series) -> bool:
         self.found_better = False
 
-        if self.best_score + self.delta < data[self.metric].iloc[-1]:
+        if self.smoothing:
+            d = data[self.metric].rolling(window=self.window, min_periods=1).mean()
+        else:
+            d = data[self.metric]
+
+        if self.best_score + self.delta > d.iloc[-1]:
             self.logger.info(
-                f"    Better model found: {data[self.metric].iloc[-1]}, current best: {self.best_score}"
+                f"    Better model found: {d.iloc[-1]}, current best: {self.best_score}"
             )
-            self.best_score = data[self.metric].iloc[-1]  # record best score
+            self.best_score = d.iloc[-1]  # record best score
             self.current_patience = self.patience  # reset patience
             self.found_better = True
         elif len(data) > self.window:
@@ -209,7 +230,7 @@ class PandasEarlyStopping(DefaultEarlyStopping):
             f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score}"
         )
 
-        return self.current_patience <= 0
+        return self.criterion(self, data)
 
 
 # Testing and Validation helper classes
@@ -286,21 +307,25 @@ class F1Evaluator(DefaultEvaluator):
 
                 losses.append(losstensor)
 
-                target.append(data.y.cpu())
-
-                outputs = ((torch.sigmoid(predictions[0].squeeze()) > 0.5).long()).cpu()
+                if data.y.ndim == 2:
+                    target.append(data.y[:, 0])
+                elif data.y.ndim == 1:
+                    target.append(data.y.cpu())
+                else:
+                    raise ValueError(f"Unexpected target shape: {data.y.shape}")
+                outputs = ((torch.sigmoid(predictions.squeeze()) > 0.5).long()).cpu()
                 output.append(outputs)
 
                 if loss.isnan().any():
-                    print(f"NaN loss encountered in batch {i}.")
+                    self.logger.warning(f"NaN loss encountered in batch {i}.")
                     continue
 
                 if np.isnan(output).any():
-                    print(f"NaN encountered in output in batch {i}.")
+                    self.logger.warning(f"NaN encountered in output in batch {i}.")
                     continue
 
                 if torch.isnan(data.y).any():
-                    print(f"NaN target encountered in batch {i}.")
+                    self.logger.warning(f"NaN target encountered in batch {i}.")
                     continue
 
         current_data = pd.DataFrame(
@@ -338,12 +363,13 @@ class F1Evaluator(DefaultEvaluator):
 
         return current_data
 
-    def report(self, data: pd.DataFrame | dict):
+    def report(self, data: pd.DataFrame | dict) -> None:
         """Report the evaluation results.
 
         Args:
             data (pd.DataFrame | dict): The evaluation data.
         """
+
         avg_loss = self.data["avg_loss"].iloc[-1]
         std_loss = self.data["std_loss"].iloc[-1]
         per_class = self.data["f1_per_class"].iloc[-1]
@@ -360,28 +386,76 @@ class F1Evaluator(DefaultEvaluator):
 
 # for validation we reuse part of the tester class
 class F1Validator(F1Evaluator):
+    """F1 Score Validator
+
+    Args:
+        F1Evaluator (class): Base class for F1 score evaluation.
+    """
+
     def __init__(
         self,
         device,
         criterion,
         apply_model=None,
     ):
+        """F1 Score Validator
+
+        Args:
+            device (str | torch.device | int): The device to run the evaluation on.
+            criterion (Callable): The loss function to use for evaluation.
+            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
+        """
         super().__init__(device, criterion, apply_model, prefix="Validation")
 
-    def validate(self, model, data_loader):
+    def validate(
+        self, model: torch.nn.Module, data_loader: torch_geometric.data.DataLoader
+    ) -> pd.DataFrame:
+        """Validate the model on the given data loader.
+
+        Args:
+            model (torch.nn.Module): The model to validate.
+            data_loader (torch_geometric.data.DataLoader): The data loader for the validation set.
+
+        Returns:
+            pd.DataFrame: The validation results.
+        """
         return super().evaluate(model, data_loader)
 
 
 class F1Tester(F1Evaluator):
+    """F1 Score Tester
+
+    Args:
+        F1Evaluator (class): Base class for F1 score evaluation.
+    """
+
     def __init__(
         self,
         device,
         criterion,
         apply_model=None,
     ):
+        """F1 Score Tester
+
+        Args:
+            device (str | torch.device | int): The device to run the evaluation on.
+            criterion (Callable): The loss function to use for evaluation.
+            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
+        """
         super().__init__(device, criterion, apply_model, prefix="Test")
 
-    def test(self, model, data_loader):
+    def test(
+        self, model: torch.nn.Module, data_loader: torch_geometric.data.DataLoader
+    ) -> pd.DataFrame:
+        """Test the model on the given data loader.
+
+        Args:
+            model (torch.nn.Module): The model to test.
+            data_loader (torch_geometric.data.DataLoader): The data loader for the test set.
+
+        Returns:
+            pd.DataFrame: The test results.
+        """
         return super().evaluate(model, data_loader)
 
 
@@ -420,6 +494,18 @@ class AccuracyEvaluator(DefaultEvaluator):
     def evaluate(
         self, model: torch.nn.Module, data_loader: torch_geometric.data.DataLoader
     ) -> pd.DataFrame:  # type: ignore
+        """Evaluate the model on the given data loader.
+
+        Args:
+            model (torch.nn.Module): The model to evaluate.
+            data_loader (torch_geometric.data.DataLoader): The data loader for the evaluation set.
+
+        Raises:
+            ValueError: If the evaluation fails.
+
+        Returns:
+            pd.DataFrame: The evaluation results.
+        """
         model.eval()
         losses = []
         target = []
@@ -442,51 +528,52 @@ class AccuracyEvaluator(DefaultEvaluator):
 
                 losses.append(losstensor)
 
-                target.append(data.y.cpu())
+                if data.y.ndim == 2:
+                    target.append(data.y[:, 0])
+                elif data.y.ndim == 1:
+                    target.append(data.y.cpu())
+                else:
+                    raise ValueError(f"Unexpected target shape: {data.y.shape}")
 
-                outputs = ((torch.sigmoid(predictions[0].squeeze()) > 0.5).long()).cpu()
+                outputs = ((torch.sigmoid(predictions.squeeze()) > 0.5).long()).cpu()
                 output.append(outputs)
 
                 if loss.isnan().any():
-                    print(f"NaN loss encountered in batch {i}.")
+                    self.logger.warning(f"NaN loss encountered in batch {i}.")
                     continue
 
                 if np.isnan(output).any():
-                    print(f"NaN encountered in output in batch {i}.")
+                    self.logger.warning(f"NaN encountered in output in batch {i}.")
                     continue
 
                 if torch.isnan(data.y).any():
-                    print(f"NaN target encountered in batch {i}.")
+                    self.logger.warning(f"NaN target encountered in batch {i}.")
                     continue
 
+        output = torch.cat(output).to(torch.float32)
+        target = torch.cat(target).to(torch.float32)
         current_data = pd.DataFrame(
             {
                 "loss": torch.cat(losses),
-                "output": torch.cat(output),
-                "target": torch.cat(target),
+                "output": output,
+                "target": target,
             }
         )
         avg_loss = current_data["loss"].mean()
         std_loss = current_data["loss"].std()
-        accuracy = (
-            (current_data["output"] == current_data["target"]).float().mean().item()
-        )
-        mse = torch.nn.functional.mse_loss(
-            current_data["output"].float(), current_data["target"].float()
-        ).item()
-        mae = torch.nn.functional.l1_loss(
-            current_data["output"].float(), current_data["target"].float()
-        ).item()
+        accuracy = (output == target).float().mean().item()
+        mse = torch.nn.functional.mse_loss(output, target).item()
+        mae = torch.nn.functional.l1_loss(output, target).item()
 
         self.data.loc[len(self.data)] = [avg_loss, std_loss, accuracy, mse, mae]
 
         return current_data
 
-    def report(self, data: pd.DataFrame | dict):
+    def report(self, _: pd.DataFrame | dict):
         """Report the evaluation results.
 
         Args:
-            data (pd.DataFrame | dict): The evaluation data.
+            _ (pd.DataFrame | dict): The evaluation results.
         """
         avg_loss = self.data["avg_loss"].iloc[-1]
         std_loss = self.data["std_loss"].iloc[-1]
@@ -501,26 +588,70 @@ class AccuracyEvaluator(DefaultEvaluator):
 
 
 class AccuracyValidator(AccuracyEvaluator):
+    """Validate the model on the validation set.
+
+    Args:
+        AccuracyEvaluator (_type_): _description_
+    """
+
     def __init__(
         self,
-        device,
-        criterion,
-        apply_model=None,
+        device: str | torch.device | int,
+        criterion: Callable,
+        apply_model: Callable | None = None,
     ):
+        """Instantiate a new AccuracyValidator
+
+        Args:
+            device (str | torch.device | int): The device to use.
+            criterion (Callable): The loss function to use.
+            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
+        """
         super().__init__(device, criterion, apply_model, prefix="Validation")
 
-    def validate(self, model, data_loader):
+    def validate(
+        self, model: torch.nn.Module, data_loader: torch_geometric.data.DataLoader
+    ) -> pd.DataFrame:
+        """Validate the model on the validation set.
+
+        Args:
+            model (torch.nn.Module): The model to validate.
+            data_loader (torch_geometric.data.DataLoader): The data loader for the validation set.
+
+        Returns:
+            pd.DataFrame: The evaluation results.
+        """
         return super().evaluate(model, data_loader)
 
 
 class AccuracyTester(AccuracyEvaluator):
+    """Test the model on the test set."""
+
     def __init__(
         self,
-        device,
-        criterion,
-        apply_model=None,
+        device: str | torch.device | int,
+        criterion: Callable,
+        apply_model: Callable | None = None,
     ):
+        """Instantiate a new AccuracyTester
+
+        Args:
+            device (str | torch.device | int): The device to use.
+            criterion (Callable): The loss function to use.
+            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
+        """
         super().__init__(device, criterion, apply_model, prefix="Test")
 
-    def test(self, model, data_loader):
+    def test(
+        self, model: torch.nn.Module, data_loader: torch_geometric.data.DataLoader
+    ) -> pd.DataFrame:
+        """Test the model on the test set.
+
+        Args:
+            model (torch.nn.Module): The model to test.
+            data_loader (torch_geometric.data.DataLoader): The data loader for the test set.
+
+        Returns:
+            pd.DataFrame: The evaluation results.
+        """
         return super().evaluate(model, data_loader)
