@@ -1559,8 +1559,8 @@ function CausalSets.in_past_of(
     all_cuts = sort(all_cuts, by = t -> t[1][1])
 
     # Check whether causal diamond edges are inhibited by cuts
-    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Int}}}(undef, 2) # save in case we can reuse this in in_wedge_of, to be implemented
-    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Int}}}(undef, 2) # save in case we can reuse this in in_wedge_of, to be implemented
+    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of, to be implemented
+    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of, to be implemented
     for i in 1:2 
         past_intersections[i] = next_intersection(manifold, all_cuts, x, corners[i], (-1.)^i; null_separated = true, tolerance = tolerance)
         future_intersections[i] = next_intersection(manifold, all_cuts, corners[i], y, (-1.)^(i+1); null_separated = true, tolerance = tolerance)
