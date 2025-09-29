@@ -637,7 +637,7 @@ end
         slope::Float64;
         null_separated::Bool = false,
         tolerance::Float64 = 1e-12
-    ) -> Union{Tuple{CausalSets.Coordinates{2}, Int}, Nothing}
+    ) -> Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}, Nothing}
 
 Find the earliest intersection (in coordinate time) between a null ray starting at `x` with slope `slope` (±1) and any topological cut segment in `branch_point_tuples`, restricting to intersections that occur before the event `y`.
 
@@ -656,8 +656,8 @@ This function is used to propagate a null ray (with slope ±1, i.e., left- or ri
 - `tolerance::Float64 = 1e-12`: Numerical tolerance for intersection and ordering checks.
 
 # Returns
-- `Union{Tuple{CausalSets.Coordinates{2}, Int}, Nothing}`:
-    - If a valid intersection is found, returns a tuple `(intersection, index)`, where `intersection` is the coordinate of the intersection point (as `Coordinates{2}`), and `index` is the 1-based index of the cut segment in `branch_point_tuples` that is intersected.
+- `Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}, Nothing}`:
+    - If a valid intersection is found, returns a tuple `(intersection, cut)`, where `intersection` is the coordinate of the intersection point (as `Coordinates{2}`), and `cut` is the corresponding segment tuple from `branch_point_tuples` that is intersected.
     - If no valid intersection is found before `y`, returns `nothing`.
 
 # Throws
@@ -681,7 +681,7 @@ slope = 1.0
 cut = (CausalSets.Coordinates{2}((0.5, -0.5)), CausalSets.Coordinates{2}((0.5, 0.5)))
 manifold = CausalSets.MinkowskiManifold{2}()
 result = next_intersection(manifold, [cut], x, y, slope)
-# returns (Coordinates{2}((0.5, 0.5)), 1)
+# returns (Coordinates{2}((0.5, 0.5)), cut)
 ```
 
 # See Also
@@ -699,36 +699,36 @@ function next_intersection(
     slope::Float64;
     null_separated::Bool=false,
     tolerance::Float64 = 1e-12
-)::Union{Tuple{CausalSets.Coordinates{2},Int}, Nothing}
+)::Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}, Nothing}
     
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
     best_intersection = nothing
-    best_index = nothing
+    best_cut = nothing
     best_time = nothing
 
-    backward = y[1] < x[1]
+    backward = y[1] < x[1] # detect backward propagation in time
     dir_sign = backward ? -1. : 1
 
     # Compute the endpoint of the ray segment as (y[1], ray_origin[2] + slope * (y[1] - ray_origin[1]))
     ray_end = CausalSets.Coordinates{2}((y[1], x[2] + slope * (y[1] - x[1])))
     ray_segment = (x, ray_end)
 
-    for (idx, cut) in enumerate(branch_point_tuples)
+    for cut in branch_point_tuples # go through all cuts and find the next intersection
         ok, pt = segments_intersect(ray_segment, cut; tolerance=tolerance)
         if ok && pt !== nothing && dir_sign * x[1] - tolerance <= dir_sign * pt[1] <= dir_sign * y[1] + tolerance &&
-            (null_separated ? true : (backward ? CausalSets.in_past_of(manifold, y, pt) : CausalSets.in_past_of(manifold, pt, y)))
+            (null_separated ? true : (backward ? y[1] <= pt[1] : pt[1] <= y[1]))
             if best_intersection === nothing ||
                 (dir_sign * pt[1] < dir_sign * best_time) 
-                best_intersection, best_index = pt, idx
+                best_intersection, best_cut = pt, cut
                 best_time = pt[1]
             end
         end
     end
 
-    return isnothing(best_intersection) ? nothing : (best_intersection, best_index)
+    return isnothing(best_intersection) ? nothing : (best_intersection, best_cut)
 end
 
 """
@@ -1129,6 +1129,7 @@ function propagate_ray(
     slope::Float64,
     branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}};
     corners::Union{Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},Nothing}=nothing,
+    intersecting_cuts::Union{Nothing, Vector{Tuple{Tuple{Int,Int}, CausalSets.Coordinates{2}}}}=nothing,
     check_causal_relation::Bool = true,
     tolerance::Float64=1e-12    
 )::Vector{CausalSets.Coordinates{2}}
@@ -1146,6 +1147,10 @@ function propagate_ray(
     pos = x
     path = [x]
     tfin = y[1]
+    intersecting_cuts = isnothing(intersecting_cuts) ? cut_intersections(branch_point_tuples) : intersecting_cuts
+    # Compute diamond corners
+    left_corner, right_corner = isnothing(corners) ? diamond_corners(manifold, backward ? y : x, backward ? x : y; check_causal_relation = false) : corners
+        
     while dir_sign * pos[1] < dir_sign * tfin
         hit = next_intersection(manifold, local_branch_point_tuples, pos, y, slope; tolerance = tolerance)
         if isnothing(hit)
@@ -1155,8 +1160,8 @@ function propagate_ray(
             push!(path, pos)
             continue
         end
-        intersection, idx = hit
-        (p, q) = local_branch_point_tuples[idx]
+        intersection, cut = hit
+        (p, q) = cut
         # Move to intersection point
         push!(path, intersection)
 
@@ -1178,19 +1183,55 @@ function propagate_ray(
             end
         end
 
+        in_diamond = true # needed below for-loop for performance (not necessary to compute point_in_diamond twice)
+        jumped_to_intersecting_cut = false
+        other_cut = nothing
+        # Check whether the current cut is intersected by another cut
+        for ((i,j),pt) in intersecting_cuts
+            cut_i = i <= length(local_branch_point_tuples) ? local_branch_point_tuples[i] : nothing
+            cut_j = j <= length(local_branch_point_tuples) ? local_branch_point_tuples[j] : nothing
+            if ((cut == cut_i) || (cut == cut_j)) && pt !== nothing && all(min(intersection[k], candidate[k]) - tolerance <= pt[k] <= max(intersection[k], candidate[k]) + tolerance for k in 1:2)
+                if point_in_diamond(manifold, pt, backward ? y : x, backward ? x : y; check_causal_relation = false)
+                    push!(path, pt)
+                    # found intersecting cut at same place
+                    other_cut = (cut == cut_i) ? cut_j : cut_i
+                    # decide direction: always opposite to lateral ray direction
+                    v = pt .- intersection
+                    possible_endpoints = other_cut === nothing ? [] : [other_cut[1], other_cut[2]]
+                    if length(possible_endpoints) == 2
+                        cross_prod = v[1]*(possible_endpoints[1][2]-pt[2]) - v[2]*(possible_endpoints[1][1]-pt[1])
+                        if slope > 0
+                            # slope > 0 → turn left
+                            candidate = cross_prod > 0 ? possible_endpoints[2] : possible_endpoints[1]
+                        else
+                            # slope < 0 → turn right
+                            candidate = cross_prod > 0 ? possible_endpoints[1] : possible_endpoints[2]
+                        end
+                    end
+                    jumped_to_intersecting_cut = true
+                else
+                    in_diamond = false # if false here, we don't need to compute point_in_diamond again
+                end
+            end
+        end
+
         # Check if candidate lies within causal diamond of (x,y)
-        if point_in_diamond(manifold, candidate, backward ? y : x, backward ? x : y; check_causal_relation = false)
+        if in_diamond && point_in_diamond(manifold, candidate, backward ? y : x, backward ? x : y; check_causal_relation = false)
             pos = candidate
             push!(path, pos)
-            local_branch_point_tuples = deleteat!(local_branch_point_tuples, idx)
+            if jumped_to_intersecting_cut && other_cut !== nothing
+                # Remove only the intersected cut (other_cut), leave cut in local_branch_point_tuples
+                filter!(c -> c !== other_cut, local_branch_point_tuples)
+            else
+                # Normal crossing: remove the current cut
+                filter!(c -> c !== cut, local_branch_point_tuples)
+            end
             continue
         end
 
-        # Compute diamond corners
-        left_corner, right_corner = isnothing(corners) ? diamond_corners(manifold, backward ? y : x, backward ? x : y; check_causal_relation = false) : corners
         # Define opposite boundary edges
         opposite_diamond_edges = (backward && slope > 0.) || (!backward && slope < 0.) ? [(x, right_corner), (right_corner, y)] : [(x, left_corner), (left_corner, y)]
-        
+
         # Find intersection point of (intersection, candidate) with these edges if existent
         for edge in opposite_diamond_edges # If intersection is on the side opposite to the ray slope, ray ends.
             intersect, pt = segments_intersect((intersection, candidate), edge, tolerance = tolerance)
@@ -1199,13 +1240,16 @@ function propagate_ray(
                 return path # Ray ends
             end
         end
-        pos = dir_sign * candidate[1] > dir_sign * tfin ? interpolate_point(intersection, pt, tfin, 1; tolerance = tolerance) : candidate # No intersection with opposite side -> continue propagation
+        pos = dir_sign * candidate[1] > dir_sign * tfin ? interpolate_point(intersection, candidate, tfin, 1; tolerance = tolerance) : candidate # No intersection with opposite side -> continue propagation
         push!(path, pos)
-            
-        local_branch_point_tuples = deleteat!(local_branch_point_tuples, idx)
+        if jumped_to_intersecting_cut && other_cut !== nothing
+            filter!(c -> c !== other_cut, local_branch_point_tuples)
+        else
+            filter!(c -> c !== cut, local_branch_point_tuples)
+        end
     end
     return path
-end   
+end
 
 
 """

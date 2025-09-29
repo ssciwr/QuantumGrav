@@ -380,11 +380,40 @@ end
     @test path6[end] == CausalSets.Coordinates{2}((1., -1.))
     @test length(path6) == 5
 
-        # backwards
+    # backwards
     path6_b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, cuts6)
     @test path6_b[1] === y
     @test path6_b[end][1] != x[1]
     @test length(path6_b) === 5
+
+    # intersecting cuts block whole diamond
+    cuts7 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((2.0, 0.5))), 
+            (CausalSets.Coordinates{2}((1.0, -2.)), CausalSets.Coordinates{2}((1.0, 0.6)))]
+    path7 = QuantumGrav.propagate_ray(manifold, x, y, 1.0, cuts7)
+    @test path7[1] == x
+    @test path7[end][1] != y[1]
+    @test length(path7) == 4
+
+    # backwards
+    path7b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, cuts7)
+    @test path7b[1] == y
+    @test path7b[end][1] != x[1]
+    @test length(path7b) == 4
+
+    # intersecting cuts conspire with third cut to block whole diamond
+    cuts8 = [(CausalSets.Coordinates{2}((0.0, 0.5)), CausalSets.Coordinates{2}((2.0, 0.5))), 
+            (CausalSets.Coordinates{2}((1.0, -.5)), CausalSets.Coordinates{2}((1.0, 0.6))), 
+            (CausalSets.Coordinates{2}((1.1, -.3)), CausalSets.Coordinates{2}((1.1, -2.0)))]
+    path8 = QuantumGrav.propagate_ray(manifold, x, y, 1.0, cuts8)
+    @test path8[1] == x
+    @test path8[end][1] != y[1]
+    @test length(path8) == 6
+
+    # intersecting cuts conspire with third cut to block whole diamond
+    path8b = QuantumGrav.propagate_ray(manifold, y, x, 1.0, cuts8)
+    @test path8b[1] == y
+    @test path8b[end][1] != x[1]
+    @test length(path8b) == 6
 end
 
 @testitem "propagate_ray_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
