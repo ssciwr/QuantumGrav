@@ -60,7 +60,7 @@ class GNNModel(torch.nn.Module):
             raise ValueError("At least one downstream task must be provided.")
 
         if active_tasks is None:
-            self.active_tasks = [True] * len(self.downstream_tasks)
+            raise ValueError("active_tasks must be provided.")
         else:
             self.active_tasks = active_tasks
 
@@ -111,6 +111,9 @@ class GNNModel(torch.nn.Module):
             i (int): Index of the downstream task to activate.
         """
 
+        if i < 0 or i >= len(self.active_tasks):
+            raise ValueError("Invalid task index.")
+
         self.active_tasks[i] = True
 
     def set_task_inactive(self, i: int) -> None:
@@ -119,6 +122,10 @@ class GNNModel(torch.nn.Module):
         Args:
             i (int): Index of the downstream task to deactivate.
         """
+
+        if i < 0 or i >= len(self.active_tasks):
+            raise ValueError("Invalid task index.")
+
         self.active_tasks[i] = False
 
     def _eval_encoder(
@@ -188,7 +195,7 @@ class GNNModel(torch.nn.Module):
             downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
 
         Returns:
-            Sequence[torch.Tensor]: Outputs of the downstream tasks.
+            dict[int, torch.Tensor]: Outputs of the downstream tasks.
         """
 
         output = {}

@@ -172,7 +172,8 @@ class DefaultEarlyStopping:
         window=7,
         metric: str = "loss",
         smoothing: bool = False,
-        criterion: Callable = lambda x, d: x.current_patience <= 0,
+        criterion: Callable = lambda early_stopping_instance,
+        data: early_stopping_instance.current_patience <= 0,
         init_best_score: float = np.inf,
     ):
         """Early stopping initialization.
