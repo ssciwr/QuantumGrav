@@ -257,8 +257,8 @@ class Trainer:
             raise RuntimeError("Optimizer must be initialized before training.")
 
         #
-        output_size = len(self.config["model"]["downstream_tasks"])
-
+        output_size = sum(self.model.active_tasks)
+        self.logger.info(f"  Output size determined: {output_size}")
         losses = torch.zeros(
             len(train_loader), output_size, dtype=torch.float32, device=self.device
         )
