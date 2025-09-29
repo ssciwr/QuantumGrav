@@ -188,8 +188,8 @@ end
     manifold = CausalSets.MinkowskiManifold{2}()
     res = QuantumGrav.next_intersection(manifold, [cut], x, y, slope)
     @test res !== nothing
-    pt, idx = res
-    @test idx == 1
+    pt, intersecting_cut = res
+    @test intersecting_cut == cut
     @test pt == CausalSets.Coordinates{2}((0.5, 0.5))
     # No intersection if ray misses
     cut2 = (CausalSets.Coordinates{2}((2.0, 2.0)), CausalSets.Coordinates{2}((2.0, 3.0)))
