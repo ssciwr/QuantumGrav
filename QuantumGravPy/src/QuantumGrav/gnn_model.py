@@ -388,6 +388,7 @@ class GNNModel(torch.nn.Module):
                 "graph_features_net": self.graph_features_net,
                 "aggregate_graph_features": self.aggregate_graph_features,
                 "aggregate_pooling": self.aggregate_pooling,
+                "active_tasks": self.active_tasks,
             },
             path,
         )
@@ -413,4 +414,5 @@ class GNNModel(torch.nn.Module):
             model_dict["aggregate_pooling"],
             model_dict["graph_features_net"],
             model_dict["aggregate_graph_features"],
+            model_dict["active_tasks"],
         )

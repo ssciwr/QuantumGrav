@@ -16,6 +16,7 @@ def gnn_model(gnn_block, classifier_block, pooling_layer):
         downstream_tasks=[classifier_block, classifier_block],
         pooling_layers=[pooling_layer, pooling_layer],
         aggregate_pooling=torch.cat,
+        active_tasks=[True, True],
     )
 
 
@@ -35,6 +36,7 @@ def gnn_model_with_graph_features(
         aggregate_graph_features=cat_graph_features,
         graph_features_net=graph_features_net,
         aggregate_pooling=torch.cat,
+        active_tasks=[True, True],
     )
 
 
