@@ -361,13 +361,18 @@ class F1Evaluator(DefaultEvaluator):
             micro,
         ]
 
+        current_data["f1_per_class"] = [per_class] * len(current_data)
+        current_data["f1_unweighted"] = [unweighted] * len(current_data)
+        current_data["f1_weighted"] = [weighted] * len(current_data)
+        current_data["f1_micro"] = [micro] * len(current_data)
+
         return current_data
 
     def report(self, data: pd.DataFrame | dict) -> None:
         """Report the evaluation results.
 
         Args:
-            data (pd.DataFrame | dict): The evaluation data.
+            data (pd.DataFrame | dict): The evaluation data  for the current epoch.
         """
 
         avg_loss = self.data["avg_loss"].iloc[-1]
@@ -569,11 +574,11 @@ class AccuracyEvaluator(DefaultEvaluator):
 
         return current_data
 
-    def report(self, _: pd.DataFrame | dict):
+    def report(self, data: pd.DataFrame | dict) -> None:
         """Report the evaluation results.
 
         Args:
-            _ (pd.DataFrame | dict): The evaluation results.
+            data (pd.DataFrame | dict): The evaluation results for the current epoch.
         """
         avg_loss = self.data["avg_loss"].iloc[-1]
         std_loss = self.data["std_loss"].iloc[-1]
