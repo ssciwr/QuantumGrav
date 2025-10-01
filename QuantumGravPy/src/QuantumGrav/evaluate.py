@@ -212,7 +212,7 @@ class DefaultEarlyStopping:
         else:
             d = data[self.metric]
 
-        if self.best_score + self.delta > d.iloc[-1]:  # always minimize the metric
+        if self.best_score - self.delta > d.iloc[-1]:  # always minimize the metric
             self.logger.info(
                 f"    Better model found: {d.iloc[-1]:.8f}, current best: {self.best_score:.8f}"
             )

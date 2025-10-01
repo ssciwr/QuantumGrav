@@ -56,7 +56,9 @@ class LinearSequential(torch.nn.Module):
         )
 
         processed_activation_kwargs = self._handle_kwargs(
-            activation_kwargs, "activation_kwargs", len(hidden_dims)
+            activation_kwargs,
+            "activation_kwargs",
+            len(hidden_dims) + 1,  # plus one for output layer
         )
 
         # build backbone with Sequential
@@ -83,6 +85,7 @@ class LinearSequential(torch.nn.Module):
             **({} if output_kwargs is None else output_kwargs),
         )
         layers.append(final_layer)
+        layers.append(activation(**processed_activation_kwargs[-1]))
 
         self.layers = torch.nn.Sequential(*layers)
 
@@ -94,13 +97,13 @@ class LinearSequential(torch.nn.Module):
         """
 
         if kwarglist is None:
-            kwarglist = [{}] * needed
+            kwarglist = [{} for _ in range(needed)]
         elif len(kwarglist) == 1:
             kwarglist = kwarglist * needed
 
         if len(kwarglist) != needed:
             raise ValueError(
-                f"{name} must be a list of dictionaries with the same length as hidden_dims"
+                f"{name} must be a list of dictionaries of length {needed}"
             )
 
         return kwarglist

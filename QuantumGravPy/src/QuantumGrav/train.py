@@ -304,12 +304,12 @@ class Trainer:
         if self.early_stopping is not None:
             if self.early_stopping(eval_data):
                 self.logger.debug(f"Early stopping at epoch {self.epoch}.")
-                self.save_checkpoint(name_addition="early_stopping")
+                self.save_checkpoint(name_addition=f"_{self.epoch}_early_stopping")
                 return True
 
             if self.early_stopping.found_better:
                 self.logger.debug(f"Found better model at epoch {self.epoch}.")
-                self.save_checkpoint(name_addition="current_best")
+                self.save_checkpoint(name_addition=f"_{self.epoch}_current_best")
                 # not returning true because this is not the end of training
 
         return False
@@ -412,12 +412,30 @@ class Trainer:
         self.logger.info("Starting testing process.")
         if self.model is None:
             raise RuntimeError("Model must be initialized before testing.")
+
+        # get the best model again
+
+        saved_models = [
+            f
+            for f in Path(self.checkpoint_path).iterdir()
+            if f.is_file() and "current_best.pt" in str(f)
+        ]
+
+        # get the latest of the best models
+        best_of_the_best = (
+            max(saved_models, key=lambda f: f.stat().st_mtime) if saved_models else None
+        )
+
+        self.logger.info(f"loading best model found: {str(best_of_the_best)}")
+        self.model = gnn_model.GNNModel.load(best_of_the_best, device=self.device)
+
         self.model.eval()
         if self.tester is None:
             raise RuntimeError("Tester must be initialized before testing.")
         test_result = self.tester.test(self.model, test_loader)
         self.tester.report(test_result)
         self.logger.info("Testing process completed.")
+        self.save_checkpoint(name_addition="best_model_found")
         return self.tester.data
 
     def save_checkpoint(self, name_addition: str = ""):
@@ -436,7 +454,7 @@ class Trainer:
         )
         outpath = (
             self.checkpoint_path
-            / f"{self.config['model'].get('name', 'model')}_epoch_{self.epoch}_{name_addition}.pt"
+            / f"{self.config['model'].get('name', 'model')}_{name_addition}.pt"
         )
 
         if outpath.exists() is False:
