@@ -166,9 +166,9 @@ class DefaultEarlyStopping:
     def __init__(
         self,
         patience: int,
-        delta: float = 1e-4,
-        window=7,
-        metric: str = "loss",
+        delta: list[float] = [1e-4],
+        window: list[int] = [7],
+        metric: list[str] = ["loss"],
         smoothing: bool = False,
         criterion: Callable = lambda early_stopping_instance,
         data: early_stopping_instance.current_patience <= 0,
@@ -184,16 +184,31 @@ class DefaultEarlyStopping:
             smoothing (bool, optional): Whether to apply smoothed mean to the metric to dampen fluctuations. Defaults to False.
             criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
         """
+        lw = len(window)
+        lm = len(metric)
+        ld = len(delta)
+
+        if min([lw, lm, ld]) != max([lw, lm, ld]):
+            raise ValueError("Inconsistent lengths for early stopping parameters.")
+
         self.patience = patience
         self.current_patience = patience
         self.delta = delta
         self.window = window
-        self.found_better = False
+        self.found_better = [False for _ in range(lw)]
         self.metric = metric
-        self.best_score = init_best_score
+        self.best_score = [init_best_score for _ in range(lw)]
         self.smoothing = smoothing
         self.logger = logging.getLogger(__name__)
         self.criterion = criterion
+
+        self.found_better = [False for _ in range(lw)]
+
+    def reset(self) -> None:
+        """Reset early stopping state."""
+        self.current_patience = self.patience
+        self.best_score = [np.inf for _ in range(len(self.window))]
+        self.found_better = [False for _ in range(len(self.window))]
 
     def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
         """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
@@ -205,28 +220,44 @@ class DefaultEarlyStopping:
         Returns:
             bool: True if early stopping criteria are met, False otherwise.
         """
-        self.found_better = False
+        self.found_better = [False for _ in range(len(self.window))]
 
-        if self.smoothing:
-            d = data[self.metric].rolling(window=self.window, min_periods=1).mean()
-        else:
-            d = data[self.metric]
+        for i in range(len(self.window)):
+            if self.metric[i] not in data.columns:
+                self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
+                self.found_better[i] = (
+                    True  # prevent a skipped metric from affecting early stopping
+                )
+                continue
+            if self.smoothing:
+                d = (
+                    data[self.metric[i]]
+                    .rolling(window=self.window[i], min_periods=1)
+                    .mean()
+                )
+            else:
+                d = data[self.metric[i]]
 
-        if self.best_score - self.delta > d.iloc[-1]:  # always minimize the metric
-            self.logger.info(
-                f"    Better model found: {d.iloc[-1]:.8f}, current best: {self.best_score:.8f}"
-            )
-            self.best_score = d.iloc[-1]  # record best score
+            if (
+                self.best_score[i] - self.delta[i] > d.iloc[-1]
+            ):  # always minimize the metric
+                self.logger.info(
+                    f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
+                )
+                self.best_score[i] = d.iloc[-1]  # record best score
+                self.found_better[i] = True
+
+        if all(self.found_better):
             self.current_patience = self.patience  # reset patience
-            self.found_better = True
-        elif len(data) > self.window:
+        elif len(data) > max(self.window):
             self.current_patience -= 1
         else:
             pass
             # don't do anything here, we want at least 'window' many epochs before patience is reduced
 
-        self.logger.info(
-            f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score:.8f}"
-        )
+        for i in range(len(self.window)):
+            self.logger.info(
+                f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score[i]:.8f}"
+            )
 
         return self.criterion(self, data)

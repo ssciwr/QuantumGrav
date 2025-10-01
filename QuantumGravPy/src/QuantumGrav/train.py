@@ -257,11 +257,7 @@ class Trainer:
             raise RuntimeError("Optimizer must be initialized before training.")
 
         #
-        output_size = sum(self.model.active_tasks)
-        self.logger.info(f"  Output size determined: {output_size}")
-        losses = torch.zeros(
-            len(train_loader), output_size, dtype=torch.float32, device=self.device
-        )
+        losses = torch.zeros(len(train_loader), dtype=torch.float32, device=self.device)
         self.logger.info(f"  Starting training epoch {self.epoch}")
         # training run
         for i, batch in enumerate(
@@ -281,7 +277,7 @@ class Trainer:
 
             optimizer.step()
 
-            losses[i, :] = loss
+            losses[i] = loss
 
         return losses
 
