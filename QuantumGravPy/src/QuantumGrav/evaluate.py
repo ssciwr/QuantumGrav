@@ -214,7 +214,7 @@ class DefaultEarlyStopping:
 
         if self.best_score + self.delta > d.iloc[-1]:  # always minimize the metric
             self.logger.info(
-                f"    Better model found: {d.iloc[-1]}, current best: {self.best_score}"
+                f"    Better model found: {d.iloc[-1]:.8f}, current best: {self.best_score:.8f}"
             )
             self.best_score = d.iloc[-1]  # record best score
             self.current_patience = self.patience  # reset patience
@@ -226,7 +226,7 @@ class DefaultEarlyStopping:
             # don't do anything here, we want at least 'window' many epochs before patience is reduced
 
         self.logger.info(
-            f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score}"
+            f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score:.8f}"
         )
 
         return self.criterion(self, data)
