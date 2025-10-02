@@ -256,7 +256,6 @@ class Trainer:
         if optimizer is None:
             raise RuntimeError("Optimizer must be initialized before training.")
 
-        #
         losses = torch.zeros(len(train_loader), dtype=torch.float32, device=self.device)
         self.logger.info(f"  Starting training epoch {self.epoch}")
         # training run
@@ -272,7 +271,7 @@ class Trainer:
             self.logger.debug("    Computing loss")
             loss = self.criterion(outputs, data)
 
-            self.logger.info(f"    Backpropagating loss: {loss.item()}")
+            self.logger.debug(f"    Backpropagating loss: {loss.item()}")
             loss.backward()
 
             optimizer.step()
