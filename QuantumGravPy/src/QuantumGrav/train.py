@@ -269,7 +269,7 @@ class Trainer:
             outputs = self._evaluate_batch(model, data)
 
             self.logger.debug("    Computing loss")
-            loss = self.criterion(outputs, data)
+            loss = self.criterion(outputs, data, self)
 
             self.logger.debug(f"    Backpropagating loss: {loss.item()}")
             loss.backward()
