@@ -272,7 +272,7 @@ class Trainer:
             self.logger.debug("    Computing loss")
             loss = self.criterion(outputs, data)
 
-            self.logger.debug(f"    Backpropagating loss: {loss.item()}")
+            self.logger.info(f"    Backpropagating loss: {loss.item()}")
             loss.backward()
 
             optimizer.step()
@@ -303,7 +303,7 @@ class Trainer:
                 self.save_checkpoint(name_addition=f"_{self.epoch}_early_stopping")
                 return True
 
-            if self.early_stopping.found_better:
+            if self.early_stopping.found_better_model:
                 self.logger.debug(f"Found better model at epoch {self.epoch}.")
                 self.save_checkpoint(name_addition=f"_{self.epoch}_current_best")
                 # not returning true because this is not the end of training
