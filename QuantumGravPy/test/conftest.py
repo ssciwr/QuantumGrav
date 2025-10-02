@@ -470,6 +470,7 @@ def model_config_eval():
                 "backbone_kwargs": [{}, {}],
                 "output_kwargs": {},
                 "activation_kwargs": [{"inplace": False}],
+                "active": True,
             },
         ],
         "pooling_layers": [

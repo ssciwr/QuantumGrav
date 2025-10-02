@@ -1,10 +1,11 @@
 import QuantumGrav as QG
 import torch
 import pytest
+from functools import partial
 
 
-def cat_graph_features(*features):
-    return torch.cat(features, dim=1)
+def cat_graph_features(*features, dim=1):
+    return torch.cat(features, dim=dim)
 
 
 @pytest.fixture
@@ -16,6 +17,7 @@ def gnn_model(gnn_block, classifier_block, pooling_layer):
         downstream_tasks=[classifier_block, classifier_block],
         pooling_layers=[pooling_layer, pooling_layer],
         aggregate_pooling=torch.cat,
+        active_tasks=[True, True],
     )
 
 
@@ -35,12 +37,47 @@ def gnn_model_with_graph_features(
         aggregate_graph_features=cat_graph_features,
         graph_features_net=graph_features_net,
         aggregate_pooling=torch.cat,
+        active_tasks=[True, True],
+    )
+
+
+@pytest.fixture
+def classifier_block_graphfeatures_no_pooling():
+    return QG.LinearSequential(
+        input_dim=32,
+        hidden_dims=[24, 12],
+        output_dim=3,
+        activation=torch.nn.ReLU,
+        backbone_kwargs=[{}, {}],
+        activation_kwargs=[{"inplace": False}],
+        output_kwargs={},
+    )
+
+
+@pytest.fixture
+def gnn_model_with_graph_features_no_pooling(
+    gnn_block, classifier_block_graphfeatures_no_pooling, graph_features_net
+):
+    return QG.GNNModel(
+        encoder=[
+            gnn_block,
+        ],
+        downstream_tasks=[
+            classifier_block_graphfeatures_no_pooling,
+            classifier_block_graphfeatures_no_pooling,
+        ],
+        aggregate_graph_features=partial(cat_graph_features, dim=0),
+        graph_features_net=graph_features_net,
+        active_tasks=[True, True],
     )
 
 
 @pytest.fixture
 def gnn_model_config():
     config = {
+        "active_tasks": [
+            1,
+        ],
         "encoder": [
             {
                 "in_dim": 16,
@@ -90,6 +127,17 @@ def gnn_model_config():
                 "backbone_kwargs": [{}, {}],
                 "output_kwargs": {},
                 "activation_kwargs": [{"inplace": False}],
+                "active": False,
+            },
+            {
+                "input_dim": 16,
+                "output_dim": 3,
+                "hidden_dims": [24, 18],
+                "activation": "relu",
+                "backbone_kwargs": [{}, {}],
+                "output_kwargs": {},
+                "activation_kwargs": [{"inplace": False}],
+                "active": True,
             },
         ],
         "pooling_layers": [
@@ -142,13 +190,32 @@ def test_gnn_model_creation(gnn_model):
     assert len(gnn_model.downstream_tasks) == 2
 
 
-def test_gnn_model_creation_pooling_aggregation_missing(gnn_model_config):
+def test_gnn_model_creation_pooling_aggregations_inconsistent(gnn_model_config):
     """Test the creation of GNNModel with missing aggregation function."""
 
     gnn_model_config["pooling_layers"] = None
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         QG.GNNModel.from_config(gnn_model_config)
+
+
+def test_gnn_model_creation_pooling_no_aggregations(gnn_model_config):
+    """Test the creation of GNNModel with missing aggregation function."""
+
+    gnn_model_config["pooling_layers"] = None
+    gnn_model_config["aggregate_pooling"] = None
+
+    gnn_model = QG.GNNModel.from_config(gnn_model_config)
+
+    assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
+    assert len(gnn_model.encoder) == 2  # Assuming one GNN block
+    assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
+    assert isinstance(gnn_model.encoder[1], QG.GNNBlock)
+    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
+    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
+
+    assert gnn_model.pooling_layers is None
+    assert gnn_model.aggregate_pooling is None
 
 
 def test_gnn_model_get_embeddings(gnn_model):
@@ -180,7 +247,36 @@ def test_gnn_model_forward(gnn_model):
     gnn_model.eval()  # Set model to evaluation mode
     output = gnn_model(x, edge_index, batch)
     assert gnn_model.training is False  # Ensure model is in eval mode
-    assert isinstance(output, list)
+    assert isinstance(output, dict)
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+
+
+def test_gnn_model_forward_set_active(gnn_model):
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    gnn_model.eval()  # Set model to evaluation mode
+    assert gnn_model.training is False  # Ensure model is in eval mode
+
+    assert gnn_model.active_tasks == [True, True]
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 2
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+
+    gnn_model.set_task_inactive(1)
+    assert gnn_model.active_tasks == [True, False]
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 1
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+
+    gnn_model.set_task_active(1)
+    assert gnn_model.active_tasks == [True, True]
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 2
     assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
     assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
 
@@ -200,15 +296,34 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
     assert (
         gnn_model_with_graph_features.training is False
     )  # Ensure model is in eval mode
-    assert isinstance(output, list)
+    assert isinstance(output, dict)
     assert output[0].shape == (2, 3)  # 2 graphs, 1 pooling layers, 2 classes
-    assert output[0].shape == (2, 3)
+    assert output[1].shape == (2, 3)
+
+
+def test_gnn_model_forward_without_pooling(gnn_model_with_graph_features_no_pooling):
+    "test gnn model without adding pooling"
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    graph_features = torch.randn(2, 10)  # 2 graphs with 10 features each
+    assert gnn_model_with_graph_features_no_pooling.pooling_layers is None
+    assert gnn_model_with_graph_features_no_pooling.aggregate_pooling is None
+    output = gnn_model_with_graph_features_no_pooling(
+        x, edge_index, batch, graph_features=graph_features
+    )
+
+    assert output[0].shape == (7, 3)
+    assert output[1].shape == (7, 3)
 
 
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
 
+    assert model.active_tasks == [False, True]
     assert isinstance(model.encoder, torch.nn.ModuleList)
 
     assert len(model.encoder) == 2  # Assuming two GNN blocks
@@ -229,8 +344,9 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     model.eval()  # Set model to evaluation mode
     output = model(x, edge_index, batch)
     assert model.training is False  # Ensure model is in eval mode
-    assert isinstance(output, list)
-    assert output[0].shape == (2, 3)  # 2 graphs, 3 classes
+    assert isinstance(output, dict)
+    assert 0 not in output
+    assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
 
 
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):

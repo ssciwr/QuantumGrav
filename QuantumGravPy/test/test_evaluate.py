@@ -3,6 +3,8 @@ import QuantumGrav as QG
 from torch_geometric.data import Data
 import torch
 import numpy as np
+import pandas as pd
+import pytest
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
@@ -118,38 +120,126 @@ def test_default_early_stopping_creation():
     assert early_stopping.patience == patience
     assert early_stopping.delta == delta
     assert early_stopping.window == window
+    assert early_stopping.best_score == np.inf
+    assert early_stopping.current_patience == patience
+    assert early_stopping.metric == "loss"
+    assert early_stopping.smoothing is False
+    assert early_stopping.found_better is False
+    assert early_stopping.logger is not None
 
 
-def test_default_early_stopping_check(caplog):
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_check(smoothed):
     """Test the check method of DefaultEarlyStopping."""
     patience = 2
     delta = 1e-4
-    window = 3
+    window = 5
 
-    early_stopping = QG.DefaultEarlyStopping(patience, delta, window)
+    early_stopping = QG.DefaultEarlyStopping(
+        patience, delta, window, smoothing=smoothed
+    )
     early_stopping.best_score = float("inf")
 
-    # Simulate some validation losses
-    losses = [0.1, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04]
+    early_stopping.best_score = 0.06
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                0.1,
+                0.09,
+                0.08,
+                0.07,
+            ]
+        }
+    )
 
-    with caplog.at_level(logging.INFO):
-        assert early_stopping(losses) is False  # Not enough data to decide
-        assert early_stopping.best_score != float("inf")  # Best score should be updated
-        assert early_stopping.current_patience == 2
-        assert (
-            "Early stopping patience reset: 2 -> 2, early stopping best score updated: "
-            in caplog.text
-        )
+    assert early_stopping(losses) is False
+    assert early_stopping.current_patience == 1
+    assert early_stopping.best_score == 0.06
 
-    working_losses = [2 * x for x in losses]
 
-    with caplog.at_level(logging.INFO):
-        assert early_stopping(working_losses) is False  # Should trigger early stoppin
-        assert early_stopping.current_patience == 1  # Patience should be reset
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_reset(smoothed):
+    patience = 2
+    delta = 1e-4
+    window = 5
 
-        assert "Early stopping patience decreased:" in caplog.text
+    early_stopping = QG.DefaultEarlyStopping(
+        patience, delta, window, smoothing=smoothed
+    )
+    early_stopping.best_score = 0.09
+    early_stopping.current_patience = 1
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                0.1,
+                0.09,
+                0.08,
+                0.07,
+            ]
+        }
+    )
 
-        assert early_stopping(working_losses) is True  # Should trigger early stoppin
+    assert early_stopping(losses) is False
+    assert early_stopping.best_score < 0.09  # Best score should be updated
+    assert early_stopping.current_patience == 2
 
-        assert early_stopping.current_patience == 0  # Patience should be exhausted
-        assert "Early stopping patience decreased: 1 -> 0" in caplog.text
+
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_triggered(smoothed):
+    patience = 1
+    delta = 1e-4
+    window = 5
+
+    early_stopping = QG.DefaultEarlyStopping(
+        patience, delta, window, smoothing=smoothed
+    )
+    early_stopping.best_score = 0.09
+    early_stopping.current_patience = 1
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                1.1,
+                1.09,
+                1.08,
+                1.07,
+            ]
+        }
+    )
+
+    assert early_stopping(losses) is True
+    assert early_stopping.best_score == 0.09  # Best score should be updated
+    assert early_stopping.current_patience == 0
+
+
+@pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
+def test_default_early_stopping_criterion(smoothed):
+    patience = 1
+    delta = 1e-4
+    window = 5
+    early_stopping = QG.DefaultEarlyStopping(
+        patience,
+        delta,
+        window,
+        smoothing=smoothed,
+        criterion=lambda x, d: bool(d[x.metric].mean() < 2),
+    )
+    early_stopping.best_score = 0.09
+    early_stopping.current_patience = 1
+    losses = pd.DataFrame(
+        {
+            "loss": 2
+            * [
+                1.1,
+                1.09,
+                1.08,
+                1.07,
+            ]
+        }
+    )
+
+    assert early_stopping(losses) is True
+    assert early_stopping.best_score == 0.09  # Best score should be updated
+    assert early_stopping.current_patience == 0
