@@ -59,6 +59,8 @@ end
 end
 
 @testitem "test_chebyshev_derivative_2D throw" tags = [:curvatureonmanifold, :throw] setup = [CurvatureOnManifold] begin
+    
+    coefs = zeros(5, 5)
     # Test error handling: invalid derivative_variable_index
     @test_throws ArgumentError QuantumGrav.chebyshev_derivative_2D(coefs, 0, 1)
     @test_throws ArgumentError QuantumGrav.chebyshev_derivative_2D(coefs, 3, 1)
