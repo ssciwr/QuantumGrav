@@ -134,7 +134,8 @@ Computes the Ricci scalar curvature at a given position for a 2D Lorentzian mani
 - `position::CausalSets.Coordinates{2}`: A 2D coordinate at which to evaluate the Ricci scalar.
 
 # Keyword Arguments
-- `derivation_matrix::Union{Nothing, Array{Float64, 2}}=nothing`: Optional precomputed Chebyshev derivation matrix to speed up computation.
+- `derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing`: Optional precomputed Chebyshev derivation matrix for first derivatives to speed up computation.
+- `derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing`: Optional precomputed Chebyshev derivation matrix for second derivatives to speed up computation.
 
 # Returns
 - `Float64`: The Ricci scalar curvature evaluated at the given position.
@@ -163,7 +164,6 @@ function Ricci_scalar_2D(
     
     return 2 * (first_derivative_space^2 - first_derivative_time^2 + function_at_position * (second_derivative_time - second_derivative_space)) / function_at_position^4
 end
-
 """
     Ricci_scalar_2D_of_sprinkling(
         coefs::Array{Float64, 2},
@@ -195,11 +195,11 @@ function Ricci_scalar_2D_of_sprinkling(
                                         derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
                                         derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
                                         )::Vector{Float64}
-    order = size(coefs)
+    order = size(coefs,1)
     if order != size(coefs,2)
         throw(ArgumentError("At the moment only square coefficient matrices are supported, i. e., Chebyshev expansions at equal order for both variables. Dimensions are $(order) and $(size(coefs,2))"))
     end
     derivation_matrix1 = isnothing(derivation_matrix1) ? chebyshev_derivation_matrix(size(coefs,1)-1, 1) : derivation_matrix1
     derivation_matrix2 = isnothing(derivation_matrix2) ? chebyshev_derivation_matrix(size(coefs,1)-1, 2) : derivation_matrix2
     return [Ricci_scalar_2D(coefs, point; derivation_matrix1=derivation_matrix1, derivation_matrix2=derivation_matrix2) for point in sprinkling]
-end
+end 

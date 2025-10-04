@@ -22,11 +22,14 @@ include("csetmerging.jl")
 include("destroy_manifold_like_cset.jl")
 include("grid_like_causets.jl")
 include("graph_utils.jl")
+include("curvature_on_manifold.jl")
 
 export make_adj,
     max_pathlen,
     transitive_reduction!,
     make_polynomial_manifold_cset,
+    Ricci_scalar_2D,
+    Ricci_scalar_2D_of_sprinkling,
     sample_bitarray_causet_by_connectivity,
     gaussian_dist_cuts,
     create_random_layered_causet,
