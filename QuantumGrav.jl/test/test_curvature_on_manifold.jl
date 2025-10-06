@@ -100,7 +100,7 @@ end
         9. 10. 11. 12.;
         13. 14. 15. 16.]
     R2 = QuantumGrav.Ricci_scalar_2D(coefs, point)
-    @test isapprox(R2, 0.0009549; atol=1e-6) # computed with mathematica
+    @test isapprox(R2, -0.0009549; atol=1e-6) # computed value alternatively with mathematica
 end
 
 @testitem "test_Ricci_scalar_2D throws" tags = [:curvatureonmanifold, :throws] setup = [CurvatureOnManifold] begin

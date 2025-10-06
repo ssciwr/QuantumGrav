@@ -157,13 +157,14 @@ function Ricci_scalar_2D(
     derivation_matrix1 = isnothing(derivation_matrix1) ? chebyshev_derivation_matrix(size(coefs,1)-1, 1) : derivation_matrix1
     derivation_matrix2 = isnothing(derivation_matrix2) ? chebyshev_derivation_matrix(size(coefs,1)-1, 2) : derivation_matrix2
     function_at_position    = chebyshev_evaluate_2D(coefs, position)
-    first_derivative_space  = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 1, 1; derivation_matrix = derivation_matrix1), position)
-    first_derivative_time   = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 2, 1; derivation_matrix = derivation_matrix1), position)
-    second_derivative_space = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 1, 2; derivation_matrix = derivation_matrix2), position)
-    second_derivative_time  = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 2, 2; derivation_matrix = derivation_matrix2), position)
+    first_derivative_time  = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 1, 1; derivation_matrix = derivation_matrix1), position)
+    first_derivative_space   = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 2, 1; derivation_matrix = derivation_matrix1), position)
+    second_derivative_time = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 1, 2; derivation_matrix = derivation_matrix2), position)
+    second_derivative_space  = chebyshev_evaluate_2D(chebyshev_derivative_2D(coefs, 2, 2; derivation_matrix = derivation_matrix2), position)
     
     return 2 * (first_derivative_space^2 - first_derivative_time^2 + function_at_position * (second_derivative_time - second_derivative_space)) / function_at_position^4
 end
+
 """
     Ricci_scalar_2D_of_sprinkling(
         coefs::Array{Float64, 2},
