@@ -354,7 +354,7 @@ class Trainer:
             )
 
             self.logger.info(
-                f"  Completed epoch {self.epoch}. training loss: {total_training_data[self.epoch, 0]} +/- {total_training_data[self.epoch, 1]}."
+                f"  Completed epoch {self.epoch}. training loss: {total_training_data[self.epoch, 0]:.8f} +/- {total_training_data[self.epoch, 1]:.8f}."
             )
 
             # evaluation run on validation set

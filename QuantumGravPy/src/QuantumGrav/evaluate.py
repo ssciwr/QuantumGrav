@@ -228,7 +228,6 @@ class DefaultEarlyStopping:
     def reset(self) -> None:
         """Reset early stopping state."""
         self.current_patience = self.patience
-        self.best_score = [np.inf for _ in range(len(self.window))]
         self.found_better = [False for _ in range(len(self.window))]
         self.current_grace_period = self.grace_period
 
@@ -301,10 +300,11 @@ class DefaultEarlyStopping:
             # when we found a better model the stopping patience gets reset
             self.logger.info("Found better model")
             for i in range(len(self.best_score)):
-                self.logger.info(
-                    f"current best score: {self.best_score[i]:.8f}, new best score: {ds[i]:.8f}"
-                )
-                self.best_score[i] = ds[i]  # record best score
+                if self.found_better[i]:
+                    self.logger.info(
+                        f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
+                    )
+                    self.best_score[i] = ds[i]  # record best score
             self.current_patience = self.patience  # reset patience
         # only when all grace periods are done will we reduce the patience
         elif all([g <= 0 for g in self.current_grace_period]):
