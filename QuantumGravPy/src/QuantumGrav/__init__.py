@@ -20,8 +20,6 @@ from .utils import (
     list_registered_pooling_aggregations,
 )
 from .dataset_ondisk import QGDataset
-from .dataset_inmemory import QGDatasetInMemory
-from .dataset_onthefly import QGDatasetOnthefly
 from .gnn_model import GNNModel
 from .gnn_block import GNNBlock
 from .evaluate import (
@@ -40,8 +38,6 @@ __all__ = [
     "JuliaWorker",
     # datasets
     "QGDataset",
-    "QGDatasetInMemory",
-    "QGDatasetOnthefly",
     # module registration
     "register_activation",
     "register_gnn_layer",
