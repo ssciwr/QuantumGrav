@@ -184,9 +184,11 @@ class DefaultEarlyStopping:
             patience (int): Number of epochs with no improvement after which training will be stopped.
             delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
             window (int, optional): Size of the moving window for smoothing. Defaults to 7.
-            metric (str, optional): Metric to monitor for early stopping. Defaults to "loss".
+            metric (str, optional): Metric to monitor for early stopping. Defaults to "loss". This class always assumes that lower values for 'metric' are better.
             smoothing (bool, optional): Whether to apply smoothed mean to the metric to dampen fluctuations. Defaults to False.
             criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
+            init_best_score (float): initial best score value.
+            mode (str | Callable[[list[bool]], bool], optional): The mode for early stopping. Can be "any", "all", or a custom function. Defaults to "any". This decides wheather all tracked metrics have to improve or only one of them, or if something else should be done by applying a custom function to the array of evaluation results.
         """
         lw = len(window)
         lm = len(metric)
@@ -248,9 +250,14 @@ class DefaultEarlyStopping:
         self.grace_period.append(grace_period)
         self.current_grace_period.append(grace_period)
         self.best_score.append(self.init_best_score)
+        self.found_better.append(False)
 
     def remove_task(self, index: int) -> None:
-        """Remove a task from early stopping."""
+        """Remove a task from early stopping.
+
+        Args:
+            index (int): The index of the task to remove.
+        """
         self.delta.pop(index)
         self.window.pop(index)
         self.metric.pop(index)
@@ -268,13 +275,15 @@ class DefaultEarlyStopping:
             bool: True if early stopping criteria are met, False otherwise.
         """
         self.found_better = [False for _ in range(len(self.window))]
-        ds = {}
+        ds = {}  # dict to hold current metric values
+
+        # go over all registered metrics and check if the model performs better on any of them
+        # then aggregrate the result with 'found_better_model'.
         for i in range(len(self.window)):
+            # prevent a skipped metric from affecting early stopping
             if self.metric[i] not in data.columns:
                 self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
-                self.found_better[i] = (
-                    True  # prevent a skipped metric from affecting early stopping
-                )
+                self.found_better[i] = True
                 continue
 
             if self.smoothing:
@@ -288,7 +297,7 @@ class DefaultEarlyStopping:
 
             if self.best_score[i] - self.delta[i] > d.iloc[-1] and len(
                 data
-            ):  # always minimize the metric, and wait at least 'window' epochs
+            ):  # always minimize the metric
                 self.logger.info(
                     f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
                 )
@@ -300,18 +309,19 @@ class DefaultEarlyStopping:
             # when we found a better model the stopping patience gets reset
             self.logger.info("Found better model")
             for i in range(len(self.best_score)):
-                if self.found_better[i]:
+                if self.found_better[i] and i in ds:
                     self.logger.info(
                         f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
                     )
                     self.best_score[i] = ds[i]  # record best score
             self.current_patience = self.patience  # reset patience
+
         # only when all grace periods are done will we reduce the patience
         elif all([g <= 0 for g in self.current_grace_period]):
             self.current_patience -= 1
         else:
             pass
-            # don't do anything here, we want at least 'window' many epochs before patience is reduced
+            # don't do anything here, we want at least 'grace_period' many epochs before patience is reduced
 
         for i in range(len(self.window)):
             self.logger.info(
