@@ -114,13 +114,15 @@ class DummyEvaluator:
 class DummyEarlyStopping:
     def __init__(self):
         self.best_score = np.inf
-        self.found_better = False
+        self.found_better_model = False
 
     def __call__(self, _) -> bool:
         return False
 
 
-def compute_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
+def compute_loss(
+    x: dict[int, torch.Tensor], data: Data, trainer: QG.Trainer
+) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
     all_loss = torch.zeros(1)
     for _, task_output in x.items():
@@ -345,7 +347,7 @@ def test_trainer_load_checkpoint(config):
         param.data.zero_()
 
     # Load the checkpoint
-    trainer.load_checkpoint(0, "test")
+    trainer.load_checkpoint("test")
 
     # Check if the model parameters are restored
     assert trainer.epoch == 0
@@ -373,13 +375,13 @@ def test_trainer_load_checkpoint_fails(config):
 
     trainer.save_checkpoint("test")
     with pytest.raises(FileNotFoundError, match="Checkpoint file .* does not exist."):
-        trainer.load_checkpoint(0, "non_existent")
+        trainer.load_checkpoint("non_existent")
 
     trainer.model = None
     with pytest.raises(
         RuntimeError, match="Model must be initialized before loading checkpoint."
     ):
-        trainer.load_checkpoint(0, "test")
+        trainer.load_checkpoint("test")
 
 
 def test_trainer_check_model_status_no_model(config):
@@ -453,7 +455,9 @@ def test_trainer_run_test(make_dataset, config):
 
     test_loader, _, _ = trainer.prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
 
-    test_data = trainer.run_test(test_loader)
+    trainer.save_checkpoint("best")  # needed or test will fail
+
+    test_data = trainer.run_test(test_loader, "best")
 
     assert test_data is not None
     assert len(test_data) == 1  # DummyEvaluator returns a single loss value

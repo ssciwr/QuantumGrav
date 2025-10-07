@@ -8,15 +8,15 @@ from . import linear_sequential as QGLS
 from . import gnn_block as QGGNN
 
 
-class PoolingWrapper(torch.nn.Module):
+class ModuleWrapper(torch.nn.Module):
     """Wrapper to make pooling functions compatible with ModuleList."""
 
-    def __init__(self, pooling_fn: Callable):
+    def __init__(self, fn: Callable):
         super().__init__()
-        self.pooling_fn = pooling_fn
+        self.fn = fn
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        return self.pooling_fn(*args, **kwargs)
+        return self.fn(*args, **kwargs)
 
 
 class GNNModel(torch.nn.Module):
@@ -73,7 +73,7 @@ class GNNModel(torch.nn.Module):
                 [
                     p
                     if isclass(p) and issubclass(p, torch.nn.Module)
-                    else PoolingWrapper(p)
+                    else ModuleWrapper(p)
                     for p in pooling_layers
                 ]
             )
@@ -83,11 +83,11 @@ class GNNModel(torch.nn.Module):
         # aggregate pooling layer
         self.aggregate_pooling = aggregate_pooling
 
-        if self.aggregate_pooling is not None:
+        if aggregate_pooling is not None:
             if not isclass(aggregate_pooling) or not issubclass(
                 aggregate_pooling, torch.nn.Module
             ):
-                self.aggregate_pooling = PoolingWrapper(aggregate_pooling)
+                self.aggregate_pooling = ModuleWrapper(aggregate_pooling)
 
         pooling_funcs = [self.aggregate_pooling, self.pooling_layers]
         if any([p is not None for p in pooling_funcs]) and not all(
@@ -102,11 +102,11 @@ class GNNModel(torch.nn.Module):
 
         self.aggregate_graph_features = aggregate_graph_features
 
-        if self.aggregate_graph_features is not None:
+        if aggregate_graph_features is not None:
             if not isclass(aggregate_graph_features) or not issubclass(
                 aggregate_graph_features, torch.nn.Module
             ):
-                self.aggregate_graph_features = PoolingWrapper(aggregate_graph_features)
+                self.aggregate_graph_features = ModuleWrapper(aggregate_graph_features)
 
         graph_processors = [self.graph_features_net, self.aggregate_graph_features]
 
@@ -274,9 +274,10 @@ class GNNModel(torch.nn.Module):
         )
 
         # If we have graph features, we need to process them and concatenate them with the node features
-        if graph_features is not None:
+        if graph_features is not None and self.graph_features_net is not None:
             graph_features = self.graph_features_net(graph_features)
 
+        if self.aggregate_graph_features is not None and graph_features is not None:
             embeddings = self.aggregate_graph_features(embeddings, graph_features)
 
         # downstream tasks are given out as is, no softmax or other assumptions

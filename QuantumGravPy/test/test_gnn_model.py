@@ -22,6 +22,26 @@ def gnn_model(gnn_block, classifier_block, pooling_layer):
 
 
 @pytest.fixture
+def graph_features_net():
+    return QG.LinearSequential(
+        dims=[(10, 32), (32, 24), (24, 32)],
+        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
+        activation_kwargs=[{"inplace": False}, {"inplace": False}, {"inplace": False}],
+    )
+
+
+@pytest.fixture
+def classifier_block_graphfeatures():
+    return QG.LinearSequential(
+        dims=[(64, 24), (24, 12), (12, 3)],
+        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
+        activation_kwargs=[{"inplace": False}, {}, {}],
+    )
+
+
+@pytest.fixture
 def gnn_model_with_graph_features(
     gnn_block, classifier_block_graphfeatures, pooling_layer, graph_features_net
 ):
@@ -44,13 +64,10 @@ def gnn_model_with_graph_features(
 @pytest.fixture
 def classifier_block_graphfeatures_no_pooling():
     return QG.LinearSequential(
-        input_dim=32,
-        hidden_dims=[24, 12],
-        output_dim=3,
-        activation=torch.nn.ReLU,
-        backbone_kwargs=[{}, {}],
-        activation_kwargs=[{"inplace": False}],
-        output_kwargs={},
+        dims=[(32, 24), (24, 12), (12, 3)],
+        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.ReLU],
+        linear_kwargs=[{}, {}, {}],
+        activation_kwargs=[{"inplace": False}, {"inplace": False}, {"inplace": False}],
     )
 
 
@@ -120,23 +137,27 @@ def gnn_model_config():
         ],
         "downstream_tasks": [
             {
-                "input_dim": 16,
-                "output_dim": 3,
-                "hidden_dims": [24, 18],
-                "activation": "relu",
-                "backbone_kwargs": [{}, {}],
-                "output_kwargs": {},
-                "activation_kwargs": [{"inplace": False}],
+                "dims": [(16, 24), (24, 18), (18, 3)],
+                "activations": ["relu", "relu", "identity"],
+                "linear_kwargs": [
+                    {"bias": True},
+                    {"bias": True},
+                    {"bias": False},
+                ],
+                "activation_kwargs": [{"inplace": False}, {"inplace": False}, {}],
                 "active": False,
             },
             {
-                "input_dim": 16,
-                "output_dim": 3,
-                "hidden_dims": [24, 18],
-                "activation": "relu",
-                "backbone_kwargs": [{}, {}],
-                "output_kwargs": {},
-                "activation_kwargs": [{"inplace": False}],
+                "dims": [(16, 24), (24, 18), (18, 3)],
+                "activations": ["relu", "relu", "identity"],
+                "linear_kwargs": [
+                    {
+                        "bias": True,
+                    },
+                    {"bias": True},
+                    {"bias": False},
+                ],
+                "activation_kwargs": [{"inplace": False}, {"inplace": False}, {}],
                 "active": True,
             },
         ],
@@ -158,13 +179,13 @@ def gnn_model_config():
             "kwargs": {},
         },
         "graph_features_net": {
-            "input_dim": 10,
-            "hidden_dims": [24, 8],
-            "output_dim": 32,
-            "activation": "relu",
-            "layer_kwargs": [{}, {}],
+            "dims": [(10, 24), (24, 8), (8, 32)],
+            "activations": ["relu", "relu", "sigmoid"],
+            "linear_kwargs": [{}, {}, {}],
             "activation_kwargs": [
                 {"inplace": False},
+                {"inplace": False},
+                {},
             ],
         },
     }
@@ -180,9 +201,9 @@ def test_gnn_model_creation(gnn_model):
     assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
     assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
 
-    assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.PoolingWrapper)
-    assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.PoolingWrapper)
-    assert isinstance(gnn_model.aggregate_pooling, QG.gnn_model.PoolingWrapper)
+    assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.ModuleWrapper)
+    assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.ModuleWrapper)
+    assert isinstance(gnn_model.aggregate_pooling, QG.gnn_model.ModuleWrapper)
 
     # assert sizes and properties of the components
     assert gnn_model.encoder[0].in_dim == 16
@@ -331,8 +352,10 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     for task in model.downstream_tasks:
         assert isinstance(task, QG.LinearSequential)
 
+    assert model.pooling_layers is not None
+
     for pooling in model.pooling_layers:
-        assert isinstance(pooling, QG.gnn_model.PoolingWrapper)
+        assert isinstance(pooling, QG.gnn_model.ModuleWrapper)
 
     assert isinstance(model.graph_features_net, QG.LinearSequential)
 

@@ -24,7 +24,7 @@ class Trainer:
         self,
         config: dict[str, Any],
         # training and evaluation functions
-        criterion: Callable[[Any, Data], torch.Tensor],
+        criterion: Callable[[Any, Data, Any], torch.Tensor],
         apply_model: Callable | None = None,
         # training evaluation and reporting
         early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
@@ -389,14 +389,13 @@ class Trainer:
         return total_training_data, self.validator.data if self.validator else []
 
     def run_test(
-        self,
-        test_loader: DataLoader,
+        self, test_loader: DataLoader, model_name_addition: str = "current_best.pt"
     ) -> Collection[Any]:
         """Run testing phase.
 
         Args:
             test_loader (DataLoader): The data loader for the test set.
-
+            model_name_addition (str): An optional string to append to the checkpoint filename.
         Raises:
             RuntimeError: If the model is not initialized.
             RuntimeError: If the test data is not available.
@@ -413,8 +412,13 @@ class Trainer:
         saved_models = [
             f
             for f in Path(self.checkpoint_path).iterdir()
-            if f.is_file() and "current_best.pt" in str(f)
+            if f.is_file() and model_name_addition in str(f)
         ]
+
+        if len(saved_models) == 0:
+            raise RuntimeError(
+                f"No model with the name addition '{model_name_addition}' found, did training work?"
+            )
 
         # get the latest of the best models
         best_of_the_best = (
@@ -459,11 +463,11 @@ class Trainer:
         self.latest_checkpoint = outpath
         self.model.save(outpath)
 
-    def load_checkpoint(self, epoch: int, name_addition: str = "") -> None:
+    def load_checkpoint(self, name_addition: str = "") -> None:
         """Load model checkpoint to the device given
 
         Args:
-            epoch (int): The epoch number to load.
+            name_addition (str): An optional string to append to the checkpoint filename.
 
         Raises:
             RuntimeError: If the model is not initialized.
@@ -472,9 +476,16 @@ class Trainer:
         if self.model is None:
             raise RuntimeError("Model must be initialized before loading checkpoint.")
 
+        if Path(self.checkpoint_path).exists() is False:
+            raise RuntimeError("Checkpoint path does not exist.")
+
+        self.logger.info(
+            "available checkpoints: %s", list(Path(self.checkpoint_path).iterdir())
+        )
+
         loadpath = (
             Path(self.checkpoint_path)
-            / f"{self.config['model'].get('name', 'model')}_epoch_{epoch}_{name_addition}.pt"
+            / f"{self.config['model'].get('name', 'model')}_{name_addition}.pt"
         )
 
         if not loadpath.exists():
