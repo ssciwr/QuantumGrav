@@ -1,5 +1,7 @@
 sweepname: !sweep
   values: [1, 2, 3, 4, 5]
+othersweep: !sweep 
+  values: ["x", "y", "z"]
 coupled_sweep: !coupled-sweep
   target: sweepname
   values: [6, 7, 8, 9, 10]
@@ -9,5 +11,5 @@ nested:
       values: [11, 12, 13, 14, 15]
     c: x
 d: !coupled-sweep
-  target: b
-  values: ["a", "b", "c", "d", "e"]
+  target: othersweep
+  values: ["a", "b", "c"]
