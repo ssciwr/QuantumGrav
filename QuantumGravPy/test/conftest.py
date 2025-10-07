@@ -5,11 +5,12 @@ import h5py
 import zarr
 import torch
 import numpy as np
+import QuantumGrav as QG
+
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 from torch_geometric.loader import DataLoader
-import QuantumGrav as QG
 
 
 # data
@@ -336,47 +337,16 @@ def gnn_block():
 @pytest.fixture
 def classifier_block():
     return QG.LinearSequential(
-        input_dim=32,
-        hidden_dims=[24, 12],
-        output_dim=3,
-        activation=torch.nn.ReLU,
-        backbone_kwargs=[{}, {}],
-        activation_kwargs=[{"inplace": False}],
-        output_kwargs={},
-    )
-
-
-@pytest.fixture
-def classifier_block_graphfeatures():
-    return QG.LinearSequential(
-        input_dim=64,
-        hidden_dims=[24, 12],
-        output_dim=3,
-        activation=torch.nn.ReLU,
-        backbone_kwargs=[{}, {}],
-        activation_kwargs=[{"inplace": False}],
-        output_kwargs={},
+        dims=[(32, 24), (24, 12), (12, 3)],
+        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
+        activation_kwargs=[{"inplace": False}, {}, {}],
     )
 
 
 @pytest.fixture
 def pooling_layer():
     return torch_geometric.nn.global_mean_pool
-
-
-@pytest.fixture
-def graph_features_net():
-    return QG.LinearSequential(
-        input_dim=10,
-        output_dim=32,
-        hidden_dims=[24, 8],
-        activation=torch.nn.ReLU,
-        backbone_kwargs=[{}, {}],
-        output_kwargs={},
-        activation_kwargs=[
-            {"inplace": False},
-        ],
-    )
 
 
 @pytest.fixture
@@ -463,13 +433,15 @@ def model_config_eval():
         "downstream_tasks": [
             {
                 "type": "LinearSequential",
-                "input_dim": 12,
-                "output_dim": 3,
-                "hidden_dims": [24, 16],
-                "activation": "relu",
-                "backbone_kwargs": [{}, {}],
-                "output_kwargs": {},
-                "activation_kwargs": [{"inplace": False}],
+                "dims": [[12, 24], [24, 16], [16, 3]],
+                "activations": ["relu", "relu", "identity"],
+                "backbone_kwargs": [{}, {}, {}],
+                "activation_kwargs": [
+                    {"inplace": False},
+                    {"inplace": False},
+                    {"inplace": False},
+                ],
+                "active": True,
             },
         ],
         "pooling_layers": [

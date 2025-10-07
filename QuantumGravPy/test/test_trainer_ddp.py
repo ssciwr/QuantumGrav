@@ -98,17 +98,17 @@ class DummyEvaluator:
 class DummyEarlyStopping:
     def __init__(self):
         self.best_score = np.inf
-        self.found_better = False
+        self.found_better_model = False
 
     def __call__(self, _) -> bool:
         return False
 
 
-def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
+def compute_loss(x: dict[int, torch.Tensor], data: Data, trainer) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
     all_losses = torch.zeros(1)
-    for task_output in x:
-        loss = torch.nn.MSELoss()(task_output[0], data.y.to(torch.float32))
+    for task_output in x.values():
+        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))
         all_losses += loss
     return all_losses
 

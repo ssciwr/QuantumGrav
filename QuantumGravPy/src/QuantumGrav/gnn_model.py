@@ -1,6 +1,6 @@
 from typing import Any, Callable, Sequence
 from pathlib import Path
-
+from inspect import isclass
 import torch
 
 from . import utils
@@ -8,15 +8,15 @@ from . import linear_sequential as QGLS
 from . import gnn_block as QGGNN
 
 
-class PoolingWrapper(torch.nn.Module):
+class ModuleWrapper(torch.nn.Module):
     """Wrapper to make pooling functions compatible with ModuleList."""
 
-    def __init__(self, pooling_fn: Callable):
+    def __init__(self, fn: Callable):
         super().__init__()
-        self.pooling_fn = pooling_fn
+        self.fn = fn
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        return self.pooling_fn(*args, **kwargs)
+        return self.fn(*args, **kwargs)
 
 
 class GNNModel(torch.nn.Module):
@@ -29,16 +29,17 @@ class GNNModel(torch.nn.Module):
         self,
         encoder: Sequence[QGGNN.GNNBlock],
         downstream_tasks: Sequence[torch.nn.Module],
-        pooling_layers: Sequence[torch.nn.Module],
+        pooling_layers: Sequence[torch.nn.Module] | None = None,
         aggregate_pooling: torch.nn.Module | Callable | None = None,
         graph_features_net: torch.nn.Module | None = None,
         aggregate_graph_features: torch.nn.Module | Callable | None = None,
+        active_tasks: list[int] | None = None,
     ):
         """Initialize the GNNModel.
 
         Args:
             encoder (GCNBackbone): GCN backbone network.
-            downstream_tasks (Sequence[torch.nn.Module]): Downstream task blocks.
+            downstream_tasks (Sequence[torch.nn.Module]): Downstream task blocks. These are assumed to be independent of each other.
             pooling_layers (Sequence[torch.nn.Module]): Pooling layers. Defaults to None.
             aggregate_pooling (torch.nn.Module | Callable | None): Aggregation of pooling layer output. Defaults to None.
             graph_features_net (torch.nn.Module, optional): Graph features network. Defaults to None.
@@ -58,41 +59,54 @@ class GNNModel(torch.nn.Module):
         if len(self.downstream_tasks) == 0:
             raise ValueError("At least one downstream task must be provided.")
 
-        # set up pooling layers and their aggregation
-        self.pooling_layers = torch.nn.ModuleList(
-            [
-                p if isinstance(p, torch.nn.Module) else PoolingWrapper(p)
-                for p in pooling_layers
-            ]
-        )
-
-        if len(self.pooling_layers) == 0:
-            raise ValueError("At least one pooling layer must be provided.")
-
-        if aggregate_pooling is None:
-            raise ValueError(
-                "An aggregation method for the pooling layers must be provided."
-            )
-
-        if not isinstance(aggregate_pooling, torch.nn.Module):
-            self.aggregate_pooling = PoolingWrapper(aggregate_pooling)
+        if active_tasks is None:
+            raise ValueError("active_tasks must be provided.")
         else:
-            self.aggregate_pooling = aggregate_pooling
+            self.active_tasks = active_tasks
 
-        if self.aggregate_pooling is None and len(self.pooling_layers) > 1:
+        # set up pooling layers and their aggregation
+        if pooling_layers is not None:
+            if len(pooling_layers) == 0:
+                raise ValueError("At least one pooling layer must be provided.")
+
+            self.pooling_layers = torch.nn.ModuleList(
+                [
+                    p
+                    if isclass(type(p)) and issubclass(type(p), torch.nn.Module)
+                    else ModuleWrapper(p)
+                    for p in pooling_layers
+                ]
+            )
+        else:
+            self.pooling_layers = None
+
+        # aggregate pooling layer
+        self.aggregate_pooling = aggregate_pooling
+
+        if aggregate_pooling is not None:
+            if not isclass(aggregate_pooling) or not issubclass(
+                aggregate_pooling, torch.nn.Module
+            ):
+                self.aggregate_pooling = ModuleWrapper(aggregate_pooling)
+
+        pooling_funcs = [self.aggregate_pooling, self.pooling_layers]
+        if any([p is not None for p in pooling_funcs]) and not all(
+            p is not None for p in pooling_funcs
+        ):
             raise ValueError(
-                "If multiple pooling layers are defined, an aggregation method must be provided."
+                "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
             )
 
         # set up graph features processing if provided
         self.graph_features_net = graph_features_net
 
-        if aggregate_graph_features is not None and not isinstance(
-            aggregate_graph_features, torch.nn.Module
-        ):
-            self.aggregate_graph_features = PoolingWrapper(aggregate_graph_features)
-        else:
-            self.aggregate_graph_features = aggregate_graph_features
+        self.aggregate_graph_features = aggregate_graph_features
+
+        if aggregate_graph_features is not None:
+            if not isclass(aggregate_graph_features) or not issubclass(
+                aggregate_graph_features, torch.nn.Module
+            ):
+                self.aggregate_graph_features = ModuleWrapper(aggregate_graph_features)
 
         graph_processors = [self.graph_features_net, self.aggregate_graph_features]
 
@@ -103,7 +117,31 @@ class GNNModel(torch.nn.Module):
                 "If graph features are to be used, both a graph features network and an aggregation method must be provided."
             )
 
-    def _eval_encoder(
+    def set_task_active(self, i: int) -> None:
+        """Set a downstream task as active.
+
+        Args:
+            i (int): Index of the downstream task to activate.
+        """
+
+        if i < 0 or i >= len(self.active_tasks):
+            raise ValueError("Invalid task index.")
+
+        self.active_tasks[i] = True
+
+    def set_task_inactive(self, i: int) -> None:
+        """Set a downstream task as inactive.
+
+        Args:
+            i (int): Index of the downstream task to deactivate.
+        """
+
+        if i < 0 or i >= len(self.active_tasks):
+            raise ValueError("Invalid task index.")
+
+        self.active_tasks[i] = False
+
+    def eval_encoder(
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
@@ -146,15 +184,63 @@ class GNNModel(torch.nn.Module):
             torch.Tensor: Embedding vector for the graph features.
         """
         # apply the GCN backbone to the node features
-        embeddings = self._eval_encoder(
+        embeddings = self.eval_encoder(
             x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
         )
-        # pool everything together into a single graph representation
-        pooled_embeddings = [
-            pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
-        ]
 
-        return self.aggregate_pooling(pooled_embeddings)
+        # pool everything together into a single graph representation
+        if self.pooling_layers is not None and self.aggregate_pooling is not None:
+            pooled_embeddings = [
+                pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
+            ]
+
+            return self.aggregate_pooling(pooled_embeddings)
+        else:
+            return embeddings
+
+    def compute_downstream_tasks(
+        self,
+        x: torch.Tensor,
+        downstream_task_args: Sequence[tuple | list] | None = None,
+        downstream_task_kwargs: Sequence[dict] | None = None,
+    ) -> dict[int, torch.Tensor]:
+        """Compute the outputs of the downstream tasks. Only the active tasks will be computed.
+
+        Args:
+            x (torch.Tensor): Input embeddings tensor
+            downstream_task_args (Sequence[tuple | list] | None, optional): Arguments for downstream tasks. Defaults to None.
+            downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
+
+        Returns:
+            dict[int, torch.Tensor]: Outputs of the downstream tasks.
+        """
+
+        output = {}
+
+        for i in range(len(self.downstream_tasks)):
+            if self.active_tasks[i]:
+                task = self.downstream_tasks[i]
+
+                task_args = []
+                task_kwargs = {}
+                if (
+                    downstream_task_args is not None
+                    and i < len(downstream_task_args)
+                    and downstream_task_args[i]
+                ):
+                    task_args = downstream_task_args[i]
+
+                if (
+                    downstream_task_kwargs is not None
+                    and i < len(downstream_task_kwargs)
+                    and downstream_task_kwargs[i]
+                ):
+                    task_kwargs = downstream_task_kwargs[i]
+
+                res = task(x, *task_args, **task_kwargs)
+                output[i] = res
+
+        return output
 
     def forward(
         self,
@@ -165,7 +251,7 @@ class GNNModel(torch.nn.Module):
         downstream_task_args: Sequence[tuple | list] | None = None,
         downstream_task_kwargs: Sequence[dict] | None = None,
         embedding_kwargs: dict[Any, Any] | None = None,
-    ) -> Sequence[torch.Tensor]:
+    ) -> dict[int, torch.Tensor]:
         """Forward run of the gnn model with optional graph features.
         # First execute the graph-neural network backbone, then process the graph features, and finally apply the downstream tasks.
 
@@ -182,37 +268,24 @@ class GNNModel(torch.nn.Module):
             Sequence[torch.Tensor]: Raw output of downstream tasks.
         """
         # apply the GCN backbone to the node features
+
         embeddings = self.get_embeddings(
             x, edge_index, batch, gcn_kwargs=embedding_kwargs
         )
 
         # If we have graph features, we need to process them and concatenate them with the node features
-        if graph_features is not None:
+        if graph_features is not None and self.graph_features_net is not None:
             graph_features = self.graph_features_net(graph_features)
+
+        if self.aggregate_graph_features is not None and graph_features is not None:
             embeddings = self.aggregate_graph_features(embeddings, graph_features)
 
         # downstream tasks are given out as is, no softmax or other assumptions
-        output = []
-
-        for i, task in enumerate(self.downstream_tasks):
-            if downstream_task_args is not None:
-                task_args = downstream_task_args[i]
-                if task_args is None:
-                    task_args = []
-            else:
-                task_args = []
-
-            if downstream_task_kwargs is not None:
-                task_kwargs = downstream_task_kwargs[i]
-                if task_kwargs is None:
-                    task_kwargs = {}
-            else:
-                task_kwargs = {}
-
-            res = task(embeddings, *task_args, **task_kwargs)
-            output.append(res)
-
-        return output
+        return self.compute_downstream_tasks(
+            embeddings,
+            downstream_task_args=downstream_task_args,
+            downstream_task_kwargs=downstream_task_kwargs,
+        )
 
     @classmethod
     def _cfg_helper(
@@ -269,21 +342,30 @@ class GNNModel(torch.nn.Module):
         ]  # TODO: generalize this!
 
         # make pooling layers
-        pooling_layers = []
-        for pool_cfg in config["pooling_layers"]:
-            pooling_layer = cls._cfg_helper(
-                pool_cfg,
-                utils.get_registered_pooling_layer,
-                f"The config for a pooling layer is invalid: {pool_cfg}",
-            )
-            pooling_layers.append(pooling_layer)
+        pooling_layers_cfg = config.get("pooling_layers", None)
+
+        if pooling_layers_cfg is not None:
+            pooling_layers = []
+            for pool_cfg in pooling_layers_cfg:
+                pooling_layer = cls._cfg_helper(
+                    pool_cfg,
+                    utils.get_registered_pooling_layer,
+                    f"The config for a pooling layer is invalid: {pool_cfg}",
+                )
+                pooling_layers.append(pooling_layer)
+        else:
+            pooling_layers = None
 
         # graph aggregation pooling
-        aggregate_pooling = cls._cfg_helper(
-            config["aggregate_pooling"],
-            utils.get_pooling_aggregation,
-            f"The config for 'aggregate_pooling' is invalid: {config['aggregate_pooling']}",
-        )
+        aggregate_pooling_cfg = config.get("aggregate_pooling", None)
+        if aggregate_pooling_cfg is not None:
+            aggregate_pooling = cls._cfg_helper(
+                config["aggregate_pooling"],
+                utils.get_pooling_aggregation,
+                f"The config for 'aggregate_pooling' is invalid: {config['aggregate_pooling']}",
+            )
+        else:
+            aggregate_pooling = None
 
         # make graph features network and aggregations
         if "graph_features_net" in config and config["graph_features_net"] is not None:
@@ -302,6 +384,8 @@ class GNNModel(torch.nn.Module):
         else:
             aggregate_graph_features = None
 
+        active_tasks = [cfg.get("active", False) for cfg in config["downstream_tasks"]]
+
         # return the model
         return cls(
             encoder=encoder,
@@ -310,6 +394,7 @@ class GNNModel(torch.nn.Module):
             graph_features_net=graph_features_net,
             aggregate_graph_features=aggregate_graph_features,
             aggregate_pooling=aggregate_pooling,
+            active_tasks=active_tasks,
         )
 
     def save(self, path: str | Path) -> None:
@@ -332,6 +417,7 @@ class GNNModel(torch.nn.Module):
                 "graph_features_net": self.graph_features_net,
                 "aggregate_graph_features": self.aggregate_graph_features,
                 "aggregate_pooling": self.aggregate_pooling,
+                "active_tasks": self.active_tasks,
             },
             path,
         )
@@ -357,4 +443,5 @@ class GNNModel(torch.nn.Module):
             model_dict["aggregate_pooling"],
             model_dict["graph_features_net"],
             model_dict["aggregate_graph_features"],
+            model_dict["active_tasks"],
         )

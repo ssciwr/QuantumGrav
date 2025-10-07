@@ -2,7 +2,7 @@ import torch
 import torch_geometric
 
 from . import utils
-from typing import Any
+from typing import Any, Sequence
 from pathlib import Path
 
 
@@ -16,12 +16,9 @@ class LinearSequential(torch.nn.Module):
 
     def __init__(
         self,
-        input_dim: int,
-        output_dim: int,
-        hidden_dims: list[int] | None = None,
-        activation: type[torch.nn.Module] = torch.nn.ReLU,
-        backbone_kwargs: list[dict] | None = None,
-        output_kwargs: dict | None = None,
+        dims: list[Sequence[int]],
+        activations: list[type[torch.nn.Module]] = [torch.nn.ReLU],
+        linear_kwargs: list[dict] | None = None,
         activation_kwargs: list[dict] | None = None,
     ):
         """Create a LinearSequential object with a backbone and multiple output layers. All layers are of type `Linear` with an activation function in between (the backbone) and a set of linear output layers.
@@ -40,70 +37,43 @@ class LinearSequential(torch.nn.Module):
         """
         super().__init__()
 
-        # validate input parameters
-        if hidden_dims is None:
-            raise ValueError("hidden_dims must not be None")
+        if len(dims) == 0:
+            raise ValueError("dims must not be empty")
 
-        if not all(h > 0 for h in hidden_dims):
-            raise ValueError("hidden_dims must be a list of positive integers")
+        if len(dims) != len(activations):
+            raise ValueError("dims and activations must have the same length")
 
-        if output_dim <= 0:
-            raise ValueError("output_dim must be a positive integer")
+        if linear_kwargs is None:
+            linear_kwargs = [{} for _ in range(len(dims))]
 
-        # manage kwargs for the different parts of the network
-        processed_backbone_kwargs = self._handle_kwargs(
-            backbone_kwargs, "backbone_kwargs", len(hidden_dims)
-        )
+        if activation_kwargs is None:
+            activation_kwargs = [{} for _ in range(len(dims))]
 
-        processed_activation_kwargs = self._handle_kwargs(
-            activation_kwargs, "activation_kwargs", len(hidden_dims)
-        )
+        if len(linear_kwargs) != len(dims):
+            raise ValueError("linear_kwargs must have the same length as dims")
+
+        if len(activation_kwargs) != len(dims):
+            raise ValueError("activation_kwargs must have the same length as dims")
 
         # build backbone with Sequential
         layers = []
-        in_dim = input_dim
-        for i, hidden_dim in enumerate(hidden_dims):
+        for i in range(len(dims)):
+            in_dim = dims[i][0]
+            out_dim = dims[i][1]
             layers.append(
                 torch_geometric.nn.dense.Linear(
                     in_dim,
-                    hidden_dim,
-                    **processed_backbone_kwargs[i],
+                    out_dim,
+                    **linear_kwargs[i],
                 )
             )
             layers.append(
-                activation(
-                    **processed_activation_kwargs[i],
+                activations[i](
+                    **activation_kwargs[i],
                 )
             )
-            in_dim = hidden_dim
-
-        final_layer = torch_geometric.nn.dense.Linear(
-            hidden_dims[-1] if len(hidden_dims) > 0 else input_dim,
-            output_dim,
-            **({} if output_kwargs is None else output_kwargs),
-        )
-        layers.append(final_layer)
 
         self.layers = torch.nn.Sequential(*layers)
-
-    def _handle_kwargs(
-        self, kwarglist: list[dict] | None, name: str, needed: int
-    ) -> list[dict]:
-        """
-        handle kwargs for the backbone or activation functions.
-        """
-
-        if kwarglist is None:
-            kwarglist = [{}] * needed
-        elif len(kwarglist) == 1:
-            kwarglist = kwarglist * needed
-
-        if len(kwarglist) != needed:
-            raise ValueError(
-                f"{name} must be a list of dictionaries with the same length as hidden_dims"
-            )
-
-        return kwarglist
 
     def forward(
         self,
@@ -135,20 +105,18 @@ class LinearSequential(torch.nn.Module):
         Raises:
             ValueError: If the specified activation function is not registered.
         """
-        activation = utils.get_registered_activation(config.get("activation", "relu"))
+        activations = config["activations"]
+        activations = [utils.get_registered_activation(act) for act in activations]
 
-        if activation is None:
+        if None in activations:
             raise ValueError(
                 f"Activation function '{config.get('activation')}' is not registered."
             )
 
         return cls(
-            input_dim=config["input_dim"],
-            output_dim=config["output_dim"],
-            hidden_dims=config["hidden_dims"],
-            activation=activation,
-            backbone_kwargs=config.get("backbone_kwargs", None),
-            output_kwargs=config.get("output_kwargs", None),
+            dims=config["dims"],
+            activations=activations,
+            linear_kwargs=config.get("linear_kwargs", None),
             activation_kwargs=config.get("activation_kwargs", None),
         )
 
