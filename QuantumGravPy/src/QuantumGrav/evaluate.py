@@ -7,6 +7,8 @@ import logging
 
 
 class DefaultEvaluator:
+    """Default evaluator for model evaluation - testing and validation during training"""
+
     def __init__(
         self,
         device: str | torch.device | int,
@@ -88,6 +90,13 @@ class DefaultEvaluator:
 
 
 class DefaultTester(DefaultEvaluator):
+    """Default tester for model testing.
+
+    Args:
+        DefaultEvaluator (Class): Inherits from DefaultEvaluator and provides functionality for validating models
+    using a specified criterion and optional model application function.
+    """
+
     def __init__(
         self,
         device: str | torch.device | int,
@@ -124,7 +133,8 @@ class DefaultValidator(DefaultEvaluator):
     """Default validator for model validation.
 
     Args:
-        DefaultEvaluator (_type_): _description_
+        DefaultEvaluator (Class): Inherits from DefaultEvaluator and provides functionality for validating models
+    using a specified criterion and optional model application function.
     """
 
     def __init__(

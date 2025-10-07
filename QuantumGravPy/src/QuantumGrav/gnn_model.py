@@ -72,7 +72,7 @@ class GNNModel(torch.nn.Module):
             self.pooling_layers = torch.nn.ModuleList(
                 [
                     p
-                    if isclass(p) and issubclass(p, torch.nn.Module)
+                    if isclass(type(p)) and issubclass(type(p), torch.nn.Module)
                     else ModuleWrapper(p)
                     for p in pooling_layers
                 ]
