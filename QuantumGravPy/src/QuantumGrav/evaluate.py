@@ -30,7 +30,7 @@ class DefaultEvaluator:
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> Any:
+    ) -> list[Any]:
         """Evaluate the model on the given data loader.
 
         Args:
@@ -107,7 +107,7 @@ class DefaultTester(DefaultEvaluator):
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ):
+    ) -> list[Any]:
         """Test the model on the given data loader.
 
         Args:
@@ -146,7 +146,7 @@ class DefaultValidator(DefaultEvaluator):
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ):
+    ) -> list[Any]:
         """Validate the model on the given data loader.
 
         Args:
@@ -196,7 +196,9 @@ class DefaultEarlyStopping:
         lg = len(grace_period)
 
         if min([lw, lm, ld, lg]) != max([lw, lm, ld, lg]):
-            raise ValueError("Inconsistent lengths for early stopping parameters.")
+            raise ValueError(
+                f"Inconsistent lengths for early stopping parameters: {lw}, {lm}, {ld}, {lg}"
+            )
 
         self.patience = patience
         self.current_patience = patience
