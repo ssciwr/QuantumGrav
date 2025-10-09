@@ -343,7 +343,6 @@ class Trainer:
 
         for epoch in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
-
             self.model.train()
 
             epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
@@ -354,7 +353,7 @@ class Trainer:
             )
 
             self.logger.info(
-                f"  Completed epoch {self.epoch}. training loss: {total_training_data[self.epoch, 0]:.8f} +/- {total_training_data[self.epoch, 1]:.8f}."
+                f"  Completed epoch {epoch}. training loss: {total_training_data[epoch, 0]:.8f} +/- {total_training_data[epoch, 1]:.8f}."
             )
 
             # evaluation run on validation set
@@ -404,9 +403,6 @@ class Trainer:
             Collection[Any]: A collection of test results that can be scalars, tensors, lists, dictionaries or any other data type that the tester might return.
         """
         self.logger.info("Starting testing process.")
-        if self.model is None:
-            raise RuntimeError("Model must be initialized before testing.")
-
         # get the best model again
 
         saved_models = [
