@@ -324,6 +324,7 @@ end
         nPoints::Int,
         nTuples::Int;
         consecutive_intersections::Bool = false,
+        coordinate_hypercube_edges::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}} = (CausalSets.Coordinates{2}((-1., -1.)), CausalSets.Coordinates{2}((1., 1.))),
         rng::AbstractRNG = Random.default_rng(),
         tolerance::Float64=1e-12
     ) -> Tuple{Vector{Coordinates{N}}, Vector{Tuple{Coordinates{N}, Coordinates{N}}}}
@@ -630,7 +631,6 @@ end
 
 """
     next_intersection(
-        manifold::CausalSets.AbstractManifold,
         branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},
         x::CausalSets.Coordinates{2},
         y::CausalSets.Coordinates{2},
@@ -645,7 +645,6 @@ Find the earliest intersection (in coordinate time) between a null ray starting 
 This function is used to propagate a null ray (with slope ±1, i.e., left- or right-moving if future-directed) forward or backward in time (detected automatically) through a background with possible topological cuts (such as in a trousers topology or arbitrary cuts), and to determine the first cut segment that the ray would intersect before reaching the event `y`. This is a key geometric operation in constructing causal relations in spacetimes with nontrivial topology.
 
 # Arguments
-- `manifold::CausalSets.AbstractManifold`: The background manifold, used for causal ordering (e.g., to check if an intersection is in the causal past/future of `y`).
 - `branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}`: Vector of topological cut segments, each as a tuple `(p, q)` of 2D coordinates. Each segment represents a finite cut in spacetime that can obstruct causal curves.
 - `x::CausalSets.Coordinates{2}`: The starting point (origin) of the null ray.
 - `y::CausalSets.Coordinates{2}`: The endpoint restricting the search; only intersections with coordinate time between `x[1]` and `y[1]` (according to the direction of propagation) are considered.
@@ -692,7 +691,6 @@ result = next_intersection(manifold, [cut], x, y, slope)
 - "Topological cut" refers to any finite segment representing a region of spacetime that cannot be traversed by causal curves (e.g., in topology change scenarios).
 """
 function next_intersection(
-    manifold::CausalSets.AbstractManifold,
     branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},
     x::CausalSets.Coordinates{2},
     y::CausalSets.Coordinates{2},
@@ -1096,6 +1094,7 @@ Whenever the ray intersects a cut, it continues from an endpoint of the cut acco
 # Keyword Arguments
 - `corners::Union{Vector{Tuple{Coordinates{2}, Coordinates{2}}}, Nothing} = nothing`: Optional precomputed diamond boundary edges. If `nothing`, they are recomputed from `(x, y)`.
 - `check_causal_relation::Bool = true`: If false, turns off check whether x is in past of y.
+- `precomputed_intersection::Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}, Nothing}=nothing`: Possibly precomputed first cut intersection.
 - `tolerance::Float64 = 1e-12`: Numerical tolerance for classifying cut type and detecting intersections.
 
 # Returns
@@ -1130,6 +1129,7 @@ function propagate_ray(
     branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}};
     corners::Union{Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},Nothing}=nothing,
     intersecting_cuts::Union{Nothing, Vector{Tuple{Tuple{Int,Int}, CausalSets.Coordinates{2}}}}=nothing,
+    precomputed_intersection::Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}, Nothing}=nothing,
     check_causal_relation::Bool = true,
     tolerance::Float64=1e-12    
 )::Vector{CausalSets.Coordinates{2}}
@@ -1137,6 +1137,8 @@ function propagate_ray(
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
+
+    is_precomputed_intersection = !isnothing(precomputed_intersection)
 
     backward = y[1] < x[1]
     dir_sign = backward ? -1. : 1.
@@ -1152,7 +1154,8 @@ function propagate_ray(
     left_corner, right_corner = isnothing(corners) ? diamond_corners(manifold, backward ? y : x, backward ? x : y; check_causal_relation = false) : corners
         
     while dir_sign * pos[1] < dir_sign * tfin
-        hit = next_intersection(manifold, local_branch_point_tuples, pos, y, slope; tolerance = tolerance)
+        hit = is_precomputed_intersection ? precomputed_intersection : next_intersection(local_branch_point_tuples, pos, y, slope; tolerance = tolerance)
+        is_precomputed_intersection = false
         if isnothing(hit)
             # No more intersections: propagate straight to tfin
             Δt = tfin - pos[1]
@@ -1335,6 +1338,8 @@ end
         x::CausalSets.Coordinates{2},
         y::CausalSets.Coordinates{2};
         check_causal_relation::Bool = true,
+        future_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}} = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}([nothing, nothing]),
+        past_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}= Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}([nothing, nothing]),
         tolerance::Float64 = 1e-12,
     ) -> Bool
 
@@ -1353,6 +1358,8 @@ The wedge is open if these rays meet without the left ray overtaking the right r
 
 # Keyword Arguments
 - `check_causal_relation::Bool = true`: If false, turns off check whether x is in (unobstructed) past of y.
+- `future_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}} = [nothing, nothing]`: Possibly precomputed first cut intersections
+- `past_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}= [nothing, nothing]`: Possibly precomputed first cut intersections
 - `tolerance::Float64 = 1e-12`: Numerical tolerance for intersection detection. Used to handle floating point errors in geometric predicates.
 
 # Returns
@@ -1383,6 +1390,8 @@ function in_wedge_of(
     x::CausalSets.Coordinates{2},
     y::CausalSets.Coordinates{2};
     check_causal_relation::Bool = true,
+    future_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}} = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}([nothing, nothing]),
+    past_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}= Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}([nothing, nothing]),
     tolerance::Float64 = 1e-12,
 )::Bool
     
@@ -1398,12 +1407,12 @@ function in_wedge_of(
     # the left-moving null ray from y backward to x can reach x, and their paths intersect.
     # This checks if a continuous null curve can connect x to y along the left-moving direction,
     # i.e., the wedge is open.
-    left_forward = propagate_ray(manifold, x, y, -1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance)
+    left_forward = propagate_ray(manifold, x, y, -1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance, precomputed_intersection = past_intersections[1])
     if left_forward[end][2] > y[2] || left_forward[end][1] < y[1]
         return false
     end
 
-    right_forward = propagate_ray(manifold, x, y, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance)
+    right_forward = propagate_ray(manifold, x, y, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance, precomputed_intersection = past_intersections[2])
     if right_forward[end][2] < y[2] || left_forward[end][1] < y[1]
         return false
     end
@@ -1420,7 +1429,7 @@ function in_wedge_of(
         end
     end
 
-    left_backward = propagate_ray(manifold, y, x, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance)
+    left_backward = propagate_ray(manifold, y, x, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance, precomputed_intersection = future_intersections[1])
     if left_backward[end][2] > x[2] || left_backward[end][1] > x[1]
         return false
     end
@@ -1435,6 +1444,7 @@ function in_wedge_of(
             end
         end
     end
+    return false
 end
 
 """
@@ -1559,11 +1569,11 @@ function CausalSets.in_past_of(
     all_cuts = sort(all_cuts, by = t -> t[1][1])
 
     # Check whether causal diamond edges are inhibited by cuts
-    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of, to be implemented
-    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of, to be implemented
+    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of
+    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of
     for i in 1:2 
-        past_intersections[i] = next_intersection(manifold, all_cuts, x, corners[i], (-1.)^i; null_separated = true, tolerance = tolerance)
-        future_intersections[i] = next_intersection(manifold, all_cuts, corners[i], y, (-1.)^(i+1); null_separated = true, tolerance = tolerance)
+        past_intersections[i] = next_intersection(all_cuts, x, corners[i], (-1.)^i; null_separated = true, tolerance = tolerance)
+        future_intersections[i] = next_intersection(all_cuts, y, corners[i], (-1.)^(i+1); null_separated = true, tolerance = tolerance)
         if isnothing(past_intersections[i]) && isnothing(future_intersections[i])
             return true
         end
@@ -1581,9 +1591,44 @@ function CausalSets.in_past_of(
         end
     end
 
-    return in_wedge_of(manifold, all_cuts, x, y; check_causal_relation = false, tolerance = tolerance)
+    return in_wedge_of(manifold, all_cuts, x, y; check_causal_relation = false, tolerance = tolerance, past_intersections = past_intersections, future_intersections = future_intersections)
 end
 
+"""
+    BranchedManifoldCauset{N, M} <: CausalSets.AbstractCauset
+
+A causal set embedded in a background manifold with topological branch points (cuts), supporting finite and boundary-connecting cut segments.
+
+# Type Parameters
+- `N`: Dimensionality of the spacetime.
+- `M`: Type of the background manifold (a subtype of `CausalSets.AbstractManifold{N}`).
+
+# Fields
+- `atom_count::Int64`: Number of elements (atoms) in the causet.
+- `manifold::M`: The background manifold defining the causal structure.
+- `branch_point_info::Tuple{Vector{Coordinates{N}}, Vector{Tuple{Coordinates{N}, Coordinates{N}}}}`: 
+    - First element: Single branch points (each induces a timelike topological cut extending to the boundary).
+    - Second element: Finite topological cuts (segments between two points).
+- `sprinkling::Vector{Coordinates{N}}`: Coordinates of the sprinkled points, typically sorted by time.
+
+# Purpose
+Encodes both the geometry and topology of the geometry underlying the causal set, allowing causal relations to be modified by finite or vertical topological obstructions. Used for modeling spacetimes with topology change or nontrivial causal structure.
+
+# Notes
+- This type is interoperable with `CausalSets.in_past_of_unchecked`, `BitArrayCauset`, and related methods.
+- Vertical cuts (from single branch points) are interpreted as timelike obstructions to causal curves.
+- Finite cuts can be timelike, spacelike, or null and may intersect.
+
+# Example
+```julia
+using CausalSets
+manifold = CausalSets.MinkowskiManifold{2}()
+sprinkling = [CausalSets.Coordinates{2}((0.1, 0.0)), CausalSets.Coordinates{2}((0.9, 0.0))]
+single_branch_points = [CausalSets.Coordinates{2}((0.5, 0.0))]
+finite_cuts = [(CausalSets.Coordinates{2}((0.3, -1.0)), CausalSets.Coordinates{2}((0.3, 1.0)))]
+causet = BranchedManifoldCauset(manifold, (single_branch_points, finite_cuts), sprinkling)
+```
+"""
 struct BranchedManifoldCauset{N, M} <: CausalSets.AbstractCauset where {N, M<:CausalSets.AbstractManifold}
     atom_count::Int64
     manifold::M

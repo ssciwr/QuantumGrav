@@ -185,15 +185,14 @@ end
     y = CausalSets.Coordinates{2}((1.0, 1.0))
     slope = 1.0
     cut = (CausalSets.Coordinates{2}((0.5, -0.5)), CausalSets.Coordinates{2}((0.5, 0.5)))
-    manifold = CausalSets.MinkowskiManifold{2}()
-    res = QuantumGrav.next_intersection(manifold, [cut], x, y, slope)
+    res = QuantumGrav.next_intersection([cut], x, y, slope)
     @test res !== nothing
     pt, intersecting_cut = res
     @test intersecting_cut == cut
     @test pt == CausalSets.Coordinates{2}((0.5, 0.5))
     # No intersection if ray misses
     cut2 = (CausalSets.Coordinates{2}((2.0, 2.0)), CausalSets.Coordinates{2}((2.0, 3.0)))
-    @test isnothing(QuantumGrav.next_intersection(manifold, [cut2], x, y, slope))
+    @test isnothing(QuantumGrav.next_intersection([cut2], x, y, slope))
 end
 
 @testitem "next_intersection_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
@@ -201,10 +200,9 @@ end
     y = CausalSets.Coordinates{2}((1.0, 1.0))
     slope = 1.0
     cut = (CausalSets.Coordinates{2}((0.5, -0.5)), CausalSets.Coordinates{2}((0.5, 0.5)))
-    manifold = CausalSets.MinkowskiManifold{2}()
     tolerance = 0.
     # Throws for bad tolerance
-    @test_throws ArgumentError  QuantumGrav.next_intersection(manifold, [cut], x, y, slope; tolerance = tolerance)
+    @test_throws ArgumentError  QuantumGrav.next_intersection([cut], x, y, slope; tolerance = tolerance)
 end
 
 
