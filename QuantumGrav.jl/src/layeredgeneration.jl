@@ -54,7 +54,6 @@ Notes:
     The `standard_deviation` keyword controls the spread of the Gaussian in partitioning; if not provided, defaults to `0.1 * N / n`.
     Layer sizes are resampled until within bounds to avoid bias from clamping.
 """
-
 function create_random_layered_causet(
     N::Int64,
     n::Int64;
