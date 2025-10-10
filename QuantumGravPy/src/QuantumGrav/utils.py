@@ -2,7 +2,7 @@ from functools import partial
 import torch
 import torch_geometric.nn as tgnn
 
-from typing import Callable
+from typing import Callable, Sequence, Any
 
 gnn_layers: dict[str, type[torch.nn.Module]] = {
     "gcn": tgnn.conv.GCNConv,
@@ -277,3 +277,31 @@ def verify_config_node(cfg) -> bool:
     if not isinstance(cfg["kwargs"], dict):
         return False
     return True
+
+
+def assign_at_path(cfg: dict, path: Sequence[str], value: Any) -> None:
+    """Assign a value to a key in a nested dictionary 'dict'. The path to follow through this nested structure is given by 'path'.
+
+    Args:
+        cfg (dict): The configuration dictionary to modify.
+        path (Sequence[str]): The path to the key to modify.
+        value (Any): The value to assign to the key.
+    """
+    for p in path[:-1]:
+        cfg = cfg[p]
+    cfg[path[-1]] = value
+
+
+def get_at_path(cfg: dict, path: Sequence[str]) -> Any:
+    """Get the value at a key in a nested dictionary. The path to follow through this nested structure is given by 'path'.
+
+    Args:
+        cfg (dict): The configuration dictionary to modify.
+        path (Sequence[str]): The path to the key to modify.
+
+    Returns:
+        Any: The value at the specified key, or None if not found.
+    """
+    for p in path[:-1]:
+        cfg = cfg[p]
+    return cfg[path[-1]]
