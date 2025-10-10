@@ -1,6 +1,6 @@
 sweepname: !sweep
   values: [1, 2, 3, 4, 5]
-othersweep: !sweep 
+othersweep: !sweep
   values: ["x", "y", "z"]
 nextsweep: !sweep
   values: [16, 17, 18, 19, 20]
@@ -17,3 +17,7 @@ d: !coupled-sweep
   values: ["a", "b", "c", "d", "e"]
 x: 3
 y: "hello"
+z: !range
+  start: 2
+  stop: 24
+  step: 3

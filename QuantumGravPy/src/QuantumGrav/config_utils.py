@@ -7,14 +7,15 @@ from . import utils
 def sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
 ) -> dict[str, Any]:
-    """_summary_
-
+    """Constructor for the !sweep yaml tag, which in a yaml file can look like this:
+    tagname: !sweep
+        values: [a,b,c...]
     Args:
-        loader (yaml.SafeLoader): _description_
-        node (yaml.nodes.MappingNode): _description_
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !sweep node to process
 
     Returns:
-        dict[str, Any]: _description_
+        dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
     """
     values = loader.construct_sequence(node.value[0][1])
     return {"type": "sweep", "values": values}
@@ -23,14 +24,19 @@ def sweep_constructor(
 def coupled_sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
 ) -> dict[str, Any]:
-    """_summary_
-
+    """Constructor for the !coupled-sweep yaml tag which is designed to tie a sequence of values
+    to a !sweep tag such that they proceed in lockstep like a 'zip' operation. Example:
+    tagname: !sweep
+        values: [a,b,c...]
+    coupled: !coupled-sweep
+        target: tagname
+        values: [1,2,3,...]
     Args:
-        loader (yaml.SafeLoader): _description_
-        node (yaml.nodes.MappingNode): _description_
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !coupled-sweep node to process
 
     Returns:
-        dict[str, Any]: _description_
+        dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...]}
     """
     target = node.value[0][1].value.split(".")
     values = loader.construct_sequence(node.value[1][1])
@@ -40,26 +46,30 @@ def coupled_sweep_constructor(
 def range_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
 ) -> dict[str, Any]:
-    """_summary_
+    """Constructor for the !range tag:
+    tagname: !range
+      start: 0
+      stop: 10
+      step: 2
 
     Args:
-        loader (yaml.SafeLoader): _description_
-        node (yaml.nodes.MappingNode): _description_
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !range node to process
 
     Returns:
-        dict[str, Any]: _description_
+        dict[str, Any]: dict of the form: {"type": "range", "values": range(start, end, step)}
     """
     start = node.value[0][1].value
     end = node.value[1][1].value
     step = node.value[2][1].value if len(node.value) > 2 else 1
-    return {"type": "range", "start": start, "end": end, "step": step}
+    return {"type": "range", "values": range(start, end, step)}
 
 
 def get_loader():
-    """_summary_
+    """Integrate custom tags into the loader system of the PyYAML library
 
     Returns:
-        _type_: _description_
+        loader: yaml.SafeLoader instance
     """
     loader = yaml.SafeLoader
     loader.add_constructor("!sweep", sweep_constructor)

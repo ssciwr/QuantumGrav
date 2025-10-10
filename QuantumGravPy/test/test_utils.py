@@ -165,3 +165,6 @@ def test_verify_config_node():
     assert QG.utils.verify_config_node(wrong_type_cfg) is False
 
     assert QG.utils.verify_config_node("not a dict") is False
+
+
+# TODO: add tests for the new utility functions for config processing
