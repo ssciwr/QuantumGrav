@@ -171,7 +171,8 @@ class ConfigHandler:
                         "values": node["values"],
                         "partner": None,
                     }
-                    k = []
+                    if len(k) > 0:
+                        k = k[0 : len(k) - 1]
                 elif node["type"] == "coupled-sweep":
                     k.append(key)
                     coupled_targets[key] = {
@@ -179,13 +180,22 @@ class ConfigHandler:
                         "target": node["target"],
                         "values": node["values"],
                     }
-                    k = []
+                    if len(k) > 0:
+                        k = k[0 : len(k) - 1]
+
+                else:
+                    k.append(key)
+                    self._extract_sweep_dims(k, node, sweep_targets, coupled_targets)
+
+                    if len(k) > 0:
+                        k = k[0 : len(k) - 1]
             elif isinstance(node, dict):
                 k.append(key)
                 self._extract_sweep_dims(k, node, sweep_targets, coupled_targets)
-                k = []
+                if len(k) > 0:
+                    k = k[0 : len(k) - 1]
             else:
-                k = []
+                pass
 
         for _, v in coupled_targets.items():
             last = v["target"][-1]
@@ -212,6 +222,11 @@ class ConfigHandler:
             all_lists (list[list[Any]]): lists to construct the cartesian product of
             i (int, optional): Index into the `all_lists` argument. Defaults to 0.
         """
+        if possible_partner is not None and len(current_list) != len(possible_partner):
+            raise IndexError(
+                "Error, coupled-sweep- and sweep values must have the same lengths"
+            )
+
         i += 1
         for k in range(len(current_list)):
             v = current_list[k]
@@ -283,7 +298,6 @@ class ConfigHandler:
         # make the elements
         i = 0  # index into `lists`
         elements = []  # container for produced elements
-
         # have cartesian product done
         self._construct_cartesian_product(
             elements, lists[i][0], lists[i][1], lists, i=i
