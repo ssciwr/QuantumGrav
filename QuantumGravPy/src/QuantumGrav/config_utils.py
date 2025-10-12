@@ -1,6 +1,8 @@
 from typing import Any, Tuple
 import yaml
 import copy
+import importlib
+
 from . import utils
 
 
@@ -59,10 +61,52 @@ def range_constructor(
     Returns:
         dict[str, Any]: dict of the form: {"type": "range", "values": range(start, end, step)}
     """
-    start = node.value[0][1].value
-    end = node.value[1][1].value
-    step = node.value[2][1].value if len(node.value) > 2 else 1
+    start = int(node.value[0][1].value)
+    end = int(node.value[1][1].value)
+    step = int(node.value[2][1].value) if len(node.value) > 2 else 1
     return {"type": "range", "values": range(start, end, step)}
+
+
+def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> Any:
+    """Read a type name from a YAML file and return it such that and instance can be build.
+    This must give the full name/path of the type, e.g.
+    if you do something like:
+    ```python
+       import torch_geometric.nn as tgnn
+    ```
+    and you want to get the `SAGEConv` type from torch_geometric, you cannot write
+
+    nodename: !pyobject tgnn.SAGEConv
+
+    but have to write:
+
+    nodename: !pyobject torch_geometric.nn.SAGEConv
+
+    for example. The modules will be reimported.
+
+    Args:
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.ScalarNode): The current !pyobject type to be read
+
+    Returns:
+        Any: A type or class, e.g., torch_geometric.nn.SAGEConv
+    """
+    value = node.value
+    split_value = value.split(".")
+    objectname = split_value[-1]
+    modulename = ".".join(split_value[0 : len(split_value) - 1])
+    tpe = None
+    try:
+        module = importlib.import_module(modulename)
+    except Exception as e:
+        raise ValueError(f"Importing module {modulename} unsuccessful") from e
+
+    try:
+        tpe = getattr(module, objectname)
+    except Exception as e:
+        raise ValueError(f"Could not load name {objectname} from {modulename}") from e
+
+    return tpe
 
 
 def get_loader():
@@ -75,6 +119,7 @@ def get_loader():
     loader.add_constructor("!sweep", sweep_constructor)
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
+    loader.add_constructor("!pyobject", object_constructor)
     return loader
 
 
