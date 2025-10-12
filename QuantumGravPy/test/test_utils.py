@@ -167,4 +167,56 @@ def test_verify_config_node():
     assert QG.utils.verify_config_node("not a dict") is False
 
 
-# TODO: add tests for the new utility functions for config processing
+def test_assign_at_path():
+    testdict = {
+        "a": {
+            "b": {
+                "c": 3,
+            }
+        },
+        "d": 42,
+    }
+
+    QG.utils.assign_at_path(
+        testdict,
+        [
+            "a",
+            "b",
+            "c",
+        ],
+        12,
+    )
+    assert testdict["a"]["b"]["c"] == 12
+
+    QG.utils.assign_at_path(
+        testdict,
+        [
+            "a",
+            "b",
+        ],
+        {"x": 42},
+    )
+
+    assert testdict["a"]["b"] == {"x": 42}
+
+    with pytest.raises(KeyError):
+        QG.utils.assign_at_path(testdict, ["v", "z"], 12)
+
+
+def test_get_at_path():
+    testdict = {
+        "a": {
+            "b": {
+                "c": 3,
+            }
+        },
+        "d": 42,
+    }
+
+    assert QG.utils.get_at_path(testdict, ["a", "b", "c"]) == 3
+
+    with pytest.raises(KeyError):
+        QG.utils.get_at_path(
+            testdict,
+            ["x", "v"],
+        )
