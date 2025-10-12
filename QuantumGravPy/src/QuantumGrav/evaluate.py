@@ -226,6 +226,8 @@ class DefaultEarlyStopping:
         self.grace_period = grace_period
         self.current_grace_period = [grace_period[i] for i in range(lg)]
 
+        print("len bestscore: ", len(self.best_score))
+
     @property
     def found_better_model(self) -> bool:
         """Check if a better model has been found."""
@@ -296,6 +298,7 @@ class DefaultEarlyStopping:
             if self.metric[i] not in data.columns:
                 self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
                 self.found_better[i] = True
+                ds[i] = 0.0
                 continue
 
             if self.smoothing:
