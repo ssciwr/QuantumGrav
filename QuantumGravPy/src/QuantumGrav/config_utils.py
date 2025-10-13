@@ -1,7 +1,9 @@
-from typing import Any, Tuple
 import yaml
 import copy
 import importlib
+from pathlib import Path
+from typing import Any, Tuple
+import json
 
 from . import utils
 
@@ -153,6 +155,9 @@ class ConfigHandler:
         coupled_targets = {}
 
         self._extract_sweep_dims([], self.config, sweep_targets, coupled_targets)
+
+        print(f"sweep targets: {json.dumps(sweep_targets, indent=2)}")
+
         self.run_configs = self._construct_run_configs(sweep_targets)
 
     def _extract_sweep_dims(
@@ -172,6 +177,9 @@ class ConfigHandler:
             sweep_targets (dict[str, Any]): dict to store sweep dimensions in
             coupled_targets (dict[str, Any]): dict to store coupled-sweep dimension in
         """
+        if not isinstance(cfg_node, dict):
+            return
+
         for key, node in cfg_node.items():
             if isinstance(node, dict) and "type" in node:
                 if node["type"] == "sweep":
@@ -214,7 +222,10 @@ class ConfigHandler:
             else:
                 pass
 
-        for _, v in coupled_targets.items():
+        for k, v in coupled_targets.items():
+            print(f"coupled-sweep target: {k}, {v['path']}, {v['target']}")
+            # the problem is here: this allows only one coupled dimension, but we can have multiple
+            # use lists here
             last = v["target"][-1]
             key = [last, "partner"]
             utils.assign_at_path(sweep_targets, key, v["values"])
@@ -326,5 +337,10 @@ class ConfigHandler:
         # assign the values into the dictionary
         for c, e in zip(configs, elements):
             for k, v in enumerate(e):
+                print(f"assigning {v} to {lookup_keys[k]}")
                 utils.assign_at_path(c, lookup_keys[k], v)
+
+        for i, cfg in enumerate(configs):
+            cfg["model"]["name"] = str(Path(cfg["model"]["name"]) / f"run_{i}")
+
         return configs

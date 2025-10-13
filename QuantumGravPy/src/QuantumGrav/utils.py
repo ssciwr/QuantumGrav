@@ -292,7 +292,7 @@ def assign_at_path(cfg: dict, path: Sequence[str], value: Any) -> None:
     cfg[path[-1]] = value
 
 
-def get_at_path(cfg: dict, path: Sequence[str]) -> Any:
+def get_at_path(cfg: dict, path: Sequence[str], default: Any = None) -> Any:
     """Get the value at a key in a nested dictionary. The path to follow through this nested structure is given by 'path'.
 
     Args:
@@ -304,4 +304,4 @@ def get_at_path(cfg: dict, path: Sequence[str]) -> Any:
     """
     for p in path[:-1]:
         cfg = cfg[p]
-    return cfg[path[-1]]
+    return cfg.get(path[-1], default)

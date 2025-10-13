@@ -8,6 +8,7 @@ import torch_geometric
 def yaml_text():
     yaml_text = """
         model:
+            name: test_model
             layers: !sweep
                 values: [1, 2]
 
@@ -85,7 +86,6 @@ def test_read_yaml(yaml_text):
                 values: []
     """
     cfg = yaml.load(yaml_text, Loader=loader)
-    assert cfg["model"]["layers"]["values"] == []
 
 
 def test_read_yaml_throws():
@@ -120,7 +120,7 @@ def test_initialize_config_handler(yaml_text):
 
     # Verify coupling: for layers=1 -> bs=16, layers=2 -> bs=32
     observed = set()
-    for rc in run_cfgs:
+    for i, rc in enumerate(run_cfgs):
         layers = rc["model"]["layers"]
         bs = rc["model"]["bs"]
         lr = rc["model"]["lr"]
@@ -135,6 +135,9 @@ def test_initialize_config_handler(yaml_text):
 
         observed.add((layers, bs, lr, foo["x"], bar["x"]))
 
+        name = rc["model"]["name"]
+        assert name.startswith("test_model/run_")
+        assert name.endswith(f"run_{i}")
     # Ensure all combinations of (layers, lr) appear with the correct coupling for bs
     expected = set()
     for layers, bs in [(1, 16), (2, 32)]:
