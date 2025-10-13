@@ -18,6 +18,19 @@ def yaml_text():
                 values: [16, 32]
             lr: !sweep
                 values: [0.1, 0.01, 0.001]
+            foo: 
+                - 
+                    x: 3 
+                    y: 5 
+                - 
+                    x: !sweep 
+                        values: [1, 2]
+                    y: 2
+            bar: 
+                - x: !coupled-sweep 
+                    target: model.foo[1].x 
+                    values: [-1, -2]
+            
         trainer:
             epochs: !range
                 start: 1
@@ -36,6 +49,11 @@ def test_read_yaml(yaml_text):
     assert isinstance(cfg["model"]["layers"], dict)
     assert cfg["model"]["layers"]["type"] == "sweep"
     assert cfg["model"]["layers"]["values"] == [1, 2]
+    assert cfg["model"]["foo"][0]["x"] == 3
+    assert cfg["model"]["foo"][0]["y"] == 5
+    assert cfg["model"]["foo"][1]["x"]["type"] == "sweep"
+    assert cfg["model"]["foo"][1]["x"]["values"] == [1, 2]
+    assert cfg["model"]["foo"][1]["y"] == 2
 
     # coupled-sweep nodes
     cs = cfg["model"]["bs"]
@@ -44,6 +62,9 @@ def test_read_yaml(yaml_text):
     # target path is split into components
     assert cs["target"] == ["model", "layers"]
     assert cs["values"] == [16, 32]
+    assert cfg["model"]["bar"][0]["x"]["type"] == "coupled-sweep"
+    assert cfg["model"]["bar"][0]["x"]["target"] == ["model", "foo", 1, "x"]
+    assert cfg["model"]["bar"][0]["x"]["values"] == [-1, -2]
 
     # range nodes
     rn = cfg["trainer"]["epochs"]
@@ -95,7 +116,7 @@ def test_initialize_config_handler(yaml_text):
 
     # Expect cartesian product of layers (2) x lr (3) = 6 configurations
     assert isinstance(run_cfgs, list)
-    assert len(run_cfgs) == 6
+    assert len(run_cfgs) == 12
 
     # Verify coupling: for layers=1 -> bs=16, layers=2 -> bs=32
     observed = set()
@@ -103,18 +124,23 @@ def test_initialize_config_handler(yaml_text):
         layers = rc["model"]["layers"]
         bs = rc["model"]["bs"]
         lr = rc["model"]["lr"]
+        foo = rc["model"]["foo"][1]
+        bar = rc["model"]["bar"][0]
 
         assert layers in [1, 2]
         assert lr in [0.1, 0.01, 0.001]
         assert bs == (16 if layers == 1 else 32)
+        assert foo["x"] in [1, 2]
+        assert bar["x"] in [-1, -2]
 
-        observed.add((layers, bs, lr))
+        observed.add((layers, bs, lr, foo["x"], bar["x"]))
 
     # Ensure all combinations of (layers, lr) appear with the correct coupling for bs
     expected = set()
     for layers, bs in [(1, 16), (2, 32)]:
         for lr in [0.1, 0.01, 0.001]:
-            expected.add((layers, bs, lr))
+            for foo_x, bar_x in [(1, -1), (2, -2)]:
+                expected.add((layers, bs, lr, foo_x, bar_x))
     assert observed == expected
 
 

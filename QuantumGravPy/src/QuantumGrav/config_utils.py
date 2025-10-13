@@ -40,9 +40,19 @@ def coupled_sweep_constructor(
     Returns:
         dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...]}
     """
-    target = node.value[0][1].value.split(".")
+    tokens = node.value[0][1].value.split(".")
+    sweep_target = []
+    for token in tokens:
+        split_token = token.split("[")
+        if len(split_token) > 1:
+            index = int(split_token[1][:-1])
+            sweep_target.append(split_token[0])
+            sweep_target.append(index)
+        else:
+            sweep_target.append(token)
+
     values = loader.construct_sequence(node.value[1][1])
-    return {"target": target, "values": values, "type": "coupled-sweep"}
+    return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
 
 def range_constructor(
@@ -167,33 +177,40 @@ class ConfigHandler:
                 if node["type"] == "sweep":
                     k.append(key)
                     sweep_targets[key] = {
-                        "path": k,
+                        "path": copy.deepcopy(k),
                         "values": node["values"],
                         "partner": None,
                     }
                     if len(k) > 0:
-                        k = k[0 : len(k) - 1]
+                        k.pop()
                 elif node["type"] == "coupled-sweep":
                     k.append(key)
                     coupled_targets[key] = {
-                        "path": k,
+                        "path": copy.deepcopy(k),
                         "target": node["target"],
                         "values": node["values"],
                     }
                     if len(k) > 0:
-                        k = k[0 : len(k) - 1]
-
+                        k.pop()
                 else:
                     k.append(key)
                     self._extract_sweep_dims(k, node, sweep_targets, coupled_targets)
-
                     if len(k) > 0:
-                        k = k[0 : len(k) - 1]
+                        k.pop()
             elif isinstance(node, dict):
                 k.append(key)
                 self._extract_sweep_dims(k, node, sweep_targets, coupled_targets)
                 if len(k) > 0:
-                    k = k[0 : len(k) - 1]
+                    k.pop()
+            elif isinstance(node, list):
+                k.append(key)
+                for i in range(len(node)):
+                    k.append(i)
+                    self._extract_sweep_dims(k, node[i], sweep_targets, coupled_targets)
+                    if len(k) > 0:
+                        k.pop()
+                if len(k) > 0:
+                    k.pop()
             else:
                 pass
 
