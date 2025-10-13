@@ -31,6 +31,10 @@ def yaml_text():
                 - x: !coupled-sweep 
                     target: model.foo[1].x 
                     values: [-1, -2]
+            baz: 
+                - x: !coupled-sweep 
+                    target: model.foo[1].x
+                    values: [-10, -20]
             
         trainer:
             epochs: !range
@@ -66,6 +70,9 @@ def test_read_yaml(yaml_text):
     assert cfg["model"]["bar"][0]["x"]["type"] == "coupled-sweep"
     assert cfg["model"]["bar"][0]["x"]["target"] == ["model", "foo", 1, "x"]
     assert cfg["model"]["bar"][0]["x"]["values"] == [-1, -2]
+    assert cfg["model"]["baz"][0]["x"]["type"] == "coupled-sweep"
+    assert cfg["model"]["baz"][0]["x"]["target"] == ["model", "foo", 1, "x"]
+    assert cfg["model"]["baz"][0]["x"]["values"] == [-2, -4]
 
     # range nodes
     rn = cfg["trainer"]["epochs"]
@@ -114,7 +121,6 @@ def test_initialize_config_handler(yaml_text):
     ch = QG.ConfigHandler(base_cfg)
     run_cfgs = ch.run_configs
 
-    # Expect cartesian product of layers (2) x lr (3) = 6 configurations
     assert isinstance(run_cfgs, list)
     assert len(run_cfgs) == 12
 
@@ -126,12 +132,14 @@ def test_initialize_config_handler(yaml_text):
         lr = rc["model"]["lr"]
         foo = rc["model"]["foo"][1]
         bar = rc["model"]["bar"][0]
+        baz = rc["model"]["baz"][0]
 
         assert layers in [1, 2]
         assert lr in [0.1, 0.01, 0.001]
         assert bs == (16 if layers == 1 else 32)
         assert foo["x"] in [1, 2]
         assert bar["x"] in [-1, -2]
+        assert baz["x"] in [-2, -4]
 
         observed.add((layers, bs, lr, foo["x"], bar["x"]))
 
@@ -142,8 +150,8 @@ def test_initialize_config_handler(yaml_text):
     expected = set()
     for layers, bs in [(1, 16), (2, 32)]:
         for lr in [0.1, 0.01, 0.001]:
-            for foo_x, bar_x in [(1, -1), (2, -2)]:
-                expected.add((layers, bs, lr, foo_x, bar_x))
+            for foo_x, bar_x, baz_x in [(1, -1, -2), (2, -2, -4)]:
+                expected.add((layers, bs, lr, foo_x, bar_x, baz_x))
     assert observed == expected
 
 

@@ -3,7 +3,6 @@ import copy
 import importlib
 from pathlib import Path
 from typing import Any, Tuple
-import json
 
 from . import utils
 
@@ -156,7 +155,23 @@ class ConfigHandler:
 
         self._extract_sweep_dims([], self.config, sweep_targets, coupled_targets)
 
-        print(f"sweep targets: {json.dumps(sweep_targets, indent=2)}")
+        # postprocess the coupled targets to augment the sweep targets
+        for k, v in coupled_targets.items():
+            if (
+                "partner" in sweep_targets[tuple(v["target"])]
+                and sweep_targets[tuple(v["target"])]["partner"] is not None
+            ):
+                sweep_targets[tuple(v["target"])]["partner"].append(v["values"])
+            else:
+                sweep_targets[tuple(v["target"])]["partner"] = [v["values"]]
+
+            if (
+                "partner_path" in sweep_targets[tuple(v["target"])]
+                and sweep_targets[tuple(v["target"])]["partner_path"] is not None
+            ):
+                sweep_targets[tuple(v["target"])]["partner_path"].append(v["path"])
+            else:
+                sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
 
         self.run_configs = self._construct_run_configs(sweep_targets)
 
@@ -184,7 +199,7 @@ class ConfigHandler:
             if isinstance(node, dict) and "type" in node:
                 if node["type"] == "sweep":
                     k.append(key)
-                    sweep_targets[key] = {
+                    sweep_targets[tuple(k)] = {
                         "path": copy.deepcopy(k),
                         "values": node["values"],
                         "partner": None,
@@ -193,7 +208,7 @@ class ConfigHandler:
                         k.pop()
                 elif node["type"] == "coupled-sweep":
                     k.append(key)
-                    coupled_targets[key] = {
+                    coupled_targets[tuple(k)] = {
                         "path": copy.deepcopy(k),
                         "target": node["target"],
                         "values": node["values"],
@@ -222,16 +237,6 @@ class ConfigHandler:
             else:
                 pass
 
-        for k, v in coupled_targets.items():
-            print(f"coupled-sweep target: {k}, {v['path']}, {v['target']}")
-            # the problem is here: this allows only one coupled dimension, but we can have multiple
-            # use lists here
-            last = v["target"][-1]
-            key = [last, "partner"]
-            utils.assign_at_path(sweep_targets, key, v["values"])
-            key = [last, "partner_path"]
-            utils.assign_at_path(sweep_targets, key, v["path"])
-
     def _construct_cartesian_product(
         self,
         elements: list[Any],
@@ -250,17 +255,18 @@ class ConfigHandler:
             all_lists (list[list[Any]]): lists to construct the cartesian product of
             i (int, optional): Index into the `all_lists` argument. Defaults to 0.
         """
-        if possible_partner is not None and len(current_list) != len(possible_partner):
-            raise IndexError(
-                "Error, coupled-sweep- and sweep values must have the same lengths"
-            )
+        print(f"all lists for all_lists[{i}]:", all_lists[i])
 
         i += 1
         for k in range(len(current_list)):
             v = current_list[k]
             if i < len(all_lists):
                 if possible_partner is not None:
-                    w = possible_partner[k]
+                    w = []
+                    print("possible partner:", possible_partner)
+                    for j in range(len(possible_partner)):
+                        w.append(possible_partner[j][k])
+                    print("partner values:", w)
                     self._construct_cartesian_product(
                         elements,
                         all_lists[i][0],
@@ -268,10 +274,11 @@ class ConfigHandler:
                         all_lists,
                         *args,
                         v,
-                        w,
+                        *w,
                         i=i,
                     )
                 else:
+                    print("no possible partner")
                     self._construct_cartesian_product(
                         elements,
                         all_lists[i][0],
@@ -283,8 +290,11 @@ class ConfigHandler:
                     )
             else:
                 if possible_partner is not None:
-                    w = possible_partner[k]
-                    elements.append([*args, v, w])
+                    w = []
+                    print("possible partner:", possible_partner)
+                    for j in range(len(possible_partner)):
+                        w.append(possible_partner[j][k])
+                    elements.append([*args, v, *w])
                 else:
                     elements.append([*args, v])
 
@@ -302,7 +312,7 @@ class ConfigHandler:
             list[dict[str, Any]]: list of config dictionaries constructed.
         """
         # make list of tuple values
-
+        print(f"sweep targets: {sweep_targets}")
         # make a list of keys so the order fo the lookup is fixed
         sweep_keys = [k for k in sweep_targets.keys()]
         lookup_keys = []
@@ -330,6 +340,9 @@ class ConfigHandler:
         self._construct_cartesian_product(
             elements, lists[i][0], lists[i][1], lists, i=i
         )
+
+        print(f"elements: {elements}")
+        print(f"lookup_keys: {lookup_keys}")
 
         # make as many configs as we have values in the cartesian product
         configs = [copy.deepcopy(self.config) for _ in elements]

@@ -304,4 +304,5 @@ def get_at_path(cfg: dict, path: Sequence[str], default: Any = None) -> Any:
     """
     for p in path[:-1]:
         cfg = cfg[p]
+
     return cfg.get(path[-1], default)
