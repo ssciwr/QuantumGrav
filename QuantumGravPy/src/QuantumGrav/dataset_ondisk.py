@@ -134,8 +134,8 @@ class QGDataset(QGDatasetBase, Dataset):
         if self._num_samples is None:
             raise ValueError("Dataset has not been processed yet.")
 
-        if idx < 0 or idx >= self._num_samples:
-            raise IndexError("Index out of bounds.")
+        # if idx < 0 or idx >= self._num_samples:
+        #     raise IndexError("Index out of bounds.")
         # Load the data from the processed files
         datapoint = torch.load(
             Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
