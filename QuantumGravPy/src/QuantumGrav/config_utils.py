@@ -1,7 +1,6 @@
 import yaml
 import copy
 import importlib
-from pathlib import Path
 from typing import Any, Tuple
 
 from . import utils
@@ -183,9 +182,7 @@ class ConfigHandler:
         self.run_configs = self._construct_run_configs(sweep_targets)
 
         for i, cfg in enumerate(self.run_configs):
-            cfg["model"]["name"] = str(
-                Path(cfg["model"]["name"]) / f"{name_addition}_{i}"
-            )
+            cfg["model"]["name"] = f"{cfg['model']['name']}_{name_addition}_{i}"
 
     def _extract_sweep_dims(
         self,
@@ -347,6 +344,8 @@ class ConfigHandler:
                 for p in v["partner_path"]:
                     lookup_keys.append(p)
 
+        # TODO: look into getting rid of this step. There's optimization potential here,
+        # but it works for now.
         # make a list of tuples containing each sweep and partner dimension
         lists = [
             (
@@ -356,7 +355,7 @@ class ConfigHandler:
             for k in sweep_keys
         ]
 
-        # make the elements
+        # make the elements of the cartesian product. each will correspond to one lookup key
         i = 0  # index into `lists`
         elements = []  # container for produced elements
         # have cartesian product done
