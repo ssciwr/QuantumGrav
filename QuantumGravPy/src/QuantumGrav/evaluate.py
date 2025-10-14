@@ -226,8 +226,6 @@ class DefaultEarlyStopping:
         self.grace_period = grace_period
         self.current_grace_period = [grace_period[i] for i in range(lg)]
 
-        print("len bestscore: ", len(self.best_score))
-
     @property
     def found_better_model(self) -> bool:
         """Check if a better model has been found."""
