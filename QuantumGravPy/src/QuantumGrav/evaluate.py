@@ -187,6 +187,7 @@ class DefaultEarlyStopping:
         grace_period: list[int] = [
             0,
         ],
+        minimize: bool = False,
     ):
         """Early stopping initialization.
 
@@ -199,6 +200,7 @@ class DefaultEarlyStopping:
             criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
             init_best_score (float): initial best score value.
             mode (str | Callable[[list[bool]], bool], optional): The mode for early stopping. Can be "any", "all", or a custom function. Defaults to "any". This decides wheather all tracked metrics have to improve or only one of them, or if something else should be done by applying a custom function to the array of evaluation results.
+            minimize: Bool: Whether to minimize or maximize the criterion
         """
         lw = len(window)
         lm = len(metric)
@@ -225,6 +227,7 @@ class DefaultEarlyStopping:
         self.found_better = [False for _ in range(lw)]
         self.grace_period = grace_period
         self.current_grace_period = [grace_period[i] for i in range(lg)]
+        self.minimize = minimize
 
     @property
     def found_better_model(self) -> bool:
@@ -308,9 +311,13 @@ class DefaultEarlyStopping:
             else:
                 d = data[self.metric[i]]
 
-            if self.best_score[i] - self.delta[i] > d.iloc[-1] and len(
-                data
-            ):  # always minimize the metric
+            check = False
+            if self.minimize:
+                check = self.best_score[i] - self.delta[i] > d.iloc[-1]
+            else:
+                check = self.best_score[i] + self.delta[i] < d.iloc[-1]
+
+            if check and len(data):  # always minimize the metric
                 self.logger.info(
                     f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
                 )
