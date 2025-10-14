@@ -72,7 +72,7 @@ def test_read_yaml(yaml_text):
     assert cfg["model"]["bar"][0]["x"]["values"] == [-1, -2]
     assert cfg["model"]["baz"][0]["x"]["type"] == "coupled-sweep"
     assert cfg["model"]["baz"][0]["x"]["target"] == ["model", "foo", 1, "x"]
-    assert cfg["model"]["baz"][0]["x"]["values"] == [-2, -4]
+    assert cfg["model"]["baz"][0]["x"]["values"] == [-10, -20]
 
     # range nodes
     rn = cfg["trainer"]["epochs"]
@@ -139,9 +139,9 @@ def test_initialize_config_handler(yaml_text):
         assert bs == (16 if layers == 1 else 32)
         assert foo["x"] in [1, 2]
         assert bar["x"] in [-1, -2]
-        assert baz["x"] in [-2, -4]
+        assert baz["x"] in [-10, -20]
 
-        observed.add((layers, bs, lr, foo["x"], bar["x"]))
+        observed.add((layers, bs, lr, foo["x"], bar["x"], baz["x"]))
 
         name = rc["model"]["name"]
         assert name.startswith("test_model/run_")
@@ -150,7 +150,7 @@ def test_initialize_config_handler(yaml_text):
     expected = set()
     for layers, bs in [(1, 16), (2, 32)]:
         for lr in [0.1, 0.01, 0.001]:
-            for foo_x, bar_x, baz_x in [(1, -1, -2), (2, -2, -4)]:
+            for foo_x, bar_x, baz_x in [(1, -1, -10), (2, -2, -20)]:
                 expected.add((layers, bs, lr, foo_x, bar_x, baz_x))
     assert observed == expected
 
@@ -169,5 +169,5 @@ def test_initialize_config_handler_fails():
     loader = QG.config_utils.get_loader()
     bad_cfg = yaml.load(yaml_text, Loader=loader)
 
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError, match="Incompatible lengths for coupled-sweep"):
         QG.ConfigHandler(bad_cfg)

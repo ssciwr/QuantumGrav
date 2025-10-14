@@ -141,7 +141,7 @@ class ConfigHandler:
     The targets have to be given as full paths from the top level of the config
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, name_addition="run"):
         """Initialize a new `ConfigHandler` class given a config.
 
         Args:
@@ -153,10 +153,16 @@ class ConfigHandler:
         sweep_targets = {}
         coupled_targets = {}
 
+        # make dictionaries that record sweep dims and their coupled partners
+        # then assign the sweep partners to their sweep dimensions
         self._extract_sweep_dims([], self.config, sweep_targets, coupled_targets)
-
         # postprocess the coupled targets to augment the sweep targets
         for k, v in coupled_targets.items():
+            if len(v["values"]) != len(sweep_targets[tuple(v["target"])]["values"]):
+                raise ValueError(
+                    f"Incompatible lengths for coupled-sweep {v['target']}"
+                )
+
             if (
                 "partner" in sweep_targets[tuple(v["target"])]
                 and sweep_targets[tuple(v["target"])]["partner"] is not None
@@ -173,14 +179,20 @@ class ConfigHandler:
             else:
                 sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
 
+        # construct the configs
         self.run_configs = self._construct_run_configs(sweep_targets)
+
+        for i, cfg in enumerate(self.run_configs):
+            cfg["model"]["name"] = str(
+                Path(cfg["model"]["name"]) / f"{name_addition}_{i}"
+            )
 
     def _extract_sweep_dims(
         self,
         k: list[str],
         cfg_node: dict[str, Any],
-        sweep_targets: dict[str, Any],
-        coupled_targets: dict[str, Any],
+        sweep_targets: dict[Tuple[str, ...], Any],
+        coupled_targets: dict[Tuple[str, ...], Any],
     ) -> None:
         """Recursively extract the sweep and coupled sweep dimensions from the supplied config
         and augment the sweep dimension with their coupled partner dimensions and
@@ -192,12 +204,17 @@ class ConfigHandler:
             sweep_targets (dict[str, Any]): dict to store sweep dimensions in
             coupled_targets (dict[str, Any]): dict to store coupled-sweep dimension in
         """
-        if not isinstance(cfg_node, dict):
+        # TODO: do we need list support on the outermost level?
+        if not isinstance(
+            cfg_node, dict
+        ):  # only dictionary nodes are interesting by design, others are not capable of storing the data structures needed
             return
 
         for key, node in cfg_node.items():
             if isinstance(node, dict) and "type" in node:
                 if node["type"] == "sweep":
+                    # when a sweep dimension is found, we record its path and values
+                    # and use the path as a key in the dict. Partner is none for now
                     k.append(key)
                     sweep_targets[tuple(k)] = {
                         "path": copy.deepcopy(k),
@@ -207,6 +224,9 @@ class ConfigHandler:
                     if len(k) > 0:
                         k.pop()
                 elif node["type"] == "coupled-sweep":
+                    # when a coupled-sweep dimension is found, we record its path and values
+                    # and use the path as a key in the dict. this will later be used to
+                    # assign the partners to the sweep dimensions
                     k.append(key)
                     coupled_targets[tuple(k)] = {
                         "path": copy.deepcopy(k),
@@ -216,16 +236,19 @@ class ConfigHandler:
                     if len(k) > 0:
                         k.pop()
                 else:
+                    # if it's a regular dict node with 'type'is found, we record it's path and go one level down
                     k.append(key)
                     self._extract_sweep_dims(k, node, sweep_targets, coupled_targets)
                     if len(k) > 0:
                         k.pop()
             elif isinstance(node, dict):
+                # no type dict node is found we go down one level as well
                 k.append(key)
                 self._extract_sweep_dims(k, node, sweep_targets, coupled_targets)
                 if len(k) > 0:
                     k.pop()
             elif isinstance(node, list):
+                # for list nodes, we iterate over them and treat the indices as path elements
                 k.append(key)
                 for i in range(len(node)):
                     k.append(i)
@@ -235,6 +258,7 @@ class ConfigHandler:
                 if len(k) > 0:
                     k.pop()
             else:
+                # scalar nodes don't count because they are leafs
                 pass
 
     def _construct_cartesian_product(
@@ -255,18 +279,19 @@ class ConfigHandler:
             all_lists (list[list[Any]]): lists to construct the cartesian product of
             i (int, optional): Index into the `all_lists` argument. Defaults to 0.
         """
-        print(f"all lists for all_lists[{i}]:", all_lists[i])
-
+        # this function essentially is cpp metaprogramming with python: collect the an element of the cartesian product
+        # of 'all_lists' in the arguments, taking care of the alignment of sweep dims and their partners
         i += 1
         for k in range(len(current_list)):
             v = current_list[k]
             if i < len(all_lists):
                 if possible_partner is not None:
+                    # possible partner is a coupled sweep dimension
+                    # there can be multiple, hence collect values first,
+                    # then spread them out
                     w = []
-                    print("possible partner:", possible_partner)
                     for j in range(len(possible_partner)):
                         w.append(possible_partner[j][k])
-                    print("partner values:", w)
                     self._construct_cartesian_product(
                         elements,
                         all_lists[i][0],
@@ -278,7 +303,7 @@ class ConfigHandler:
                         i=i,
                     )
                 else:
-                    print("no possible partner")
+                    # without partner -> only add v to args
                     self._construct_cartesian_product(
                         elements,
                         all_lists[i][0],
@@ -289,9 +314,9 @@ class ConfigHandler:
                         i=i,
                     )
             else:
+                # end of the lists -> final elements. no recursion
                 if possible_partner is not None:
                     w = []
-                    print("possible partner:", possible_partner)
                     for j in range(len(possible_partner)):
                         w.append(possible_partner[j][k])
                     elements.append([*args, v, *w])
@@ -311,18 +336,16 @@ class ConfigHandler:
         Returns:
             list[dict[str, Any]]: list of config dictionaries constructed.
         """
-        # make list of tuple values
-        print(f"sweep targets: {sweep_targets}")
-        # make a list of keys so the order fo the lookup is fixed
         sweep_keys = [k for k in sweep_targets.keys()]
         lookup_keys = []
 
         # make a set of lookup keys so we later know where to put the values
-        # in the cartesian product
+        # in the cartesian product.
         for v in sweep_targets.values():
-            lookup_keys.append(tuple(v["path"]))
+            lookup_keys.append(v["path"])
             if "partner_path" in v:
-                lookup_keys.append(tuple(v["partner_path"]))
+                for p in v["partner_path"]:
+                    lookup_keys.append(p)
 
         # make a list of tuples containing each sweep and partner dimension
         lists = [
@@ -341,19 +364,12 @@ class ConfigHandler:
             elements, lists[i][0], lists[i][1], lists, i=i
         )
 
-        print(f"elements: {elements}")
-        print(f"lookup_keys: {lookup_keys}")
-
         # make as many configs as we have values in the cartesian product
         configs = [copy.deepcopy(self.config) for _ in elements]
 
         # assign the values into the dictionary
         for c, e in zip(configs, elements):
             for k, v in enumerate(e):
-                print(f"assigning {v} to {lookup_keys[k]}")
                 utils.assign_at_path(c, lookup_keys[k], v)
-
-        for i, cfg in enumerate(configs):
-            cfg["model"]["name"] = str(Path(cfg["model"]["name"]) / f"run_{i}")
 
         return configs
