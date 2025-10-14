@@ -144,7 +144,7 @@ def test_initialize_config_handler(yaml_text):
         observed.add((layers, bs, lr, foo["x"], bar["x"], baz["x"]))
 
         name = rc["model"]["name"]
-        assert name.startswith("test_model/run_")
+        assert name.startswith("test_model_run_")
         assert name.endswith(f"run_{i}")
     # Ensure all combinations of (layers, lr) appear with the correct coupling for bs
     expected = set()
