@@ -192,7 +192,7 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
     @warn "Relative precision $(rel_tol) or absolute precision $(abs_tol) not reached after $(markov_steps) steps. Final connectivity error: $(abs(prev_connectivity - connectivity_goal))"
 
     # Return the sampled causet
-    return CausalSets.to_bitarray_causet(tcg), false
+    return CausalSets.to_bitarray_causet(tcg), false                          
 end
 
 """
