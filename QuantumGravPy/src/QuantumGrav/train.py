@@ -149,27 +149,53 @@ class Trainer:
         return self.optimizer
 
     def prepare_dataloaders(
-        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+        self,
+        dataset: Dataset | None = None,
+        split: list[float] = [0.8, 0.1, 0.1],
+        train_dataset: torch.utils.data.Subset | None = None,
+        val_dataset: torch.utils.data.Subset | None = None,
+        test_dataset: torch.utils.data.Subset | None = None,
+        training_sampler: torch.utils.data.Sampler | None = None,
     ) -> Tuple[DataLoader, DataLoader, DataLoader]:
         """Prepare the data loaders for training, validation, and testing.
 
         Args:
             dataset (Dataset): The dataset to prepare.
             split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
+            training_sampler (torch.utils.data.Sampler, optional): The sampler for the training data loader. Defaults to None.
 
         Returns:
             Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
         """
-        train_size = int(len(dataset) * split[0])
-        val_size = int(len(dataset) * split[1])
-        test_size = len(dataset) - train_size - val_size
 
-        if not np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
-            raise ValueError(f"Split ratios must sum to 1.0. Provided split: {split}")
+        if (
+            dataset is not None
+            and train_dataset is None
+            and val_dataset is None
+            and test_dataset is None
+        ):
+            train_size = int(len(dataset) * split[0])
+            val_size = int(len(dataset) * split[1])
+            test_size = len(dataset) - train_size - val_size
 
-        self.train_dataset, self.val_dataset, self.test_dataset = (
-            torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
-        )
+            if not np.isclose(
+                np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
+            ):
+                raise ValueError(
+                    f"Split ratios must sum to 1.0. Provided split: {split}"
+                )
+
+            self.train_dataset, self.val_dataset, self.test_dataset = (
+                torch.utils.data.random_split(
+                    dataset, [train_size, val_size, test_size]
+                )
+            )
+        else:
+            self.train_dataset, self.val_dataset, self.test_dataset = (
+                train_dataset,
+                val_dataset,
+                test_dataset,
+            )
 
         train_loader = DataLoader(
             self.train_dataset,  # type: ignore
@@ -179,6 +205,7 @@ class Trainer:
             drop_last=self.config["training"].get("drop_last", False),
             prefetch_factor=self.config["training"].get("prefetch_factor", None),
             shuffle=self.config["training"].get("shuffle", True),
+            sampler=training_sampler,
         )
 
         val_loader = DataLoader(
@@ -200,9 +227,15 @@ class Trainer:
             prefetch_factor=self.config["testing"].get("prefetch_factor", None),
             shuffle=self.config["testing"].get("shuffle", True),
         )
-        self.logger.info(
-            f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
-        )
+
+        if dataset is not None:
+            self.logger.info(
+                f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
+            )
+        else:
+            self.logger.info(
+                f"Data loaders prepared with dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
+            )
         return train_loader, val_loader, test_loader
 
     # training helper functions
