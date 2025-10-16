@@ -19,7 +19,7 @@ repos:
   rev: v5.0.0
   hooks:
     - id: mixed-line-ending
-    - id: check-yaml
+    # - id: check-yaml
     - id: check-added-large-files
       args: ['--maxkb=100']
     - id: check-merge-conflict

@@ -18,6 +18,8 @@ from .utils import (
     list_registered_gnn_layers,
     list_registered_graph_features_aggregations,
     list_registered_pooling_aggregations,
+    assign_at_path,
+    get_at_path,
 )
 from .dataset_ondisk import QGDataset
 from .gnn_model import GNNModel
@@ -27,6 +29,9 @@ from .evaluate import (
     DefaultTester,
     DefaultEarlyStopping,
     DefaultValidator,
+)
+from .config_utils import (
+    ConfigHandler
 )
 
 from .train import Trainer
@@ -57,6 +62,9 @@ __all__ = [
     "list_registered_gnn_layers",
     "list_registered_graph_features_aggregations",
     "list_registered_pooling_aggregations",
+    # nested config helpers
+    "assign_at_path",
+    "get_at_path",
     # models
     "GNNBlock",
     "GNNModel",
@@ -71,4 +79,6 @@ __all__ = [
     "DefaultValidator",
     "DefaultTester",
     "DefaultEarlyStopping",
+    # config handler
+    "ConfigHandler"
 ]

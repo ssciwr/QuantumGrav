@@ -45,18 +45,6 @@ These are:
     options:
       show_source: true
 
-### Dataset holding everything in memory
-::: QuantumGrav.dataset_inmemory 
-    handler: python
-    options:
-      show_source: true
-
-### Dataset creating csets on the fly 
-::: QuantumGrav.dataset_onthefly 
-    handler: python
-    options:
-      show_source: true
-
 ### Dataset loading data from disk
 ::: QuantumGrav.dataset_ondisk 
     handler: python

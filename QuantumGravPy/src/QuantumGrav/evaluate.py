@@ -187,6 +187,7 @@ class DefaultEarlyStopping:
         grace_period: list[int] = [
             0,
         ],
+        minimize: bool = False,
     ):
         """Early stopping initialization.
 
@@ -199,6 +200,7 @@ class DefaultEarlyStopping:
             criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
             init_best_score (float): initial best score value.
             mode (str | Callable[[list[bool]], bool], optional): The mode for early stopping. Can be "any", "all", or a custom function. Defaults to "any". This decides wheather all tracked metrics have to improve or only one of them, or if something else should be done by applying a custom function to the array of evaluation results.
+            minimize: Bool: Whether to minimize or maximize the criterion
         """
         lw = len(window)
         lm = len(metric)
@@ -225,22 +227,29 @@ class DefaultEarlyStopping:
         self.found_better = [False for _ in range(lw)]
         self.grace_period = grace_period
         self.current_grace_period = [grace_period[i] for i in range(lg)]
+        self.minimize = minimize
+        self.logger = logging.getLogger(__name__)
+        self.num_tasks = len(self.window)
 
     @property
     def found_better_model(self) -> bool:
         """Check if a better model has been found."""
 
         if self.mode == "any":
+            self.logger.debug("Checking early stopping criteria (any mode).")
             return any(self.found_better)
         elif self.mode == "all":
+            self.logger.debug("Checking early stopping criteria (all mode).")
             return all(self.found_better)
         elif callable(self.mode):
+            self.logger.debug("Checking early stopping criteria (custom mode).")
             return self.mode(self.found_better)
         else:
             raise ValueError("Mode must be 'any', 'all', or a callable in Evaluator")
 
     def reset(self) -> None:
         """Reset early stopping state."""
+        self.logger.debug("Resetting early stopping state.")
         self.current_patience = self.patience
         self.found_better = [False for _ in range(len(self.window))]
         self.current_grace_period = self.grace_period
@@ -256,6 +265,9 @@ class DefaultEarlyStopping:
             metric (str): Metric to monitor for early stopping.
             grace_period (int): Grace period for early stopping.
         """
+        self.logger.debug(
+            f"Adding new task for early stopping: {metric}, grace period {grace_period}, window {window}, delta {delta}"
+        )
         self.delta.append(delta)
         self.window.append(window)
         self.metric.append(metric)
@@ -263,6 +275,7 @@ class DefaultEarlyStopping:
         self.current_grace_period.append(grace_period)
         self.best_score.append(self.init_best_score)
         self.found_better.append(False)
+        self.num_tasks += 1
 
     def remove_task(self, index: int) -> None:
         """Remove a task from early stopping.
@@ -270,11 +283,13 @@ class DefaultEarlyStopping:
         Args:
             index (int): The index of the task to remove.
         """
+        self.logger.debug(f"Removing task at index {index}")
         self.delta.pop(index)
         self.window.pop(index)
         self.metric.pop(index)
         self.grace_period.pop(index)
         self.best_score.pop(index)
+        self.num_tasks -= 1
 
     def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
         """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
@@ -286,30 +301,40 @@ class DefaultEarlyStopping:
         Returns:
             bool: True if early stopping criteria are met, False otherwise.
         """
-        self.found_better = [False for _ in range(len(self.window))]
+        self.found_better = [False for _ in range(self.num_tasks)]
         ds = {}  # dict to hold current metric values
 
         # go over all registered metrics and check if the model performs better on any of them
         # then aggregrate the result with 'found_better_model'.
-        for i in range(len(self.window)):
+        for i in range(self.num_tasks):
+            self.logger.debug(f"Evaluating early stopping criteria for task {i}.")
             # prevent a skipped metric from affecting early stopping
             if self.metric[i] not in data.columns:
                 self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
                 self.found_better[i] = True
+                ds[i] = 0.0
                 continue
 
             if self.smoothing:
+                self.logger.debug(f"Applying smoothing to metric {self.metric[i]}.")
                 d = (
                     data[self.metric[i]]
                     .rolling(window=self.window[i], min_periods=1)
                     .mean()
                 )
             else:
+                self.logger.debug(f"Using raw metric values for {self.metric[i]}.")
                 d = data[self.metric[i]]
 
-            if self.best_score[i] - self.delta[i] > d.iloc[-1] and len(
-                data
-            ):  # always minimize the metric
+            check = False
+            if self.minimize:
+                self.logger.debug("Early stopping is in 'minimize' mode.")
+                check = self.best_score[i] - self.delta[i] > d.iloc[-1]
+            else:
+                self.logger.debug("Early stopping is in 'maximize' mode.")
+                check = self.best_score[i] + self.delta[i] < d.iloc[-1]
+
+            if check and len(data):  # always minimize the metric
                 self.logger.info(
                     f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
                 )
@@ -319,28 +344,28 @@ class DefaultEarlyStopping:
 
         if self.found_better_model:
             # when we found a better model the stopping patience gets reset
-            self.logger.info("Found better model")
-            for i in range(len(self.best_score)):
-                if self.found_better[i] and i in ds:
-                    self.logger.info(
-                        f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
-                    )
-                    self.best_score[i] = ds[i]  # record best score
+            self.logger.debug("Found better model")
+            for i in range(self.num_tasks):
+                self.logger.info(
+                    f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
+                )
+                self.best_score[i] = ds[i]  # record best score
             self.current_patience = self.patience  # reset patience
 
         # only when all grace periods are done will we reduce the patience
         elif all([g <= 0 for g in self.current_grace_period]):
+            self.logger.debug("All grace periods are done, reducing patience.")
             self.current_patience -= 1
         else:
             pass
             # don't do anything here, we want at least 'grace_period' many epochs before patience is reduced
 
-        for i in range(len(self.window)):
+        for i in range(self.num_tasks):
             self.logger.info(
                 f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score[i]:.8f}, grace_period: {self.current_grace_period[i]}"
             )
 
-        for i in range(len(self.current_grace_period)):
+        for i in range(self.num_tasks):
             if self.current_grace_period[i] > 0:
                 self.current_grace_period[i] -= 1
 
