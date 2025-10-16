@@ -171,7 +171,7 @@ def test_default_early_stopping_creation(input):
 
 @pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
 def test_default_early_stopping_check_positive(smoothed, input):
-    """Test the check method of DefaultEarlyStopping - positive."""
+    """Test the check method of DefaultEarlyStopping for when a better model is found."""
     early_stopping = QG.DefaultEarlyStopping(
         patience=input["patience"],
         delta=input["delta"],
@@ -179,6 +179,7 @@ def test_default_early_stopping_check_positive(smoothed, input):
         metric=input["metric"],
         grace_period=input["grace_period"],
         smoothing=smoothed,
+        minimize=True,
     )
 
     early_stopping.best_score = [12.0, 12.0]
@@ -205,7 +206,7 @@ def test_default_early_stopping_check_positive(smoothed, input):
 
 @pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
 def test_default_early_stopping_check_positive_with_untracked_metric(smoothed, input):
-    """Test the check method of DefaultEarlyStopping - positive."""
+    """Test the check method of DefaultEarlyStopping for when a better model is found with an untracked metric being present in the data"""
     early_stopping = QG.DefaultEarlyStopping(
         patience=input["patience"],
         delta=input["delta"],
@@ -213,6 +214,7 @@ def test_default_early_stopping_check_positive_with_untracked_metric(smoothed, i
         metric=input["metric"],
         grace_period=input["grace_period"],
         smoothing=smoothed,
+        minimize=True,
     )
 
     early_stopping.best_score = [12.0, 12.0]
@@ -239,7 +241,7 @@ def test_default_early_stopping_check_positive_with_untracked_metric(smoothed, i
 
 @pytest.mark.parametrize("smoothed", [False, True], ids=["not_smoothed", "smoothed"])
 def test_default_early_stopping_check_negative(smoothed, input):
-    """Test the check method of DefaultEarlyStopping - negative."""
+    """Test the check method of DefaultEarlyStopping for when no better model is found"""
     early_stopping = QG.DefaultEarlyStopping(
         patience=input["patience"],
         delta=input["delta"],
@@ -247,7 +249,10 @@ def test_default_early_stopping_check_negative(smoothed, input):
         metric=input["metric"],
         grace_period=input["grace_period"],
         smoothing=smoothed,
+        minimize=True,
     )
+
+    early_stopping.logger.setLevel(logging.DEBUG)
 
     early_stopping.best_score = [1e-5, 1e-5]
     # set grace period artificially lower
@@ -279,6 +284,7 @@ def test_default_early_stopping_triggered(smoothed, input):
         metric=input["metric"],
         grace_period=input["grace_period"],
         smoothing=smoothed,
+        minimize=True,
     )
     early_stopping.best_score = [1e-4, 1e-4]
     early_stopping.patience = 1
@@ -309,6 +315,7 @@ def test_default_early_stopping_add_task(input):
         metric=input["metric"],
         grace_period=input["grace_period"],
         smoothing=False,
+        minimize=True,
     )
 
     early_stopping.add_task(1e-3, 12, "blergh", 3)
