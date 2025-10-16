@@ -307,7 +307,7 @@ def test_default_early_stopping_triggered(smoothed, input):
     assert early_stopping.current_patience == 0
 
 
-def test_default_early_stopping_add_task(input):
+def test_default_early_stopping_add_remove_task(input):
     early_stopping = QG.DefaultEarlyStopping(
         patience=input["patience"],
         delta=input["delta"],
@@ -324,6 +324,16 @@ def test_default_early_stopping_add_task(input):
     assert early_stopping.window[-1] == 12
     assert early_stopping.metric[-1] == "blergh"
     assert early_stopping.grace_period[-1] == 3
+    assert early_stopping.current_grace_period[-1] == 3
+    assert early_stopping.best_score[-1] == np.inf
+    assert early_stopping.found_better == [False, False, False]
+
+    early_stopping.remove_task(1)
+
+    assert early_stopping.delta[-1] == input["delta"][-1]
+    assert early_stopping.window[-1] == input["window"][-1]
+    assert early_stopping.metric[-1] == input["metric"][-1]
+    assert early_stopping.grace_period[-1] == input["grace_period"][-1]
     assert early_stopping.current_grace_period[-1] == 3
     assert early_stopping.best_score[-1] == np.inf
     assert early_stopping.found_better == [False, False, False]
