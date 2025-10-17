@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch_geometric
 
@@ -76,6 +77,7 @@ class LinearSequential(torch.nn.Module):
         self.layers = torch.nn.Sequential(*layers)
         self.linear_kwargs = linear_kwargs
         self.activation_kwargs = activation_kwargs
+        self.logger = logging.getLogger(__name__)
 
     def forward(
         self,
@@ -133,9 +135,13 @@ class LinearSequential(torch.nn.Module):
 
         for layer in self.layers:
             if isinstance(layer, torch_geometric.nn.dense.Linear):
+                linear_dims.append((layer.in_channels, layer.out_channels))
+            elif isinstance(layer, torch.nn.Linear):
                 linear_dims.append((layer.in_features, layer.out_features))
             elif isinstance(layer, torch.nn.Module):
-                activations.append(utils.get_registered_activation(layer))
+                activations.append(utils.activation_layers_names[type(layer)])
+            else:
+                self.logger.warning(f"Unknown layer type: {type(layer)}")
 
         config = {
             "dims": linear_dims,
