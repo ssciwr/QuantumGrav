@@ -9,6 +9,9 @@ def cat_graph_features(*features, dim=1):
     return torch.cat(features, dim=dim)
 
 
+QG.utils.register_graph_features_aggregation("cat_graph_features", cat_graph_features)
+
+
 @pytest.fixture
 def gnn_model(gnn_block, classifier_block, pooling_layer):
     return QG.GNNModel(
@@ -510,3 +513,22 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
             loaded_gnn_model.state_dict()[k],
             gnn_model_with_graph_features.state_dict()[k],
         )
+
+    gnn_model_with_graph_features.eval()
+    loaded_gnn_model.eval()
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    graph_features = torch.randn(2, 10)  # 2 graphs with 10 features each
+
+    y = gnn_model_with_graph_features.forward(
+        x, edge_index, batch, graph_features=graph_features
+    )
+
+    y_loaded = loaded_gnn_model.forward(
+        x, edge_index, batch, graph_features=graph_features
+    )
+    for i in y.keys():
+        assert torch.allclose(y[i], y_loaded[i], atol=1e-8)

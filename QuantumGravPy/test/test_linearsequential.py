@@ -149,7 +149,9 @@ def test_linseq_save_load(linearseq, tmp_path):
 
     # Test that the loaded model produces the same outputs as the original model
     input_tensor = torch.randn(5, 10)  # Batch size of 5, input dimension of 10
+    linearseq.eval()
+    loaded_linseq.eval()
+
     original_outputs = linearseq(input_tensor)
     loaded_outputs = loaded_linseq(input_tensor)
-
-    assert all(torch.equal(o1, o2) for o1, o2 in zip(original_outputs, loaded_outputs))
+    assert torch.allclose(original_outputs, loaded_outputs, atol=1e-8)

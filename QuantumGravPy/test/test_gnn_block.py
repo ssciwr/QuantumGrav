@@ -178,7 +178,11 @@ def test_gnn_block_save_load(gnn_block, tmp_path):
     for k in loaded_gnn_block.state_dict().keys():
         assert torch.equal(loaded_gnn_block.state_dict()[k], gnn_block.state_dict()[k])
 
-    x = torch.tensor(np.random.uniform(0, 1, (10, 16)), dtype=torch.float)
+    gnn_block.eval()
+    loaded_gnn_block.eval()
+    x = torch.tensor(np.random.uniform(0, 1, (5, 16)), dtype=torch.float)
     edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
     y = gnn_block.forward(x, edge_index)
-    assert y.shape == (10, 32)
+    y_loaded = loaded_gnn_block.forward(x, edge_index)
+    assert y.shape == y_loaded.shape
+    assert torch.allclose(y, y_loaded, atol=1e-8)

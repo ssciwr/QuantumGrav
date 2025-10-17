@@ -51,13 +51,22 @@ class GNNBlock(torch.nn.Module):
             projection_kwargs (dict[str, Any], optional): Additional keyword arguments for the projection layer. Defaults to None.
 
         """
-        super().__init__()
+        super(GNNBlock, self).__init__()
 
         # save parameters
         self.dropout_p = dropout
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.with_skip = with_skip
+        # save args/kwargs
+        self.gnn_layer_args = gnn_layer_args
+        self.gnn_layer_kwargs = gnn_layer_kwargs
+        self.norm_args = norm_args
+        self.norm_kwargs = norm_kwargs
+        self.activation_args = activation_args
+        self.activation_kwargs = activation_kwargs
+        self.projection_args = projection_args
+        self.projection_kwargs = projection_kwargs
 
         # initialize layers
         self.dropout = torch.nn.Dropout(p=dropout, inplace=False)
@@ -79,31 +88,19 @@ class GNNBlock(torch.nn.Module):
             **(gnn_layer_kwargs if gnn_layer_kwargs is not None else {}),
         )
 
+        if self.projection_kwargs is None:
+            self.projection_kwargs = {"bias": False}
+
+        if self.projection_args is None:
+            self.projection_args = [in_dim, out_dim]
+
         if in_dim != out_dim:
             self.projection = torch.nn.Linear(
-                *(
-                    projection_args
-                    if projection_args is not None
-                    else [in_dim, out_dim]
-                ),
-                **(
-                    projection_kwargs
-                    if projection_kwargs is not None
-                    else {"bias": False}
-                ),
+                *self.projection_args,
+                **self.projection_kwargs,
             )
         else:
             self.projection = torch.nn.Identity()
-
-        # save args/kwargs
-        self.gnn_layer_args = gnn_layer_args
-        self.gnn_layer_kwargs = gnn_layer_kwargs
-        self.norm_args = norm_args
-        self.norm_kwargs = norm_kwargs
-        self.activation_args = activation_args
-        self.activation_kwargs = activation_kwargs
-        self.projection_args = projection_args
-        self.projection_kwargs = projection_kwargs
 
     def forward(
         self, x: torch.Tensor, edge_index: torch.Tensor, **kwargs
@@ -208,7 +205,7 @@ class GNNBlock(torch.nn.Module):
             GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
         """
 
-        modeldata = torch.load(path)
+        modeldata = torch.load(path, weights_only=False)
         model = cls.from_config(modeldata["config"]).to(device)
         model.load_state_dict(modeldata["state_dict"])
         return model

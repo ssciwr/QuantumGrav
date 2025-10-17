@@ -2,7 +2,6 @@ from typing import Any, Callable, Sequence
 from pathlib import Path
 from inspect import isclass
 import torch
-
 from . import utils
 from . import linear_sequential as QGLS
 from . import gnn_block as QGGNN
@@ -18,6 +17,9 @@ class ModuleWrapper(torch.nn.Module):
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         return self.fn(*args, **kwargs)
 
+    def get_fn(self) -> Callable:
+        return self.fn
+
 
 class GNNModel(torch.nn.Module):
     """Torch module for the full GCN model, which consists of a GCN backbone, a set of downstream tasks, and a pooling layer, augmented with optional graph features network.
@@ -25,6 +27,8 @@ class GNNModel(torch.nn.Module):
         torch.nn.Module: base class
     """
 
+    # FIXME: change this such that all elements are build internally, and only types are passed in
+    # this is more in line with the other parts of the system and also with how the configs work
     def __init__(
         self,
         encoder: Sequence[QGGNN.GNNBlock],
@@ -397,6 +401,88 @@ class GNNModel(torch.nn.Module):
             active_tasks=active_tasks,
         )
 
+    def to_config(self) -> dict[str, Any]:
+        """Serialize the model to a config
+
+        Returns:
+            dict[str, Any]: _description_
+        """
+        pooling_layer_names = None
+        if self.pooling_layers is not None:
+            pooling_layer_names = []
+            for layer in self.pooling_layers:
+                if isinstance(layer, ModuleWrapper):
+                    pooling_layer_names.append(
+                        {
+                            "type": utils.pooling_layers_names[layer.get_fn()],
+                            "args": [],
+                            "kwargs": {},
+                        }
+                    )
+                else:
+                    pooling_layer_names.append(
+                        {
+                            "type": utils.pooling_layers_names[layer],
+                            "args": [],
+                            "kwargs": {},
+                        }
+                    )
+
+        aggregate_graph_features_names = None
+        if self.aggregate_graph_features is not None:
+            if isinstance(self.aggregate_graph_features, ModuleWrapper):
+                aggregate_graph_features_names = {
+                    "type": utils.graph_features_aggregations_names[
+                        self.aggregate_graph_features.get_fn()
+                    ],
+                    "args": [],
+                    "kwargs": {},
+                }
+            else:
+                aggregate_graph_features_names = {
+                    "type": utils.graph_features_aggregations_names[
+                        self.aggregate_graph_features
+                    ],
+                    "args": [],
+                    "kwargs": {},
+                }
+
+        aggregate_pooling_name = None
+        if self.aggregate_pooling is not None:
+            aggregate_pooling_name = []
+            if isinstance(self.aggregate_pooling, ModuleWrapper):
+                aggregate_pooling_name = {
+                    "type": utils.pooling_aggregations_names[
+                        self.aggregate_pooling.get_fn()
+                    ],
+                    "args": [],
+                    "kwargs": {},
+                }
+            else:
+                aggregate_pooling_name = {
+                    "type": utils.pooling_aggregations_names[self.aggregate_pooling],
+                    "args": [],
+                    "kwargs": {},
+                }
+
+        # downstream_task_configs
+
+        downstream_task_configs = [task.to_config() for task in self.downstream_tasks]
+        for i in range(len(self.downstream_tasks)):
+            downstream_task_configs[i]["active"] = self.active_tasks[i]
+
+        config = {
+            "encoder": [encoder_layer.to_config() for encoder_layer in self.encoder],
+            "downstream_tasks": downstream_task_configs,
+            "pooling_layers": pooling_layer_names,
+            "graph_features_net": self.graph_features_net.to_config(),
+            "aggregate_graph_features": aggregate_graph_features_names,
+            "aggregate_pooling": aggregate_pooling_name,
+            "active_tasks": self.active_tasks,
+        }
+
+        return config
+
     def save(self, path: str | Path) -> None:
         """Save the model state to file. This saves a dictionary structured like this:
          'encoder': self.encoder,
@@ -409,19 +495,8 @@ class GNNModel(torch.nn.Module):
         Args:
             path (str | Path): Path to save the model to
         """
-        config = (
-            {
-                "encoder": self.encoder.to_config(),
-                "downstream_tasks": [
-                    task.to_config() for task in self.downstream_tasks
-                ],
-                "pooling_layers": self.pooling_layers,
-                "graph_features_net": self.graph_features_net.to_config(),
-                "aggregate_graph_features": self.aggregate_graph_features,
-                "aggregate_pooling": self.aggregate_pooling,
-                "active_tasks": self.active_tasks,
-            },
-        )
+
+        config = self.to_config()
 
         torch.save(
             {"config": config, "model": self.state_dict()},
@@ -440,7 +515,7 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: model instance initialized with the sub-models loaded from file.
         """
-        model_dict = torch.load(path)
+        model_dict = torch.load(path, weights_only=False)
         model = cls.from_config(model_dict["config"]).to(device)
         model.load_state_dict(model_dict["model"])
 
