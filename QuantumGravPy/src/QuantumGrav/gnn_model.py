@@ -409,16 +409,22 @@ class GNNModel(torch.nn.Module):
         Args:
             path (str | Path): Path to save the model to
         """
-        torch.save(
+        config = (
             {
-                "encoder": self.encoder,
-                "downstream_tasks": self.downstream_tasks,
+                "encoder": self.encoder.to_config(),
+                "downstream_tasks": [
+                    task.to_config() for task in self.downstream_tasks
+                ],
                 "pooling_layers": self.pooling_layers,
-                "graph_features_net": self.graph_features_net,
+                "graph_features_net": self.graph_features_net.to_config(),
                 "aggregate_graph_features": self.aggregate_graph_features,
                 "aggregate_pooling": self.aggregate_pooling,
                 "active_tasks": self.active_tasks,
             },
+        )
+
+        torch.save(
+            {"config": config, "model": self.state_dict()},
             path,
         )
 
@@ -434,14 +440,8 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: model instance initialized with the sub-models loaded from file.
         """
-        model_dict = torch.load(path, map_location=device, weights_only=False)
+        model_dict = torch.load(path)
+        model = cls.from_config(model_dict["config"]).to(device)
+        model.load_state_dict(model_dict["model"])
 
-        return cls(
-            model_dict["encoder"],
-            model_dict["downstream_tasks"],
-            model_dict["pooling_layers"],
-            model_dict["aggregate_pooling"],
-            model_dict["graph_features_net"],
-            model_dict["aggregate_graph_features"],
-            model_dict["active_tasks"],
-        )
+        return model

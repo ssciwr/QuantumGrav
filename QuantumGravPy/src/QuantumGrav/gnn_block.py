@@ -209,7 +209,7 @@ class GNNBlock(torch.nn.Module):
             GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
         """
 
-        modeldata = torch.load(path, map_location=device, weights_only=False)
-        model = cls.from_config(modeldata["config"])
+        modeldata = torch.load(path)
+        model = cls.from_config(modeldata["config"]).to(device)
         model.load_state_dict(modeldata["state_dict"])
         return model
