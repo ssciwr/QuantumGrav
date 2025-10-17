@@ -2,10 +2,14 @@ import QuantumGrav as QG
 import torch
 import pytest
 from functools import partial
+import copy
 
 
 def cat_graph_features(*features, dim=1):
     return torch.cat(features, dim=dim)
+
+
+QG.utils.register_graph_features_aggregation("cat_graph_features", cat_graph_features)
 
 
 @pytest.fixture
@@ -14,7 +18,7 @@ def gnn_model(gnn_block, classifier_block, pooling_layer):
         encoder=[
             gnn_block,
         ],
-        downstream_tasks=[classifier_block, classifier_block],
+        downstream_tasks=[classifier_block, copy.deepcopy(classifier_block)],
         pooling_layers=[pooling_layer, pooling_layer],
         aggregate_pooling=torch.cat,
         active_tasks=[True, True],
@@ -274,6 +278,7 @@ def test_gnn_model_forward(gnn_model):
 
 
 def test_gnn_model_forward_set_active(gnn_model):
+    "test the model forward pass with active/inactive tasks"
     x = torch.randn(5, 16)  # 5 nodes with 16 features each
     edge_index = torch.tensor(
         [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
@@ -281,7 +286,6 @@ def test_gnn_model_forward_set_active(gnn_model):
     batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
     gnn_model.eval()  # Set model to evaluation mode
     assert gnn_model.training is False  # Ensure model is in eval mode
-
     assert gnn_model.active_tasks == [True, True]
     output = gnn_model(x, edge_index, batch)
     assert len(output) == 2
@@ -300,6 +304,120 @@ def test_gnn_model_forward_set_active(gnn_model):
     assert len(output) == 2
     assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
     assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+
+    gnn_model.set_task_inactive(0)
+    assert gnn_model.active_tasks == [False, True]
+    output = gnn_model(x, edge_index, batch)
+    assert len(output) == 1
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+
+
+@pytest.mark.parametrize("to_disable", [1, 0])
+def test_gnn_model_forward_set_active_backprop(gnn_model, to_disable):
+    "test the model forward pass with active/inactive tasks and backpropagation"
+    task_to_keep = 0 if to_disable == 1 else 1
+
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    gnn_model.train()  # Set model to training mode
+
+    y = torch.randn(4, 3)  # Random target values
+    compute_loss = torch.nn.MSELoss()
+
+    # baseline - both tasks active
+    assert gnn_model.training is True  # Ensure model is in train mode
+    assert gnn_model.active_tasks == [True, True]
+    output = gnn_model(x, edge_index, batch)
+    assert 0 in output and 1 in output
+    loss = sum(
+        [
+            compute_loss(output[i], y)
+            for i in range(len(gnn_model.active_tasks))
+            if gnn_model.active_tasks[i]
+        ]
+    )
+
+    for _, p in gnn_model.named_parameters():
+        assert p.grad is None
+
+    loss.backward()
+
+    for _, p in gnn_model.named_parameters():
+        assert p.grad is not None
+
+    assert len(output) == 2
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+
+    # reset grads
+    for p in gnn_model.parameters():
+        p.grad = None
+
+    # disable task 'to_disable'
+    gnn_model.set_task_inactive(to_disable)
+    assert gnn_model.active_tasks[to_disable] is False
+    assert gnn_model.active_tasks[task_to_keep] is True
+    output = gnn_model(x, edge_index, batch)
+    loss = sum(
+        [
+            compute_loss(output[i], y)
+            for i in range(len(gnn_model.active_tasks))
+            if gnn_model.active_tasks[i]
+        ]
+    )
+
+    for _, p in gnn_model.named_parameters():
+        assert p.grad is None
+
+    loss.backward()
+
+    for _, p in gnn_model.encoder.named_parameters():
+        assert p.grad is not None
+
+    for _, p in gnn_model.downstream_tasks[task_to_keep].named_parameters():
+        assert p.grad is not None
+
+    for _, p in gnn_model.downstream_tasks[to_disable].named_parameters():
+        assert p.grad is None
+
+    assert len(output) == 1
+    assert output[task_to_keep].shape == (
+        4,
+        3,
+    )  # 2 graphs, 2 concat pooling layers, 3 classes
+    # reset grads
+    for p in gnn_model.parameters():
+        p.grad = None
+
+    # re-enable task 'to_disable'
+    gnn_model.set_task_active(to_disable)
+    assert gnn_model.active_tasks == [True, True]
+    output = gnn_model(x, edge_index, batch)
+    loss = sum(
+        [
+            compute_loss(output[i], y)
+            for i in range(len(gnn_model.active_tasks))
+            if gnn_model.active_tasks[i]
+        ]
+    )
+
+    for _, p in gnn_model.named_parameters():
+        assert p.grad is None
+
+    loss.backward()
+
+    for _, p in gnn_model.named_parameters():
+        assert p.grad is not None
+
+    assert len(output) == 2
+    assert output[0].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 3 classes
+    assert output[1].shape == (4, 3)  # 2 graphs, 2 concat pooling layers, 2 classes
+    # reset grads
+    for p in gnn_model.parameters():
+        p.grad = None
 
 
 def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
@@ -340,6 +458,15 @@ def test_gnn_model_forward_without_pooling(gnn_model_with_graph_features_no_pool
     assert output[1].shape == (7, 3)
 
 
+def test_gnn_model_to_config(gnn_model_with_graph_features):
+    cfg = gnn_model_with_graph_features.to_config()
+    assert "encoder" in cfg
+    assert "downstream_tasks" in cfg
+    assert "pooling_layers" in cfg
+    assert "graph_features_net" in cfg
+    assert "aggregate_graph_features" in cfg
+
+
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
@@ -375,11 +502,9 @@ def test_gnn_model_creation_from_config(gnn_model_config):
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
     "test saving and loading of the combined model"
     gnn_model_with_graph_features.save(tmp_path / "model.pt")
-
     assert (tmp_path / "model.pt").exists()
 
     loaded_gnn_model = QG.GNNModel.load(tmp_path / "model.pt")
-
     assert gnn_model_with_graph_features.graph_features_net is not None
     assert len(loaded_gnn_model.state_dict().keys()) == len(
         gnn_model_with_graph_features.state_dict().keys()
@@ -387,7 +512,6 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
 
     loaded_keys = set(loaded_gnn_model.state_dict().keys())
     original_keys = set(gnn_model_with_graph_features.state_dict().keys())
-
     assert loaded_keys == original_keys
 
     for k in loaded_gnn_model.state_dict().keys():
@@ -395,3 +519,22 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
             loaded_gnn_model.state_dict()[k],
             gnn_model_with_graph_features.state_dict()[k],
         )
+
+    gnn_model_with_graph_features.eval()
+    loaded_gnn_model.eval()
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    graph_features = torch.randn(2, 10)  # 2 graphs with 10 features each
+
+    y = gnn_model_with_graph_features.forward(
+        x, edge_index, batch, graph_features=graph_features
+    )
+
+    y_loaded = loaded_gnn_model.forward(
+        x, edge_index, batch, graph_features=graph_features
+    )
+    for i in y.keys():
+        assert torch.allclose(y[i], y_loaded[i], atol=1e-8)

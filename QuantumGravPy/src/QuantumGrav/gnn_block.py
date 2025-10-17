@@ -51,13 +51,22 @@ class GNNBlock(torch.nn.Module):
             projection_kwargs (dict[str, Any], optional): Additional keyword arguments for the projection layer. Defaults to None.
 
         """
-        super().__init__()
+        super(GNNBlock, self).__init__()
 
         # save parameters
         self.dropout_p = dropout
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.with_skip = with_skip
+        # save args/kwargs
+        self.gnn_layer_args = gnn_layer_args
+        self.gnn_layer_kwargs = gnn_layer_kwargs
+        self.norm_args = norm_args
+        self.norm_kwargs = norm_kwargs
+        self.activation_args = activation_args
+        self.activation_kwargs = activation_kwargs
+        self.projection_args = projection_args
+        self.projection_kwargs = projection_kwargs
 
         # initialize layers
         self.dropout = torch.nn.Dropout(p=dropout, inplace=False)
@@ -79,18 +88,16 @@ class GNNBlock(torch.nn.Module):
             **(gnn_layer_kwargs if gnn_layer_kwargs is not None else {}),
         )
 
+        if self.projection_kwargs is None:
+            self.projection_kwargs = {"bias": False}
+
+        if self.projection_args is None:
+            self.projection_args = [in_dim, out_dim]
+
         if in_dim != out_dim:
             self.projection = torch.nn.Linear(
-                *(
-                    projection_args
-                    if projection_args is not None
-                    else [in_dim, out_dim]
-                ),
-                **(
-                    projection_kwargs
-                    if projection_kwargs is not None
-                    else {"bias": False}
-                ),
+                *self.projection_args,
+                **self.projection_kwargs,
             )
         else:
             self.projection = torch.nn.Identity()
@@ -153,6 +160,27 @@ class GNNBlock(torch.nn.Module):
             projection_kwargs=config.get("projection_kwargs", None),
         )
 
+    def to_config(self) -> dict[str, Any]:
+        """Convert the GNNBlock instance to a configuration dictionary."""
+        config = {
+            "in_dim": self.in_dim,
+            "out_dim": self.out_dim,
+            "dropout": self.dropout.p,
+            "with_skip": self.with_skip,
+            "gnn_layer_type": utils.gnn_layers_names[type(self.conv)],
+            "normalizer": utils.normalizer_layers_names[type(self.normalizer)],
+            "activation": utils.activation_layers_names[type(self.activation)],
+            "gnn_layer_args": self.gnn_layer_args,
+            "gnn_layer_kwargs": self.gnn_layer_kwargs,
+            "norm_args": self.norm_args,
+            "norm_kwargs": self.norm_kwargs,
+            "activation_args": self.activation_args,
+            "activation_kwargs": self.activation_kwargs,
+            "projection_args": self.projection_args,
+            "projection_kwargs": self.projection_kwargs,
+        }
+        return config
+
     def save(self, path: str | Path) -> None:
         """Save the model's state to file.
 
@@ -160,7 +188,9 @@ class GNNBlock(torch.nn.Module):
             path (str | Path): path to save the model to.
         """
 
-        torch.save(self, path)
+        self_as_cfg = self.to_config()
+
+        torch.save({"config": self_as_cfg, "state_dict": self.state_dict()}, path)
 
     @classmethod
     def load(
@@ -175,5 +205,7 @@ class GNNBlock(torch.nn.Module):
             GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
         """
 
-        model = torch.load(path, map_location=device, weights_only=False)
+        modeldata = torch.load(path, weights_only=False)
+        model = cls.from_config(modeldata["config"]).to(device)
+        model.load_state_dict(modeldata["state_dict"])
         return model
