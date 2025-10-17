@@ -6,7 +6,6 @@ from . import utils
 # quality of life
 from typing import Any
 from pathlib import Path
-import json
 
 
 class GNNBlock(torch.nn.Module):
@@ -167,21 +166,21 @@ class GNNBlock(torch.nn.Module):
     def to_config(self) -> dict[str, Any]:
         """Convert the GNNBlock instance to a configuration dictionary."""
         config = {
-            "in_dim": str(self.in_dim),
-            "out_dim": str(self.out_dim),
-            "dropout": str(self.dropout),
-            "with_skip": str(self.with_skip),
-            "gnn_layer_type": utils.gnn_layers_names[self.gnn_layer_type],
-            "normalizer": utils.normalizer_layers_names[self.normalizer],
-            "activation": utils.activation_layers_names[self.activation],
-            "gnn_layer_args": json.dumps(self.gnn_layer_args),
-            "gnn_layer_kwargs": json.dumps(self.gnn_layer_kwargs),
-            "norm_args": json.dumps(self.norm_args),
-            "norm_kwargs": json.dumps(self.norm_kwargs),
-            "activation_args": json.dumps(self.activation_args),
-            "activation_kwargs": json.dumps(self.activation_kwargs),
-            "projection_args": json.dumps(self.projection_args),
-            "projection_kwargs": json.dumps(self.projection_kwargs),
+            "in_dim": self.in_dim,
+            "out_dim": self.out_dim,
+            "dropout": self.dropout.p,
+            "with_skip": self.with_skip,
+            "gnn_layer_type": utils.gnn_layers_names[type(self.conv)],
+            "normalizer": utils.normalizer_layers_names[type(self.normalizer)],
+            "activation": utils.activation_layers_names[type(self.activation)],
+            "gnn_layer_args": self.gnn_layer_args,
+            "gnn_layer_kwargs": self.gnn_layer_kwargs,
+            "norm_args": self.norm_args,
+            "norm_kwargs": self.norm_kwargs,
+            "activation_args": self.activation_args,
+            "activation_kwargs": self.activation_kwargs,
+            "projection_args": self.projection_args,
+            "projection_kwargs": self.projection_kwargs,
         }
         return config
 

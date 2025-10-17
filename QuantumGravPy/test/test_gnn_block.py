@@ -147,6 +147,26 @@ def test_gnn_block_from_config(gnn_block_config):
     assert isinstance(gnn_block.projection, torch.nn.Linear)
 
 
+def test_gnn_block_to_config(gnn_block):
+    config = gnn_block.to_config()
+
+    assert config["in_dim"] == gnn_block.in_dim
+    assert config["out_dim"] == gnn_block.out_dim
+    assert config["dropout"] == gnn_block.dropout_p
+    assert config["with_skip"] == gnn_block.with_skip
+    assert config["gnn_layer_type"] == "gcn"
+    assert config["normalizer"] == "batch_norm"
+    assert config["activation"] == "relu"
+    assert config["gnn_layer_args"] == gnn_block.gnn_layer_args
+    assert config["gnn_layer_kwargs"] == gnn_block.gnn_layer_kwargs
+    assert config["norm_args"] == gnn_block.norm_args
+    assert config["norm_kwargs"] == gnn_block.norm_kwargs
+    assert config["activation_args"] == gnn_block.activation_args
+    assert config["activation_kwargs"] == gnn_block.activation_kwargs
+    assert config["projection_args"] == gnn_block.projection_args
+    assert config["projection_kwargs"] == gnn_block.projection_kwargs
+
+
 def test_gnn_block_save_load(gnn_block, tmp_path):
     "test saving and loading of the gnn_block"
 
@@ -157,3 +177,8 @@ def test_gnn_block_save_load(gnn_block, tmp_path):
     assert loaded_gnn_block.state_dict().keys() == gnn_block.state_dict().keys()
     for k in loaded_gnn_block.state_dict().keys():
         assert torch.equal(loaded_gnn_block.state_dict()[k], gnn_block.state_dict()[k])
+
+    x = torch.tensor(np.random.uniform(0, 1, (10, 16)), dtype=torch.float)
+    edge_index = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
+    y = gnn_block.forward(x, edge_index)
+    assert y.shape == (10, 32)
