@@ -6,6 +6,7 @@ from . import utils
 # quality of life
 from typing import Any
 from pathlib import Path
+import json
 
 
 class GNNBlock(torch.nn.Module):
@@ -95,6 +96,16 @@ class GNNBlock(torch.nn.Module):
         else:
             self.projection = torch.nn.Identity()
 
+        # save args/kwargs
+        self.gnn_layer_args = gnn_layer_args
+        self.gnn_layer_kwargs = gnn_layer_kwargs
+        self.norm_args = norm_args
+        self.norm_kwargs = norm_kwargs
+        self.activation_args = activation_args
+        self.activation_kwargs = activation_kwargs
+        self.projection_args = projection_args
+        self.projection_kwargs = projection_kwargs
+
     def forward(
         self, x: torch.Tensor, edge_index: torch.Tensor, **kwargs
     ) -> torch.Tensor:
@@ -153,6 +164,27 @@ class GNNBlock(torch.nn.Module):
             projection_kwargs=config.get("projection_kwargs", None),
         )
 
+    def to_config(self) -> dict[str, Any]:
+        """Convert the GNNBlock instance to a configuration dictionary."""
+        config = {
+            "in_dim": str(self.in_dim),
+            "out_dim": str(self.out_dim),
+            "dropout": str(self.dropout),
+            "with_skip": str(self.with_skip),
+            "gnn_layer_type": utils.gnn_layers_names[self.gnn_layer_type],
+            "normalizer": utils.normalizer_layers_names[self.normalizer],
+            "activation": utils.activation_layers_names[self.activation],
+            "gnn_layer_args": json.dumps(self.gnn_layer_args),
+            "gnn_layer_kwargs": json.dumps(self.gnn_layer_kwargs),
+            "norm_args": json.dumps(self.norm_args),
+            "norm_kwargs": json.dumps(self.norm_kwargs),
+            "activation_args": json.dumps(self.activation_args),
+            "activation_kwargs": json.dumps(self.activation_kwargs),
+            "projection_args": json.dumps(self.projection_args),
+            "projection_kwargs": json.dumps(self.projection_kwargs),
+        }
+        return config
+
     def save(self, path: str | Path) -> None:
         """Save the model's state to file.
 
@@ -160,7 +192,9 @@ class GNNBlock(torch.nn.Module):
             path (str | Path): path to save the model to.
         """
 
-        torch.save(self, path)
+        self_as_cfg = self.to_config()
+
+        torch.save({"config": self_as_cfg, "state_dict": self.state_dict()}, path)
 
     @classmethod
     def load(
@@ -175,5 +209,7 @@ class GNNBlock(torch.nn.Module):
             GNNBlock: A GNNBlock instance initialized from the data loaded from the file.
         """
 
-        model = torch.load(path, map_location=device, weights_only=False)
+        modeldata = torch.load(path, map_location=device, weights_only=False)
+        model = cls.from_config(modeldata["config"])
+        model.load_state_dict(modeldata["state_dict"])
         return model
