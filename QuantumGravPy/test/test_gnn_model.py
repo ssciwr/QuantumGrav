@@ -458,6 +458,15 @@ def test_gnn_model_forward_without_pooling(gnn_model_with_graph_features_no_pool
     assert output[1].shape == (7, 3)
 
 
+def test_gnn_model_to_config(gnn_model_with_graph_features):
+    cfg = gnn_model_with_graph_features.to_config()
+    assert "encoder" in cfg
+    assert "downstream_tasks" in cfg
+    assert "pooling_layers" in cfg
+    assert "graph_features_net" in cfg
+    assert "aggregate_graph_features" in cfg
+
+
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
