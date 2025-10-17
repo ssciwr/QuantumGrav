@@ -198,7 +198,7 @@ class GNNModel(torch.nn.Module):
                 pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
             ]
 
-            return self.aggregate_pooling(pooled_embeddings)
+            return self.aggregate_pooling(*pooled_embeddings)
         else:
             return embeddings
 
@@ -475,7 +475,9 @@ class GNNModel(torch.nn.Module):
             "encoder": [encoder_layer.to_config() for encoder_layer in self.encoder],
             "downstream_tasks": downstream_task_configs,
             "pooling_layers": pooling_layer_names,
-            "graph_features_net": self.graph_features_net.to_config(),
+            "graph_features_net": self.graph_features_net.to_config()
+            if self.graph_features_net
+            else None,
             "aggregate_graph_features": aggregate_graph_features_names,
             "aggregate_pooling": aggregate_pooling_name,
             "active_tasks": self.active_tasks,

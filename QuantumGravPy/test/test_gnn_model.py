@@ -502,11 +502,9 @@ def test_gnn_model_creation_from_config(gnn_model_config):
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
     "test saving and loading of the combined model"
     gnn_model_with_graph_features.save(tmp_path / "model.pt")
-
     assert (tmp_path / "model.pt").exists()
 
     loaded_gnn_model = QG.GNNModel.load(tmp_path / "model.pt")
-
     assert gnn_model_with_graph_features.graph_features_net is not None
     assert len(loaded_gnn_model.state_dict().keys()) == len(
         gnn_model_with_graph_features.state_dict().keys()
@@ -514,7 +512,6 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
 
     loaded_keys = set(loaded_gnn_model.state_dict().keys())
     original_keys = set(gnn_model_with_graph_features.state_dict().keys())
-
     assert loaded_keys == original_keys
 
     for k in loaded_gnn_model.state_dict().keys():

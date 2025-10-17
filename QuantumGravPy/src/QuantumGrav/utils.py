@@ -1,8 +1,14 @@
-from functools import partial
 import torch
 import torch_geometric.nn as tgnn
 
 from typing import Callable
+
+
+def cat1(
+    *tensors,
+):
+    return torch.cat(tensors, dim=1)
+
 
 gnn_layers: dict[str, type[torch.nn.Module]] = {
     "gcn": tgnn.conv.GCNConv,
@@ -68,25 +74,25 @@ pooling_layers_names: dict[type[torch.nn.Module] | Callable, str] = {
 
 pooling_aggregations: dict[str, Callable | type[torch.nn.Module]] = {
     "cat0": torch.cat,
-    "cat1": partial(torch.cat, dim=1),
+    "cat1": cat1,
     "identity": torch.nn.Identity,
 }
 
 pooling_aggregations_names: dict[type[torch.nn.Module] | Callable, str] = {
     torch.cat: "cat0",
-    partial(torch.cat, dim=1): "cat1",
+    cat1: "cat1",
     torch.nn.Identity: "identity",
 }
 
 graph_features_aggregations: dict[str, Callable | type[torch.nn.Module]] = {
     "cat0": torch.cat,
-    "cat1": partial(torch.cat, dim=1),
+    "cat1": cat1,
     "identity": torch.nn.Identity,
 }
 
 graph_features_aggregations_names: dict[type[torch.nn.Module] | Callable, str] = {
     torch.cat: "cat0",
-    partial(torch.cat, dim=1): "cat1",
+    cat1: "cat1",
     torch.nn.Identity: "identity",
 }
 
