@@ -198,7 +198,7 @@ class GNNModel(torch.nn.Module):
                 pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
             ]
 
-            return self.aggregate_pooling(*pooled_embeddings)
+            return self.aggregate_pooling(pooled_embeddings)
         else:
             return embeddings
 

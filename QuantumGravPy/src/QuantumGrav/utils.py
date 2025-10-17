@@ -5,7 +5,7 @@ from typing import Callable
 
 
 def cat1(
-    *tensors,
+    tensors: list[torch.Tensor],
 ):
     return torch.cat(tensors, dim=1)
 
@@ -56,7 +56,6 @@ activation_layers_names: dict[type[torch.nn.Module], str] = {
     torch.nn.Tanh: "tanh",
     torch.nn.Identity: "identity",
 }
-
 
 pooling_layers: dict[str, Callable | type[torch.nn.Module]] = {
     "mean": tgnn.global_mean_pool,
