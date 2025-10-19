@@ -1,4 +1,5 @@
 from functools import partial
+import importlib
 import torch
 import torch_geometric.nn as tgnn
 
@@ -277,3 +278,26 @@ def verify_config_node(cfg) -> bool:
     if not isinstance(cfg["kwargs"], dict):
         return False
     return True
+
+
+def import_and_get(modulename: str, objectname: str) -> type | None:
+    """Import a module and get an object from it.
+
+    Args:
+        modulename (str): The name of the module to import.
+        objectname (str): The name of the object to get from the module.
+    Returns:
+        type | None: The object from the module.
+    """
+
+    try:
+        module = importlib.import_module(modulename)
+    except Exception as e:
+        raise ValueError(f"Importing module {modulename} unsuccessful") from e
+
+    try:
+        tpe = getattr(module, objectname)
+    except Exception as e:
+        raise ValueError(f"Could not load name {objectname} from {modulename}") from e
+    
+    return tpe
