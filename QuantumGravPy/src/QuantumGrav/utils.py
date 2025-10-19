@@ -280,24 +280,27 @@ def verify_config_node(cfg) -> bool:
     return True
 
 
-def import_and_get(modulename: str, objectname: str) -> type | None:
+def import_and_get(importpath: str) -> type | None:
     """Import a module and get an object from it.
 
     Args:
-        modulename (str): The name of the module to import.
-        objectname (str): The name of the object to get from the module.
+        importpath (str): The import path of the object to get.
+
     Returns:
         type | None: The object from the module.
     """
+    parts = importpath.split(".")
+    module_name = ".".join(parts[:-1])
+    object_name = parts[-1]
 
     try:
-        module = importlib.import_module(modulename)
+        module = importlib.import_module(module_name)
     except Exception as e:
-        raise ValueError(f"Importing module {modulename} unsuccessful") from e
+        raise ValueError(f"Importing module {module_name} unsuccessful") from e
 
     try:
-        tpe = getattr(module, objectname)
+        tpe = getattr(module, object_name)
     except Exception as e:
-        raise ValueError(f"Could not load name {objectname} from {modulename}") from e
-    
+        raise ValueError(f"Could not load name {object_name} from {module_name}") from e
+
     return tpe

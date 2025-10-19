@@ -6,8 +6,7 @@ import pandas as pd
 import logging
 from abc import abstractmethod
 from sklearn.metrics import f1_score
-
-from . import utils   
+from . import utils
 
 
 class DefaultEvaluator:
@@ -248,7 +247,7 @@ class AccuracyEval:
         self,
         metrics: Callable | type[torch.nn.Module],
         metrics_args: list[Any] = [],
-        metric_kwargs: dict[str, Any] = {},
+        metrics_kwargs: dict[str, Any] = {},
     ) -> None:
         """Accuracy evaluator initialization."""
 
@@ -283,12 +282,21 @@ class AccuracyEval:
         # TODO: add metrics lookup
 
         metrics = config.get("metrics", None)
-        if metrics is not None: 
-            try: 
-                utils.get_
+        metricstype = None
+        if metrics is not None:
+            try:
+                metricstype = utils.import_and_get(metrics)
+            except ValueError as e:
+                raise ValueError(
+                    f"Could not import metrics {metrics} for AccuracyEval"
+                ) from e
 
+        args = config.get("metrics_args", [])
+        kwargs = config.get("metrics_kwargs", {})
         return cls(
-            metrics=None,
+            metrics=metricstype,
+            metrics_args=args,
+            metrics_kwargs=kwargs,
         )
 
 
