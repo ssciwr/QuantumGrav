@@ -7,6 +7,8 @@ import logging
 from abc import abstractmethod
 from sklearn.metrics import f1_score
 
+from . import utils   
+
 
 class DefaultEvaluator:
     """Default evaluator for model evaluation - testing and validation during training"""
@@ -235,7 +237,6 @@ class F1ScoreEval:
         """
         return cls(
             average=config.get("average", "macro"),
-            mode=config.get("mode", "binary"),
             labels=config.get("labels", None),
         )
 
@@ -243,13 +244,18 @@ class F1ScoreEval:
 class AccuracyEval:
     """Accuracy evaluator, primarily useful for evaluation of regression problems. A callable class that builds an accuracy evaluator to a given set of specifications."""
 
-    def __init__(self, metrics: Callable | None = None):
+    def __init__(
+        self,
+        metrics: Callable | type[torch.nn.Module],
+        metrics_args: list[Any] = [],
+        metric_kwargs: dict[str, Any] = {},
+    ) -> None:
         """Accuracy evaluator initialization."""
 
         if metrics is None:
             self.metrics = torch.nn.MSELoss()
         else:
-            self.metrics = metrics
+            self.metrics = metrics(*metrics_args, **metric_kwargs)
 
     def __call__(
         self, data: dict[Any, Any], task: int
@@ -275,6 +281,12 @@ class AccuracyEval:
             AccuracyEval: An instance of AccuracyEval initialized with the provided configuration.
         """
         # TODO: add metrics lookup
+
+        metrics = config.get("metrics", None)
+        if metrics is not None: 
+            try: 
+                utils.get_
+
         return cls(
             metrics=None,
         )
