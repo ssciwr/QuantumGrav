@@ -4,6 +4,8 @@ import torch_geometric
 import numpy as np
 import pandas as pd
 import logging
+from abc import abstractmethod
+from sklearn.metrics import f1_score
 
 
 class DefaultEvaluator:
@@ -13,6 +15,11 @@ class DefaultEvaluator:
         self,
         device: str | torch.device | int,
         criterion: Callable,
+        compute_per_task: dict[int, dict[Any, Callable]],
+        get_target_per_task: dict[
+            int, Callable[[dict[int, torch.tensor], int], torch.tensor]
+        ]
+        | None = None,
         apply_model: Callable | None = None,
     ):
         """Default evaluator for model evaluation.
@@ -25,14 +32,22 @@ class DefaultEvaluator:
         self.criterion = criterion
         self.apply_model = apply_model
         self.device = device
-        self.data: pd.DataFrame | list = []
+        self.data: pd.DataFrame | None = None
         self.logger = logging.getLogger(__name__)
+        self.compute_per_task = compute_per_task
+        self.get_target_per_task = get_target_per_task
+        self.active_tasks = []
+
+    def reset(self) -> None:
+        """Reset the evaluator's recorded data."""
+        self.data = None
+        self.active_tasks = []
 
     def evaluate(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Evaluate the model on the given data loader.
 
         Args:
@@ -43,8 +58,14 @@ class DefaultEvaluator:
              list[Any]: A list of evaluation results.
         """
         model.eval()
-        current_data = []
+        current_data = dict()
 
+        self.active_tasks = []
+        for i, task in enumerate(model.active_tasks):
+            if task:
+                self.active_tasks.append(i)
+
+        # apply model on validation data
         with torch.no_grad():
             for i, batch in enumerate(data_loader):
                 data = batch.to(self.device)
@@ -53,40 +74,61 @@ class DefaultEvaluator:
                 else:
                     outputs = model(data.x, data.edge_index, data.batch)
                 loss = self.criterion(outputs, data)
-                current_data.append(loss)
+                current_data["loss"] = current_data.get("loss", []) + [loss.item()]
 
-        return current_data
+                # record outputs and targets per task
+                for i, out in outputs.items():
+                    y = self.get_target_per_task[i](data, i)
+                    current_data[f"output_{i}"] = current_data.get(
+                        f"output_{i}", []
+                    ) + [out.cpu()]  # append outputs
+                    current_data[f"target_{i}"] = current_data.get(
+                        f"target_{i}", []
+                    ) + [y.cpu()]  # append targets
 
-    def report(self, data: list | pd.Series | torch.Tensor | np.ndarray) -> None:
+        # compute metrics
+        for i, task in self.compute_per_task.items():
+            if i in self.active_tasks:
+                for name, func in task.items():
+                    if name not in current_data:
+                        current_data[name] = func(current_data, i)
+
+        # add current_data to self.data
+        if self.data is None:
+            self.data = pd.DataFrame(current_data)
+        else:
+            # when the dataframe has not all columns present yet, add them with NaN values
+            # this can happen when the active tasks change during training
+            for k in current_data.keys():
+                if k not in self.data.columns:
+                    self.data[k] = np.nan
+
+            # add the necessary data
+            self.data = pd.concat(
+                [self.data, pd.DataFrame(current_data)], ignore_index=True
+            )
+
+    @abstractmethod
+    def report(self) -> None:
         """Report the evaluation results.
 
         Args:
-            data (list | pd.Series | torch.Tensor | np.ndarray): The evaluation results.
+            data (pd.DataFrame | torch.Tensor | list | dict): Evaluation results to report.
         """
+        pass
 
-        if isinstance(data, torch.Tensor):
-            data = data.cpu().numpy()
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "DefaultEvaluator":
+        """Create DefaultEvaluator from configuration dictionary.
 
-        if isinstance(data, list):
-            for i, d in enumerate(data):
-                if isinstance(d, torch.Tensor):
-                    data[i] = d.cpu().numpy()
+        Args:
+            config (dict[str, Any]): Configuration dictionary with keys 'device', 'criterion', 'compute_per_task', 'get_target_per_task', and 'apply_model'.
 
-        avg = np.mean(data)
-        sigma = np.std(data)
-        self.logger.info(f"Average loss: {avg}, Standard deviation: {sigma}")
-
-        if isinstance(self.data, list):
-            self.data.append((avg, sigma))
-        else:
-            self.data = pd.concat(
-                [
-                    self.data,
-                    pd.DataFrame({"loss": avg, "std": sigma}, index=[0]),
-                ],
-                axis=0,
-                ignore_index=True,
-            )
+        Returns:
+            DefaultEvaluator: An instance of DefaultEvaluator initialized with the provided configuration.
+        """
+        # TODO
+        pass
 
 
 class DefaultTester(DefaultEvaluator):
@@ -97,39 +139,29 @@ class DefaultTester(DefaultEvaluator):
     using a specified criterion and optional model application function.
     """
 
-    def __init__(
-        self,
-        device: str | torch.device | int,
-        criterion: Callable,
-        apply_model: Callable | None = None,
-    ):
-        """Default tester for model testing.
-
-        Args:
-            device (str | torch.device | int,): The device to run the testing on.
-            criterion (Callable): The loss function to use for testing.
-            apply_model (Callable): A function to apply the model to the data.
-        """
-        super().__init__(device, criterion, apply_model)
-
     def test(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Test the model on the given data loader.
 
         Args:
             model (torch.nn.Module): Model to test.
             data_loader (torch_geometric.loader.DataLoader): Data loader for testing.
-
-        Returns:
-            list[Any]: A list of testing results.
         """
-        return self.evaluate(model, data_loader)
+        self.evaluate(model, data_loader)
+
+    def report(self) -> None:
+        """Report the testing results."""
+        if self.data is not None:
+            self.logger.info("Testing Results:")
+            self.logger.info(self.data.tail(1).to_string(index=False))
+        else:
+            self.logger.info("No testing data to report.")
 
 
-class DefaultValidator(DefaultEvaluator):
+class DefaultValidator(DefaultTester):
     """Default validator for model validation.
 
     Args:
@@ -137,35 +169,115 @@ class DefaultValidator(DefaultEvaluator):
     using a specified criterion and optional model application function.
     """
 
-    def __init__(
-        self,
-        device: str | torch.device | int,
-        criterion: Callable,
-        apply_model: Callable | None = None,
-    ):
-        """Default validator for model validation.
-
-        Args:
-            device (str | torch.device | int,): The device to run the validation on.
-            criterion (Callable): The loss function to use for validation.
-            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
-        """
-        super().__init__(device, criterion, apply_model)
-
     def validate(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Validate the model on the given data loader.
 
         Args:
             model (torch.nn.Module): Model to validate.
             data_loader (torch_geometric.loader.DataLoader): Data loader for validation.
-        Returns:
-            list[Any]: A list of validation results.
         """
-        return self.evaluate(model, data_loader)
+        self.evaluate(model, data_loader)
+
+    def report(self) -> None:
+        """Report the validation results."""
+        if self.data is not None:
+            self.logger.info("Validation Results:")
+            self.logger.info(self.data.tail(1).to_string(index=False))
+        else:
+            self.logger.info("No validation data to report.")
+
+
+class F1ScoreEval:
+    """F1Score evaluator, useful for evaluation of classification problems. A callable class that builds an f1 evaluator to a given set of specifications. Uses sklearn.metrics.f1_score for the computation fo the f1 score."""
+
+    def __init__(
+        self,
+        average: str = "macro",
+        labels: list[int] | None = None,
+    ):
+        """F1 score evaluator.
+
+        Args:
+            average (str, optional): Averaging method for F1 score. Defaults to "macro". Can be 'micro', 'macro', 'weighted', or 'none'.
+        """
+        self.average = average
+        self.labels = labels
+
+    def __call__(
+        self, data: dict[Any, Any], task: int
+    ) -> float | np.float64 | np.array | list:
+        """Compute F1 score for a given task.
+
+        Args:
+            data (dict[Any, Any]): Dictionary containing outputs and targets.
+            task (int): Task index.
+        pass
+        """
+        # TODO: check that the dimensionality is still correct
+        # if the model output has more than one dimension, we need to adjust the y_pred accordingly
+        # and squeeze/unsqueeze as needed
+        y_true = torch.cat(data[f"target_{task}"])
+        y_pred = torch.cat(data[f"output_{task}"])
+        return f1_score(y_true, y_pred, average=self.average, labels=self.labels)
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "F1ScoreEval":
+        """Create F1ScoreEval from configuration dictionary.
+
+        Args:
+            config (dict[str, Any]): Configuration dictionary with keys 'average', 'mode', and 'labels'.
+        Returns:
+            F1ScoreEval: An instance of F1ScoreEval initialized with the provided configuration.
+        """
+        return cls(
+            average=config.get("average", "macro"),
+            mode=config.get("mode", "binary"),
+            labels=config.get("labels", None),
+        )
+
+
+class AccuracyEval:
+    """Accuracy evaluator, primarily useful for evaluation of regression problems. A callable class that builds an accuracy evaluator to a given set of specifications."""
+
+    def __init__(self, metrics: Callable | None = None):
+        """Accuracy evaluator initialization."""
+
+        if metrics is None:
+            self.metrics = torch.nn.MSELoss()
+        else:
+            self.metrics = metrics
+
+    def __call__(
+        self, data: dict[Any, Any], task: int
+    ) -> float | np.float64 | np.array | list:
+        """Compute accuracy for a given task.
+
+        Args:
+            data (dict[Any, Any]): Dictionary containing outputs and targets.
+            task (int): Task index.
+        """
+        y_true = torch.cat(data[f"target_{task}"])
+        y_pred = torch.cat(data[f"output_{task}"])
+
+        return self.metrics(y_pred, y_true).item()
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "AccuracyEval":
+        """Create AccuracyEval from configuration dictionary.
+
+        Args:
+            config (dict[str, Any]): Configuration dictionary with keys 'average', 'mode', and 'labels'.
+        Returns:
+            AccuracyEval: An instance of AccuracyEval initialized with the provided configuration.
+        """
+        # TODO: add metrics lookup
+        return cls(
+            metrics=None,
+        )
 
 
 # early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
