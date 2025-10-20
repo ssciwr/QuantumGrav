@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import pandas as pd
 import pytest
+from jsonschema import ValidationError
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
@@ -13,7 +14,7 @@ def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     return loss
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def input():
     return {
         "patience": 7,
@@ -23,6 +24,36 @@ def input():
         "smoothing": False,
         "grace_period": [8, 4],
     }
+
+
+@pytest.fixture(scope="session")
+def f1eval_config():
+    return {"average": "macro", "labels": [0, 1]}
+
+
+@pytest.fixture(scope="session")
+def f1eval_config_broken():
+    return {"average": "not_recognized", "labels": [0, 1]}
+
+
+def test_f1eval_creation(f1eval_config):
+    evaluator = QG.evaluate.F1ScoreEval(
+        average=f1eval_config["average"],
+        labels=f1eval_config["labels"],
+    )
+    assert evaluator.average == f1eval_config["average"]
+    assert evaluator.labels == f1eval_config["labels"]
+
+
+def test_f1eval_fromconfig(f1eval_config):
+    evaluator = QG.evaluate.F1ScoreEval.from_config(f1eval_config)
+    assert evaluator.average == f1eval_config["average"]
+    assert evaluator.labels == f1eval_config["labels"]
+
+
+def test_f1eval_fromconfig_broken(f1eval_config_broken):
+    with pytest.raises(ValidationError):
+        QG.evaluate.F1ScoreEval.from_config(f1eval_config_broken)
 
 
 def test_default_evaluator_creation(gnn_model_eval):
