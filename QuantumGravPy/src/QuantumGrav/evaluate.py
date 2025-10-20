@@ -574,78 +574,72 @@ class DefaultEarlyStopping(base.Configurable):
     # put this into the package
     def __init__(
         self,
-        patience: int,
-        delta: list[float] = [1e-4],
-        window: list[int] = [7],
-        metric: list[str] = ["loss"],
-        smoothing: bool = False,
-        criterion: Callable = lambda early_stopping_instance,
-        data: early_stopping_instance.current_patience <= 0,
-        init_best_score: float = np.inf,
-        mode: str | Callable[[list[bool]], bool] = "any",
-        grace_period: list[int] = [
-            0,
-        ],
+        tasks: dict[str | int, Any],
+        mode: str | Callable[[dict[str | int, Any]], bool] = "any",
     ):
-        """Early stopping initialization.
+        """_summary_
 
-        Args:
-            patience (int): Number of epochs with no improvement after which training will be stopped.
-            delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
-            window (int, optional): Size of the moving window for smoothing. Defaults to 7.
-            metric (str, optional): Metric to monitor for early stopping. Defaults to "loss". This class always assumes that lower values for 'metric' are better.
-            smoothing (bool, optional): Whether to apply smoothed mean to the metric to dampen fluctuations. Defaults to False.
-            criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
-            init_best_score (float): initial best score value.
-            mode (str | Callable[[list[bool]], bool], optional): The mode for early stopping. Can be "any", "all", or a custom function. Defaults to "any". This decides wheather all tracked metrics have to improve or only one of them, or if something else should be done by applying a custom function to the array of evaluation results.
+        Raises:
+            ValueError: _description_
         """
-        lw = len(window)
-        lm = len(metric)
-        ld = len(delta)
-        lg = len(grace_period)
+        self.tasks = tasks
 
-        if min([lw, lm, ld, lg]) != max([lw, lm, ld, lg]):
-            raise ValueError(
-                f"Inconsistent lengths for early stopping parameters: {lw}, {lm}, {ld}, {lg}"
-            )
+        for key, task in tasks.items():
+            task["current_grace_period"] = task["grace_period"]
+            task["current_patience"] = task["patience"]
+            task["best_score"] = task["init_best_score"]
+            task["found_better"] = False
 
-        self.patience = patience
-        self.current_patience = patience
-        self.delta = delta
-        self.window = window
-        self.found_better = [False for _ in range(lw)]
-        self.metric = metric
-        self.init_best_score = init_best_score
-        self.best_score = [init_best_score for _ in range(lw)]
-        self.smoothing = smoothing
         self.logger = logging.getLogger(__name__)
-        self.criterion = criterion
         self.mode = mode
-        self.found_better = [False for _ in range(lw)]
-        self.grace_period = grace_period
-        self.current_grace_period = [grace_period[i] for i in range(lg)]
 
     @property
     def found_better_model(self) -> bool:
         """Check if a better model has been found."""
 
         if self.mode == "any":
-            return any(self.found_better)
+            return any(
+                [
+                    task["found_better"]
+                    for task in self.tasks.values()
+                    if task["found_better"]
+                ]
+            )
         elif self.mode == "all":
-            return all(self.found_better)
+            return all(
+                [
+                    task["found_better"]
+                    for task in self.tasks.values()
+                    if task["found_better"]
+                ]
+            )
         elif callable(self.mode):
-            return self.mode(self.found_better)
+            return self.mode(self.tasks)
         else:
             raise ValueError("Mode must be 'any', 'all', or a callable in Evaluator")
 
-    def reset(self) -> None:
+    def reset(self, index: int | str = "all") -> None:
         """Reset early stopping state."""
-        self.current_patience = self.patience
-        self.found_better = [False for _ in range(len(self.window))]
-        self.current_grace_period = self.grace_period
+        if index == "all":
+            for task in self.tasks.values():
+                task["current_patience"] = task["patience"]
+                task["found_better"] = False
+                task["current_grace_period"] = task["grace_period"]
+        else:
+            task = self.tasks.get(index)
+            if task is not None:
+                task["current_patience"] = task["patience"]
+                task["found_better"] = False
+                task["current_grace_period"] = task["grace_period"]
 
     def add_task(
-        self, delta: float, window: int, metric: str, grace_period: int
+        self,
+        index: int | str,
+        delta: float,
+        window: int,
+        metric: str,
+        grace_period: int,
+        init_best_score: float | int = np.inf,
     ) -> None:
         """Add a new task for early stopping.
 
@@ -655,25 +649,23 @@ class DefaultEarlyStopping(base.Configurable):
             metric (str): Metric to monitor for early stopping.
             grace_period (int): Grace period for early stopping.
         """
-        self.delta.append(delta)
-        self.window.append(window)
-        self.metric.append(metric)
-        self.grace_period.append(grace_period)
-        self.current_grace_period.append(grace_period)
-        self.best_score.append(self.init_best_score)
-        self.found_better.append(False)
+        self.tasks[index] = {
+            "delta": delta,
+            "window": window,
+            "metric": metric,
+            "grace_period": grace_period,
+            "current_grace_period": grace_period,
+            "best_score": init_best_score,
+            "found_better": False,
+        }
 
-    def remove_task(self, index: int) -> None:
+    def remove_task(self, index: int | str) -> None:
         """Remove a task from early stopping.
 
         Args:
-            index (int): The index of the task to remove.
+            index (int | str): The index of the task to remove.
         """
-        self.delta.pop(index)
-        self.window.pop(index)
-        self.metric.pop(index)
-        self.grace_period.pop(index)
-        self.best_score.pop(index)
+        self.tasks.pop(index)
 
     def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
         """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
@@ -685,47 +677,65 @@ class DefaultEarlyStopping(base.Configurable):
         Returns:
             bool: True if early stopping criteria are met, False otherwise.
         """
-        self.found_better = [False for _ in range(len(self.window))]
+        for t in self.tasks.values():
+            t["found_better"] = False
         ds = {}  # dict to hold current metric values
 
         # go over all registered metrics and check if the model performs better on any of them
         # then aggregrate the result with 'found_better_model'.
-        for i in range(len(self.window)):
+        for k in self.tasks.keys():
             # prevent a skipped metric from affecting early stopping
-            if self.metric[i] not in data.columns:
-                self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
-                self.found_better[i] = True
+            if self.tasks[k]["metric"] not in data.columns:
+                self.logger.warning(
+                    f"    Metric {self.tasks[k]['metric']} not found in data."
+                )
+                self.tasks[k]["found_better"] = (
+                    True  # treat it as if it has found a better model to avoid forever deadlock
+                )
                 continue
 
-            if self.smoothing:
+            if self.tasks[k]["smoothing"]:
                 d = (
-                    data[self.metric[i]]
-                    .rolling(window=self.window[i], min_periods=1)
+                    data[self.tasks[k]["metric"]]
+                    .rolling(window=self.tasks[k]["window"], min_periods=1)
                     .mean()
                 )
             else:
-                d = data[self.metric[i]]
+                d = data[self.tasks[k]["metric"]]
 
-            if self.best_score[i] - self.delta[i] > d.iloc[-1] and len(
-                data
-            ):  # always minimize the metric
-                self.logger.info(
-                    f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
+            if self.tasks[k]["mode"] == "min":
+                better = (
+                    self.tasks[k]["best_score"] - self.tasks[k]["delta"] > d.iloc[-1]
                 )
-                self.found_better[i] = True
+            elif self.tasks[k]["mode"] == "max":
+                better = (
+                    self.tasks[k]["best_score"] - self.tasks[k]["delta"] < d.iloc[-1]
+                )
+            else:
+                raise ValueError(
+                    "Unknown value for mode in task. must be 'max' or 'min'."
+                )
 
-            ds[i] = d.iloc[-1]
+            if better and len(data) > 1:
+                self.logger.info(
+                    f"    Better model found at task {k}: {d.iloc[-1]:.8f}, current best: {self.tasks[k]['best_score']:.8f}"
+                )
+                self.tasks[k]["found_better"] = True
+
+            ds[k] = d.iloc[-1]
 
         if self.found_better_model:
             # when we found a better model the stopping patience gets reset
+            self.tasks[k]["current_patience"] = self.tasks[k][
+                "patience"
+            ]  # reset patience
             self.logger.info("Found better model")
-            for i in range(len(self.best_score)):
-                if self.found_better[i] and i in ds:
+            for j in self.tasks.keys():
+                if self.tasks[j]["found_better"] and j in ds:
                     self.logger.info(
-                        f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
+                        f"current best score: {self.tasks[j]['best_score']:.8f}, current score: {ds[j]:.8f}"
                     )
-                    self.best_score[i] = ds[i]  # record best score
-            self.current_patience = self.patience  # reset patience
+                    self.tasks[j]["best_score"] = ds[j]  # record best score
 
         # only when all grace periods are done will we reduce the patience
         elif all([g <= 0 for g in self.current_grace_period]):
@@ -790,3 +800,10 @@ class DefaultEarlyStopping(base.Configurable):
             raise ValueError("Invalid configuration for Evaluator")
 
         return cls()
+
+
+"""
+TODO: 
+- allow the DefaultEvaluator to have multiple metrics per task 
+- make it configurable
+"""
