@@ -577,10 +577,11 @@ class DefaultEarlyStopping(base.Configurable):
         tasks: dict[str | int, Any],
         mode: str | Callable[[dict[str | int, Any]], bool] = "any",
     ):
-        """_summary_
+        """Instantiate a new DefaultEarlyStopping.
 
-        Raises:
-            ValueError: _description_
+        Args:
+            tasks (dict[str  |  int, Any]): dict of task definitions
+            mode (str | Callable[[dict[str  |  int, Any]], bool], optional): Mode for aggregating evaluations. 'all', 'any', or a callable. Defaults to "any".
         """
         self.tasks = tasks
 
@@ -619,7 +620,11 @@ class DefaultEarlyStopping(base.Configurable):
             raise ValueError("Mode must be 'any', 'all', or a callable in Evaluator")
 
     def reset(self, index: int | str = "all") -> None:
-        """Reset early stopping state."""
+        """Reset all or a single task
+
+        Args:
+            index (int | str, optional): The index/key of the task to reset, or 'all' if all all tasks should be reset.. Defaults to "all".
+        """
         if index == "all":
             for task in self.tasks.values():
                 task["current_patience"] = task["patience"]
@@ -639,15 +644,23 @@ class DefaultEarlyStopping(base.Configurable):
         window: int,
         metric: str,
         grace_period: int,
+        patience: int,
+        smoothed: bool,
         init_best_score: float | int = np.inf,
+        mode: str = "min",
     ) -> None:
-        """Add a new task for early stopping.
+        """Add a new task to the evaluator
 
         Args:
+            index (int | str): The index/key of the task the new evaluation belongs to
             delta (float): Minimum change to consider an improvement.
             window (int): Size of the moving window for smoothing.
             metric (str): Metric to monitor for early stopping.
             grace_period (int): Grace period for early stopping.
+            patience (int): Patience for early stopping.
+            smoothed (bool): Whether to apply smoothing to the metric.
+            init_best_score (float | int, optional): Initial best score for the metric. Defaults to np.inf.
+            mode (str, optional): Mode for early stopping. Defaults to "min".
         """
         self.tasks[index] = {
             "delta": delta,
@@ -657,6 +670,9 @@ class DefaultEarlyStopping(base.Configurable):
             "current_grace_period": grace_period,
             "best_score": init_best_score,
             "found_better": False,
+            "patience": patience,
+            "current_patience": patience,
+            "smoothed": smoothed,
         }
 
     def remove_task(self, index: int | str) -> None:
@@ -666,6 +682,27 @@ class DefaultEarlyStopping(base.Configurable):
             index (int | str): The index of the task to remove.
         """
         self.tasks.pop(index)
+
+    def _evaluate_task(self, task: dict[str, Any], value: Any) -> bool:
+        """Evaluate task
+
+        Args:
+            task (dict[str, Any]): The task to evaluate.
+            value (Any): The value to compare against the task's best score.
+
+        Raises:
+            ValueError: If the task's mode is not recognized.
+
+        Returns:
+            bool: True if the task is improved, False otherwise.
+        """
+        if task["mode"] == "min":
+            return task["best_score"] - task["delta"] > value
+        elif task["mode"] == "max":
+            return task["best_score"] - task["delta"] < value
+        else:
+            raise ValueError("Unknown value for mode in task. must be 'max' or 'min'.")
+            return False
 
     def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
         """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
@@ -703,18 +740,7 @@ class DefaultEarlyStopping(base.Configurable):
             else:
                 d = data[self.tasks[k]["metric"]]
 
-            if self.tasks[k]["mode"] == "min":
-                better = (
-                    self.tasks[k]["best_score"] - self.tasks[k]["delta"] > d.iloc[-1]
-                )
-            elif self.tasks[k]["mode"] == "max":
-                better = (
-                    self.tasks[k]["best_score"] - self.tasks[k]["delta"] < d.iloc[-1]
-                )
-            else:
-                raise ValueError(
-                    "Unknown value for mode in task. must be 'max' or 'min'."
-                )
+            better = self._evaluate_task(self.tasks[k], d.iloc[-1])
 
             if better and len(data) > 1:
                 self.logger.info(
@@ -757,7 +783,7 @@ class DefaultEarlyStopping(base.Configurable):
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
-        """_summary_
+        """Verify the configuraion file via a json schema.
 
         Args:
             config (dict[str, Any]): _description_
@@ -765,14 +791,63 @@ class DefaultEarlyStopping(base.Configurable):
         Returns:
             bool: _description_
         """
+
         schema = {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "title": "AccuracyEval Configuration",
             "type": "object",
             "properties": {
-                # TODO
+                "tasks": {
+                    "type": "object",
+                    "description": "A list of properties for each task in the ML model to evaluate.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "delta": {
+                                "type": float,
+                                "description": "The minimum change in the metric to qualify as an improvement.",
+                            },
+                            "window": {
+                                "type": int,
+                                "description": "The window length in epochs when the data shall be smoothed.",
+                                "minimum": 1,
+                            },
+                            "metric": {
+                                "type": str,
+                                "description": "The metric to optimize during training.",
+                            },
+                            "grace_period": {
+                                "type": int,
+                                "description": "The number of epochs with no improvement after which training will be stopped.",
+                                "minimum": 0,
+                            },
+                            "patience": {
+                                "type": int,
+                                "description": "The number of epochs with no improvement after which training will be stopped.",
+                                "minimum": 1,
+                            },
+                            "init_best_score": {
+                                "type": float,
+                                "description": "The initial best score for the task.",
+                            },
+                            "mode": {
+                                "type": str,
+                                "description": "Whether finding a better model min or max comparison based",
+                                "enum": ["min", "max"],
+                            },
+                            "smoothed": {
+                                "type": bool,
+                                "description": "Whether to apply smoothing to the metric.",
+                            },
+                        },
+                    },
+                },
+                "mode": {
+                    "type": str,
+                    "description": "The mode for early stopping, either 'min' or 'max' or the name of a callable that can be imported.",
+                },
             },
-            "required": ["metrics"],
+            "required": ["tasks", "mode"],
             "additionalProperties": False,
         }
 
@@ -785,25 +860,29 @@ class DefaultEarlyStopping(base.Configurable):
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "DefaultEarlyStopping":
-        """_summary_
+        """Construct a DefaultEarlyStopping from a configuration dictionary.
 
         Args:
-            config (dict[str, Any]): _description_
+            config (dict[str, Any]): The configuration dictionary.
 
         Raises:
-            ValueError: _description_
-
+            ValueError: If the configuration is invalid.
+            ImportError: When the mode is not "min" or "max" and cannot be imported.
         Returns:
-            DefaultEarlyStopping: _description_
+            DefaultEarlyStopping: The constructed DefaultEarlyStopping instance.
         """
         if cls.verify_config(config) is False:
             raise ValueError("Invalid configuration for Evaluator")
 
-        return cls()
+        tasks = config["tasks"]
+        mode = config["mode"]
 
+        # handle callable mode
+        if mode not in ["min", "max"]:
+            try:
+                mode = utils.import_and_get(mode)
+            except ImportError:
+                logging.error(f"Could not import callable for mode: {mode}")
+                raise ValueError(f"Invalid mode: {mode}")
 
-"""
-TODO: 
-- allow the DefaultEvaluator to have multiple metrics per task 
-- make it configurable
-"""
+        return cls(tasks, mode)
