@@ -15,6 +15,39 @@ from . import base
 class DefaultEvaluator(base.Configurable):
     """Default evaluator for model evaluation - testing and validation during training"""
 
+    json_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Evaluator Configuration",
+        "type": "object",
+        "properties": {
+            "device": {
+                "type": "string",
+                "description": "The device to run the evaluation on.",
+            },
+            "criterion": {
+                "type": "string",
+                "description": "The loss function to use for evaluation.",
+            },
+            "compute_per_task": {
+                "type": "object",
+                "description": "Task-specific metrics to compute.",
+                "additionalProperties": {},
+            },
+            "get_target_per_task": {
+                "type": "object",
+                "description": "Function to get the target for each task.",
+                "additionalProperties": {},
+            },
+        },
+        "required": [
+            "device",
+            "criterion",
+            "compute_per_task",
+            "get_target_per_task",
+        ],
+        "additionalProperties": False,
+    }
+
     def __init__(
         self,
         device: str | torch.device | int,
@@ -125,41 +158,8 @@ class DefaultEvaluator(base.Configurable):
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
-        json_schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "title": "Evaluator Configuration",
-            "type": "object",
-            "properties": {
-                "device": {
-                    "type": "string",
-                    "description": "The device to run the evaluation on.",
-                },
-                "criterion": {
-                    "type": "string",
-                    "description": "The loss function to use for evaluation.",
-                },
-                "compute_per_task": {
-                    "type": "object",
-                    "description": "Task-specific metrics to compute.",
-                    "additionalProperties": {},
-                },
-                "get_target_per_task": {
-                    "type": "object",
-                    "description": "Function to get the target for each task.",
-                    "additionalProperties": {},
-                },
-            },
-            "required": [
-                "device",
-                "criterion",
-                "compute_per_task",
-                "get_target_per_task",
-            ],
-            "additionalProperties": False,
-        }
-
         try:
-            validate(config, json_schema)
+            validate(config, cls.json_schema)
         except ValidationError as e:
             logging.error(f"Config validation error: {e}")
             return False
@@ -364,6 +364,25 @@ class DefaultValidator(DefaultTester):
 class F1ScoreEval(base.Configurable):
     """F1Score evaluator, useful for evaluation of classification problems. A callable class that builds an f1 evaluator to a given set of specifications. Uses sklearn.metrics.f1_score for the computation fo the f1 score."""
 
+    json_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "F1ScoreEval Configuration",
+        "type": "object",
+        "properties": {
+            "average": {
+                "type": "string",
+                "enum": ["micro", "macro", "weighted", "none"],
+                "description": "Averaging method for F1 score as used by scikit-learn.",
+            },
+            "labels": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "List of numerical labels to include in the F1 score computation.",
+            },
+        },
+        "required": ["average"],
+    }
+
     def __init__(
         self,
         average: str = "macro",
@@ -404,27 +423,9 @@ class F1ScoreEval(base.Configurable):
         Returns:
             bool: True if the configuration is valid, False otherwise
         """
-        json_schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "title": "F1ScoreEval Configuration",
-            "type": "object",
-            "properties": {
-                "average": {
-                    "type": "string",
-                    "enum": ["micro", "macro", "weighted", "none"],
-                    "description": "Averaging method for F1 score as used by scikit-learn.",
-                },
-                "labels": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "List of numerical labels to include in the F1 score computation.",
-                },
-            },
-            "required": ["average"],
-        }
 
         try:
-            validate(instance=config, schema=json_schema)
+            validate(instance=config, schema=cls.json_schema)
         except ValidationError as e:
             logging.error(f"Config validation error: {e}")
             return False
@@ -450,6 +451,30 @@ class F1ScoreEval(base.Configurable):
 
 class AccuracyEval(base.Configurable):
     """Accuracy evaluator, primarily useful for evaluation of regression problems. A callable class that builds an accuracy evaluator to a given set of specifications."""
+
+    json_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "AccuracyEval Configuration",
+        "type": "object",
+        "properties": {
+            "metrics": {
+                "type": "string",
+                "description": "The name of the metric function to use.",
+            },
+            "metrics_args": {
+                "type": "array",
+                "description": "The positional arguments (*args). Any JSON value type is permitted.",
+                "items": {},
+            },
+            "metrics_kwargs": {
+                "type": "object",
+                "description": "The keyword arguments (**kwargs). Keys must be strings, values can be any JSON value type.",
+                "additionalProperties": {},
+            },
+        },
+        "required": ["metrics"],
+        "additionalProperties": False,
+    }
 
     def __init__(
         self,
@@ -502,32 +527,9 @@ class AccuracyEval(base.Configurable):
         Returns:
             bool: True if the config is valid, False otherwise
         """
-        json_schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "title": "AccuracyEval Configuration",
-            "type": "object",
-            "properties": {
-                "metrics": {
-                    "type": "string",
-                    "description": "The name of the metric function to use.",
-                },
-                "metrics_args": {
-                    "type": "array",
-                    "description": "The positional arguments (*args). Any JSON value type is permitted.",
-                    "items": {},
-                },
-                "metrics_kwargs": {
-                    "type": "object",
-                    "description": "The keyword arguments (**kwargs). Keys must be strings, values can be any JSON value type.",
-                    "additionalProperties": {},
-                },
-            },
-            "required": ["metrics"],
-            "additionalProperties": False,
-        }
 
         try:
-            validate(instance=config, schema=json_schema)
+            validate(instance=config, schema=cls.json_schema)
         except ValidationError as e:
             logging.error(f"Configuration validation error for AccuracyEval: {e}")
             return False
@@ -570,6 +572,65 @@ class AccuracyEval(base.Configurable):
 # early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
 class DefaultEarlyStopping(base.Configurable):
     """Early stopping based on a validation metric."""
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "AccuracyEval Configuration",
+        "type": "object",
+        "properties": {
+            "tasks": {
+                "type": "object",
+                "description": "A list of properties for each task in the ML model to evaluate.",
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "delta": {
+                            "type": float,
+                            "description": "The minimum change in the metric to qualify as an improvement.",
+                        },
+                        "window": {
+                            "type": int,
+                            "description": "The window length in epochs when the data shall be smoothed.",
+                            "minimum": 1,
+                        },
+                        "metric": {
+                            "type": str,
+                            "description": "The metric to optimize during training.",
+                        },
+                        "grace_period": {
+                            "type": int,
+                            "description": "The number of epochs with no improvement after which training will be stopped.",
+                            "minimum": 0,
+                        },
+                        "patience": {
+                            "type": int,
+                            "description": "The number of epochs with no improvement after which training will be stopped.",
+                            "minimum": 1,
+                        },
+                        "init_best_score": {
+                            "type": float,
+                            "description": "The initial best score for the task.",
+                        },
+                        "mode": {
+                            "type": str,
+                            "description": "Whether finding a better model min or max comparison based",
+                            "enum": ["min", "max"],
+                        },
+                        "smoothed": {
+                            "type": bool,
+                            "description": "Whether to apply smoothing to the metric.",
+                        },
+                    },
+                },
+            },
+            "mode": {
+                "type": str,
+                "description": "The mode for early stopping, either 'min' or 'max' or the name of a callable that can be imported.",
+            },
+        },
+        "required": ["tasks", "mode"],
+        "additionalProperties": False,
+    }
 
     # put this into the package
     def __init__(
@@ -791,68 +852,8 @@ class DefaultEarlyStopping(base.Configurable):
         Returns:
             bool: _description_
         """
-
-        schema = {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "title": "AccuracyEval Configuration",
-            "type": "object",
-            "properties": {
-                "tasks": {
-                    "type": "object",
-                    "description": "A list of properties for each task in the ML model to evaluate.",
-                    "additionalProperties": {
-                        "type": "object",
-                        "properties": {
-                            "delta": {
-                                "type": float,
-                                "description": "The minimum change in the metric to qualify as an improvement.",
-                            },
-                            "window": {
-                                "type": int,
-                                "description": "The window length in epochs when the data shall be smoothed.",
-                                "minimum": 1,
-                            },
-                            "metric": {
-                                "type": str,
-                                "description": "The metric to optimize during training.",
-                            },
-                            "grace_period": {
-                                "type": int,
-                                "description": "The number of epochs with no improvement after which training will be stopped.",
-                                "minimum": 0,
-                            },
-                            "patience": {
-                                "type": int,
-                                "description": "The number of epochs with no improvement after which training will be stopped.",
-                                "minimum": 1,
-                            },
-                            "init_best_score": {
-                                "type": float,
-                                "description": "The initial best score for the task.",
-                            },
-                            "mode": {
-                                "type": str,
-                                "description": "Whether finding a better model min or max comparison based",
-                                "enum": ["min", "max"],
-                            },
-                            "smoothed": {
-                                "type": bool,
-                                "description": "Whether to apply smoothing to the metric.",
-                            },
-                        },
-                    },
-                },
-                "mode": {
-                    "type": str,
-                    "description": "The mode for early stopping, either 'min' or 'max' or the name of a callable that can be imported.",
-                },
-            },
-            "required": ["tasks", "mode"],
-            "additionalProperties": False,
-        }
-
         try:
-            validate(config, schema)
+            validate(config, cls.schema)
         except ValidationError as e:
             logging.error(f"Configuration validation error: {e}")
             return False
