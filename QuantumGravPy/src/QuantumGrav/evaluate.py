@@ -6,10 +6,13 @@ import pandas as pd
 import logging
 from abc import abstractmethod
 from sklearn.metrics import f1_score
+from jsonschema import validate, ValidationError
+
 from . import utils
+from . import base
 
 
-class DefaultEvaluator:
+class DefaultEvaluator(base.Configurable):
     """Default evaluator for model evaluation - testing and validation during training"""
 
     def __init__(
@@ -18,9 +21,8 @@ class DefaultEvaluator:
         criterion: Callable,
         compute_per_task: dict[int, dict[Any, Callable]],
         get_target_per_task: dict[
-            int, Callable[[dict[int, torch.tensor], int], torch.tensor]
-        ]
-        | None = None,
+            int, Callable[[dict[int, torch.Tensor], int], torch.Tensor]
+        ],
         apply_model: Callable | None = None,
     ):
         """Default evaluator for model evaluation.
@@ -43,6 +45,22 @@ class DefaultEvaluator:
         """Reset the evaluator's recorded data."""
         self.data = None
         self.active_tasks = []
+
+    def _update_held_data(self, current_data: dict[str, Any]) -> None:
+        # add current_data to self.data
+        if self.data is None:
+            self.data = pd.DataFrame(current_data)
+        else:
+            # when the dataframe has not all columns present yet, add them with NaN values
+            # this can happen when the active tasks change during training
+            for k in current_data.keys():
+                if k not in self.data.columns:
+                    self.data[k] = np.nan
+
+            # add the necessary data
+            self.data = pd.concat(
+                [self.data, pd.DataFrame(current_data)], ignore_index=True
+            )
 
     def evaluate(
         self,
@@ -94,20 +112,7 @@ class DefaultEvaluator:
                     if name not in current_data:
                         current_data[name] = func(current_data, i)
 
-        # add current_data to self.data
-        if self.data is None:
-            self.data = pd.DataFrame(current_data)
-        else:
-            # when the dataframe has not all columns present yet, add them with NaN values
-            # this can happen when the active tasks change during training
-            for k in current_data.keys():
-                if k not in self.data.columns:
-                    self.data[k] = np.nan
-
-            # add the necessary data
-            self.data = pd.concat(
-                [self.data, pd.DataFrame(current_data)], ignore_index=True
-            )
+        self._update_held_data(current_data)
 
     @abstractmethod
     def report(self) -> None:
@@ -119,7 +124,51 @@ class DefaultEvaluator:
         pass
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> "DefaultEvaluator":
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        json_schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "Evaluator Configuration",
+            "type": "object",
+            "properties": {
+                "device": {
+                    "type": "string",
+                    "description": "The device to run the evaluation on.",
+                },
+                "criterion": {
+                    "type": "string",
+                    "description": "The loss function to use for evaluation.",
+                },
+                "compute_per_task": {
+                    "type": "object",
+                    "description": "Task-specific metrics to compute.",
+                    "additionalProperties": {},
+                },
+                "get_target_per_task": {
+                    "type": "object",
+                    "description": "Function to get the target for each task.",
+                    "additionalProperties": {},
+                },
+            },
+            "required": [
+                "device",
+                "criterion",
+                "compute_per_task",
+                "get_target_per_task",
+            ],
+            "additionalProperties": False,
+        }
+
+        try:
+            validate(config, json_schema)
+        except ValidationError as e:
+            logging.error(f"Config validation error: {e}")
+            return False
+        return True
+
+    @classmethod
+    def from_config(
+        cls, config: dict[str, Any], apply_model: Callable | None = None
+    ) -> "DefaultEvaluator":
         """Create DefaultEvaluator from configuration dictionary.
 
         Args:
@@ -128,8 +177,128 @@ class DefaultEvaluator:
         Returns:
             DefaultEvaluator: An instance of DefaultEvaluator initialized with the provided configuration.
         """
-        # TODO
-        pass
+        if not cls.verify_config(config):
+            raise ValueError("Invalid configuration")
+
+        device = config.get("device", "cpu")
+
+        criterion = config.get("criterion", None)
+
+        if criterion is None:
+            raise ValueError("Criterion must be specified.")
+
+        criterion_args = config.get("criterion_args", [])
+        criterion_kwargs = config.get("criterion_kwargs", {})
+
+        compute_per_task = config.get("compute_per_task", None)
+        if compute_per_task is None:
+            raise ValueError("Compute per task must be specified.")
+
+        get_target_per_task = config.get("get_target_per_task", None)
+        if get_target_per_task is None:
+            raise ValueError("Get target per task must be specified.")
+
+        device = config.get("device", "cpu")
+
+        # build criterion
+        try:
+            criterion_type = utils.import_and_get(criterion)
+
+            if criterion_type is None:
+                raise ValueError(f"Failed to import criterion: {criterion}")
+            criterion = criterion_type(*criterion_args, **criterion_kwargs)
+
+        except Exception as e:
+            raise ValueError(f"Failed to import criterion: {e}")
+
+        # build per_task_monitors
+        per_task_monitors = {}
+        for key, cfg_list in compute_per_task.items():
+            per_task_monitors[key] = []
+            for cfg in cfg_list:
+                try:
+                    # try to find the type in the module in this module
+                    try:
+                        monitortype = globals().get(cfg["type"])
+                    except Exception as e:
+                        logging.warning(
+                            f"Failed to find monitortype in globals for task {key}: {e}"
+                        )
+
+                        monitortype = utils.import_and_get(cfg["type"])
+
+                    if monitortype is None:
+                        logging.error(
+                            f"Failed to import monitortype for task {key}: {cfg.get('type', None)}"
+                        )
+                        raise ValueError(
+                            f"Failed to import monitortype for task {key}: {cfg.get('type', None)}"
+                        )
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to import monitortype for task {key}: {e}"
+                    )
+
+                try:
+                    metrics = monitortype.from_config(cfg)
+                except Exception as e:
+                    raise ValueError(f"Failed to create metric for task {key}: {e}")
+
+                per_task_monitors[key].append(metrics)
+
+        # try to build target extractors
+        target_extractors = {}
+        for key, cfg in get_target_per_task.items():
+            try:
+                try:
+                    targetgetter = globals().get(cfg["type"])
+                except Exception as e:
+                    logging.warning(
+                        f"Failed to find targetgetter in globals for task {key}: {e}"
+                    )
+
+                    targetgetter = utils.import_and_get(cfg["type"])
+
+                if targetgetter is None:
+                    raise ValueError(
+                        f"Failed to import targetgetter for task {key}: {cfg.get('type', None)}"
+                    )
+            except Exception as e:
+                raise ValueError(f"Failed to import targetgetter for task {key}: {e}")
+
+            if not callable(targetgetter):
+                raise ValueError(f"Target getter for task {key} is not callable")
+
+            target_extractors[key] = targetgetter
+
+        # try to build apply_model
+        apply_model: Callable | None = None
+        apply_model_cfg = config.get("apply_model", None)
+        if apply_model_cfg is not None:
+            try:
+                apply_model_type = utils.import_and_get(apply_model_cfg["type"])
+            except Exception as e:
+                raise ValueError(f"Failed to import apply_model: {e}")
+            try:
+                apply_model_args = apply_model_cfg.get("args", [])
+                apply_model_kwargs = apply_model_cfg.get("kwargs", {})
+                if apply_model_type is not None:
+                    logging.warning(
+                        f"Trying to create apply_model from config {apply_model_cfg} but type is None"
+                    )
+                    apply_model = apply_model_type(
+                        *apply_model_args, **apply_model_kwargs
+                    )
+            except Exception as e:
+                raise ValueError(f"Failed to get apply_model args: {e}")
+
+        return cls(
+            device=device,
+            criterion=criterion,
+            compute_per_task=compute_per_task,
+            get_target_per_task=target_extractors,
+            apply_model=apply_model,
+        )
 
 
 class DefaultTester(DefaultEvaluator):
@@ -192,7 +361,7 @@ class DefaultValidator(DefaultTester):
             self.logger.info("No validation data to report.")
 
 
-class F1ScoreEval:
+class F1ScoreEval(base.Configurable):
     """F1Score evaluator, useful for evaluation of classification problems. A callable class that builds an f1 evaluator to a given set of specifications. Uses sklearn.metrics.f1_score for the computation fo the f1 score."""
 
     def __init__(
@@ -226,6 +395,42 @@ class F1ScoreEval:
         return f1_score(y_true, y_pred, average=self.average, labels=self.labels)
 
     @classmethod
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        """Verfiy the configuration via a json schema
+
+        Args:
+            config (dict[str, Any]): configuration to verify
+
+        Returns:
+            bool: True if the configuration is valid, False otherwise
+        """
+        json_schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "F1ScoreEval Configuration",
+            "type": "object",
+            "properties": {
+                "average": {
+                    "type": "string",
+                    "enum": ["micro", "macro", "weighted", "none"],
+                    "description": "Averaging method for F1 score as used by scikit-learn.",
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "List of numerical labels to include in the F1 score computation.",
+                },
+            },
+            "required": ["average"],
+        }
+
+        try:
+            validate(instance=config, schema=json_schema)
+        except ValidationError as e:
+            logging.error(f"Config validation error: {e}")
+            return False
+        return True
+
+    @classmethod
     def from_config(cls, config: dict[str, Any]) -> "F1ScoreEval":
         """Create F1ScoreEval from configuration dictionary.
 
@@ -234,31 +439,45 @@ class F1ScoreEval:
         Returns:
             F1ScoreEval: An instance of F1ScoreEval initialized with the provided configuration.
         """
+        if not cls.verify_config(config):
+            raise ValueError("Invalid configuration for F1ScoreEval")
+
         return cls(
             average=config.get("average", "macro"),
             labels=config.get("labels", None),
         )
 
 
-class AccuracyEval:
+class AccuracyEval(base.Configurable):
     """Accuracy evaluator, primarily useful for evaluation of regression problems. A callable class that builds an accuracy evaluator to a given set of specifications."""
 
     def __init__(
         self,
-        metrics: Callable | type[torch.nn.Module],
+        metric: Callable | type[torch.nn.Module] | None,
         metrics_args: list[Any] = [],
         metrics_kwargs: dict[str, Any] = {},
     ) -> None:
-        """Accuracy evaluator initialization."""
+        """Initialize a new AccuracyEvaluator.
 
-        if metrics is None:
-            self.metrics = torch.nn.MSELoss()
+        Args:
+            metric (Callable | type[torch.nn.Module] | None): The metric function or model to use.
+            metrics_args (list[Any], optional): Positional arguments for the metric function. Defaults to [].
+            metrics_kwargs (dict[str, Any], optional): Keyword arguments for the metric function. Defaults to {}.
+        """
+
+        self.metrics: Callable | torch.nn.Module = torch.nn.MSELoss()
+
+        if isinstance(metric, Callable):
+            self.metrics = metric
+        elif metric is not None and issubclass(metric, torch.nn.Module):
+            self.metrics = metric(*metrics_args, **metrics_kwargs)
         else:
-            self.metrics = metrics(*metrics_args, **metric_kwargs)
+            # don't do anything here
+            pass
 
     def __call__(
         self, data: dict[Any, Any], task: int
-    ) -> float | np.float64 | np.array | list:
+    ) -> float | np.float64 | np.ndarray | list:
         """Compute accuracy for a given task.
 
         Args:
@@ -271,6 +490,50 @@ class AccuracyEval:
         return self.metrics(y_pred, y_true).item()
 
     @classmethod
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        """Verify configuration dict with a json schema
+
+        Args:
+            config (dict[str, Any]): Config to verify
+
+        Raises:
+            ValueError: If the config is invalid
+
+        Returns:
+            bool: True if the config is valid, False otherwise
+        """
+        json_schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "AccuracyEval Configuration",
+            "type": "object",
+            "properties": {
+                "metrics": {
+                    "type": "string",
+                    "description": "The name of the metric function to use.",
+                },
+                "metrics_args": {
+                    "type": "array",
+                    "description": "The positional arguments (*args). Any JSON value type is permitted.",
+                    "items": {},
+                },
+                "metrics_kwargs": {
+                    "type": "object",
+                    "description": "The keyword arguments (**kwargs). Keys must be strings, values can be any JSON value type.",
+                    "additionalProperties": {},
+                },
+            },
+            "required": ["metrics"],
+            "additionalProperties": False,
+        }
+
+        try:
+            validate(instance=config, schema=json_schema)
+        except ValidationError as e:
+            logging.error(f"Configuration validation error for AccuracyEval: {e}")
+            return False
+        return True
+
+    @classmethod
     def from_config(cls, config: dict[str, Any]) -> "AccuracyEval":
         """Create AccuracyEval from configuration dictionary.
 
@@ -279,29 +542,33 @@ class AccuracyEval:
         Returns:
             AccuracyEval: An instance of AccuracyEval initialized with the provided configuration.
         """
-        # TODO: add metrics lookup
+        if not cls.verify_config(config):
+            raise ValueError("Invalid configuration for AccuracyEval")
 
-        metrics = config.get("metrics", None)
-        metricstype = None
-        if metrics is not None:
+        metric = config.get("metrics", None)
+        metricstype: Callable | type[torch.nn.Module] | None = None
+        if metric is not None:
             try:
-                metricstype = utils.import_and_get(metrics)
+                metricstype = utils.import_and_get(metric)
             except ValueError as e:
                 raise ValueError(
-                    f"Could not import metrics {metrics} for AccuracyEval"
+                    f"Could not import metrics {metric} for AccuracyEval"
                 ) from e
+        else:
+            # nothing to be done here because by default we use MSELoss
+            pass
 
         args = config.get("metrics_args", [])
         kwargs = config.get("metrics_kwargs", {})
         return cls(
-            metrics=metricstype,
+            metric=metricstype,
             metrics_args=args,
             metrics_kwargs=kwargs,
         )
 
 
 # early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
-class DefaultEarlyStopping:
+class DefaultEarlyStopping(base.Configurable):
     """Early stopping based on a validation metric."""
 
     # put this into the package
@@ -477,3 +744,49 @@ class DefaultEarlyStopping:
                 self.current_grace_period[i] -= 1
 
         return self.criterion(self, data)
+
+    @classmethod
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        """_summary_
+
+        Args:
+            config (dict[str, Any]): _description_
+
+        Returns:
+            bool: _description_
+        """
+        schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": "AccuracyEval Configuration",
+            "type": "object",
+            "properties": {
+                # TODO
+            },
+            "required": ["metrics"],
+            "additionalProperties": False,
+        }
+
+        try:
+            validate(config, schema)
+        except ValidationError as e:
+            logging.error(f"Configuration validation error: {e}")
+            return False
+        return True
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "DefaultEarlyStopping":
+        """_summary_
+
+        Args:
+            config (dict[str, Any]): _description_
+
+        Raises:
+            ValueError: _description_
+
+        Returns:
+            DefaultEarlyStopping: _description_
+        """
+        if cls.verify_config(config) is False:
+            raise ValueError("Invalid configuration for Evaluator")
+
+        return cls()

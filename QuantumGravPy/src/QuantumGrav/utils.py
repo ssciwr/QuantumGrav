@@ -297,7 +297,7 @@ def import_and_get(importpath: str) -> type | None:
         module = importlib.import_module(module_name)
     except Exception as e:
         raise ValueError(f"Importing module {module_name} unsuccessful") from e
-
+    tpe = None
     try:
         tpe = getattr(module, object_name)
     except Exception as e:
