@@ -297,9 +297,7 @@ def read_data():
             edge_index=edge_index,
             edge_attr=edge_weight.unsqueeze(1),
             y=torch.tensor(
-                [
-                    value_list,
-                ],
+                value_list,
                 dtype=int_dtype,
             ),
         )
@@ -370,14 +368,12 @@ def make_dataset(create_data_hdf5, read_data):
 
 
 @pytest.fixture
-def make_dataloader(create_data_hdf5, make_dataset):
-    _, __ = create_data_hdf5
-
+def make_dataloader(make_dataset):
     dataset = make_dataset
     dataloader = DataLoader(
         dataset,
         batch_size=4,
-        shuffle=True,
+        shuffle=False,
         drop_last=True,  # Ensure all batches are of the same size. last batches that are bad need to be handled by hand
     )
     return dataloader
@@ -433,7 +429,7 @@ def model_config_eval():
         "downstream_tasks": [
             {
                 "type": "LinearSequential",
-                "dims": [[12, 24], [24, 16], [16, 3]],
+                "dims": [[12, 24], [24, 16], [16, 1]],
                 "activations": ["relu", "relu", "identity"],
                 "backbone_kwargs": [{}, {}, {}],
                 "activation_kwargs": [

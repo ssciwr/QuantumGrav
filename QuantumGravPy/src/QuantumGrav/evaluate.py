@@ -59,12 +59,14 @@ class DefaultEvaluator(base.Configurable):
         ],
         apply_model: Callable | None = None,
     ):
-        """Default evaluator for model evaluation.
+        """Initialize a new default evaluator
 
         Args:
-            device (str | torch.device | int): The device to run the evaluation on.
-            criterion (Callable): The loss function to use for evaluation.
-            apply_model (Callable): A function to apply the model to the data.
+            device (str | torch.device | int): device to work on
+            criterion (Callable): Loss computation for the evaluation run
+            compute_per_task (dict[int, dict[Any, Callable]]): Dictionary mapping task IDs to a set of named metrics to compute for each task
+            get_target_per_task (dict[ int, Callable[[dict[int, torch.Tensor], int], torch.Tensor] ]): Function to get the target for each task
+            apply_model (Callable | None, optional): Function to apply the model to the data. Defaults to None.
         """
         self.criterion = criterion
         self.apply_model = apply_model
@@ -113,10 +115,10 @@ class DefaultEvaluator(base.Configurable):
         model.eval()
         current_data = dict()
 
-        self.active_tasks = []
+        self.active_tasks = set()
         for i, task in enumerate(model.active_tasks):
             if task:
-                self.active_tasks.append(i)
+                self.active_tasks.add(i)
 
         # apply model on validation data
         with torch.no_grad():
@@ -131,7 +133,9 @@ class DefaultEvaluator(base.Configurable):
 
                 # record outputs and targets per task
                 for i, out in outputs.items():
-                    y = self.get_target_per_task[i](data, i)
+                    y = self.get_target_per_task[i](data.y, i)
+                    print("i: ", i)
+                    print("  y: ", y)
                     current_data[f"output_{i}"] = current_data.get(
                         f"output_{i}", []
                     ) + [out.cpu()]  # append outputs
@@ -411,7 +415,6 @@ class F1ScoreEval(base.Configurable):
 
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
-
         if y_pred.shape != y_true.shape:
             raise ValueError(f"Shape mismatch: {y_true.shape} vs {y_pred.shape}")
 

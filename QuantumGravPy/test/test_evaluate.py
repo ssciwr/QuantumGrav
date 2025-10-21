@@ -41,6 +41,58 @@ def accuracy_config_broken():
     }
 
 
+@pytest.fixture
+def validator_object():
+    device = torch.device("cpu")
+
+    f1eval_macro = QG.evaluate.F1ScoreEval(
+        average="macro",
+    )
+    f1eval_micro = QG.evaluate.F1ScoreEval(
+        average="micro",
+    )
+
+    acceval = QG.evaluate.AccuracyEval(
+        metric=torch.nn.functional.l1_loss,
+        metric_args=[],
+        metric_kwargs={},
+    )
+
+    compute_per_task = {
+        0: {
+            "f1_macro": f1eval_macro,
+            "f1_micro": f1eval_micro,
+            "accuracy": acceval,
+        },
+        1: {
+            "accuracy": acceval,
+            "l1": torch.nn.functional.l1_loss,
+        },
+    }
+
+    get_target_per_task = {
+        0: lambda x, i: x,
+        1: lambda x, i: x,
+    }
+
+    def apply_model(model, data):
+        out = model(data, data.edge_index, data.batch)
+
+        out[0] = (torch.sigmoid(out[0]) > 0.5).to(torch.long)
+
+        return out
+
+    validator = QG.DefaultValidator(
+        device=device,
+        criterion=compute_loss,
+        compute_per_task=compute_per_task,
+        get_target_per_task=get_target_per_task,
+        apply_model=apply_model,
+    )
+
+    return validator
+
+
 @pytest.fixture(scope="session")
 def f1eval_config():
     return {"average": "macro", "labels": [0, 1]}
@@ -159,32 +211,65 @@ def test_accuracy_eval_call(accuracy_config):
         eval(data, 3)
 
 
-# def test_default_evaluator_creation(gnn_model_eval):
-#     """Test the DefaultEvaluator class."""
-#     device = torch.device("cpu")
-#     evaluator = QG.DefaultEvaluator(
-#         device=device,
-#         criterion=compute_loss,
-#         apply_model=lambda data: gnn_model_eval(data, data.edge_index, data.batch),
-#     )
+def test_default_validator_creation(gnn_model_eval):
+    """Test the DefaultValidator class."""
+    device = torch.device("cpu")
 
-#     assert evaluator.device == device
-#     assert evaluator.criterion is compute_loss
-#     assert evaluator.apply_model is not None
+    f1eval_macro = QG.evaluate.F1ScoreEval(
+        average="macro",
+    )
+    f1eval_micro = QG.evaluate.F1ScoreEval(
+        average="micro",
+    )
+
+    acceval = QG.evaluate.AccuracyEval(
+        metric=torch.nn.functional.l1_loss,
+        metric_args=[],
+        metric_kwargs={},
+    )
+
+    compute_per_task = {
+        0: {
+            "f1_macro": f1eval_macro,
+            "f1_micro": f1eval_micro,
+            "accuracy": acceval,
+        },
+        1: {
+            "accuracy": acceval,
+            "l1": torch.nn.functional.l1_loss,
+        },
+    }
+
+    get_target_per_task = {
+        0: lambda i, x: x[:, 0],
+        1: lambda i, x: x[:, 1],
+    }
+
+    validator = QG.DefaultValidator(
+        device=device,
+        criterion=compute_loss,
+        compute_per_task=compute_per_task,
+        get_target_per_task=get_target_per_task,
+        apply_model=lambda data: gnn_model_eval(data, data.edge_index, data.batch),
+    )
+
+    assert validator.device == device
+    assert validator.criterion is compute_loss
+    assert validator.apply_model is not None
+    assert validator.data is None
+    assert validator.logger is not None
+    assert validator.active_tasks == []
+    assert validator.get_target_per_task == get_target_per_task
+    assert validator.compute_per_task == compute_per_task
 
 
-# def test_default_evaluator_evaluate(make_dataloader, gnn_model_eval):
-#     dataloader = make_dataloader
-#     device = torch.device("cpu")
-#     model = gnn_model_eval.to(device)
-#     evaluator = QG.DefaultEvaluator(
-#         device=device,
-#         criterion=compute_loss,
-#         apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
-#     )
-#     losses = evaluator.evaluate(model, dataloader)
-#     assert len(losses) == len(dataloader)
-#     assert torch.Tensor(losses).dtype == torch.float32
+def test_default_evaluator_evaluate(make_dataloader, gnn_model_eval, validator_object):
+    dataloader = make_dataloader
+
+    validator_object.evaluate(gnn_model_eval, dataloader)
+    assert len(validator_object.data) == len(dataloader)
+    print(validator_object.data)
+    assert 3 == 6
 
 
 # def test_default_evaluator_report(caplog):
