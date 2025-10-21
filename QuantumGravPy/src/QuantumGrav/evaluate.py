@@ -134,8 +134,6 @@ class DefaultEvaluator(base.Configurable):
                 # record outputs and targets per task
                 for i, out in outputs.items():
                     y = self.get_target_per_task[i](data.y, i)
-                    print("i: ", i)
-                    print("  y: ", y)
                     current_data[f"output_{i}"] = current_data.get(
                         f"output_{i}", []
                     ) + [out.cpu()]  # append outputs
@@ -149,6 +147,10 @@ class DefaultEvaluator(base.Configurable):
                 for name, func in task.items():
                     if name not in current_data:
                         current_data[name] = func(current_data, i)
+
+                # clean up outputs and targets
+                del current_data[f"output_{i}"]
+                del current_data[f"target_{i}"]
 
         self._update_held_data(current_data)
 
@@ -416,6 +418,9 @@ class F1ScoreEval(base.Configurable):
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
         if y_pred.shape != y_true.shape:
+
+            print(y_true.shape)
+            print(y_pred.shape)
             raise ValueError(f"Shape mismatch: {y_true.shape} vs {y_pred.shape}")
 
         return f1_score(y_true, y_pred, average=self.average, labels=self.labels)

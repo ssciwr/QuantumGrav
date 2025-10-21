@@ -1,5 +1,6 @@
 import QuantumGrav as QG
-from torch_geometric.data import Data, DataLoader
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
 import torch
 import pytest
 from jsonschema import ValidationError
@@ -7,7 +8,9 @@ from jsonschema import ValidationError
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
-    loss = torch.nn.MSELoss()(x[0].unsqueeze(0), data.y.to(torch.float32))
+    loss = torch.nn.MSELoss()(
+        x[0], torch.cat([data.y, data.y, data.y], dim=1).to(torch.float32)
+    )
     return loss
 
 
@@ -60,27 +63,26 @@ def validator_object():
 
     compute_per_task = {
         0: {
-            "f1_macro": f1eval_macro,
-            "f1_micro": f1eval_micro,
-            "accuracy": acceval,
+            "f1_macro_task_0": f1eval_macro,
+            "f1_micro_task_0": f1eval_micro,
+            "accuracy_task_0": acceval,
         },
         1: {
-            "accuracy": acceval,
-            "l1": torch.nn.functional.l1_loss,
+            "accuracy_task_1": acceval,
+            "l1_task_1": torch.nn.functional.l1_loss,
         },
     }
 
     get_target_per_task = {
-        0: lambda x, i: x[:, 0],
-        1: lambda x, i: x,
+        0: lambda x, i: torch.cat(
+            [x, x, x], dim=1
+        ),  # this is a bit of a hack to align the output
+        1: lambda x, i: x[:, 1],
     }
 
     def apply_model(model, data):
-        print("  data: ", data)
-        out = model(data, data.edge_index, data.batch)
-
-        out[0] = (torch.sigmoid(out[0]) > 0.5).to(torch.long)
-
+        out = model(data.x, data.edge_index, data.batch)
+        out[0] = (torch.sigmoid(out[0]) > 0.5).to(torch.float)
         return out
 
     validator = QG.DefaultValidator(
@@ -88,7 +90,7 @@ def validator_object():
         criterion=compute_loss,
         compute_per_task=compute_per_task,
         get_target_per_task=get_target_per_task,
-        # apply_model=apply_model,
+        apply_model=apply_model,
     )
 
     return validator
@@ -265,15 +267,15 @@ def test_default_validator_creation(gnn_model_eval):
 
 
 def test_default_evaluator_evaluate(make_dataset, gnn_model_eval, validator_object):
-    dataloader = DataLoader(
-        make_dataset,
-        batch_size=4,
-    )
-
+    dataloader = DataLoader(make_dataset, batch_size=4)
     validator_object.evaluate(gnn_model_eval, dataloader)
-    # assert len(validator_object.data) == len(dataloader)
-    # print(validator_object.data)
-    assert 3 == 6
+    assert len(validator_object.data) == len(dataloader)
+    assert validator_object.data.columns.tolist() == [
+        "loss",
+        "f1_macro_task_0",
+        "f1_micro_task_0",
+        "accuracy_task_0",
+    ]  # only task 0 metrics are computed since the dummy model outputs only one task
 
 
 # def test_default_evaluator_report(caplog):
