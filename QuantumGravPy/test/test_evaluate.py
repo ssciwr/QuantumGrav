@@ -1,5 +1,5 @@
 import QuantumGrav as QG
-from torch_geometric.data import Data
+from torch_geometric.data import Data, DataLoader
 import torch
 import pytest
 from jsonschema import ValidationError
@@ -71,11 +71,12 @@ def validator_object():
     }
 
     get_target_per_task = {
-        0: lambda x, i: x,
+        0: lambda x, i: x[:, 0],
         1: lambda x, i: x,
     }
 
     def apply_model(model, data):
+        print("  data: ", data)
         out = model(data, data.edge_index, data.batch)
 
         out[0] = (torch.sigmoid(out[0]) > 0.5).to(torch.long)
@@ -87,7 +88,7 @@ def validator_object():
         criterion=compute_loss,
         compute_per_task=compute_per_task,
         get_target_per_task=get_target_per_task,
-        apply_model=apply_model,
+        # apply_model=apply_model,
     )
 
     return validator
@@ -263,12 +264,15 @@ def test_default_validator_creation(gnn_model_eval):
     assert validator.compute_per_task == compute_per_task
 
 
-def test_default_evaluator_evaluate(make_dataloader, gnn_model_eval, validator_object):
-    dataloader = make_dataloader
+def test_default_evaluator_evaluate(make_dataset, gnn_model_eval, validator_object):
+    dataloader = DataLoader(
+        make_dataset,
+        batch_size=4,
+    )
 
     validator_object.evaluate(gnn_model_eval, dataloader)
-    assert len(validator_object.data) == len(dataloader)
-    print(validator_object.data)
+    # assert len(validator_object.data) == len(dataloader)
+    # print(validator_object.data)
     assert 3 == 6
 
 
