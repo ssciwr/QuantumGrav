@@ -173,9 +173,7 @@ class DefaultEvaluator(base.Configurable):
         return True
 
     @classmethod
-    def from_config(
-        cls, config: dict[str, Any], apply_model: Callable | None = None
-    ) -> "DefaultEvaluator":
+    def from_config(cls, config: dict[str, Any]) -> "DefaultEvaluator":
         """Create DefaultEvaluator from configuration dictionary.
 
         Args:
@@ -283,21 +281,24 @@ class DefaultEvaluator(base.Configurable):
         apply_model_cfg = config.get("apply_model", None)
         if apply_model_cfg is not None:
             try:
-                apply_model_type = utils.import_and_get(apply_model_cfg["type"])
+                try:
+                    apply_model_type = globals().get(apply_model_cfg["type"])
+                except Exception as e:
+                    logging.error(f"Failed to find apply_model in globals: {e}")
+                    apply_model_type = utils.import_and_get(apply_model_cfg["type"])
             except Exception as e:
                 raise ValueError(f"Failed to import apply_model: {e}")
-            try:
+
+            if apply_model_type is not None and isclass(apply_model_type):
                 apply_model_args = apply_model_cfg.get("args", [])
                 apply_model_kwargs = apply_model_cfg.get("kwargs", {})
-                if apply_model_type is not None:
-                    logging.warning(
-                        f"Trying to create apply_model from config {apply_model_cfg} but type is None"
-                    )
-                    apply_model = apply_model_type(
-                        *apply_model_args, **apply_model_kwargs
-                    )
-            except Exception as e:
-                raise ValueError(f"Failed to get apply_model args: {e}")
+                apply_model = apply_model_type(*apply_model_args, **apply_model_kwargs)
+            elif apply_model_type is not None and callable(apply_model_type):
+                apply_model = apply_model_type
+            else:
+                raise ValueError(
+                    f"apply_model type is not a class or callable: {apply_model_type}"
+                )
 
         return cls(
             device=device,
@@ -418,7 +419,6 @@ class F1ScoreEval(base.Configurable):
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
         if y_pred.shape != y_true.shape:
-
             print(y_true.shape)
             print(y_pred.shape)
             raise ValueError(f"Shape mismatch: {y_true.shape} vs {y_pred.shape}")
