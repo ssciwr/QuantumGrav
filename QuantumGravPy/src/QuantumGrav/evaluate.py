@@ -28,11 +28,14 @@ class DefaultEvaluator(base.Configurable):
             "criterion": {
                 "type": "string",
                 "description": "The loss function to use for evaluation.",
+                # TODO: add additional args, kwargs
             },
             "compute_per_task": {
                 "type": "object",
                 "description": "Task-specific metrics to compute.",
                 "additionalProperties": {},
+                # TODO: add additional args, kwargs
+
             },
             "get_target_per_task": {
                 "type": "object",
@@ -173,6 +176,23 @@ class DefaultEvaluator(base.Configurable):
         return True
 
     @classmethod
+    def _find_function_or_class(cls, name: str) -> Any:
+        """Helper method to find a function or class by name in globals or import it.
+
+        Args:
+            name (str): Name of the function or class to find.
+        Returns:
+            Any: The found function or class.
+        """
+        try:
+            obj = globals().get(name)
+            if obj is None:
+                obj = utils.import_and_get(name)
+            return obj
+        except Exception as e:
+            raise ValueError(f"Failed to import {name}: {e}")
+
+    @classmethod
     def from_config(cls, config: dict[str, Any]) -> "DefaultEvaluator":
         """Create DefaultEvaluator from configuration dictionary.
 
@@ -188,7 +208,6 @@ class DefaultEvaluator(base.Configurable):
         device = config.get("device", "cpu")
 
         criterion = config.get("criterion", None)
-
         if criterion is None:
             raise ValueError("Criterion must be specified.")
 
@@ -207,12 +226,10 @@ class DefaultEvaluator(base.Configurable):
 
         # build criterion
         try:
-            criterion_type = utils.import_and_get(criterion)
-
+            criterion_type = cls._find_function_or_class(criterion)
             if criterion_type is None:
                 raise ValueError(f"Failed to import criterion: {criterion}")
             criterion = criterion_type(*criterion_args, **criterion_kwargs)
-
         except Exception as e:
             raise ValueError(f"Failed to import criterion: {e}")
 
@@ -221,55 +238,41 @@ class DefaultEvaluator(base.Configurable):
         for key, cfg_list in compute_per_task.items():
             per_task_monitors[key] = []
             for cfg in cfg_list:
-                try:
-                    # try to find the type in the module in this module
-                    try:
-                        monitortype = globals().get(cfg["type"])
-                    except Exception as e:
-                        logging.warning(
-                            f"Failed to find monitortype in globals for task {key}: {e}"
-                        )
-
-                        monitortype = utils.import_and_get(cfg["type"])
-
-                    if monitortype is None:
-                        logging.error(
-                            f"Failed to import monitortype for task {key}: {cfg.get('type', None)}"
-                        )
-                        raise ValueError(
-                            f"Failed to import monitortype for task {key}: {cfg.get('type', None)}"
-                        )
-                except Exception as e:
+                # try to find the type in the module in this module
+                monitortype = cls._find_function_or_class(cfg["type"])
+                if monitortype is None:
                     raise ValueError(
-                        f"Failed to import monitortype for task {key}: {e}"
+                        f"Failed to import monitortype for task {key}: {cfg['type']}"
                     )
 
-                try:
-                    metrics = monitortype.from_config(cfg)
-                except Exception as e:
-                    raise ValueError(f"Failed to create metric for task {key}: {e}")
-
+                if isclass(monitortype):
+                    try:
+                        metrics = monitortype.from_config(cfg)
+                    except Exception as _:
+                        try:
+                            metrics = monitortype(
+                                *cfg.get("args", []), **cfg.get("kwargs", {})
+                            )
+                        except Exception as e:
+                            raise ValueError(
+                                f"Failed to build monitortype for task {key} from config: {e}"
+                            )
+                elif callable(monitortype):
+                    metrics = monitortype
+                else:
+                    raise ValueError(
+                        f"Monitortype for task {key} is not a class or callable"
+                    )
                 per_task_monitors[key].append(metrics)
 
         # try to build target extractors
         target_extractors = {}
-        for key, cfg in get_target_per_task.items():
-            try:
-                try:
-                    targetgetter = globals().get(cfg["type"])
-                except Exception as e:
-                    logging.warning(
-                        f"Failed to find targetgetter in globals for task {key}: {e}"
-                    )
-
-                    targetgetter = utils.import_and_get(cfg["type"])
-
-                if targetgetter is None:
-                    raise ValueError(
-                        f"Failed to import targetgetter for task {key}: {cfg.get('type', None)}"
-                    )
-            except Exception as e:
-                raise ValueError(f"Failed to import targetgetter for task {key}: {e}")
+        for key, funcname in get_target_per_task.items():
+            targetgetter = cls._find_function_or_class(funcname)
+            if targetgetter is None:
+                raise ValueError(
+                    f"Failed to import targetgetter for task {key}: {funcname}"
+                )
 
             if not callable(targetgetter):
                 raise ValueError(f"Target getter for task {key} is not callable")
@@ -280,20 +283,18 @@ class DefaultEvaluator(base.Configurable):
         apply_model: Callable | None = None
         apply_model_cfg = config.get("apply_model", None)
         if apply_model_cfg is not None:
-            try:
-                try:
-                    apply_model_type = globals().get(apply_model_cfg["type"])
-                except Exception as e:
-                    logging.error(f"Failed to find apply_model in globals: {e}")
-                    apply_model_type = utils.import_and_get(apply_model_cfg["type"])
-            except Exception as e:
-                raise ValueError(f"Failed to import apply_model: {e}")
+            apply_model_type = cls._find_function_or_class(apply_model_cfg["type"])
 
-            if apply_model_type is not None and isclass(apply_model_type):
+            if apply_model_type is None:
+                raise ValueError(
+                    f"Failed to import apply_model: {apply_model_cfg['type']}"
+                )
+
+            if isclass(apply_model_type):
                 apply_model_args = apply_model_cfg.get("args", [])
                 apply_model_kwargs = apply_model_cfg.get("kwargs", {})
                 apply_model = apply_model_type(*apply_model_args, **apply_model_kwargs)
-            elif apply_model_type is not None and callable(apply_model_type):
+            elif callable(apply_model_type):
                 apply_model = apply_model_type
             else:
                 raise ValueError(

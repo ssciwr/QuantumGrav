@@ -276,7 +276,7 @@ def test_default_evaluator_evaluate(make_dataset, gnn_model_eval, validator_obje
         "f1_micro_task_0",
         "accuracy_task_0",
     ]  # only task 0 metrics are computed since the dummy model outputs only one task
-
+    
 
 # def test_default_evaluator_report(caplog):
 #     device = torch.device("cpu")
