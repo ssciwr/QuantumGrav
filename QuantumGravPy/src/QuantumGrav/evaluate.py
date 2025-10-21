@@ -7,6 +7,7 @@ import logging
 from abc import abstractmethod
 from sklearn.metrics import f1_score
 from jsonschema import validate, ValidationError
+from inspect import isclass
 
 from . import utils
 from . import base
@@ -396,21 +397,24 @@ class F1ScoreEval(base.Configurable):
         self.average = average
         self.labels = labels
 
-    def __call__(
-        self, data: dict[Any, Any], task: int
-    ) -> float | np.float64 | np.array | list:
+    def __call__(self, data: dict[Any, Any], task: int) -> float:
         """Compute F1 score for a given task.
 
         Args:
             data (dict[Any, Any]): Dictionary containing outputs and targets.
             task (int): Task index.
-        pass
         """
-        # TODO: check that the dimensionality is still correct
         # if the model output has more than one dimension, we need to adjust the y_pred accordingly
         # and squeeze/unsqueeze as needed
+        if f"target_{task}" not in data or f"output_{task}" not in data:
+            raise KeyError(f"Task {task} not found in data for F1ScoreEval")
+
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
+
+        if y_pred.shape != y_true.shape:
+            raise ValueError(f"Shape mismatch: {y_true.shape} vs {y_pred.shape}")
+
         return f1_score(y_true, y_pred, average=self.average, labels=self.labels)
 
     @classmethod
@@ -441,7 +445,7 @@ class F1ScoreEval(base.Configurable):
             F1ScoreEval: An instance of F1ScoreEval initialized with the provided configuration.
         """
         if not cls.verify_config(config):
-            raise ValueError("Invalid configuration for F1ScoreEval")
+            raise ValidationError("Invalid configuration for F1ScoreEval")
 
         return cls(
             average=config.get("average", "macro"),
@@ -461,12 +465,12 @@ class AccuracyEval(base.Configurable):
                 "type": "string",
                 "description": "The name of the metric function to use.",
             },
-            "metrics_args": {
+            "metric_args": {
                 "type": "array",
                 "description": "The positional arguments (*args). Any JSON value type is permitted.",
                 "items": {},
             },
-            "metrics_kwargs": {
+            "metric_kwargs": {
                 "type": "object",
                 "description": "The keyword arguments (**kwargs). Keys must be strings, values can be any JSON value type.",
                 "additionalProperties": {},
@@ -479,23 +483,22 @@ class AccuracyEval(base.Configurable):
     def __init__(
         self,
         metric: Callable | type[torch.nn.Module] | None,
-        metrics_args: list[Any] = [],
-        metrics_kwargs: dict[str, Any] = {},
+        metric_args: list[Any] = [],
+        metric_kwargs: dict[str, Any] = {},
     ) -> None:
         """Initialize a new AccuracyEvaluator.
 
         Args:
             metric (Callable | type[torch.nn.Module] | None): The metric function or model to use.
-            metrics_args (list[Any], optional): Positional arguments for the metric function. Defaults to [].
-            metrics_kwargs (dict[str, Any], optional): Keyword arguments for the metric function. Defaults to {}.
+            metric_args (list[Any], optional): Positional arguments for the metric function. Defaults to [].
+            metric_kwargs (dict[str, Any], optional): Keyword arguments for the metric function. Defaults to {}.
         """
-
-        self.metrics: Callable | torch.nn.Module = torch.nn.MSELoss()
-
-        if isinstance(metric, Callable):
-            self.metrics = metric
-        elif metric is not None and issubclass(metric, torch.nn.Module):
-            self.metrics = metric(*metrics_args, **metrics_kwargs)
+        if metric is None:
+            self.metric: Callable | torch.nn.Module = torch.nn.MSELoss()
+        elif isinstance(metric, Callable) and not isclass(metric):
+            self.metric = metric
+        elif issubclass(metric, torch.nn.Module):
+            self.metric = metric(*metric_args, **metric_kwargs)
         else:
             # don't do anything here
             pass
@@ -509,10 +512,13 @@ class AccuracyEval(base.Configurable):
             data (dict[Any, Any]): Dictionary containing outputs and targets.
             task (int): Task index.
         """
+        if f"target_{task}" not in data or f"output_{task}" not in data:
+            raise KeyError(f"Missing data for task {task} in AccuracyEval")
+
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
 
-        return self.metrics(y_pred, y_true).item()
+        return self.metric(y_pred, y_true).item()
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
@@ -545,7 +551,7 @@ class AccuracyEval(base.Configurable):
             AccuracyEval: An instance of AccuracyEval initialized with the provided configuration.
         """
         if not cls.verify_config(config):
-            raise ValueError("Invalid configuration for AccuracyEval")
+            raise ValidationError("Invalid configuration for AccuracyEval")
 
         metric = config.get("metrics", None)
         metricstype: Callable | type[torch.nn.Module] | None = None
@@ -560,12 +566,12 @@ class AccuracyEval(base.Configurable):
             # nothing to be done here because by default we use MSELoss
             pass
 
-        args = config.get("metrics_args", [])
-        kwargs = config.get("metrics_kwargs", {})
+        args = config.get("metric_args", [])
+        kwargs = config.get("metric_kwargs", {})
         return cls(
             metric=metricstype,
-            metrics_args=args,
-            metrics_kwargs=kwargs,
+            metric_args=args,
+            metric_kwargs=kwargs,
         )
 
 
@@ -867,13 +873,13 @@ class DefaultEarlyStopping(base.Configurable):
             config (dict[str, Any]): The configuration dictionary.
 
         Raises:
-            ValueError: If the configuration is invalid.
+            ValidationError: If the configuration is invalid.
             ImportError: When the mode is not "min" or "max" and cannot be imported.
         Returns:
             DefaultEarlyStopping: The constructed DefaultEarlyStopping instance.
         """
         if cls.verify_config(config) is False:
-            raise ValueError("Invalid configuration for Evaluator")
+            raise ValidationError("Invalid configuration for Evaluator")
 
         tasks = config["tasks"]
         mode = config["mode"]
