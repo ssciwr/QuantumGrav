@@ -1,3 +1,4 @@
+from . import julia_worker  # noqa: F401
 from .utils import (
     register_activation,
     register_gnn_layer,
@@ -17,6 +18,8 @@ from .utils import (
     list_registered_gnn_layers,
     list_registered_graph_features_aggregations,
     list_registered_pooling_aggregations,
+    register_evaluation_function,
+    list_evaluation_functions,
 )
 from .dataset_ondisk import QGDataset
 from .gnn_model import GNNModel
@@ -24,17 +27,15 @@ from .gnn_block import GNNBlock
 from .evaluate import (
     DefaultEvaluator,
     DefaultTester,
-    DefaultEarlyStopping,
     DefaultValidator,
 )
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .linear_sequential import LinearSequential
+from .early_stopping import DefaultEarlyStopping
 
 __all__ = [
-    # julia interface
-    "JuliaWorker",
     # datasets
     "QGDataset",
     # module registration
@@ -56,6 +57,8 @@ __all__ = [
     "list_registered_gnn_layers",
     "list_registered_graph_features_aggregations",
     "list_registered_pooling_aggregations",
+    "register_evaluation_function",
+    "list_evaluation_functions",
     # models
     "GNNBlock",
     "GNNModel",
