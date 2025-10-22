@@ -45,6 +45,8 @@ graph_features_aggregations: dict[str, Callable | type[torch.nn.Module]] = {
     "identity": torch.nn.Identity,
 }
 
+evaluation_funcs: dict[str, Callable | type] = {}
+
 
 def list_registered_pooling_layers() -> list[str]:
     """List all registered pooling layers."""
@@ -82,6 +84,37 @@ def list_registered_pooling_aggregations() -> list[str]:
         list[str]: A list of registered pooling aggregation function names.
     """
     return list(pooling_aggregations.keys())
+
+
+def list_evaluation_functions() -> list[str]:
+    """list the registered evaluation functions
+
+    Returns:
+        list[str]: list of names of eval functions
+    """
+    return list(evaluation_funcs.keys())
+
+
+def register_evaluation_function(name: str, func: Callable | type) -> None:
+    """register a new evaluation function by name
+
+    Args:
+        name (str): name of the function
+        func (Callable | type): function to register
+    """
+    evaluation_funcs[name] = func
+
+
+def get_evaluation_function(name: str) -> Callable | type | None:
+    """Get a registered evaluation function by name
+
+    Args:
+        name (str): name of the function to get
+
+    Returns:
+        Callable | type | None: a callable or type if registered function is found, None otherwise
+    """
+    return evaluation_funcs.get(name, None)
 
 
 def register_pooling_layer(
@@ -260,6 +293,7 @@ def get_graph_features_aggregation(
 
 
 def verify_config_node(cfg) -> bool:
+    # TODO: remove when schemas are there
     """Verify that a config node has the required keys.
 
     Args:

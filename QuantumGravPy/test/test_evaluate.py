@@ -2,8 +2,10 @@ import QuantumGrav as QG
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import torch
+import logging
 import pytest
 from jsonschema import ValidationError
+import copy
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
@@ -107,6 +109,11 @@ def validator_object():
 
 @pytest.fixture(scope="session")
 def validator_config():
+    QG.utils.register_evaluation_function("compute_loss", compute_loss)
+    QG.utils.register_evaluation_function("get_target_0", get_target_0)
+    QG.utils.register_evaluation_function("get_target_1", get_target_1)
+    QG.utils.register_evaluation_function("apply_model", apply_model)
+
     return {
         "device": "cpu",
         "criterion": {
@@ -118,15 +125,18 @@ def validator_config():
             "0": [
                 {
                     "name": "QuantumGrav.evaluate.F1ScoreEval",
+                    "name_in_data": "f1_macro",
                     "average": "macro",
                 },
                 {
                     "name": "QuantumGrav.evaluate.F1ScoreEval",
+                    "name_in_data": "f1_micro",
                     "average": "micro",
                 },
                 {
                     "name": "QuantumGrav.evaluate.AccuracyEval",
                     "metric": "torch.nn.functional.l1_loss",
+                    "name_in_data": "acc",
                     "metric_args": [],
                     "metric_kwargs": {},
                 },
@@ -134,8 +144,9 @@ def validator_config():
             "1": [
                 {
                     "name": "QuantumGrav.evaluate.AccuracyEval",
+                    "metric": "torch.nn.functional.l1_loss",
+                    "name_in_data": "acc",
                     "kwargs": {
-                        "metric": "torch.nn.functional.l1_loss",
                         "metric_args": [],
                         "metric_kwargs": {},
                     },
@@ -209,6 +220,7 @@ def test_f1eval_call_raises(f1eval_config):
     evaluator = QG.evaluate.F1ScoreEval.from_config(f1eval_config)
     targets = torch.tensor([1, 0, 1, 0])
     predictions = torch.tensor([[0, 1], [1, 1]])
+
     data = {
         "target_1": [targets, targets, targets],
         "output_1": [predictions, predictions, predictions],
@@ -329,29 +341,107 @@ def test_default_validator_evaluate(make_dataset, gnn_model_eval, validator_obje
     ]  # only task 0 metrics are computed since the dummy model outputs only one task
 
 
-def test_default_validator_report(make_dataset, gnn_model_eval, validator_object):
+def test_default_validator_report(
+    make_dataset, gnn_model_eval, validator_object, caplog
+):
     dataloader = DataLoader(make_dataset, batch_size=4)
     validator_object.evaluate(gnn_model_eval, dataloader)
 
-    validator_object.report()
+    with caplog.at_level(logging.INFO):
+        validator_object.report()
+    assert "Validation Results:" in caplog.text
+    for name in [
+        "loss",
+        "f1_macro_task_0",
+        "f1_micro_task_0",
+        "accuracy_task_0",
+    ]:
+        assert name in caplog.text
 
 
-def test_default_validator_from_config(validator_config):
+def test_default_validator_from_config(make_dataset, gnn_model_eval, validator_config):
     validator = QG.DefaultValidator.from_config(validator_config)
     device = torch.device("cpu")
-
     assert validator.apply_model is apply_model
+    assert callable(validator.apply_model)
     assert validator.device == device
-    assert validator.criterion is compute_loss
+    assert callable(validator.criterion)
     assert validator.data is None
     assert validator.logger is not None
     assert validator.active_tasks == []
     assert len(validator.get_target_per_task) == 2
-    assert len(validator.compute_per_task) == 1
+    assert len(validator.compute_per_task) == 2
+    assert len(validator.compute_per_task[0]) == 3
+    assert len(validator.compute_per_task[1]) == 1
+
+    # run it
+    dataloader = DataLoader(make_dataset, batch_size=4)
+    validator.evaluate(gnn_model_eval, dataloader)
+    assert len(validator.data) == len(dataloader)
+    assert validator.data.columns.tolist() == [
+        "loss",
+        "f1_macro",
+        "f1_micro",
+        "acc",
+    ]  # only task 0 metrics are computed since the dummy model outputs only one task
 
 
 def test_default_validator_from_config_throws(validator_config):
-    assert 3 == 6
+    # 1) Invalid top-level schema: remove a required field -> ValueError("Invalid configuration")
+    cfg = copy.deepcopy(validator_config)
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad.pop("criterion", None)
+    with pytest.raises(ValueError, match="Invalid configuration"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 2) Criterion cannot be imported -> ValueError("Failed to import criterion")
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["criterion"]["name"] = "does.not.exist"
+    with pytest.raises(ValueError, match="Failed to import criterion"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 3) Missing name_in_data in a monitor entry -> KeyError for 'name_in_data'
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["compute_per_task"]["0"][0] = {
+        "name": "QuantumGrav.evaluate.F1ScoreEval",
+        # intentionally omit name_in_data
+        "average": "macro",
+    }
+    with pytest.raises(KeyError, match="name_in_data"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 4) Monitor type import fails -> ValueError from _find_function_or_class
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["compute_per_task"]["0"][0] = {
+        "name": "totally.not.there",
+        "name_in_data": "broken_metric",
+    }
+    with pytest.raises(ValueError, match="Failed to import|import"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 5) Target getter cannot be imported -> ValueError
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["get_target_per_task"]["1"] = "totally.not.there"
+    with pytest.raises(ValueError, match="Failed to import|import"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 6) Target getter is not callable (use a non-callable attribute)
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["get_target_per_task"]["0"] = "numpy.pi"
+    with pytest.raises(ValueError, match="not callable"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 7) apply_model import fails -> ValueError
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["apply_model"]["name"] = "nowhere.func"
+    with pytest.raises(ValueError, match="Failed to import apply_model|import"):
+        QG.DefaultValidator.from_config(cfg_bad)
+
+    # 8) apply_model resolves to a non-callable/non-class -> ValueError
+    cfg_bad = copy.deepcopy(cfg)
+    cfg_bad["apply_model"]["name"] = "numpy.pi"
+    with pytest.raises(ValueError, match="apply_model type is not a class or callable"):
+        QG.DefaultValidator.from_config(cfg_bad)
 
 
 # def test_default_validator_report(caplog):

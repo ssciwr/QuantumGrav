@@ -61,6 +61,10 @@ class DefaultEvaluator(base.Configurable):
                                 "type": "string",
                                 "description": "the type name of the callable to compute the desired quantity",
                             },
+                            "name_in_data": {
+                                "type": "string",
+                                "description": "the name the result of this computation should have in the final dataframe",
+                            },
                             "args": {
                                 "type": "array",
                                 "description": "Optional positional arguments for the callable.",
@@ -246,14 +250,15 @@ class DefaultEvaluator(base.Configurable):
         Returns:
             Any: The found function or class.
         """
-        print("globals: ", globals())
-        try:
-            obj = globals().get(name)
-            if obj is None:
+
+        obj = utils.get_evaluation_function(name)
+
+        if obj is None:
+            try:
                 obj = utils.import_and_get(name)
-            return obj
-        except Exception as e:
-            raise ValueError(f"Failed to import {name}: {e}")
+            except Exception as e:
+                raise ValueError(f"Failed to import {name}: {e}")
+        return obj
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "DefaultEvaluator":
@@ -274,7 +279,7 @@ class DefaultEvaluator(base.Configurable):
         if criterion_cfg is None:
             raise ValueError("Criterion must be specified.")
 
-        criterion = criterion_cfg["name"]
+        criterion_type = criterion_cfg["name"]
         criterion_args = criterion_cfg.get("args", [])
         criterion_kwargs = criterion_cfg.get("kwargs", {})
 
@@ -290,24 +295,28 @@ class DefaultEvaluator(base.Configurable):
 
         # build criterion
         try:
-            criterion_type = cls._find_function_or_class(criterion)
+            criterion_type = cls._find_function_or_class(criterion_type)
             if criterion_type is None:
-                raise ValueError(f"Failed to import criterion: {criterion}")
-            if isclass(criterion):
+                raise ValueError(f"Failed to import criterion: {criterion_type}")
+            if isclass(criterion_type):
                 criterion = criterion_type(*criterion_args, **criterion_kwargs)
+            else:
+                criterion = criterion_type
         except Exception as e:
             raise ValueError(f"Failed to import criterion: {e}")
 
-        # build per_task_monitors
+        # build per_task_monitors. each task can have a dict of named comput tasks. in the config,
+        # these can refer to plain callables or classes to be instantiated
         per_task_monitors = {}
         for key, cfg_list in compute_per_task.items():
-            per_task_monitors[key] = []
+            per_task_monitors[int(key)] = {}
             for cfg in cfg_list:
                 # try to find the type in the module in this module
-                monitortype = cls._find_function_or_class(cfg["type"])
+                monitortype = cls._find_function_or_class(cfg["name"])
+                name_in_data = cfg["name_in_data"]
                 if monitortype is None:
                     raise ValueError(
-                        f"Failed to import monitortype for task {key}: {cfg['type']}"
+                        f"Failed to import monitortype for task {key}: {cfg['name']}"
                     )
 
                 if isclass(monitortype):
@@ -328,7 +337,7 @@ class DefaultEvaluator(base.Configurable):
                     raise ValueError(
                         f"Monitortype for task {key} is not a class or callable"
                     )
-                per_task_monitors[int(key)].append(metrics)
+                per_task_monitors[int(key)][name_in_data] = metrics
 
         # try to build target extractors
         target_extractors = {}
@@ -348,11 +357,11 @@ class DefaultEvaluator(base.Configurable):
         apply_model: Callable | None = None
         apply_model_cfg = config.get("apply_model", None)
         if apply_model_cfg is not None:
-            apply_model_type = cls._find_function_or_class(apply_model_cfg["type"])
+            apply_model_type = cls._find_function_or_class(apply_model_cfg["name"])
 
             if apply_model_type is None:
                 raise ValueError(
-                    f"Failed to import apply_model: {apply_model_cfg['type']}"
+                    f"Failed to import apply_model: {apply_model_cfg['name']}"
                 )
 
             if isclass(apply_model_type):
@@ -367,9 +376,9 @@ class DefaultEvaluator(base.Configurable):
                 )
 
         return cls(
-            device=device,
+            device=torch.device(device),
             criterion=criterion,
-            compute_per_task=compute_per_task,
+            compute_per_task=per_task_monitors,
             get_target_per_task=target_extractors,
             apply_model=apply_model,
         )
@@ -455,6 +464,7 @@ class F1ScoreEval(base.Configurable):
             },
         },
         "required": ["average"],
+        "additionalProperties": True,
     }
 
     def __init__(
@@ -470,7 +480,7 @@ class F1ScoreEval(base.Configurable):
         self.average = average
         self.labels = labels
 
-    def __call__(self, data: dict[Any, Any], task: int) -> float:
+    def __call__(self, data: dict[Any, Any], task: int) -> float | np.ndarray:
         """Compute F1 score for a given task.
 
         Args:
@@ -535,7 +545,7 @@ class AccuracyEval(base.Configurable):
         "title": "AccuracyEval Configuration",
         "type": "object",
         "properties": {
-            "metrics": {
+            "metric": {
                 "type": "string",
                 "description": "The name of the metric function to use.",
             },
@@ -550,8 +560,8 @@ class AccuracyEval(base.Configurable):
                 "additionalProperties": {},
             },
         },
-        "required": ["metrics"],
-        "additionalProperties": False,
+        "required": ["metric"],
+        "additionalProperties": True,
     }
 
     def __init__(
