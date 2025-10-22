@@ -3,7 +3,7 @@ import pytest
 
 
 def test_juliaworker_works(jlcall_args, jl_vars):
-    jlworker = QG.JuliaWorker(
+    jlworker = QG.julia_worker.JuliaWorker(
         jl_kwargs=jlcall_args,
         **jl_vars,
     )
@@ -13,7 +13,7 @@ def test_juliaworker_works(jlcall_args, jl_vars):
 
 def test_juliaworker_no_funcname(jlcall_args, jl_vars):
     with pytest.raises(ValueError, match="Julia function name must be provided."):
-        QG.JuliaWorker(
+        QG.julia_worker.JuliaWorker(
             jl_kwargs=jlcall_args,
             jl_code_path=jl_vars["jl_code_path"],
             jl_constructor_name=None,
@@ -24,7 +24,7 @@ def test_juliaworker_no_funcname(jlcall_args, jl_vars):
 
 def test_juliaworker_no_codepath(jlcall_args):
     with pytest.raises(ValueError, match="Julia code path must be provided."):
-        QG.JuliaWorker(
+        QG.julia_worker.JuliaWorker(
             jl_kwargs=jlcall_args,
             jl_code_path=None,
             jl_constructor_name="Generator",
@@ -45,7 +45,7 @@ def test_juliaworker_jl_failure(jlcall_args, jl_vars, mocker):
     mocker.patch("juliacall.newmodule", return_value=mock_module)
 
     with pytest.raises(RuntimeError, match="Julia call failed."):
-        QG.JuliaWorker(
+        QG.julia_worker.JuliaWorker(
             jl_kwargs=jlcall_args,
             jl_code_path=jl_vars["jl_code_path"],
             jl_constructor_name=jl_vars["jl_constructor_name"],
@@ -55,7 +55,7 @@ def test_juliaworker_jl_failure(jlcall_args, jl_vars, mocker):
 
 
 def test_juliaworker_jl_call(jlcall_args, jl_vars):
-    jlworker = QG.JuliaWorker(
+    jlworker = QG.julia_worker.JuliaWorker(
         jl_kwargs=jlcall_args,
         jl_code_path=jl_vars["jl_code_path"],
         jl_constructor_name=jl_vars["jl_constructor_name"],
