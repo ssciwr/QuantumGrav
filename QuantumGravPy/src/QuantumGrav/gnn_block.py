@@ -18,6 +18,7 @@ class GNNBlock(torch.nn.Module):
         in_dim: int,
         out_dim: int,
         dropout: float = 0.3,
+        with_skip: bool = True,
         gnn_layer_type: type[torch.nn.Module] = tgnn.conv.GCNConv,
         normalizer: type[torch.nn.Module] = torch.nn.Identity,
         activation: type[torch.nn.Module] = torch.nn.ReLU,
@@ -36,6 +37,7 @@ class GNNBlock(torch.nn.Module):
             in_dim (int): The dimensions of the input features.
             out_dim (int): The dimensions of the output features.
             dropout (float, optional): The dropout probability. Defaults to 0.3.
+            with_skip (bool, optional): Whether to use a skip connection. Defaults to True.
             gnn_layer_type (torch.nn.Module, optional): The type of GNN-layer to use. Defaults to tgnn.conv.GCNConv.
             normalizer (torch.nn.Module, optional): The normalizer layer to use. Defaults to torch.nn.Identity.
             activation (torch.nn.Module, optional): The activation function to use. Defaults to torch.nn.ReLU.
@@ -55,6 +57,7 @@ class GNNBlock(torch.nn.Module):
         self.dropout_p = dropout
         self.in_dim = in_dim
         self.out_dim = out_dim
+        self.with_skip = with_skip
 
         # initialize layers
         self.dropout = torch.nn.Dropout(p=dropout, inplace=False)
@@ -78,8 +81,16 @@ class GNNBlock(torch.nn.Module):
 
         if in_dim != out_dim:
             self.projection = torch.nn.Linear(
-                *(projection_args if projection_args is not None else []),
-                **(projection_kwargs if projection_kwargs is not None else {}),
+                *(
+                    projection_args
+                    if projection_args is not None
+                    else [in_dim, out_dim]
+                ),
+                **(
+                    projection_kwargs
+                    if projection_kwargs is not None
+                    else {"bias": False}
+                ),
             )
         else:
             self.projection = torch.nn.Identity()
@@ -106,7 +117,8 @@ class GNNBlock(torch.nn.Module):
         x_res = self.activation(x_res)
 
         # Residual connection
-        x_res = x_res + self.projection(x)
+        if self.with_skip:
+            x_res = x_res + self.projection(x)
 
         # Apply dropout as regularization
         x_res = self.dropout(x_res)
@@ -137,8 +149,8 @@ class GNNBlock(torch.nn.Module):
             norm_kwargs=config.get("norm_kwargs", {}),
             activation_args=config.get("activation_args", []),
             activation_kwargs=config.get("activation_kwargs", {}),
-            projection_args=config.get("projection_args", []),
-            projection_kwargs=config.get("projection_kwargs", {}),
+            projection_args=config.get("projection_args", None),
+            projection_kwargs=config.get("projection_kwargs", None),
         )
 
     def save(self, path: str | Path) -> None:

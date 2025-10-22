@@ -36,11 +36,13 @@ def test_gnn_block_initialization(gnn_block):
     assert isinstance(gnn_block.normalizer, torch.nn.BatchNorm1d)
     assert isinstance(gnn_block.activation, torch.nn.ReLU)
     assert isinstance(gnn_block.projection, torch.nn.Linear)
+    assert gnn_block.with_skip is True
 
     test_gnnblock_flat = QG.GNNBlock(
         in_dim=16,
         out_dim=16,
         dropout=0.3,
+        with_skip=False,
         gnn_layer_type=tgnn.conv.GCNConv,
         normalizer=torch.nn.BatchNorm1d,
         activation=torch.nn.ReLU,
@@ -52,6 +54,7 @@ def test_gnn_block_initialization(gnn_block):
         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
     )
     assert isinstance(test_gnnblock_flat.projection, torch.nn.Identity)
+    assert test_gnnblock_flat.with_skip is False
 
 
 def test_gnn_block_properties(gnn_block):

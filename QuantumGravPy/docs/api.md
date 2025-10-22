@@ -7,35 +7,18 @@ The main model class `GNNModel` is there to tie together the Graph neural networ
     options:
       show_source: true
 
-## Multilayer Perceptron submodels
-These classes provide a sequence of linear (affine) layers in various configurations that can be used to create classifiers by deriving from it.
-
-### Base class for models composed of linear layers
-::: QuantumGrav.linear_sequential 
-    handler: python
-    options:
-      show_source: true
-
-### Classifier model based on linear sequential base class
-::: QuantumGrav.classifier_block
-    handler: python
-    options:
-      show_source: true
-
 ## Graph Neural network submodels
 The submodel classes in this section comprise the graph neural network backbone of a QuantumGrav model. 
-
-### Graph features block 
-This is a submodel derived from linear sequential that allows us to integrate graph-level features into the model's representation. 
-
-::: QuantumGrav.graphfeatures_block 
-    handler: python
-    options:
-      show_source: true
 
 ### Graph model block 
 This submodel is the main part of the graph neural network backbone, composed of a set of GNN layers from `pytorch-geometric` with dropout and `BatchNorm`. 
 ::: QuantumGrav.gnn_block  
+    handler: python
+    options:
+      show_source: true
+
+### Base class for models composed of linear layers
+::: QuantumGrav.linear_sequential 
     handler: python
     options:
       show_source: true
