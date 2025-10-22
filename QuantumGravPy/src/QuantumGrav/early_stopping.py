@@ -97,10 +97,7 @@ class DefaultEarlyStopping(base.Configurable):
     @property
     def grace_periods_ran_out(self) -> bool:
         """Check if all grace periods have run out"""
-        return all(
-            task["current_grace_period"] <= task["grace_period"]
-            for task in self.tasks.values()
-        )
+        return all(task["current_grace_period"] <= 0 for task in self.tasks.values())
 
     @property
     def found_better_model(self) -> bool:
@@ -212,7 +209,7 @@ class DefaultEarlyStopping(base.Configurable):
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
-        """Verify the configuraion file via a json schema.
+        """Verify the configuration file via a json schema.
 
         Args:
             config (dict[str, Any]): config to verify

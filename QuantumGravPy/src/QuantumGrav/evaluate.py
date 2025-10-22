@@ -445,7 +445,7 @@ class DefaultValidator(DefaultTester):
 
 
 class F1ScoreEval(base.Configurable):
-    """F1Score evaluator, useful for evaluation of classification problems. A callable class that builds an f1 evaluator to a given set of specifications. Uses sklearn.metrics.f1_score for the computation fo the f1 score."""
+    """F1Score evaluator, useful for evaluation of classification problems. A callable class that builds an f1 evaluator to a given set of specifications. Uses sklearn.metrics.f1_score for the computation of the f1 score."""
 
     json_schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -501,7 +501,7 @@ class F1ScoreEval(base.Configurable):
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
-        """Verfiy the configuration via a json schema
+        """Verify the configuration via a json schema
 
         Args:
             config (dict[str, Any]): configuration to verify
@@ -577,7 +577,7 @@ class AccuracyEval(base.Configurable):
         """
         if metric is None:
             self.metric: Callable | torch.nn.Module = torch.nn.MSELoss()
-        elif isinstance(metric, Callable) and not isclass(metric):
+        elif callable(metric) and not isclass(metric):
             self.metric = metric
         elif isclass(metric):
             self.metric = metric(*metric_args, **metric_kwargs)
@@ -604,7 +604,7 @@ class AccuracyEval(base.Configurable):
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
-        """Verify configuration dict with a json schema
+        """Verify configuration dict with a json schema.
 
         Args:
             config (dict[str, Any]): Config to verify
