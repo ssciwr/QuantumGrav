@@ -127,7 +127,6 @@ end
 @testitem "test_insert_KR_into_manifoldlike" tags = [:csetmerging] setup =
     [TestsCSetMerging] begin
     n2_rel = 0.05
-    total_size = 200 + round(Int, 200 * n2_rel)
     cset, flag, coords = QuantumGrav.insert_KR_into_manifoldlike(
         200,
         10,
@@ -140,8 +139,8 @@ end
     @test is_toposorted(cset)
     @test flag === true
     @test isa(cset, BitArrayCauset)
-    @test cset.atom_count == total_size
-    @test size(coords, 1) == total_size
+    @test cset.atom_count == 200
+    @test size(coords, 1) == 200
 end
 
 @testitem "test_insert_KR_into_manifoldlike_throws" tags = [:csetmergingthrows] setup =

@@ -159,20 +159,20 @@ insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_proba
                             d::Int64=2, type::Type=Float32, p::Float64=0.5)
     -> Tuple{BitArrayCauset, Bool, Matrix{T}}
 
-Generate a manifoldlike causal set with `npoints` elements and insert into it a KR-order (random layered)
-causal set containing 5% of the elements. The insertion point is chosen randomly (or specified via `position`).
+Generate a manifoldlike causal set and insert into it a KR-order (random layered)
+causal set. The insertion point is chosen randomly (or specified via `position`).
 Random links are added across the insertion boundary with probability `link_probability`.
 Transitive closure is applied to ensure consistency.
 
 Returns the merged causet, a dummy `true`, and the coordinate matrix used for the manifoldlike causet.
 
 # Arguments
-- `npoints`: Number of elements in the manifoldlike causal set
+- `npoints`: Total number of elements in the resulting causal set (may be off by 1 due to rounding errors)
 - `order`: Sprinkling order for the manifoldlike causet
 - `r`: Interaction scale for manifoldlike causet generation
 - `link_probability`: Probability for adding links across the insertion boundary (must be in [0, 1])
 - `rng`: Random number generator (default: `Random.GLOBAL_RNG`)
-- `n2_rel`: Size of KR order relative to size of manifoldlike causet
+- `n2_rel`: Size of KR order relative to total size of resulting causet
 - `position`: Optional insertion index in `0:npoints`; if `nothing`, insertion is random
 - `d`: Dimension of the manifoldlike causal set (default: 2)
 - `type`: Coordinate type (default: Float32)
@@ -203,8 +203,10 @@ function insert_KR_into_manifoldlike(
 
     n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
 
+    n1 = max(1, round(Int, (1 - n2_rel) * npoints)) # Ensure at least 1
+    
     cset1Raw, _, _ =
-        make_polynomial_manifold_cset(npoints, rng, order, r; d = d, type = type)
+        make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
     n2 = max(1, round(Int, n2_rel * npoints))  # Ensure at least 1
 
     cset2Raw, _ = create_random_layered_causet(n2, 3; p = p)
@@ -217,5 +219,5 @@ function insert_KR_into_manifoldlike(
         position = position,
     ),
     true,
-    stack(make_pseudosprinkling(npoints + n2, d, -1.0, 1.0, type; rng = rng), dims = 1)
+    stack(make_pseudosprinkling(npoints, d, -1.0, 1.0, type; rng = rng), dims = 1)
 end
