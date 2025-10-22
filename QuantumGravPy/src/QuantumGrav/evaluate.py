@@ -26,21 +26,83 @@ class DefaultEvaluator(base.Configurable):
                 "description": "The device to run the evaluation on.",
             },
             "criterion": {
-                "type": "string",
+                "type": "object",
                 "description": "The loss function to use for evaluation.",
-                # TODO: add additional args, kwargs
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "the type name of the callable to compute the loss",
+                    },
+                    "args": {
+                        "type": "array",
+                        "description": "Optional positional arguments for the callable.",
+                        "items": {},
+                    },
+                    "kwargs": {
+                        "type": "object",
+                        "description": "Optional keyword arguments for the callable.",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["name"],
+                "additional_properties": True,
             },
             "compute_per_task": {
                 "type": "object",
                 "description": "Task-specific metrics to compute.",
-                "additionalProperties": {},
-                # TODO: add additional args, kwargs
-
+                "additionalProperties": {
+                    "type": "array",
+                    "description": "a list of {name, args, kwargs} dictionaries that define what metrics should be computed per task",
+                    "items": {
+                        "type": "object",
+                        "description": "A single task definition",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "the type name of the callable to compute the desired quantity",
+                            },
+                            "args": {
+                                "type": "array",
+                                "description": "Optional positional arguments for the callable.",
+                                "items": {},
+                            },
+                            "kwargs": {
+                                "type": "object",
+                                "description": "Optional keyword arguments for the callable.",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "required": ["name"],
+                        "additional_properties": True,
+                    },
+                },
             },
             "get_target_per_task": {
                 "type": "object",
                 "description": "Function to get the target for each task.",
-                "additionalProperties": {},
+                "additional_properties": True,
+            },
+            "apply_model": {
+                "type": "object",
+                "description": "Optional apply model function",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "the type name of the callable to compute the desired quantity",
+                    },
+                    "args": {
+                        "type": "array",
+                        "description": "Optional positional arguments for the callable.",
+                        "items": {},
+                    },
+                    "kwargs": {
+                        "type": "object",
+                        "description": "Optional keyword arguments for the callable.",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["name"],
+                "additional_properties": True,
             },
         },
         "required": [
@@ -184,6 +246,7 @@ class DefaultEvaluator(base.Configurable):
         Returns:
             Any: The found function or class.
         """
+        print("globals: ", globals())
         try:
             obj = globals().get(name)
             if obj is None:
@@ -207,12 +270,13 @@ class DefaultEvaluator(base.Configurable):
 
         device = config.get("device", "cpu")
 
-        criterion = config.get("criterion", None)
-        if criterion is None:
+        criterion_cfg = config.get("criterion", None)
+        if criterion_cfg is None:
             raise ValueError("Criterion must be specified.")
 
-        criterion_args = config.get("criterion_args", [])
-        criterion_kwargs = config.get("criterion_kwargs", {})
+        criterion = criterion_cfg["name"]
+        criterion_args = criterion_cfg.get("args", [])
+        criterion_kwargs = criterion_cfg.get("kwargs", {})
 
         compute_per_task = config.get("compute_per_task", None)
         if compute_per_task is None:
@@ -229,7 +293,8 @@ class DefaultEvaluator(base.Configurable):
             criterion_type = cls._find_function_or_class(criterion)
             if criterion_type is None:
                 raise ValueError(f"Failed to import criterion: {criterion}")
-            criterion = criterion_type(*criterion_args, **criterion_kwargs)
+            if isclass(criterion):
+                criterion = criterion_type(*criterion_args, **criterion_kwargs)
         except Exception as e:
             raise ValueError(f"Failed to import criterion: {e}")
 
@@ -263,7 +328,7 @@ class DefaultEvaluator(base.Configurable):
                     raise ValueError(
                         f"Monitortype for task {key} is not a class or callable"
                     )
-                per_task_monitors[key].append(metrics)
+                per_task_monitors[int(key)].append(metrics)
 
         # try to build target extractors
         target_extractors = {}
@@ -277,7 +342,7 @@ class DefaultEvaluator(base.Configurable):
             if not callable(targetgetter):
                 raise ValueError(f"Target getter for task {key} is not callable")
 
-            target_extractors[key] = targetgetter
+            target_extractors[int(key)] = targetgetter
 
         # try to build apply_model
         apply_model: Callable | None = None

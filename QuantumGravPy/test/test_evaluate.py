@@ -14,6 +14,20 @@ def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     return loss
 
 
+def get_target_0(tgt: torch.Tensor, _: int) -> torch.Tensor:
+    return torch.cat([tgt, tgt, tgt], dim=1)
+
+
+def get_target_1(tgt: torch.Tensor, _: int) -> torch.Tensor:
+    return tgt[:, 1]
+
+
+def apply_model(model, data):
+    out = model(data.x, data.edge_index, data.batch)
+    out[0] = (torch.sigmoid(out[0]) > 0.5).to(torch.float)
+    return out
+
+
 @pytest.fixture(scope="session")
 def input():
     return {
@@ -80,11 +94,6 @@ def validator_object():
         1: lambda x, i: x[:, 1],
     }
 
-    def apply_model(model, data):
-        out = model(data.x, data.edge_index, data.batch)
-        out[0] = (torch.sigmoid(out[0]) > 0.5).to(torch.float)
-        return out
-
     validator = QG.DefaultValidator(
         device=device,
         criterion=compute_loss,
@@ -94,6 +103,48 @@ def validator_object():
     )
 
     return validator
+
+
+@pytest.fixture(scope="session")
+def validator_config():
+    return {
+        "device": "cpu",
+        "criterion": {
+            "name": "compute_loss",
+            "args": [],
+            "kwargs": {},
+        },
+        "compute_per_task": {
+            "0": [
+                {
+                    "name": "QuantumGrav.evaluate.F1ScoreEval",
+                    "average": "macro",
+                },
+                {
+                    "name": "QuantumGrav.evaluate.F1ScoreEval",
+                    "average": "micro",
+                },
+                {
+                    "name": "QuantumGrav.evaluate.AccuracyEval",
+                    "metric": "torch.nn.functional.l1_loss",
+                    "metric_args": [],
+                    "metric_kwargs": {},
+                },
+            ],
+            "1": [
+                {
+                    "name": "QuantumGrav.evaluate.AccuracyEval",
+                    "kwargs": {
+                        "metric": "torch.nn.functional.l1_loss",
+                        "metric_args": [],
+                        "metric_kwargs": {},
+                    },
+                },
+            ],
+        },
+        "get_target_per_task": {"0": "get_target_0", "1": "get_target_1"},
+        "apply_model": {"name": "apply_model", "args": [], "kwargs": {}},
+    }
 
 
 @pytest.fixture(scope="session")
@@ -253,12 +304,12 @@ def test_default_validator_creation(gnn_model_eval):
         criterion=compute_loss,
         compute_per_task=compute_per_task,
         get_target_per_task=get_target_per_task,
-        apply_model=lambda data: gnn_model_eval(data, data.edge_index, data.batch),
+        apply_model=apply_model,
     )
 
     assert validator.device == device
     assert validator.criterion is compute_loss
-    assert validator.apply_model is not None
+    assert validator.apply_model is apply_model
     assert validator.data is None
     assert validator.logger is not None
     assert validator.active_tasks == []
@@ -266,7 +317,7 @@ def test_default_validator_creation(gnn_model_eval):
     assert validator.compute_per_task == compute_per_task
 
 
-def test_default_evaluator_evaluate(make_dataset, gnn_model_eval, validator_object):
+def test_default_validator_evaluate(make_dataset, gnn_model_eval, validator_object):
     dataloader = DataLoader(make_dataset, batch_size=4)
     validator_object.evaluate(gnn_model_eval, dataloader)
     assert len(validator_object.data) == len(dataloader)
@@ -276,9 +327,34 @@ def test_default_evaluator_evaluate(make_dataset, gnn_model_eval, validator_obje
         "f1_micro_task_0",
         "accuracy_task_0",
     ]  # only task 0 metrics are computed since the dummy model outputs only one task
-    
 
-# def test_default_evaluator_report(caplog):
+
+def test_default_validator_report(make_dataset, gnn_model_eval, validator_object):
+    dataloader = DataLoader(make_dataset, batch_size=4)
+    validator_object.evaluate(gnn_model_eval, dataloader)
+
+    validator_object.report()
+
+
+def test_default_validator_from_config(validator_config):
+    validator = QG.DefaultValidator.from_config(validator_config)
+    device = torch.device("cpu")
+
+    assert validator.apply_model is apply_model
+    assert validator.device == device
+    assert validator.criterion is compute_loss
+    assert validator.data is None
+    assert validator.logger is not None
+    assert validator.active_tasks == []
+    assert len(validator.get_target_per_task) == 2
+    assert len(validator.compute_per_task) == 1
+
+
+def test_default_validator_from_config_throws(validator_config):
+    assert 3 == 6
+
+
+# def test_default_validator_report(caplog):
 #     device = torch.device("cpu")
 #     evaluator = QG.DefaultEvaluator(
 #         device=device,
