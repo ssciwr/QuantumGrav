@@ -155,31 +155,37 @@ class ConfigHandler:
         # make dictionaries that record sweep dims and their coupled partners
         # then assign the sweep partners to their sweep dimensions
         self._extract_sweep_dims([], self.config, sweep_targets, coupled_targets)
-        # postprocess the coupled targets to augment the sweep targets
-        for k, v in coupled_targets.items():
-            if len(v["values"]) != len(sweep_targets[tuple(v["target"])]["values"]):
-                raise ValueError(
-                    f"Incompatible lengths for coupled-sweep {v['target']}"
-                )
 
-            if (
-                "partner" in sweep_targets[tuple(v["target"])]
-                and sweep_targets[tuple(v["target"])]["partner"] is not None
-            ):
-                sweep_targets[tuple(v["target"])]["partner"].append(v["values"])
-            else:
-                sweep_targets[tuple(v["target"])]["partner"] = [v["values"]]
+        if len(sweep_targets) == 0 and len(coupled_targets) == 0:
+            self.run_configs = [
+                config,
+            ]
+        else:
+            # postprocess the coupled targets to augment the sweep targets
+            for k, v in coupled_targets.items():
+                if len(v["values"]) != len(sweep_targets[tuple(v["target"])]["values"]):
+                    raise ValueError(
+                        f"Incompatible lengths for coupled-sweep {v['target']}"
+                    )
 
-            if (
-                "partner_path" in sweep_targets[tuple(v["target"])]
-                and sweep_targets[tuple(v["target"])]["partner_path"] is not None
-            ):
-                sweep_targets[tuple(v["target"])]["partner_path"].append(v["path"])
-            else:
-                sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
+                if (
+                    "partner" in sweep_targets[tuple(v["target"])]
+                    and sweep_targets[tuple(v["target"])]["partner"] is not None
+                ):
+                    sweep_targets[tuple(v["target"])]["partner"].append(v["values"])
+                else:
+                    sweep_targets[tuple(v["target"])]["partner"] = [v["values"]]
 
-        # construct the configs
-        self.run_configs = self._construct_run_configs(sweep_targets)
+                if (
+                    "partner_path" in sweep_targets[tuple(v["target"])]
+                    and sweep_targets[tuple(v["target"])]["partner_path"] is not None
+                ):
+                    sweep_targets[tuple(v["target"])]["partner_path"].append(v["path"])
+                else:
+                    sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
+
+            # construct the configs
+            self.run_configs = self._construct_run_configs(sweep_targets)
 
         for i, cfg in enumerate(self.run_configs):
             cfg["model"]["name"] = f"{cfg['model']['name']}_{name_addition}_{i}"

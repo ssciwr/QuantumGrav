@@ -19,28 +19,55 @@ def yaml_text():
                 values: [16, 32]
             lr: !sweep
                 values: [0.1, 0.01, 0.001]
-            foo: 
-                - 
-                    x: 3 
-                    y: 5 
-                - 
-                    x: !sweep 
+            foo:
+                -
+                    x: 3
+                    y: 5
+                -
+                    x: !sweep
                         values: [1, 2]
                     y: 2
-            bar: 
-                - x: !coupled-sweep 
-                    target: model.foo[1].x 
+            bar:
+                - x: !coupled-sweep
+                    target: model.foo[1].x
                     values: [-1, -2]
-            baz: 
-                - x: !coupled-sweep 
+            baz:
+                - x: !coupled-sweep
                     target: model.foo[1].x
                     values: [-10, -20]
-            
+
         trainer:
             epochs: !range
                 start: 1
                 stop: 6
                 step: 2
+        """
+    return yaml_text
+
+
+@pytest.fixture(scope="session")
+def yaml_text_nonsweep():
+    yaml_text = """
+        model:
+            name: test_model
+            layers: 1
+            type: !pyobject QuantumGrav.GNNBlock
+            convtype: !pyobject torch_geometric.nn.SAGEConv
+            bs: 16
+            lr: 0.1
+            foo:
+                - 3
+
+                -
+                    x: 1
+                    y: 2
+            bar:
+                - x: 1
+            baz:
+                - x: 2
+
+        trainer:
+            epochs: 2
         """
     return yaml_text
 
@@ -112,6 +139,14 @@ def test_read_yaml_throws():
         """
     with pytest.raises(ValueError, match="Importing module DoesNotExist unsuccessful"):
         yaml.load(broken_yaml_text, Loader=loader)
+
+
+def test_initialize_config_handler_nonsweep(yaml_text_nonsweep):
+    loader = QG.config_utils.get_loader()
+    cfg = yaml.load(yaml_text_nonsweep, Loader=loader)
+    ch = QG.ConfigHandler(cfg)
+    run_cfgs = ch.run_configs
+    assert len(run_cfgs) == 1
 
 
 def test_initialize_config_handler(yaml_text):
