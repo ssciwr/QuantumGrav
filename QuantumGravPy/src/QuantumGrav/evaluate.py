@@ -495,8 +495,6 @@ class F1ScoreEval(base.Configurable):
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
         if y_pred.shape != y_true.shape:
-            print(y_true.shape)
-            print(y_pred.shape)
             raise ValueError(f"Shape mismatch: {y_true.shape} vs {y_pred.shape}")
 
         return f1_score(y_true, y_pred, average=self.average, labels=self.labels)
@@ -581,7 +579,7 @@ class AccuracyEval(base.Configurable):
             self.metric: Callable | torch.nn.Module = torch.nn.MSELoss()
         elif isinstance(metric, Callable) and not isclass(metric):
             self.metric = metric
-        elif issubclass(metric, torch.nn.Module):
+        elif isclass(metric):
             self.metric = metric(*metric_args, **metric_kwargs)
         else:
             # don't do anything here
@@ -637,7 +635,7 @@ class AccuracyEval(base.Configurable):
         if not cls.verify_config(config):
             raise ValidationError("Invalid configuration for AccuracyEval")
 
-        metric = config.get("metrics", None)
+        metric = config.get("metric", None)
         metricstype: Callable | type[torch.nn.Module] | None = None
         if metric is not None:
             try:
@@ -665,43 +663,50 @@ class DefaultEarlyStopping(base.Configurable):
 
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "AccuracyEval Configuration",
+        "title": "DefaultEarlyStopping Configuration",
         "type": "object",
         "properties": {
             "tasks": {
-                "type": "array",
+                "type": "object",
                 "description": "A list of properties for each task in the ML model to evaluate.",
-                "items": {
+                "additionalProperties": {
                     "type": "object",
                     "properties": {
                         "delta": {
-                            "type": float,
+                            "type": "number",
                             "description": "The minimum change in the metric to qualify as an improvement.",
                         },
                         "metric": {
-                            "type": str,
+                            "type": "string",
                             "description": "The metric to optimize during training.",
                         },
                         "grace_period": {
-                            "type": int,
+                            "type": "integer",
                             "description": "The number of epochs with no improvement after which training will be stopped.",
                             "minimum": 0,
                         },
                         "init_best_score": {
-                            "type": float,
+                            "type": "number",
                             "description": "The initial best score for the task.",
                         },
                         "mode": {
-                            "type": str,
+                            "type": "string",
                             "description": "Whether finding a better model min or max comparison based",
                             "enum": ["min", "max"],
                         },
                     },
+                    "additionalProperties": False,
+                    "required": [
+                        "delta",
+                        "metric",
+                        "grace_period",
+                        "init_best_score",
+                        "mode",
+                    ],
                 },
-                "additionalProperties": True,
             },
             "mode": {
-                "type": str,
+                "type": "string",
                 "description": "How to aggregate the results of the different tasks - either 'any' (improvement in any one task will be seen as positive and trigger patience reset) or 'all' (improvement in all tasks is required)",
                 "enum": ["any", "all"],
             },
@@ -751,10 +756,7 @@ class DefaultEarlyStopping(base.Configurable):
     @property
     def found_better_model(self) -> bool:
         """Check if a better model has been found."""
-        status = [
-            task["found_better"] for task in self.tasks.values() if task["found_better"]
-        ]
-        print("  status: ", status)
+        status = [task["found_better"] for task in self.tasks.values()]
         if self.mode == "any":
             return any(status)
         elif self.mode == "all":
@@ -815,14 +817,12 @@ class DefaultEarlyStopping(base.Configurable):
         # go over all registered metrics and check if the model performs better on any of them
         # then aggregrate the result with 'found_better_model'.
         for k in self.tasks.keys():
-            print("  \ntask: ", k)
             # smooth data if desired - prevents oscillations
             d = data[self.tasks[k]["metric"]]
 
             better = self._evaluate_task(self.tasks[k], d.iloc[-1])
 
             if better and len(data) >= 1:
-                print("  better model found at task: ", k)
                 self.logger.debug(
                     f"    Better model found for task {k}: {d.iloc[-1]:.8f}, current best: {self.tasks[k]['best_score']:.8f}"
                 )
@@ -831,7 +831,6 @@ class DefaultEarlyStopping(base.Configurable):
             ds[k] = d.iloc[-1]
 
         if self.found_better_model:
-            print("  overall better model found")
             self.logger.info("Found better model")
             for j in self.tasks.keys():
                 if self.tasks[j]["found_better"] and j in ds:
@@ -845,16 +844,13 @@ class DefaultEarlyStopping(base.Configurable):
 
         # only when all grace periods are done will we reduce the patience
         elif self.grace_periods_ran_out:
-            print("grace period ran out ")
             self.current_patience -= 1
         else:
-            print("do nothing")
             pass  # do nothing here, grace period needs to go down anyway
 
         # reduce the grace period
         for task in self.tasks.values():
             if task["current_grace_period"] > 0:
-                print("reducing grace period for task")
                 task["current_grace_period"] -= 1
 
         # general reporting

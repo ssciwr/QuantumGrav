@@ -1,4 +1,3 @@
-from .julia_worker import JuliaWorker
 from .utils import (
     register_activation,
     register_gnn_layer,

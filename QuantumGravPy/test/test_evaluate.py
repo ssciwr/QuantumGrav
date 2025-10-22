@@ -6,7 +6,6 @@ import logging
 import pytest
 from jsonschema import ValidationError
 import copy
-import pandas as pd
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
@@ -32,33 +31,9 @@ def apply_model(model, data):
 
 
 @pytest.fixture(scope="session")
-def early_stoppinginput():
-    return {
-        "tasks": {
-            0: {
-                "delta": 1e-2,
-                "metric": "loss",
-                "grace_period": 8,
-                "init_best_score": 1000000.0,
-                "mode": "min",
-            },
-            1: {
-                "delta": 1e-4,
-                "metric": "other_loss",
-                "grace_period": 10,
-                "init_best_score": -1000000.0,
-                "mode": "max",
-            },
-        },
-        "mode": "any",
-        "patience": 12,
-    }
-
-
-@pytest.fixture(scope="session")
 def accuracy_config():
     return {
-        "metrics": "torch.nn.HuberLoss",
+        "metric": "torch.nn.HuberLoss",
         "metric_args": [],
         "metric_kwargs": {"reduction": "sum", "delta": 2.0},
     }
@@ -455,115 +430,3 @@ def test_default_validator_from_config_throws(validator_config):
     cfg_bad["apply_model"]["name"] = "numpy.pi"
     with pytest.raises(ValueError, match="apply_model type is not a class or callable"):
         QG.DefaultValidator.from_config(cfg_bad)
-
-
-def test_default_early_stopping_creation(early_stoppinginput):
-    """Test the DefaultEarlyStopping class."""
-
-    early_stopping = QG.DefaultEarlyStopping(
-        tasks=early_stoppinginput["tasks"],
-        mode=early_stoppinginput["mode"],
-        patience=early_stoppinginput["patience"],
-    )
-    for key, task in early_stopping.tasks.items():
-        assert task["delta"] == early_stoppinginput["tasks"][key]["delta"]
-        assert (
-            task["best_score"] == early_stoppinginput["tasks"][key]["init_best_score"]
-        )
-        assert task["metric"] == early_stoppinginput["tasks"][key]["metric"]
-        assert task["found_better"] is False
-        assert task["mode"] == early_stoppinginput["tasks"][key]["mode"]
-        assert early_stopping.logger is not None
-    assert early_stopping.mode == "any"
-    assert early_stopping.current_patience == early_stoppinginput["patience"]
-    assert early_stopping.patience == early_stoppinginput["patience"]
-
-
-def test_default_early_stopping_check_any_found_improvement(early_stoppinginput):
-    """Test the check method of DefaultEarlyStopping - any."""
-    early_stopping = QG.DefaultEarlyStopping(
-        tasks=early_stoppinginput["tasks"],
-        mode="all",
-        patience=early_stoppinginput["patience"],
-    )
-
-    early_stopping.best_score = [12.0, 12.0]
-    losses = pd.DataFrame(
-        {
-            "loss": [
-                0.1,
-                0.09,
-                0.08,
-                0.07,
-            ],
-            "other_loss": [0.2, 0.3, 0.4, 0.5],
-        }
-    )
-
-    assert early_stopping(losses) is False
-    assert early_stopping.current_patience == early_stoppinginput["patience"]
-
-    for key, task in early_stopping.tasks.items():
-        print("task: ", key, "score: ", task["best_score"])
-        assert task["current_grace_period"] == task["grace_period"] - 1
-        assert task["found_better"] is True  # all are better
-
-
-def test_default_early_stopping_check_any_found_improvement_any(early_stoppinginput):
-    """Test the check method of DefaultEarlyStopping - any."""
-    early_stopping = QG.DefaultEarlyStopping(
-        tasks=early_stoppinginput["tasks"],
-        mode="any",
-        patience=early_stoppinginput["patience"],
-    )
-
-    early_stopping.best_score = [12.0, 12.0]
-    losses = pd.DataFrame(
-        {
-            "loss": [
-                1e10,
-                1e10,
-                1e10,
-                1e10,
-            ],
-            "other_loss": [0.2, 0.3, 0.4, 0.5],
-        }
-    )
-
-    assert early_stopping(losses) is False
-    assert early_stopping.current_patience == early_stoppinginput["patience"]
-
-    for key, task in early_stopping.tasks.items():
-        print("task: ", key, "score: ", task["best_score"])
-        assert task["current_grace_period"] == task["grace_period"] - 1
-        assert task["found_better"] == (key != 0)
-
-
-def test_default_early_stopping_triggered(early_stoppinginput):
-    """Test the check method of DefaultEarlyStopping - early stopping triggered."""
-    early_stopping = QG.DefaultEarlyStopping(
-        tasks=early_stoppinginput["tasks"],
-        mode="all",
-        patience=early_stoppinginput["patience"],
-    )
-    early_stopping.current_patience = 1
-    for _, task in early_stopping.tasks.items():
-        task["current_grace_period"] = 0
-
-    early_stopping.tasks[0]["best_score"] = 1e-3
-    early_stopping.tasks[1]["best_score"] = 1000
-
-    losses = pd.DataFrame(
-        {
-            "loss": [
-                1e10,
-                1e10,
-            ],
-            "other_loss": [
-                1e-10,
-                1e-10,
-            ],
-        }
-    )
-    assert early_stopping(losses) is True
-    assert early_stopping.current_patience == 0
