@@ -316,6 +316,7 @@ struct GridCsetMakerPolynomial
     order_distribution::Distributions.Distribution
     r_distribution::Distributions.Distribution
     grid_lookup::Dict
+    origin::Array{Float64}
 end
 
 """
@@ -351,6 +352,7 @@ function GridCsetMakerPolynomial(config::Dict)
         order_distribution,
         r_distribution,
         grid_lookup,
+        config["origin"],
     )
 end
 
@@ -366,22 +368,20 @@ end
 """
 function (gcm::GridCsetMakerPolynomial)(
     n::Int64,
-    config::Dict,
-    rng::Random.AbstractRNG;
+    rng::Random.AbstractRNG,
+    config::Dict{String,Any};
     grid::Union{String,Nothing} = nothing,
 )
+
+    if isnothing(grid)
+        grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
+    end
     a_dist = build_distr(config[grid], "a_distribution")
     b_dist = build_distr(config[grid], "b_distribution")
-
     o = rand(rng, gcm.order_distribution)
     r = rand(rng, gcm.r_distribution)
     rotate_angle_deg = rand(rng, gcm.rotate_distribution)
     gamma_deg = rand(rng, gcm.gamma_distribution)
-
-    if grid === nothing
-        grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
-    end
-
     a = rand(rng, a_dist)
     b = rand(rng, b_dist)
     cset, _, __ = QG.create_grid_causet_2D_polynomial_manifold(
@@ -395,7 +395,7 @@ function (gcm::GridCsetMakerPolynomial)(
         b = b,
         gamma_deg = gamma_deg,
         rotate_deg = rotate_angle_deg,
-        origin = (0.0, 0.0),
+        origin = tuple(gcm.origin...),
     )
 
     return cset

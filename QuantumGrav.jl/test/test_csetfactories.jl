@@ -98,6 +98,7 @@ end
             "r_distribution" => "Uniform",
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
+            "origin" => [0.5, 2.0],
             "quadratic" => Dict(
                 "a_distribution" => "Uniform",
                 "a_distribution_args" => [0.5, 5.5],
@@ -471,6 +472,8 @@ end
     @test csetmaker.r_distribution isa Distributions.Uniform
     @test params(csetmaker.r_distribution) == tuple(cfg["grid"]["r_distribution_args"]...)
 
+    @test csetmaker.origin == [0.5, 2.0]
+
     @test haskey(csetmaker.grid_lookup, 1)
     @test haskey(csetmaker.grid_lookup, 2)
     @test haskey(csetmaker.grid_lookup, 3)
@@ -528,18 +531,19 @@ end
     grid_types =
         ["quadratic", "rectangular", "rhombic", "hexagonal", "triangular", "oblique"]
 
+    rng = Random.Xoshiro(cfg["seed"])
+
     for grid_type in grid_types
         csetmaker = GridCsetMakerPolynomial(cfg["grid"])
-        rng = Random.Xoshiro(cfg["seed"])
 
         # Produce a cset for this grid type
-        cset = csetmaker(25, cfg["grid"], rng; grid = grid_type)
+        cset = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
         @test isnothing(cset) === false
         @test cset.atom_count == 25
     end
 
-
-    cset = csetmaker(25, cfg["grid"], rng) # randomly chosen grid type
+    csetmaker = GridCsetMakerPolynomial(cfg["grid"])
+    cset = csetmaker(25, rng, cfg["grid"]) # randomly chosen grid type
     @test isnothing(cset) === false
     @test cset.atom_count == 25
 
