@@ -344,7 +344,7 @@ class ConfigHandler:
                     elements.append([*args, v])
 
     def _construct_run_configs(
-        self, sweep_targets: dict[str, Any]
+        self, sweep_targets: dict[Tuple[str, ...], Any]
     ) -> list[dict[str, Any]]:
         """Construct the set of run configuration dictionaries from the sweep target dictionary,
         buidling as many dicts as there are values in the cartesian product of the input sweep dimensions.
