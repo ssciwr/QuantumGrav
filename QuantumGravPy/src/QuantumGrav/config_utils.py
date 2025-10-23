@@ -327,13 +327,13 @@ class ConfigHandler:
                     elements.append([*args, v])
 
     def _construct_run_configs(
-        self, sweep_targets: dict[str, Any]
+        self, sweep_targets: dict[Tuple[str, ...], Any]
     ) -> list[dict[str, Any]]:
         """Construct the set of run configuration dictionaries from the sweep target dictionary,
         buidling as many dicts as there are values in the cartesian product of the input sweep dimensions.
 
         Args:
-            sweep_targets (dict[str, Any]): Dictionary containing augmented sweep data containing nodes ["path", "values", "partner_path", "partner"], with the latter two being `None` if there are no
+            sweep_targets (dict[Tuple[str, ...], Any]): Dictionary containing augmented sweep data containing nodes ["path", "values", "partner_path", "partner"], with the latter two being `None` if there are no
             coupled-sweep values.
 
         Returns:
