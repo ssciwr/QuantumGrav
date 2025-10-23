@@ -211,9 +211,12 @@ def test_get_at_path():
             }
         },
         "d": 42,
+        "r": {3: "v"},
     }
 
     assert QG.utils.get_at_path(testdict, ["a", "b", "c"]) == 3
+
+    assert QG.utils.get_at_path(testdict, ["r", 3]) == "v"
 
     with pytest.raises(KeyError):
         QG.utils.get_at_path(

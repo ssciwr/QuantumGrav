@@ -31,14 +31,14 @@ def coupled_sweep_constructor(
     tagname: !sweep
         values: [a,b,c...]
     coupled: !coupled-sweep
-        target: tagname
+        target: path.in.config.to.tagname
         values: [1,2,3,...]
     Args:
         loader (yaml.SafeLoader): loader that loads the yaml file
         node (yaml.nodes.MappingNode): the current !coupled-sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...]}
+        dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
     """
     tokens = node.value[0][1].value.split(".")
     sweep_target = []
@@ -279,11 +279,28 @@ class ConfigHandler:
             elements (list[Any]): list of tuples representing the cartesian product of the data
             current_list (list[Any]): current list of values under consideration
             possible_partner (list[Any] | None): possible coupled-sweep partner list
-            all_lists (list[list[Any]]): lists to construct the cartesian product of
+            all_lists (list[tuple[list[Any], list[Any] | None]]): lists to construct the cartesian product of
             i (int, optional): Index into the `all_lists` argument. Defaults to 0.
         """
         # this function essentially is cpp metaprogramming with python: collect the an element of the cartesian product
         # of 'all_lists' in the arguments, taking care of the alignment of sweep dims and their partners
+
+        # Explanation:
+        # i is the index that goes over the set of lists to construct the cartesian product of,
+        # e.g. [([1,2,3], [[a,b,c],]), ([3.14, 6.28], None)]. first element in each tuple is the sweep-dim,
+        # the second is a list of coupled dims or None if no coupled dims exist. i is the index of the
+        # current list under scrutiny, e.g. [12,3].  to build the cartesian product. start with i = 0,
+        # current_list = [1,2,3]. it goes through the current list, and for each element accessed by index k a
+        # dds the current element to the variadic args and  recursively calls itself with the next list,
+        # e.g ([3.14,...], ). If there are couplings, it adds those to the variadic args too. the
+        # functoin stops when the index of dims i is exhausted, then it appends the it adds the final element
+        # to the var-args and appends the whole var-arg collection it got to the target list 'elements'.
+        #  In essence this constructs a series of nested loops:
+        # for v1 in list1:
+        #     for v2 in list2:
+        #         for v3 in list3:
+        #             ...
+        #             elements.append((v1, v2, v3,...)
         i += 1
         for k in range(len(current_list)):
             v = current_list[k]
@@ -333,7 +350,8 @@ class ConfigHandler:
         buidling as many dicts as there are values in the cartesian product of the input sweep dimensions.
 
         Args:
-            sweep_targets (dict[str, Any]): Dictionary containing augmented sweep data containing nodes ["path", "values", "partner_path", "partner"], with the latter two being `None` if there are no
+            sweep_targets (dict[str, Any]): Dictionary containing augmented sweep data containing nodes
+            ["path", "values", "partner_path", "partner"], with the latter two being `None` if there are no
             coupled-sweep values.
 
         Returns:
