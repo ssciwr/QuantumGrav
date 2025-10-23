@@ -6,7 +6,7 @@ import QuantumGrav as QG
 
 
 """
-	ManifoldCsetMaker
+	PolynomialCsetMaker
 
 	Causal set maker for a polynomial manifold.
 
@@ -14,51 +14,74 @@ import QuantumGrav as QG
 - `order_distribution::Distributions.Distribution`: distribution of polynomial orders
 - `r_distribution::Distributions.Distribution`: distribution of exponential decay exponents
 """
-struct ManifoldCsetMaker
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
+struct PolynomialCsetMaker
+	order_distribution::Distributions.Distribution
+	r_distribution::Distributions.Distribution
 end
 
 """
-	ManifoldCsetMaker(config)
+	PolynomialCsetMaker(config)
 
 	Creates a causal set maker for a polynomial manifold.
 
 # Fields:
 - config::Dict: configuration dictionary
 """
-function ManifoldCsetMaker(config)
-    order_distrname = getfield(Distributions, config["order_distribution"])
-    r_distname = getfield(Distributions, config["r_distribution"])
+function PolynomialCsetMaker(config)
+	order_distrname::Union{Nothing, Type} = nothing
+	r_distrname::Union{Nothing, Type} = nothing
+	order_distribution::Union{Nothing, Distributions.Distribution} = nothing
+	r_distribution::Union{Nothing, Distributions.Distribution} = nothing
+	try
+		order_distrname = getfield(Distributions, Symbol(config["order_distribution"]))
+	catch e
+		throw(ArgumentError("Order distribution could not be extracted from Distributions package: $(e)"))
+	end
 
-    order_distribution = order_distrname(
-        config["order_distribution_args"]...;
-        config["order_distribution_kwargs"]...,
-    )
-    r_distribution =
-        r_distname(config["r_distribution_args"]...; config["r_distribution_kwargs"]...)
-    return ManifoldCsetMaker(order_distribution, r_distribution)
+	try
+		r_distrname = getfield(Distributions, Symbol(config["r_distribution"]))
+	catch e
+		throw(ArgumentError("Exponent distribution could not be extracted from Distributions package $(e)"))
+	end
+
+	try
+		order_distribution = order_distrname(
+			config["order_distribution_args"]...;
+			get(config, "order_distribution_kwargs", Dict())...,
+		)
+	catch e
+		throw(ArgumentError("Order distribution could not be build $(e)"))
+	end
+
+	try
+		r_distribution =
+			r_distrname(config["r_distribution_args"]...; get(config, "r_distribution_kwargs", Dict())...)
+	catch e
+		throw(ArgumentError("Exponent distribution could not be build $(e)"))
+	end
+
+	return PolynomialCsetMaker(order_distribution, r_distribution)
 end
 
 """
-	m::ManifoldCsetMaker(n, config, rng)
+	m::PolynomialCsetMaker(n, config, rng)
 
-	Creates a new polynomial causal set with the parameters stored in the calling `ManifoldCsetMaker` object m.
+	Creates a new polynomial causal set with the parameters stored in the calling `PolynomialCsetMaker` object m.
 
 # Arguments:
 - `n`: number of elements in the causal set
 - `config`: configuration dictionary
 - `rng`: random number generator
 """
-function (m::ManifoldCsetMaker)(n, config, rng)::CausalSets.BitArrayCauset
-    o = rand(rng, m.order_distribution)
-    r = rand(rng, m.r_distribution)
-    cset, _, __ = QG.make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
-    return cset
+function (m::PolynomialCsetMaker)(n, rng; config::Union{Dict, Nothing} = nothing)::CausalSets.BitArrayCauset
+	o = rand(rng, m.order_distribution)
+	r = rand(rng, m.r_distribution)
+	cset, _, __ = QG.make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
+	return cset
 end
 
 """
-	LayeredCausetMaker
+	LayeredCsetMaker
 
 	Causal set maker for a layered causal set.
 
@@ -67,75 +90,110 @@ end
 - `stddev_distr::Distributions.Distribution`: distribution of standard deviations
 - `ldistr::Distributions.Distribution`: distribution of layer counts
 """
-struct LayeredCausetMaker
-    cdistr::Distributions.Distribution
-    stddev_distr::Distributions.Distribution
-    ldistr::Distributions.Distribution
+struct LayeredCsetMaker
+	connectivity_distribution::Distributions.Distribution
+	stddev_distribution::Distributions.Distribution
+	layer_distribution::Distributions.Distribution
 end
 
 """
-	LayeredCausetMaker(config::Dict)
+	LayeredCsetMaker(config::Dict)
 
 	Creates a causal set maker for a layered causal set.
 
 # Fields:
 - config::Dict: configuration dictionary
 """
-function LayeredCausetMaker(config::Dict)
-    cdist_name = getfield(Distributions, config["connectivity_distribution"])
-    stddev_name = getfield(Distributions, config["stddev_distribution"])
-    ldist_name = getfield(Distributions, config["ldist_distributions"])
+function LayeredCsetMaker(config::Dict)
+	cdist_name::Union{Nothing, Type} = nothing
+	stddev_name::Union{Nothing, Type} = nothing
+	ldist_name::Union{Nothing, Type} = nothing
+	cdistr::Union{Nothing, Distributions.Distribution} = nothing
+	stddev_distr::Union{Nothing, Distributions.Distribution} = nothing
+	ldistr::Union{Nothing, Distributions.Distribution} = nothing
 
-    cdistr = cdist_name(
-        config["connectivity_distribution_args"]...;
-        config["connectivity_distribution_kwargs"]...,
-    )
-    stddev_distr =
-        stddev_name(config["stddev_distr_args"]...; config["stddev_distr_kwargs"]...)
-    ldistr = ldist_name(config["layered_ldist_min"], config["layered_ldist_max"])
+	try
+		cdist_name = getfield(Distributions, Symbol(config["connectivity_distribution"]))
+	catch e
+		throw(ArgumentError("Could not extract connectivity distribution name from Distributions package $(e)"))
+	end
 
-    return LayeredCausetMaker(cdistr, stddev_distr, ldistr)
+	try
+		stddev_name = getfield(Distributions, Symbol(config["stddev_distribution"]))
+	catch e
+		throw(ArgumentError("Could not extract stddev distribution name from Distributions package $(e)"))
+	end
+
+	try
+		ldist_name = getfield(Distributions, Symbol(config["layer_distribution"]))
+	catch e
+		throw(ArgumentError("Could not extract layer distribution name from Distributions package $(e)"))
+	end
+
+	try
+		cdistr = cdist_name(
+			config["connectivity_distribution_args"]...;
+			config["connectivity_distribution_kwargs"]...,
+		)
+	catch e
+		throw(ArgumentError("Could not build connectivity distribution $(e)"))
+	end
+
+	try
+		stddev_distr =
+			stddev_name(config["stddev_distribution_args"]...; get(config, "stddev_distribution_kwargs", Dict())...)
+	catch e
+		throw(ArgumentError("Could not build stddev distribution $(e)"))
+	end
+
+	try
+		ldistr = ldist_name(config["layer_distribution_args"]...; get(config, "layer_distribution_kwargs", Dict())...)
+	catch e
+		throw(ArgumentError("Could not build layered distribution $(e)"))
+	end
+
+	return LayeredCsetMaker(cdistr, stddev_distr, ldistr)
 
 end
 
 """
-	lm::LayeredCausetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	lm::LayeredCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
 
-	Creates a new layered causal set with the parameters stored in the calling `LayeredCausetMaker` object lm.
+	Creates a new layered causal set with the parameters stored in the calling `LayeredCsetMaker` object lm.
 
 # Arguments:
 - `n`: number of elements in the causal set
 - `config`: configuration dictionary
 - `rng`: random number generator
 """
-function (lm::LayeredCausetMaker)(
-    n::Int64,
-    config::Dict,
-    rng::Random.AbstractRNG,
+function (lm::LayeredCsetMaker)(
+	n::Int64,
+	rng::Random.AbstractRNG;
+	config::Union{Dict, Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
-    connectivity_goal = rand(rng, lm.cdistr)
-    while connectivity_goal < 1e-5
-        connectivity_goal = rand(rng, lm.cdistr)
-    end
+	connectivity_goal = rand(rng, lm.connectivity_distribution)
+	while connectivity_goal < 1e-5
+		connectivity_goal = rand(rng, lm.connectivity_distribution)
+	end
 
-    layers = rand(rng, lm.ldistr)
-    while layers < 1e-5
-        layers = rand(rng, lm.ldistr)
-    end
-    layers = Int(ceil(layers))
+	layers = rand(rng, lm.layer_distribution)
+	while layers < 1e-5
+		layers = rand(rng, lm.layer_distribution)
+	end
+	layers = Int(ceil(layers))
 
-    s = rand(rng, lm.stddev_distr)
+	s = rand(rng, lm.stddev_distribution)
 
-    cset, _ = QG.create_random_layered_causet(
-        n,
-        layers;
-        p = connectivity_goal,
-        rng = rng,
-        standard_deviation = s,
-    )
+	cset, _ = QG.create_random_layered_causet(
+		n,
+		layers;
+		p = connectivity_goal,
+		rng = rng,
+		standard_deviation = s,
+	)
 
-    return cset
+	return cset
 end
 
 """
@@ -147,7 +205,8 @@ end
 - `cdistr::Distributions.Distribution`: distribution of connectivity goals
 """
 struct RandomCsetMaker
-    cdistr::Distributions.Distribution
+	connectivity_distribution::Distributions.Distribution
+	num_tries::Int64
 end
 
 """
@@ -159,70 +218,88 @@ end
 - config::Dict: configuration dictionary
 """
 function RandomCsetMaker(config::Dict)
-    cdistr_name = getfield(Distributions, config["connectivity_distribution"])
-    cdistr = cdistr_name(
-        config["connectivity_distribution_args"]...;
-        config["connectivity_distribution_kwargs"]...,
-    )
-    return RandomCsetMaker(cdistr)
+	cdistr_name::Union{Nothing, Type} = nothing
+	cdistr::Union{Nothing, Distributions.Distribution} = nothing
+	try
+		cdistr_name = getfield(Distributions, Symbol(config["connectivity_distribution"]))
+	catch e
+		throw(ArgumentError("Connectivity distribution could not be extracted from Distributions package: $(e)"))
+	end
+
+	try
+		cdistr = cdistr_name(
+			config["connectivity_distribution_args"]...;
+			get(config, "connectivity_distribution_kwargs", Dict())...,
+		)
+	catch e
+		throw(ArgumentError("Connectivity distribution could not be built: $(e)"))
+	end
+
+	if config["num_tries"] < 1
+		throw(ArgumentError("Error, num_tries must be >= 1"))
+	end
+
+	return RandomCsetMaker(cdistr, config["num_tries"])
 end
 
 """
-	rcm::RandomCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	rcm::RandomCsetMaker(n::Int64, rng::Random.AbstractRNG; config::Union{Dict, Nothing} = nothing)
 
 	Creates a new random causal set with the parameters stored in the calling `RandomCsetMaker` object rcm.
 
 # Arguments:
 - `n`: number of elements in the causal set
-- `config`: configuration dictionary
 - `rng`: random number generator
+
+# Keyword arguments:
+- `config`: configuration dictionary
 """
 function (rcm::RandomCsetMaker)(
-    n::Int64,
-    config::Dict,
-    rng::Random.AbstractRNG,
+	n::Int64,
+	rng::Random.AbstractRNG;
+	config::Union{Dict, Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
-    connectivity_goal = rand(rng, rcm.cdistr)
+	connectivity_goal = rand(rng, rcm.connectivity_distribution)
 
-    abs_tol = 1e-3
+	abs_tol = 1e-3
 
-    converged = false
+	converged = false
 
-    cset = nothing
+	cset = nothing
 
-    tries = 0
+	tries = 0
 
-    while converged == false
-        cset_try, converged = QG.sample_bitarray_causet_by_connectivity(
-            n,
-            connectivity_goal,
-            100,
-            rng;
-            abs_tol = abs_tol,
-        )
-        tries += 1
+	while converged == false
+		cset_try, converged = QG.sample_bitarray_causet_by_connectivity(
+			n,
+			connectivity_goal,
+			100,
+			rng;
+			abs_tol = abs_tol,
+		)
+		tries += 1
 
-        if tries > 20
-            cset = nothing
-            break
-        end
-        cset = cset_try
-    end
+		if tries > rcm.num_tries
+			cset = nothing
+			break
+		end
+		cset = cset_try
+	end
 
-    if cset === nothing
-        throw(
-            ErrorException(
-                "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $tries tries.",
-            ),
-        )
-    end
+	if cset === nothing
+		throw(
+			ErrorException(
+				"Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $tries tries.",
+			),
+		)
+	end
 
-    return cset
+	return cset
 end
 
 """
-	DestroyedCausetMaker
+	DestroyedCsetMaker
 
 	Causal set maker for a destroyed causal set, which has a set of edges flipped in a polynomial causal set.
 
@@ -231,61 +308,101 @@ end
 - `r_distribution::Distributions.Distribution`: distribution of r values
 - `flip_distribution::Distributions.Distribution`: distribution of flip values
 """
-struct DestroyedCausetMaker
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    flip_distribution::Distributions.Distribution
+struct DestroyedCsetMaker
+	order_distribution::Distributions.Distribution
+	r_distribution::Distributions.Distribution
+	flip_distribution::Distributions.Distribution
 end
 
 """
-	DestroyedCausetMaker(config::Dict)
+	DestroyedCsetMaker(config::Dict)
 
 Create a new `destroyed` causal set maker object from the config dictionary.
 """
-function DestroyedCausetMaker(config::Dict)
-    order_distrname = getfield(Distributions, config["order_distribution"])
-    r_distname = getfield(Distributions, config["r_distribution"])
-    flig_distname = getfield(Distributions, config["flip_distribution"])
+function DestroyedCsetMaker(config::Dict)
 
-    order_distribution = order_distrname(
-        config["order_distribution_args"]...;
-        config["order_distribution_kwargs"]...,
-    )
-    r_distribution =
-        r_distname(config["r_distribution_args"]...; config["r_distribution_kwargs"]...)
+	order_distrname::Union{Nothing, Type} = nothing
 
-    flip_distribution = flig_distname(
-        config["flip_distribution_args"]...;
-        config["flip_distribution_kwargs"]...,
-    )
+	r_distname::Union{Nothing, Type} = nothing
 
-    return DestroyedCausetMaker(order_distribution, r_distribution, flip_distribution)
+	flip_distname::Union{Nothing, Type} = nothing
+
+	order_distribution::Union{Nothing, Distributions.Distribution} = nothing
+
+	r_distribution::Union{Nothing, Distributions.Distribution} = nothing
+
+	flip_distribution::Union{Nothing, Distributions.Distribution} = nothing
+
+	try
+		order_distrname = getfield(Distributions, Symbol(config["order_distribution"]))
+	catch e
+		throw(ArgumentError("Could not retrieve order distribution from Distributions.jl $(e)"))
+	end
+
+	try
+		r_distname = getfield(Distributions, Symbol(config["r_distribution"]))
+	catch e
+		throw(ArgumentError("Could not retrieve exponent distribution from Distributions.jl $(e)"))
+	end
+
+	try
+		flip_distname = getfield(Distributions, Symbol(config["flip_distribution"]))
+	catch e
+		throw(ArgumentError("Could not retrieve flip distribution from Distributions.jl $(e)"))
+	end
+
+	try
+		order_distribution = order_distrname(
+			config["order_distribution_args"]...;
+			get(config, "order_distribution_kwargs", Dict())...,
+		)
+	catch e
+		throw(ArgumentError("Could not build order_distribution $(e)"))
+	end
+
+	try
+		r_distribution =
+			r_distname(config["r_distribution_args"]...; get(config, "r_distribution_kwargs", Dict())...)
+	catch e
+		throw(ArgumentError("Could not build r_distribution $(e)"))
+	end
+
+	try
+		flip_distribution = flip_distname(
+			config["flip_distribution_args"]...;
+			get(config, "flip_distribution_kwargs", Dict())...,
+		)
+	catch e
+		throw(ArgumentError("Could not build flip_distribution $(e)"))
+	end
+
+	return DestroyedCsetMaker(order_distribution, r_distribution, flip_distribution)
 end
 
 """
-	dcm::DestroyedCausetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	dcm::DestroyedCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
 
-Create a new `destroyed` causal set using a `DestroyedCausetMaker` object.
+Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 
 # Arguments:
 - `n`: number of elements in the causal set
 - `config`: configuration dictionary
 - `rng`: random number generator
 """
-function (dcm::DestroyedCausetMaker)(
-    n::Int64,
-    config::Dict,
-    rng::Random.AbstractRNG,
+function (dcm::DestroyedCsetMaker)(
+	n::Int64,
+	rng::Random.AbstractRNG;
+	config::Union{Dict{String, Any}, Nothing} = nothing
 )::CausalSets.BitArrayCauset
 
-    o = rand(rng, dcm.order_distribution)
+	o = rand(rng, dcm.order_distribution)
 
-    r = rand(rng, dcm.r_distribution)
+	r = rand(rng, dcm.r_distribution)
 
-    f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
+	f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
 
-    cset = QG.destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
-    return cset
+	cset = QG.destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
+	return cset
 end
 
 
@@ -300,13 +417,12 @@ end
 - `r_distribution::Distributions.Distribution`: distribution of radial values
 """
 struct GridCsetMakerPolynomial
-    grid_distribution::Distributions.Distribution
-    rotate_distribution::Distributions.Distribution
-    gamma_distribution::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    grid_lookup::Dict
-    config::Dict
+	grid_distribution::Distributions.Distribution
+	rotate_distribution::Distributions.Distribution
+	gamma_distribution::Distributions.Distribution
+	order_distribution::Distributions.Distribution
+	r_distribution::Distributions.Distribution
+	grid_lookup::Dict
 end
 
 """
@@ -315,47 +431,46 @@ end
 	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 """
 function GridCsetMakerPolynomial(config::Dict)
-    grid_distrname = getfield(Distributions, config["grid_distribution"])
-    rotate_distrname = getfield(Distributions, config["rotate_distribution"])
-    gamma_distrname = getfield(Distributions, config["gamma_distribution"])
-    order_distrname = getfield(Distributions, config["order_distribution"])
-    r_distname = getfield(Distributions, config["r_distribution"])
-    grid_distribution = grid_distrname(
-        config["grid_distribution_args"]...;
-        config["grid_distribution_kwargs"]...,
-    )
-    rotate_distribution = rotate_distrname(
-        config["rotate_distribution_args"]...;
-        config["rotate_distribution_kwargs"]...,
-    )
-    gamma_distribution = gamma_distrname(
-        config["gamma_distribution_args"]...;
-        config["gamma_distribution_kwargs"]...,
-    )
-    order_distribution = order_distrname(
-        config["order_distribution_args"]...;
-        config["order_distribution_kwargs"]...,
-    )
-    r_distribution =
-        r_distname(config["r_distribution_args"]...; config["r_distribution_kwargs"]...)
+	grid_distrname = getfield(Distributions, config["grid_distribution"])
+	rotate_distrname = getfield(Distributions, config["rotate_distribution"])
+	gamma_distrname = getfield(Distributions, config["gamma_distribution"])
+	order_distrname = getfield(Distributions, config["order_distribution"])
+	r_distname = getfield(Distributions, config["r_distribution"])
+	grid_distribution = grid_distrname(
+		config["grid_distribution_args"]...;
+		get(config, "grid_distribution_kwargs", Dict())...,
+	)
+	rotate_distribution = rotate_distrname(
+		config["rotate_distribution_args"]...;
+		get(config, "rotate_distribution_kwargs", Dict())...,
+	)
+	gamma_distribution = gamma_distrname(
+		config["gamma_distribution_args"]...;
+		get(config, "gamma_distribution_kwargs", Dict())...,
+	)
+	order_distribution = order_distrname(
+		config["order_distribution_args"]...;
+		get(config, "order_distribution_kwargs", Dict())...,
+	)
+	r_distribution =
+		r_distname(config["r_distribution_args"]...; config["r_distribution_kwargs"]...)
 
-    grid_lookup = Dict(
-        1 => "quadratic",
-        2 => "rectangular",
-        3 => "rhombic",
-        4 => "hexagonal",
-        5 => "triangular",
-        6 => "oblique",
-    )
-    return GridCsetMakerPolynomial(
-        grid_distribution,
-        rotate_distribution,
-        gamma_distribution,
-        order_distribution,
-        r_distribution,
-        grid_lookup,
-        config,
-    )
+	grid_lookup = Dict(
+		1 => "quadratic",
+		2 => "rectangular",
+		3 => "rhombic",
+		4 => "hexagonal",
+		5 => "triangular",
+		6 => "oblique",
+	)
+	return GridCsetMakerPolynomial(
+		grid_distribution,
+		rotate_distribution,
+		gamma_distribution,
+		order_distribution,
+		r_distribution,
+		grid_lookup,
+	)
 end
 
 """
@@ -370,54 +485,58 @@ end
 """
 function (gcm::GridCsetMakerPolynomial)(n::Int64, config::Dict, rng::Random.AbstractRNG)
 
-    o = rand(rng, gcm.order_distribution)
-    r = rand(rng, gcm.r_distribution)
+	o = rand(rng, gcm.order_distribution)
+	r = rand(rng, gcm.r_distribution)
 
-    rotate_angle_deg = rand(rng, gcm.base.rotate_distribution)
-    gamma_deg = rand(rng, gcm.base.gamma_distribution)
-    grid = gcm.grid_lookup[rand(rng, gcm.base.grid_distribution)]
+	rotate_angle_deg = rand(rng, gcm.rotate_distribution)
+	gamma_deg = rand(rng, gcm.gamma_distribution)
+	grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
 
-    a_dist = Distributions.Uniform(gcm.config[grid]["a_min"], gcm.config[grid]["a_max"])
-    b_dist = Distributions.Uniform(gcm.config[grid]["b_min"], gcm.config[grid]["b_max"])
-    a = rand(rng, a_dist)
-    b = rand(rng, b_dist)
+	a_dist_name = getfield(config[grid]["a_distribution"], Distributions)
+	a_dist = a_dist_name(config[grid]["a_disbribution_args"]...; get(config[grid], "a_disbribution_kwargs", Dict())...)
 
-    cset, _, __ = QG.create_grid_causet_2D_polynomial_manifold(
-        n,
-        grid,
-        rng,
-        o,
-        r;
-        type = Float32,
-        a = a,
-        b = b,
-        gamma_deg = gamma_deg,
-        rotate_deg = rotate_angle_deg,
-        origin = (0.0, 0.0),
-    )
+	b_dist_name = getfield(config[grid]["b_distribution"], Distributions)
+	b_dist = b_dist_name(config[grid]["b_disbribution_args"]...; get(config[grid], "b_disbribution_kwargs", Dict())...)
 
-    return cset
+	a = rand(rng, a_dist)
+	b = rand(rng, b_dist)
+
+	cset, _, __ = QG.create_grid_causet_2D_polynomial_manifold(
+		n,
+		grid,
+		rng,
+		o,
+		r;
+		type = Float32,
+		a = a,
+		b = b,
+		gamma_deg = gamma_deg,
+		rotate_deg = rotate_angle_deg,
+		origin = (0.0, 0.0),
+	)
+
+	return cset
 end
 
 
 """
 	ComplexTopCsetMaker
 
-DOCSTRING
+A callable struct to produce complex topology csets with various causality-cutting 'lines' in a 2D manifold
 
 # Fields:
-- `vertical_cut_distr::Distributions.Distribution`: DESCRIPTION
-- `finite_cut_distr::Distributions.Distribution`: DESCRIPTION
-- `order_distribution::Distributions.Distribution`: DESCRIPTION
-- `r_distribution::Distributions.Distribution`: DESCRIPTION
-- `tol::Float64`: DESCRIPTION
+- `vertical_cut_distr::Distributions.Distribution`: Distribution to draw the number of vertical (time direction) cuts from
+- `finite_cut_distr::Distributions.Distribution`: Distrbituion to draw the number of mixed direction cuts from
+- `order_distribution::Distributions.Distribution`: Distribution to draw the number of orders for the polynomial expansion from
+- `r_distribution::Distributions.Distribution`: Distribution to draw the decay exponent for the orders in the polynomial expansion from
+- `tol::Float64`: Floating point comparison tolerance
 """
 struct ComplexTopCsetMaker
-    vertical_cut_distr::Distributions.Distribution
-    finite_cut_distr::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    tol::Float64
+	vertical_cut_distr::Distributions.Distribution
+	finite_cut_distr::Distributions.Distribution
+	order_distribution::Distributions.Distribution
+	r_distribution::Distributions.Distribution
+	tol::Float64
 end
 
 """
@@ -426,34 +545,34 @@ end
 	Create a new `ComplexTopCsetMaker` object from the config dictionary.
 """
 function ComplexTopCsetMaker(config::Dict)
-    vertical_cut_distrname = getfield(Distributions, config["vertical_cut_distribution"])
-    finite_cut_distrname = getfield(Distributions, config["finite_cut_distribution"])
-    order_distrname = getfield(Distributions, config["order_distribution"])
-    r_distname = getfield(Distributions, config["r_distribution"])
+	vertical_cut_distrname = getfield(Distributions, config["vertical_cut_distribution"])
+	finite_cut_distrname = getfield(Distributions, config["finite_cut_distribution"])
+	order_distrname = getfield(Distributions, config["order_distribution"])
+	r_distname = getfield(Distributions, config["r_distribution"])
 
-    vertical_cut_distr = vertical_cut_distrname(
-        config["vertical_cut_distribution_args"]...;
-        config["vertical_cut_distribution_kwargs"]...,
-    )
-    finite_cut_distr = finite_cut_distrname(
-        config["finite_cut_distribution_args"]...;
-        config["finite_cut_distribution_kwargs"]...,
-    )
-    order_distr = order_distrname(
-        config["order_distribution_args"]...;
-        config["order_distribution_kwargs"]...,
-    )
-    r_distr =
-        r_distname(config["r_distribution_args"]...; config["r_distribution_kwargs"]...)
-    tol = config["tol"]
+	vertical_cut_distr = vertical_cut_distrname(
+		config["vertical_cut_distribution_args"]...;
+		get(config, "vertical_cut_distribution_kwargs", Dict())...,
+	)
+	finite_cut_distr = finite_cut_distrname(
+		config["finite_cut_distribution_args"]...;
+		get(config, "finite_cut_distribution_kwargs", Dict())...,
+	)
+	order_distr = order_distrname(
+		config["order_distribution_args"]...;
+		get(config, "order_distribution_kwargs", Dict())...,
+	)
+	r_distr =
+		r_distname(config["r_distribution_args"]...; get(config, "r_distribution_kwargs", Dict())...)
+	tol = config["tol"]
 
-    return ComplexTopCsetMaker(
-        vertical_cut_distr,
-        finite_cut_distr,
-        order_distr,
-        r_distr,
-        tol,
-    )
+	return ComplexTopCsetMaker(
+		vertical_cut_distr,
+		finite_cut_distr,
+		order_distr,
+		r_distr,
+		tol,
+	)
 end
 
 """
@@ -467,29 +586,29 @@ end
 - `rng`: random number generator
 """
 function (ctm::ComplexTopCsetMaker)(
-    n::Int64,
-    config::Dict,
-    rng::Random.AbstractRNG,
+	n::Int64,
+	config::Dict,
+	rng::Random.AbstractRNG,
 )::CausalSets.BitArrayCauset
 
-    n_vertical_cuts = rand(rng, ctm.vertical_cut_distr)
-    n_finite_cuts = rand(rng, ctm.finite_cut_distr)
-    order = rand(rng, ctm.order_distribution)
-    r = rand(rng, ctm.r_distribution)
+	n_vertical_cuts = rand(rng, ctm.vertical_cut_distr)
+	n_finite_cuts = rand(rng, ctm.finite_cut_distr)
+	order = rand(rng, ctm.order_distribution)
+	r = rand(rng, ctm.r_distribution)
 
-    cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
-        QG.make_branched_manifold_cset(
-            n,
-            n_vertical_cuts,
-            n_finite_cuts,
-            rng,
-            order,
-            r;
-            d = 2,
-            tolerance = ctm.tol,
-        )
+	cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
+		QG.make_branched_manifold_cset(
+			n,
+			n_vertical_cuts,
+			n_finite_cuts,
+			rng,
+			order,
+			r;
+			d = 2,
+			tolerance = ctm.tol,
+		)
 
-    return cset
+	return cset
 end
 
 
@@ -506,11 +625,11 @@ end
 - `connectivity_distribution::Distributions.Distribution`: distribution of connectivity values
 """
 struct MergedCsetMaker
-    link_prob_distribution::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    n2_rel_distribution::Distributions.Distribution
-    connectivity_distribution::Distributions.Distribution
+	link_prob_distribution::Distributions.Distribution
+	order_distribution::Distributions.Distribution
+	r_distribution::Distributions.Distribution
+	n2_rel_distribution::Distributions.Distribution
+	connectivity_distribution::Distributions.Distribution
 end
 
 """
@@ -519,33 +638,33 @@ end
 Make a new merged causal set maker from a given configuration dictionary.
 """
 function MergedCsetMaker(config::Dict)
-    order_distrname = getfield(Distributions, config["order_distribution"])
-    r_distname = getfield(Distributions, config["r_distribution"])
-    link_prob_distrname = getfield(Distributions, config["link_prob_distribution"])
-    n2_rel_distrname = getfield(Distributions, config["n2_rel_distribution"])
-    connectivity_distrname = getfield(Distributions, config["connectivity_distribution"])
+	order_distrname = getfield(Distributions, config["order_distribution"])
+	r_distname = getfield(Distributions, config["r_distribution"])
+	link_prob_distrname = getfield(Distributions, config["link_prob_distribution"])
+	n2_rel_distrname = getfield(Distributions, config["n2_rel_distribution"])
+	connectivity_distrname = getfield(Distributions, config["connectivity_distribution"])
 
-    order_distr = order_distrname(
-        config["order_distribution_args"]...;
-        config["order_distribution_kwargs"]...,
-    )
-    r_distr =
-        r_distname(config["r_distribution_args"]...; config["r_distribution_kwargs"]...)
-    link_prob_distr =
-        link_prob_distrname(config["link_prob_args"]...; config["link_prob_kwargs"]...)
-    n2_rel_distr = n2_rel_distrname(config["n2_rel_args"]...; config["n2_rel_kwargs"]...)
-    connectivity_distr = connectivity_distrname(
-        config["connectivity_args"]...;
-        config["connectivity_kwargs"]...,
-    )
+	order_distr = order_distrname(
+		config["order_distribution_args"]...;
+		get(config, "order_distribution_kwargs", Dict())...,
+	)
+	r_distr =
+		r_distname(config["r_distribution_args"]...; get(config, "r_distribution_kwargs", Dict())...)
+	link_prob_distr =
+		link_prob_distrname(config["link_prob_args"]...; get(config, "link_prob_kwargs", Dict())...)
+	n2_rel_distr = n2_rel_distrname(config["n2_rel_args"]...; get(config, "n2_rel_kwargs", Dict())...)
+	connectivity_distr = connectivity_distrname(
+		config["connectivity_args"]...;
+		get(config, "connectivity_kwargs", Dict())...,
+	)
 
-    return MergedCsetMaker(
-        link_prob_distr,
-        order_distr,
-        r_distr,
-        n2_rel_distr,
-        connectivity_distr,
-    )
+	return MergedCsetMaker(
+		link_prob_distr,
+		order_distr,
+		r_distr,
+		n2_rel_distr,
+		connectivity_distr,
+	)
 end
 
 """
@@ -559,19 +678,19 @@ end
 - `rng`: random number generator
 """
 function (mcm::MergedCsetMaker)(
-    n::Int64,
-    config::Dict,
-    rng::Random.AbstractRNG,
+	n::Int64,
+	config::Dict,
+	rng::Random.AbstractRNG,
 )::CausalSets.BitArrayCauset
 
-    o = rand(rng, mcm.order_distribution)
-    r = rand(rng, mcm.r_distribution)
-    n2rel = rand(rng, mcm.n2_rel_distribution)
-    l = rand(rng, mcm.link_prob_distribution)
-    p = rand(rng, mcm.connectivity_distribution)
+	o = rand(rng, mcm.order_distribution)
+	r = rand(rng, mcm.r_distribution)
+	n2rel = rand(rng, mcm.n2_rel_distribution)
+	l = rand(rng, mcm.link_prob_distribution)
+	p = rand(rng, mcm.connectivity_distribution)
 
-    cset, success, sprinkling =
-        QG.insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
+	cset, success, sprinkling =
+		QG.insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
 
-    return cset
+	return cset
 end
