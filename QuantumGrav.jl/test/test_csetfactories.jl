@@ -537,4 +537,10 @@ end
         @test isnothing(cset) === false
         @test cset.atom_count == 25
     end
+
+
+    cset = csetmaker(25, cfg["grid"], rng) # randomly chosen grid type
+    @test isnothing(cset) === false
+    @test cset.atom_count == 25
+
 end
