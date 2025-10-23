@@ -19,7 +19,7 @@ function build_distr(cfg::Dict{String,Any}, name::String)::Distributions.Distrib
     try
         distr = distribution_type(cfg[name*"_args"]...; cfg[name*"_kwargs"]...)
     catch e
-        throw(ArgumentError("Distribution $(name) could not be build $(e)"))
+        throw(ArgumentError("Distribution $(name) could not be built $(e)"))
     end
 
     return distr
@@ -121,16 +121,9 @@ function (lm::LayeredCsetMaker)(
     rng::Random.AbstractRNG;
     config::Union{Dict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
-
     connectivity_goal = rand(rng, lm.connectivity_distribution)
-    while connectivity_goal < 1e-5
-        connectivity_goal = rand(rng, lm.connectivity_distribution)
-    end
-
     layers = rand(rng, lm.layer_distribution)
-    while layers < 1e-5
-        layers = rand(rng, lm.layer_distribution)
-    end
+    layers = rand(rng, lm.layer_distribution)
     layers = Int(ceil(layers))
 
     s = rand(rng, lm.stddev_distribution)
@@ -157,8 +150,8 @@ end
 struct RandomCsetMaker
     connectivity_distribution::Distributions.Distribution
     num_tries::Int64
-    abs_tol::Float64
-    rel_tol::Float64
+    abs_tol::Union{Float64,Nothing}
+    rel_tol::Union{Float64,Nothing}
 end
 
 """
@@ -204,8 +197,6 @@ function (rcm::RandomCsetMaker)(
 
     connectivity_goal = rand(rng, rcm.connectivity_distribution)
 
-    abs_tol = 1e-3
-
     converged = false
 
     cset = nothing
@@ -216,9 +207,10 @@ function (rcm::RandomCsetMaker)(
         cset_try, converged = QG.sample_bitarray_causet_by_connectivity(
             n,
             connectivity_goal,
-            100,
+            rcm.num_tries,
             rng;
-            abs_tol = abs_tol,
+            abs_tol = rcm.abs_tol,
+            rel_tol = rcm.rel_tol,
         )
         tries += 1
 
@@ -409,7 +401,7 @@ A callable struct to produce complex topology csets with various causality-cutti
 
 # Fields:
 - `vertical_cut_distr::Distributions.Distribution`: Distribution to draw the number of vertical (time direction) cuts from
-- `finite_cut_distr::Distributions.Distribution`: Distrbituion to draw the number of mixed direction cuts from
+- `finite_cut_distr::Distributions.Distribution`: Distribution to draw the number of mixed direction cuts from
 - `order_distribution::Distributions.Distribution`: Distribution to draw the number of orders for the polynomial expansion from
 - `r_distribution::Distributions.Distribution`: Distribution to draw the decay exponent for the orders in the polynomial expansion from
 - `tol::Float64`: Floating point comparison tolerance

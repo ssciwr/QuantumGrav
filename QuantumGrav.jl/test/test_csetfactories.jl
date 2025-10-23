@@ -26,7 +26,7 @@ end
             "connectivity_distribution_kwargs" => Dict(),
             "num_tries" => 100,
             "abs_tol" => 1e-2,
-            "rel_tol" => 1e-4,
+            "rel_tol" => nothing,
         ),
         "layered" => Dict(
             "connectivity_distribution" => "Uniform",
