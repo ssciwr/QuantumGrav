@@ -24,6 +24,7 @@ end
             "connectivity_distribution" => "Cauchy",
             "connectivity_distribution_args" => [0.5, 0.2],
             "connectivity_distribution_kwargs" => Dict(),
+            "max_iter" => 30,
             "num_tries" => 100,
             "abs_tol" => 1e-2,
             "rel_tol" => nothing,
@@ -89,63 +90,41 @@ end
             "rotate_distribution" => "Uniform",
             "rotate_distribution_args" => [0.0, 180.0],
             "rotate_distribution_kwargs" => Dict(),
-            "gamma_distribution" => "Normal",
-            "gamma_distribution_args" => [45.0, 15.0],
-            "gamma_distribution_kwargs" => Dict(),
             "order_distribution" => "DiscreteUniform",
             "order_distribution_args" => [2, 8],
             "order_distribution_kwargs" => Dict(),
             "r_distribution" => "Uniform",
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
-            "origin" => [0.5, 2.0],
             "quadratic" => Dict(
-                "a_distribution" => "Uniform",
-                "a_distribution_args" => [0.5, 5.5],
-                "a_distribution_kwargs" => Dict(),
-                "b_distribution" => "Normal",
-                "b_distribution_args" => [1.0, 2.0],
-                "b_distribution_kwargs" => Dict(),
             ),
             "rectangular" => Dict(
-                "a_distribution" => "Normal",
-                "a_distribution_args" => [3.0, 0.4],
-                "a_distribution_kwargs" => Dict(),
-                "b_distribution" => "Beta",
-                "b_distribution_args" => [2.0, 1.2],
-                "b_distribution_kwargs" => Dict(),
+                "segment_ratio_distribution" => "Beta",
+                "segment_ratio_distribution_args" => [2.0, 1.2],
+                "segment_ratio_distribution_kwargs" => Dict(),
             ),
             "rhombic" => Dict(
-                "a_distribution" => "Cauchy",
-                "a_distribution_args" => [5.0, 1.0],
-                "a_distribution_kwargs" => Dict(),
-                "b_distribution" => "Uniform",
-                "b_distribution_args" => [0.5, 5.5],
-                "b_distribution_kwargs" => Dict(),
+                "segment_ratio_distribution" => "Uniform",
+                "segment_ratio_distribution_args" => [0.5, 5.5],
+                "segment_ratio_distribution_kwargs" => Dict(),
             ),
             "hexagonal" => Dict(
-                "a_distribution" => "Uniform",
-                "a_distribution_args" => [0.5, 5.5],
-                "a_distribution_kwargs" => Dict(),
-                "b_distribution" => "Normal",
-                "b_distribution_args" => [2.0, 0.5],
-                "b_distribution_kwargs" => Dict(),
+                "segment_ratio_distribution" => "Normal",
+                "segment_ratio_distribution_args" => [2.0, 0.5],
+                "segment_ratio_distribution_kwargs" => Dict(),
             ),
             "triangular" => Dict(
-                "a_distribution" => "Cauchy",
-                "a_distribution_args" => [2.5, 0.7],
-                "a_distribution_kwargs" => Dict(),
-                "b_distribution" => "Normal",
-                "b_distribution_args" => [3.3, 1.2],
-                "b_distribution_kwargs" => Dict(),
+                "segment_ratio_distribution" => "Normal",
+                "segment_ratio_distribution_args" => [3.3, 1.2],
+                "segment_ratio_distribution_kwargs" => Dict(),
             ),
             "oblique" => Dict(
-                "a_distribution" => "Normal",
-                "a_distribution_args" => [5.5, 0.7],
-                "a_distribution_kwargs" => Dict(),
-                "b_distribution" => "Logistic",
-                "b_distribution_args" => [2.0, 1.0],
-                "b_distribution_kwargs" => Dict(),
+                "segment_ratio_distribution" => "Logistic",
+                "segment_ratio_distribution_args" => [2.0, 1.0],
+                "segment_ratio_distribution_kwargs" => Dict(),
+                "oblique_angle_distribution" => "Normal",
+                "oblique_angle_distribution_args" => [45.0, 15.0],
+                "oblique_angle_distribution_kwargs" => Dict(),
             ),
         ),
         "seed" => 42,
@@ -199,6 +178,10 @@ end
     [importModules, config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["random"]["connectivity_distribution"] = nothing
+    @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
+
+    broken_cfg = deepcopy(cfg)
+    broken_cfg["random"]["max_iter"] = 0
     @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
 
     broken_cfg = deepcopy(cfg)
@@ -461,18 +444,13 @@ end
     @test params(csetmaker.rotate_distribution) ==
           tuple(cfg["grid"]["rotate_distribution_args"]...)
 
-    @test csetmaker.gamma_distribution isa Distributions.Normal
-    @test params(csetmaker.gamma_distribution) ==
-          tuple(cfg["grid"]["gamma_distribution_args"]...)
-
+   
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
     @test params(csetmaker.order_distribution) ==
           tuple(cfg["grid"]["order_distribution_args"]...)
 
     @test csetmaker.r_distribution isa Distributions.Uniform
     @test params(csetmaker.r_distribution) == tuple(cfg["grid"]["r_distribution_args"]...)
-
-    @test csetmaker.origin == [0.5, 2.0]
 
     @test haskey(csetmaker.grid_lookup, 1)
     @test haskey(csetmaker.grid_lookup, 2)
@@ -493,10 +471,6 @@ end
     @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
-    broken_cfg["grid"]["gamma_distribution"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
-
-    broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["order_distribution"] = nothing
     @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
 
@@ -510,10 +484,6 @@ end
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["rotate_distribution_args"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
-
-    broken_cfg = deepcopy(cfg)
-    broken_cfg["grid"]["gamma_distribution_args"] = nothing
     @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)

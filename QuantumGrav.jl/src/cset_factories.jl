@@ -1,9 +1,3 @@
-using CausalSets: CausalSets
-using Random: Random
-using Distributions: Distributions
-import QuantumGrav as QG
-
-
 function build_distr(cfg::Dict{String,Any}, name::String)::Distributions.Distribution
 
     distribution_type::Union{Nothing,Type} = nothing
@@ -71,7 +65,7 @@ function (m::PolynomialCsetMaker)(
 )::CausalSets.BitArrayCauset
     o = rand(rng, m.order_distribution)
     r = rand(rng, m.r_distribution)
-    cset, _, __ = QG.make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
+    cset, _, __ = make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
     return cset
 end
 
@@ -128,7 +122,7 @@ function (lm::LayeredCsetMaker)(
 
     s = rand(rng, lm.stddev_distribution)
 
-    cset, _ = QG.create_random_layered_causet(
+    cset, _ = create_random_layered_causet(
         n,
         layers;
         p = connectivity_goal,
@@ -149,6 +143,7 @@ end
 """
 struct RandomCsetMaker
     connectivity_distribution::Distributions.Distribution
+    max_iter::Int64
     num_tries::Int64
     abs_tol::Union{Float64,Nothing}
     rel_tol::Union{Float64,Nothing}
@@ -165,12 +160,17 @@ end
 function RandomCsetMaker(config::Dict)
     cdistr = build_distr(config, "connectivity_distribution")
 
+    if config["max_iter"] < 1
+        throw(ArgumentError("Error, max_iter must be >= 1, is $(config["max_iter"])."))
+    end
+
     if config["num_tries"] < 1
-        throw(ArgumentError("Error, num_tries must be >= 1"))
+        throw(ArgumentError("Error, num_tries must be >= 1, is $(config["num_tries"])."))
     end
 
     return RandomCsetMaker(
         cdistr,
+        config["max_iter"],
         config["num_tries"],
         config["abs_tol"],
         config["rel_tol"],
@@ -201,30 +201,31 @@ function (rcm::RandomCsetMaker)(
 
     cset = nothing
 
-    tries = 0
+    tries = 1
 
     while converged == false
-        cset_try, converged = QG.sample_bitarray_causet_by_connectivity(
+        if tries > rcm.num_tries
+            cset = nothing
+            break
+        end
+
+        cset_try, converged = sample_bitarray_causet_by_connectivity(
             n,
             connectivity_goal,
-            rcm.num_tries,
+            rcm.max_iter,
             rng;
             abs_tol = rcm.abs_tol,
             rel_tol = rcm.rel_tol,
         )
         tries += 1
 
-        if tries > rcm.num_tries
-            cset = nothing
-            break
-        end
         cset = cset_try
     end
 
     if cset === nothing
         throw(
             ErrorException(
-                "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $tries tries.",
+                "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $(tries-1) tries.",
             ),
         )
     end
@@ -286,7 +287,7 @@ function (dcm::DestroyedCsetMaker)(
 
     f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
 
-    cset = QG.destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
+    cset = destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
     return cset
 end
 
@@ -304,11 +305,9 @@ end
 struct GridCsetMakerPolynomial
     grid_distribution::Distributions.Distribution
     rotate_distribution::Distributions.Distribution
-    gamma_distribution::Distributions.Distribution
     order_distribution::Distributions.Distribution
     r_distribution::Distributions.Distribution
     grid_lookup::Dict
-    origin::Array{Float64}
 end
 
 """
@@ -321,8 +320,6 @@ function GridCsetMakerPolynomial(config::Dict)
     grid_distribution = build_distr(config, "grid_distribution")
 
     rotate_distribution = build_distr(config, "rotate_distribution")
-
-    gamma_distribution = build_distr(config, "gamma_distribution")
 
     order_distribution = build_distr(config, "order_distribution")
 
@@ -340,11 +337,9 @@ function GridCsetMakerPolynomial(config::Dict)
     return GridCsetMakerPolynomial(
         grid_distribution,
         rotate_distribution,
-        gamma_distribution,
         order_distribution,
         r_distribution,
         grid_lookup,
-        config["origin"],
     )
 end
 
@@ -368,26 +363,27 @@ function (gcm::GridCsetMakerPolynomial)(
     if isnothing(grid)
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
     end
-    a_dist = build_distr(config[grid], "a_distribution")
-    b_dist = build_distr(config[grid], "b_distribution")
+
     o = rand(rng, gcm.order_distribution)
     r = rand(rng, gcm.r_distribution)
     rotate_angle_deg = rand(rng, gcm.rotate_distribution)
-    gamma_deg = rand(rng, gcm.gamma_distribution)
-    a = rand(rng, a_dist)
-    b = rand(rng, b_dist)
-    cset, _, __ = QG.create_grid_causet_2D_polynomial_manifold(
+
+    gamma_deg = grid == "oblique" ? rand(rng, build_distr(config[grid], "oblique_angle_distribution")) : 60.0
+    
+    b = grid == "quadratic" ? 1. : rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
+    
+    cset, _, __ = create_grid_causet_2D_polynomial_manifold(
         n,
         grid,
         rng,
         o,
         r;
         type = Float32,
-        a = a,
+        a = 1.,
         b = b,
         gamma_deg = gamma_deg,
         rotate_deg = rotate_angle_deg,
-        origin = tuple(gcm.origin...),
+        origin = (0.0, 0.0),
     )
 
     return cset
@@ -465,7 +461,7 @@ function (ctm::ComplexTopCsetMaker)(
     r = rand(rng, ctm.r_distribution)
 
     cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
-        QG.make_branched_manifold_cset(
+        make_branched_manifold_cset(
             n,
             n_vertical_cuts,
             n_finite_cuts,
@@ -544,7 +540,7 @@ function (mcm::MergedCsetMaker)(
     p = rand(rng, mcm.connectivity_distribution)
 
     cset, success, sprinkling =
-        QG.insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
+        insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
 
     return cset
 end
