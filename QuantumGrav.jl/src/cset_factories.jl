@@ -1,3 +1,24 @@
+"""
+    build_distr(cfg::Dict{String, Any}, name::String)
+
+Build a new Distributions.jl univariate distribution from a config dictionary.
+
+# Arguments:
+- cfg::Dict{String,Any} config dict
+- name::String key in the dict referring to the type, args, kwargs needed
+
+# Example:
+```julia
+config = Dict("connectivity_distribution" => "Cauchy",
+            "connectivity_distribution_args" => [0.5, 0.2],
+            "connectivity_distribution_kwargs" => Dict(),
+        )
+
+distributions = build_distr(config, "connectivity_distribution")
+
+```
+
+"""
 function build_distr(cfg::Dict{String,Any}, name::String)::Distributions.Distribution
 
     distribution_type::Union{Nothing,Type} = nothing
@@ -55,8 +76,10 @@ end
 
 # Arguments:
 - `n`: number of elements in the causal set
-- `config`: configuration dictionary
 - `rng`: random number generator
+
+# Keyword arguments:
+- `config`: configuration dictionary
 """
 function (m::PolynomialCsetMaker)(
     n,
@@ -107,8 +130,10 @@ end
 
 # Arguments:
 - `n`: number of elements in the causal set
-- `config`: configuration dictionary
 - `rng`: random number generator
+
+# Keyword arguments:
+- `config`: configuration dictionary
 """
 function (lm::LayeredCsetMaker)(
     n::Int64,
@@ -116,7 +141,6 @@ function (lm::LayeredCsetMaker)(
     config::Union{Dict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
     connectivity_goal = rand(rng, lm.connectivity_distribution)
-    layers = rand(rng, lm.layer_distribution)
     layers = rand(rng, lm.layer_distribution)
     layers = Int(ceil(layers))
 
@@ -272,8 +296,11 @@ Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 
 # Arguments:
 - `n`: number of elements in the causal set
-- `config`: configuration dictionary
 - `rng`: random number generator
+
+# Keyword arguments:
+- `config`: configuration dictionary
+
 """
 function (dcm::DestroyedCsetMaker)(
     n::Int64,
@@ -350,8 +377,12 @@ end
 
 # Arguments:
 - `n`: number of elements in the causal set
-- `config`: configuration dictionary
 - `rng`: random number generator
+- `config`: configuration dictionary
+
+# Keyword arguments:
+- `grid`: name of the grid type to use
+
 """
 function (gcm::GridCsetMakerPolynomial)(
     n::Int64,
@@ -368,10 +399,14 @@ function (gcm::GridCsetMakerPolynomial)(
     r = rand(rng, gcm.r_distribution)
     rotate_angle_deg = rand(rng, gcm.rotate_distribution)
 
-    gamma_deg = grid == "oblique" ? rand(rng, build_distr(config[grid], "oblique_angle_distribution")) : 60.0
-    
-    b = grid == "quadratic" ? 1. : rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
-    
+    gamma_deg =
+        grid == "oblique" ?
+        rand(rng, build_distr(config[grid], "oblique_angle_distribution")) : 60.0
+
+    b =
+        grid == "quadratic" ? 1.0 :
+        rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
+
     cset, _, __ = create_grid_causet_2D_polynomial_manifold(
         n,
         grid,
@@ -379,7 +414,7 @@ function (gcm::GridCsetMakerPolynomial)(
         o,
         r;
         type = Float32,
-        a = 1.,
+        a = 1.0,
         b = b,
         gamma_deg = gamma_deg,
         rotate_deg = rotate_angle_deg,
@@ -440,6 +475,9 @@ end
 - `n`: number of elements in the causal set
 - `config`: configuration dictionary
 - `rng`: random number generator
+
+# Keyword arguments:
+- `config`: configuration dictionary
 """
 function (ctm::ComplexTopCsetMaker)(
     n::Int64,
@@ -526,6 +564,9 @@ end
 - `n`: number of elements in the causal set
 - `config`: configuration dictionary
 - `rng`: random number generator
+
+# Keyword arguments:
+- `config`: configuration dictionary
 """
 function (mcm::MergedCsetMaker)(
     n::Int64,

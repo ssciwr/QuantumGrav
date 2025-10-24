@@ -96,8 +96,7 @@ end
             "r_distribution" => "Uniform",
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
-            "quadratic" => Dict(
-            ),
+            "quadratic" => Dict(),
             "rectangular" => Dict(
                 "segment_ratio_distribution" => "Beta",
                 "segment_ratio_distribution_args" => [2.0, 1.2],
@@ -444,7 +443,7 @@ end
     @test params(csetmaker.rotate_distribution) ==
           tuple(cfg["grid"]["rotate_distribution_args"]...)
 
-   
+
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
     @test params(csetmaker.order_distribution) ==
           tuple(cfg["grid"]["order_distribution_args"]...)
