@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch_geometric
 
@@ -74,6 +75,9 @@ class LinearSequential(torch.nn.Module):
             )
 
         self.layers = torch.nn.Sequential(*layers)
+        self.linear_kwargs = linear_kwargs
+        self.activation_kwargs = activation_kwargs
+        self.logger = logging.getLogger(__name__)
 
     def forward(
         self,
@@ -120,6 +124,34 @@ class LinearSequential(torch.nn.Module):
             activation_kwargs=config.get("activation_kwargs", None),
         )
 
+    def to_config(self) -> dict[str, Any]:
+        """Build a config file from the current model
+
+        Returns:
+            dict[str, Any]: Model config
+        """
+        linear_dims = []
+        activations = []
+
+        for layer in self.layers:
+            if isinstance(layer, torch_geometric.nn.dense.Linear):
+                linear_dims.append((layer.in_channels, layer.out_channels))
+            elif isinstance(layer, torch.nn.Linear):
+                linear_dims.append((layer.in_features, layer.out_features))
+            elif isinstance(layer, torch.nn.Module):
+                activations.append(utils.activation_layers_names[type(layer)])
+            else:
+                self.logger.warning(f"Unknown layer type: {type(layer)}")
+
+        config = {
+            "dims": linear_dims,
+            "activations": activations,
+            "linear_kwargs": self.linear_kwargs,
+            "activation_kwargs": self.activation_kwargs,
+        }
+
+        return config
+
     def save(self, path: str | Path) -> None:
         """Save the model's state to file.
 
@@ -127,7 +159,9 @@ class LinearSequential(torch.nn.Module):
             path (str | Path): path to save the model to.
         """
 
-        torch.save(self, path)
+        self_as_config = self.to_config()
+
+        torch.save({"config": self_as_config, "state_dict": self.state_dict()}, path)
 
     @classmethod
     def load(
@@ -141,5 +175,10 @@ class LinearSequential(torch.nn.Module):
         Returns:
             LinearSequential: An instance of LinearSequential initialized from the loaded data.
         """
-        model = torch.load(path, map_location=device, weights_only=False)
+        cfg = torch.load(path)
+
+        model = cls.from_config(cfg["config"])
+        model.load_state_dict(cfg["state_dict"], strict=False)
+        model.to(device)
+
         return model
