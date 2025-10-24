@@ -147,6 +147,30 @@ end
     @test ok
 end
 
+# ---------------- center_and_rescale_grid_to_box ----------------
+@testitem "centering_and_rescaling" tags=[:centering, :rescaling] setup=[setupGridTests] begin
+    grid = QuantumGrav.generate_grid_2d(25, "square"; a = 1.0, rotate_deg = 0)
+    box = (CausalSets.Coordinates{2}((-2., 0,)), CausalSets.Coordinates{2}((-1., 1,)))
+    transformed =
+        QuantumGrav.center_and_rescale_grid_to_box(grid, box)
+    
+    min_t, max_t = extrema(first.(transformed))
+    min_x, max_x = extrema(last.(transformed))
+
+    # inside box
+    @test min_t >= -2.
+    @test max_t <= -1.
+    @test min_x >= 0.
+    @test max_x <= 1.
+
+    #maximal
+    @test min_t == -2. || min_x == 0.
+
+    # symmetric
+    @test -2. - min_t == max_t - (-1.) 
+    @test 0. - min_x == max_x - (1.) 
+end
+
 # ---------------- create_grid_causet_2D ----------------
 @testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[
     setupGridTests,

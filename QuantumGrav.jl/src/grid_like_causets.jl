@@ -1,3 +1,8 @@
+using CausalSets
+using Random
+using Distributions
+using LinearAlgebra
+
 """
     generate_grid_from_brillouin_cell(num_atoms, edges; origin=nothing) -> Vector{CausalSets.Coordinates{N}}
 
@@ -152,6 +157,51 @@ function sort_grid_by_time_from_manifold(
 end
 
 """
+    center_and_rescale_grid_to_box(grid::Vector{CausalSets.Coordinates{2}}, 
+                                   box::Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}})
+        -> Vector{CausalSets.Coordinates{2}}
+Translates and rescales the given grid so that it fits maximally inside the rectangular `box`, centered around the box's midpoint.
+
+# Arguments
+- `grid`: Vector of 2D coordinates representing the pseudo-sprinkling or grid.
+- `box`: Tuple of lower-left and upper-right coordinates defining the bounding box.
+
+# Returns
+- Transformed grid that fits symmetrically and maximally into the given box.
+"""
+function center_and_rescale_grid_to_box(
+    grid::Vector{CausalSets.Coordinates{2}}, 
+    box::Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}
+    )::Vector{CausalSets.Coordinates{2}}
+
+    # Extract box info
+    (lower, upper) = box
+    box_center = ((lower[1] + upper[1]) / 2, (lower[2] + upper[2]) / 2)
+    box_width  = upper[1] - lower[1]
+    box_height = upper[2] - lower[2]
+
+    # Compute grid bounding box
+    ts = first.(grid)
+    xs = last.(grid)
+    min_t, max_t = extrema(ts)
+    min_x, max_x = extrema(xs)
+    grid_width  = max_x - min_x
+    grid_height = max_t - min_t
+
+    # Determine scaling factor
+    scale = min(box_width / grid_width, box_height / grid_height)
+
+    # Translate to origin, scale, then shift to box center
+    transformed = map(grid) do (t, x)
+        ct = (t - (min_t + max_t)/2) * scale + box_center[1]
+        cx = (x - (min_x + max_x)/2) * scale + box_center[2]
+        (ct, cx)
+    end
+
+    return transformed
+end
+
+"""
     create_grid_causet_2D(size, lattice, manifold; 
                           type=Float32, a=1.0, b=0.5, 
                           gamma_deg=60.0, rotate_deg=nothing, 
@@ -293,7 +343,11 @@ function create_grid_causet_2D_polynomial_manifold(
     # Create a polynomial manifold from the squared Taylor coefficients
     polym = CausalSets.PolynomialManifold{2}(squaretaylorcoefs)
 
-    pseudosprinkling = sort_grid_by_time_from_manifold(polym, grid)
+    # Create grid
+    grid = sort_grid_by_time_from_manifold(polym, grid)
+
+    # Rescale and translate grid so it fits into Chebyshev domain
+    pseudosprinkling = center_and_rescale_grid_to_box(grid, ((-1., -1.),(1., 1.)))
 
     return CausalSets.BitArrayCauset(polym, pseudosprinkling),
     true,
