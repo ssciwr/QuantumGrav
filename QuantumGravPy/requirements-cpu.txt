@@ -1,7 +1,7 @@
---index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
 -f https://data.pyg.org/whl/torch-2.8.0+cpu.html
 
-torch==2.8
+torch==2.8.0
 torchvision
 torch_geometric
 pyg_lib
