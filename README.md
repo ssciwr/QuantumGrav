@@ -74,8 +74,6 @@ mkdocs serve
 ```
 Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package documentation [here](https://documenter.juliadocs.org/stable/).
 
-Training and evaluation scripts live under `QuantumGravPy/src/QuantumGrav/` (`train.py`, `train_ddp.py`) and can be run once dependencies are installed.
-See the [training section](./training_a_model.md) for more.
 
 ## Notes and troubleshooting
 

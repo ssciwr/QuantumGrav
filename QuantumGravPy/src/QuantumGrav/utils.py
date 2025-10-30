@@ -1,7 +1,7 @@
 import torch
 import torch_geometric.nn as tgnn
 
-from typing import Callable
+from typing import Callable, Sequence, Any
 
 
 def cat1(
@@ -334,3 +334,32 @@ def verify_config_node(cfg) -> bool:
     if not isinstance(cfg["kwargs"], dict):
         return False
     return True
+
+
+def assign_at_path(cfg: dict, path: Sequence[Any], value: Any) -> None:
+    """Assign a value to a key in a nested dictionary 'dict'. The path to follow through this nested structure is given by 'path'.
+
+    Args:
+        cfg (dict): The configuration dictionary to modify.
+        path (Sequence[Any]): The path to the key to modify as a list of nodes to traverse.
+        value (Any): The value to assign to the key.
+    """
+    for p in path[:-1]:
+        cfg = cfg[p]
+    cfg[path[-1]] = value
+
+
+def get_at_path(cfg: dict, path: Sequence[Any], default: Any = None) -> Any:
+    """Get the value at a key in a nested dictionary. The path to follow through this nested structure is given by 'path'.
+
+    Args:
+        cfg (dict): The configuration dictionary to modify.
+        path (Sequence[Any]): The path to the key to get as a list of nodes to traverse.
+
+    Returns:
+        Any: The value at the specified key, or None if not found.
+    """
+    for p in path[:-1]:
+        cfg = cfg[p]
+
+    return cfg.get(path[-1], default)

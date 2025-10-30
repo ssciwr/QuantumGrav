@@ -24,6 +24,7 @@ include("destroy_manifold_like_cset.jl")
 include("grid_like_causets.jl")
 include("graph_utils.jl")
 include("curvature_on_manifold.jl")
+include("cset_factories.jl")
 
 export make_adj,
     max_pathlen,
@@ -48,5 +49,12 @@ export make_adj,
     create_grid_causet_2D_polynomial_manifold,
     prepare_dataproduction,
     copy_sourcecode,
-    get_git_info!
+    get_git_info!,
+    PolynomialCsetMaker,
+    RandomCsetMaker,
+    LayeredCsetMaker,
+    DestroyedCsetMaker,
+    GridCsetMakerPolynomial,
+    MergedCsetMaker,
+    ComplexTopCsetMaker
 end # module QuantumGrav
