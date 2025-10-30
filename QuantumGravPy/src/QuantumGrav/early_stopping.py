@@ -219,7 +219,7 @@ class DefaultEarlyStopping(base.Configurable):
         """
         validate(config, cls.schema)
 
-        # works b/c validate doesn´t raise
+        # Returns True only if validate does not raise a ValidationError
         return True
 
     @classmethod
