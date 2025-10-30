@@ -225,7 +225,7 @@ class DefaultEvaluator(base.Configurable):
 
     @abstractmethod
     def report(self) -> None:
-        """Report the evaluation results.
+        """Report the evaluation results stored in the calling instance.
 
         Args:
             data (pd.DataFrame | torch.Tensor | list | dict): Evaluation results to report.
@@ -273,8 +273,6 @@ class DefaultEvaluator(base.Configurable):
         if not cls.verify_config(config):
             raise ValueError("Invalid configuration")
 
-        device = config.get("device", "cpu")
-
         criterion_cfg = config.get("criterion", None)
         if criterion_cfg is None:
             raise ValueError("Criterion must be specified.")
@@ -290,8 +288,6 @@ class DefaultEvaluator(base.Configurable):
         get_target_per_task = config.get("get_target_per_task", None)
         if get_target_per_task is None:
             raise ValueError("Get target per task must be specified.")
-
-        device = config.get("device", "cpu")
 
         # build criterion
         try:
@@ -374,6 +370,8 @@ class DefaultEvaluator(base.Configurable):
                 raise ValueError(
                     f"apply_model type is not a class or callable: {apply_model_type}"
                 )
+
+        device = config.get("device", "cpu")
 
         return cls(
             device=torch.device(device),
@@ -565,8 +563,8 @@ class AccuracyEval(base.Configurable):
     def __init__(
         self,
         metric: Callable | type[torch.nn.Module] | None,
-        metric_args: list[Any] = [],
-        metric_kwargs: dict[str, Any] = {},
+        metric_args: list[Any] | None = None,
+        metric_kwargs: dict[str, Any] | None = None,
     ) -> None:
         """Initialize a new AccuracyEvaluator.
 
@@ -580,10 +578,11 @@ class AccuracyEval(base.Configurable):
         elif callable(metric) and not isclass(metric):
             self.metric = metric
         elif isclass(metric):
-            self.metric = metric(*metric_args, **metric_kwargs)
+            self.metric = metric(*(metric_args or []), **(metric_kwargs or {}))
         else:
-            # don't do anything here
-            pass
+            raise TypeError(
+                f"Metric must be a callable or a class. Metric type: {metric}"
+            )
 
     def __call__(
         self, data: dict[Any, Any], task: int
