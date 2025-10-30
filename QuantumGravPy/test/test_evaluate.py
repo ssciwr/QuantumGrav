@@ -240,6 +240,13 @@ def test_accuracy_eval_creation():
     assert issubclass(type(acceval_func.metric), torch.nn.Module) is False
     assert acceval_func.metric(torch.rand(5), torch.rand(5)).item() > 0.0
 
+    acceval_none = QG.evaluate.AccuracyEval(
+        metric=None, metric_args=[], metric_kwargs={}
+    )
+    assert issubclass(type(acceval_none.metric), torch.nn.Module) is True
+    assert acceval_func.metric(torch.rand(5), torch.rand(5)).item() > 0.0
+    assert acceval.metric.reduction == "sum"
+
 
 def test_accuracy_eval_fromconfig(accuracy_config):
     acceval = QG.evaluate.AccuracyEval.from_config(accuracy_config)
