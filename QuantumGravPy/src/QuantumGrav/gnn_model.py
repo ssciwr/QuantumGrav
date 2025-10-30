@@ -447,11 +447,10 @@ class GNNModel(torch.nn.Module):
                     "kwargs": {},
                 }
 
-        aggregate_pooling_name = None
+        aggregate_pooling_names = None
         if self.aggregate_pooling is not None:
-            aggregate_pooling_name = []
             if isinstance(self.aggregate_pooling, ModuleWrapper):
-                aggregate_pooling_name = {
+                aggregate_pooling_names = {
                     "type": utils.pooling_aggregations_names[
                         self.aggregate_pooling.get_fn()
                     ],
@@ -459,7 +458,7 @@ class GNNModel(torch.nn.Module):
                     "kwargs": {},
                 }
             else:
-                aggregate_pooling_name = {
+                aggregate_pooling_names = {
                     "type": utils.pooling_aggregations_names[self.aggregate_pooling],
                     "args": [],
                     "kwargs": {},
@@ -479,7 +478,7 @@ class GNNModel(torch.nn.Module):
             if self.graph_features_net
             else None,
             "aggregate_graph_features": aggregate_graph_features_names,
-            "aggregate_pooling": aggregate_pooling_name,
+            "aggregate_pooling": aggregate_pooling_names,
             "active_tasks": self.active_tasks,
         }
 
