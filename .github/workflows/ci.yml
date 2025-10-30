@@ -46,8 +46,9 @@ jobs:
                 python-version: ${{ matrix.python-version }}
             - name: install torch[CPU]
               run: |
+                ls
                 python -m pip install --upgrade pip
-                pip install -r requirements-cpu.txt
+                pip install -r QuantumGravPy/requirements-cpu.txt
             - name: Install package and dependencies
               working-directory: ./QuantumGravPy
               run: |
