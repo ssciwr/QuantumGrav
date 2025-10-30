@@ -1,0 +1,10 @@
+
+-f https://data.pyg.org/whl/torch-2.8.0+cu128.html
+torch==2.8
+torchvision
+pyg_lib
+torch_scatter
+torch_sparse
+torch_cluster
+torch_spline_conv
+torch_geometric
