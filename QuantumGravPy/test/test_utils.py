@@ -60,7 +60,7 @@ def test_register_normalizer():
     normalizer = torch.nn.BatchNorm1d
     QG.register_normalizer("test_normalizer", normalizer)
     assert "test_normalizer" in QG.gnn_block.utils.normalizer_layers
-
+    assert torch.nn.BatchNorm1d in QG.gnn_block.utils.normalizer_layers_names
     with pytest.raises(ValueError):
         QG.register_normalizer("test_normalizer", normalizer)
 
