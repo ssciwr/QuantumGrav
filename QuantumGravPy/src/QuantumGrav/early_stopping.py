@@ -114,7 +114,7 @@ class DefaultEarlyStopping(base.Configurable):
         """Reset all or a single task
 
         Args:
-            index (int | str, optional): The index/key of the task to reset, or 'all' if all all tasks should be reset.. Defaults to "all".
+            index (int | str, optional): The index/key of the task to reset, or 'all' if all tasks should be reset. Defaults to "all".
         """
         if index == "all":
             for task in self.tasks.values():
