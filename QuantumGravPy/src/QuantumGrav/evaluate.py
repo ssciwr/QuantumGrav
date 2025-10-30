@@ -45,7 +45,7 @@ class DefaultEvaluator(base.Configurable):
                     },
                 },
                 "required": ["name"],
-                "additional_properties": True,
+                "additionalProperties": True,
             },
             "compute_per_task": {
                 "type": "object",
@@ -77,14 +77,14 @@ class DefaultEvaluator(base.Configurable):
                             },
                         },
                         "required": ["name"],
-                        "additional_properties": True,
+                        "additionalProperties": True,
                     },
                 },
             },
             "get_target_per_task": {
                 "type": "object",
                 "description": "Function to get the target for each task.",
-                "additional_properties": True,
+                "additionalProperties": True,
             },
             "apply_model": {
                 "type": "object",
@@ -106,7 +106,7 @@ class DefaultEvaluator(base.Configurable):
                     },
                 },
                 "required": ["name"],
-                "additional_properties": True,
+                "additionalProperties": True,
             },
         },
         "required": [
@@ -490,12 +490,17 @@ class F1ScoreEval(base.Configurable):
         if f"target_{task}" not in data or f"output_{task}" not in data:
             raise KeyError(f"Task {task} not found in data for F1ScoreEval")
 
-        y_true = torch.cat(data[f"target_{task}"])
-        y_pred = torch.cat(data[f"output_{task}"])
-        if y_pred.shape != y_true.shape:
-            raise ValueError(f"Shape mismatch: {y_true.shape} vs {y_pred.shape}")
+        y_true_t = torch.cat(data[f"target_{task}"])
+        y_pred_t = torch.cat(data[f"output_{task}"])
+        if y_pred_t.shape != y_true_t.shape:
+            raise ValueError(f"Shape mismatch: {y_true_t.shape} vs {y_pred_t.shape}")
 
-        return f1_score(y_true, y_pred, average=self.average, labels=self.labels)
+        y_true = y_true_t.detach().cpu().numpy()
+        y_pred = y_pred_t.detach().cpu().numpy()
+
+        avg = None if self.average == "none" else self.average
+
+        return f1_score(y_true, y_pred, average=avg, labels=self.labels)
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
@@ -599,7 +604,12 @@ class AccuracyEval(base.Configurable):
         y_true = torch.cat(data[f"target_{task}"])
         y_pred = torch.cat(data[f"output_{task}"])
 
-        return self.metric(y_pred, y_true).item()
+        result = self.metric(y_pred, y_true).item()
+
+        if isinstance(result, torch.Tensor):
+            return result.item()
+        else:
+            return result
 
     @classmethod
     def verify_config(cls, config: dict[str, Any]) -> bool:
