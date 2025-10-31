@@ -1,5 +1,6 @@
-epoch: !range &epoch_ref
+epoch: !range
   start: 2.5
   stop: 10
-  step: true
-epoch_clone: *epoch_ref 
+  log: true
+epoch_clone: !reference
+  target: something.somethingelse[1].anotherthing

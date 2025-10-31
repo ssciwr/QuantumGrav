@@ -2,6 +2,7 @@ import yaml
 import copy
 import importlib
 from typing import Any, Tuple, Dict
+import numpy as np
 
 from . import utils
 
@@ -79,7 +80,9 @@ def range_constructor(
         node (yaml.nodes.MappingNode): the current !range node to process
 
     Returns:
-        Dict[str, Any]: dict of the form: {"type": "range", "values": Tuple(start, end, step)}
+        Dict[str, Any]: dict of the form: {"type": "range",
+                                            "values": np.arange(start, end, step),
+                                            "tune_values": Tuple[start, end, step or log]}
     """
     # using PyYAML's mapping constructor to ensure value types are correct
     mapping = loader.construct_mapping(node, deep=True)
@@ -89,7 +92,54 @@ def range_constructor(
     end = mapping.get(node.value[1][0].value)
     step_or_log = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
 
-    return {"type": "range", "values": (start, end, step_or_log)}
+    # prepare values
+    if step_or_log is not None and isinstance(step_or_log, bool):
+        if step_or_log:  # log = true
+            values = np.exp(np.random.uniform(np.log(start), np.log(end)))
+        else:  # log = false
+            values = np.random.uniform(start, end)
+    elif step_or_log is not None and isinstance(step_or_log, (int, float)):
+        values = np.arange(start, end, step_or_log)
+    else:
+        if isinstance(start, int) and isinstance(end, int):
+            values = np.arange(start, end, 1)
+        else:
+            values = np.arange(start, end, 0.1)
+
+    return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
+
+
+def reference_constructor(
+    loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
+) -> Dict[str, Any]:
+    """Constructor for the !reference tag:
+
+    referred_tag:...
+    tagname: !reference
+      target: path.to.referred_tag
+
+    This tag is used where value of the referred tag is not fixed at config load time,
+    but might be changed later on. This always points to the current value of the referred tag.
+
+    Args:
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !reference node to process
+
+    Returns:
+        Dict[str, Any]: dict of the form: {"type": "reference", "target": [path, to, referred_tag]}
+    """
+    tokens = node.value[0][1].value.split(".")
+    reference_target = []
+    for token in tokens:
+        split_token = token.split("[")
+        if len(split_token) > 1:
+            index = int(split_token[1][:-1])
+            reference_target.append(split_token[0])
+            reference_target.append(index)
+        else:
+            reference_target.append(token)
+
+    return {"type": "reference", "target": reference_target}
 
 
 def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> Any:
@@ -145,6 +195,7 @@ def get_loader():
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
     loader.add_constructor("!pyobject", object_constructor)
+    loader.add_constructor("!reference", reference_constructor)
     return loader
 
 
