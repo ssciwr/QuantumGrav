@@ -1,14 +1,14 @@
 import yaml
 import copy
 import importlib
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
 
 from . import utils
 
 
 def sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !sweep yaml tag, which in a yaml file can look like this:
     tagname: !sweep
         values: [a,b,c...]
@@ -17,7 +17,7 @@ def sweep_constructor(
         node (yaml.nodes.MappingNode): the current !sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
+        Dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
     """
     values = loader.construct_sequence(node.value[0][1])
     return {"type": "sweep", "values": values}
@@ -25,7 +25,7 @@ def sweep_constructor(
 
 def coupled_sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !coupled-sweep yaml tag which is designed to tie a sequence of values
     to a !sweep tag such that they proceed in lockstep like a 'zip' operation. Example:
     tagname: !sweep
@@ -38,7 +38,7 @@ def coupled_sweep_constructor(
         node (yaml.nodes.MappingNode): the current !coupled-sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
+        Dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
     """
     tokens = node.value[0][1].value.split(".")
     sweep_target = []
@@ -57,24 +57,39 @@ def coupled_sweep_constructor(
 
 def range_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !range tag:
     tagname: !range
       start: 0
       stop: 10
       step: 2
 
+      or
+
+    tagname: !range
+      start: 1.0e-05
+      stop: 0.1
+      log: true
+
+    In the latter case, sample value in the log domain.
+    The 'step' or 'log' field is optional.
+
     Args:
         loader (yaml.SafeLoader): loader that loads the yaml file
         node (yaml.nodes.MappingNode): the current !range node to process
 
     Returns:
-        dict[str, Any]: dict of the form: {"type": "range", "values": range(start, end, step)}
+        Dict[str, Any]: dict of the form: {"type": "range", "values": Tuple(start, end, step)}
     """
-    start = int(node.value[0][1].value)
-    end = int(node.value[1][1].value)
-    step = int(node.value[2][1].value) if len(node.value) > 2 else 1
-    return {"type": "range", "values": range(start, end, step)}
+    # using PyYAML's mapping constructor to ensure value types are correct
+    mapping = loader.construct_mapping(node, deep=True)
+    start = mapping.get(
+        node.value[0][0].value
+    )  # use indices to access keys in case key names change
+    end = mapping.get(node.value[1][0].value)
+    step_or_log = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
+
+    return {"type": "range", "values": (start, end, step_or_log)}
 
 
 def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> Any:

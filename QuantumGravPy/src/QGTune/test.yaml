@@ -1,0 +1,5 @@
+epoch: !range &epoch_ref
+  start: 2.5
+  stop: 10
+  step: true
+epoch_clone: *epoch_ref 
