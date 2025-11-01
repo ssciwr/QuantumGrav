@@ -35,20 +35,3 @@ function make_pseudosprinkling(
 
     return [[type(rand(rng, distr)) for _ = 1:d] for _ = 1:n]
 end
-
-function transitive_reduction!(mat::AbstractMatrix)
-	n = size(mat, 1)
-	@inbounds for i ∈ 1:n
-		for j ∈ (i+1):n
-			if mat[i, j] == 1
-				# If any intermediate node k exists with i → k and k → j, remove i → j
-				for k ∈ (i+1):(j-1)
-					if mat[i, k] == 1 && mat[k, j] == 1
-						mat[i, j] = 0 # remove intermediate nodes
-						break
-					end
-				end
-			end
-		end
-	end
-end
