@@ -11,7 +11,7 @@ import HDF5
 import Zarr
 import ProgressMeter
 import Dates
-import Pkg ## needed for make_data
+import JSONSchema
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -56,5 +56,7 @@ export make_adj,
     DestroyedCsetMaker,
     GridCsetMakerPolynomial,
     MergedCsetMaker,
-    ComplexTopCsetMaker
+    ComplexTopCsetMaker,
+    CsetFactory,
+    encode_csettype
 end # module QuantumGrav
