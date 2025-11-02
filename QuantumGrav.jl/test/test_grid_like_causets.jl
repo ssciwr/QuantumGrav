@@ -1,11 +1,9 @@
 using TestItems
+using QuantumGrav
+using CausalSets
+using LinearAlgebra
+using Random
 
-@testsnippet setupGridTests begin
-    using QuantumGrav
-    using CausalSets
-    using LinearAlgebra
-    using Random
-end
 
 # ---------------- Helpers (property checks) ----------------
 @testsnippet propHelpers begin
@@ -30,7 +28,6 @@ end
 
 # ---------------- generate_grid_from_brillouin_cell ----------------
 @testitem "brillouin_cell_points_in_unit_param_cube" tags=[:cell, :props] setup=[
-    setupGridTests,
     propHelpers,
 ] begin
     edges = square_edges(1.0)
@@ -63,7 +60,7 @@ end
     @test Set(pts9) == Set(expected9)
 end
 
-@testitem "rotation_equivariance" tags=[:cell, :props] setup=[setupGridTests, propHelpers] begin
+@testitem "rotation_equivariance" tags=[:cell, :props] setup=[propHelpers] begin
     edges = rect_edges(2.0, 1.0)
     origin = (0.1, -0.2)
     pts = QuantumGrav.generate_grid_from_brillouin_cell(16, edges; origin = origin)
@@ -90,9 +87,7 @@ end
     @test Set(pts) == Set(expected9)
 end
 
-@testitem "wrapper_rectangular_expected_values" tags=[:wrapper, :expected] setup=[
-    setupGridTests,
-] begin
+@testitem "wrapper_rectangular_expected_values" tags=[:wrapper, :expected] setup=[] begin
     pts = QuantumGrav.generate_grid_2d(9, "rectangular"; a = 2.0, b = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
     for i = 0:2, j = 0:2
@@ -101,10 +96,7 @@ end
     @test Set(pts) == Set(expected9)
 end
 
-@testitem "wrapper_hexagonal_expected_values" tags=[:wrapper, :expected] setup=[
-    setupGridTests,
-    propHelpers,
-] begin
+@testitem "wrapper_hexagonal_expected_values" tags=[:wrapper, :expected] setup=[propHelpers] begin
     pts = QuantumGrav.generate_grid_2d(9, "hexagonal"; a = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
     ts = (0.0, 0.5, 1.0)
@@ -115,9 +107,7 @@ end
     @test Set(pts) == Set(expected9)
 end
 
-@testitem "wrapper_auto_rotation_prefers_y_extent" tags=[:wrapper, :props] setup=[
-    setupGridTests,
-] begin
+@testitem "wrapper_auto_rotation_prefers_y_extent" tags=[:wrapper, :props] setup=[] begin
     pts = QuantumGrav.generate_grid_2d(40, "rectangular"; a = 2.0, b = 0.5)  # auto-rotate
     xs = first.(pts);
     ys = last.(pts)
@@ -150,32 +140,29 @@ end
 # ---------------- center_and_rescale_grid_to_box ----------------
 @testitem "centering_and_rescaling" tags=[:centering, :rescaling] setup=[setupGridTests] begin
     grid = QuantumGrav.generate_grid_2d(25, "square"; a = 1.0, rotate_deg = 0)
-    box = (CausalSets.Coordinates{2}((-2., 0,)), CausalSets.Coordinates{2}((-1., 1,)))
-    transformed =
-        QuantumGrav.center_and_rescale_grid_to_box(grid, box)
+    box = (CausalSets.Coordinates{2}((-2.0, 0)), CausalSets.Coordinates{2}((-1.0, 1)))
+    transformed = QuantumGrav.center_and_rescale_grid_to_box(grid, box)
 
     min_t, max_t = extrema(first.(transformed))
     min_x, max_x = extrema(last.(transformed))
 
     # inside box
-    @test min_t >= -2.
-    @test max_t <= -1.
-    @test min_x >= 0.
-    @test max_x <= 1.
+    @test min_t >= -2.0
+    @test max_t <= -1.0
+    @test min_x >= 0.0
+    @test max_x <= 1.0
 
     # maximal
-    @test min_t == -2. || min_x == 0.
+    @test min_t == -2.0 || min_x == 0.0
 
     # symmetric
-    @test -2. - min_t == max_t - (-1.) 
-    @test 0. - min_x == max_x - (1.) 
+    @test -2.0 - min_t == max_t - (-1.0)
+    @test 0.0 - min_x == max_x - (1.0)
 end
 
 
 # ---------------- create_grid_causet_2D ----------------
-@testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[
-    setupGridTests,
-] begin
+@testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[] begin
     grid = QuantumGrav.generate_grid_2d(30, "square"; a = 1.0, rotate_deg = 0)
     cset, _, coords = QuantumGrav.create_grid_causet_2D(
         30,
@@ -189,9 +176,7 @@ end
     @test length(coords) == 60
 end
 
-@testitem "grid_polynomial_manifold_builds_causet" tags=[:cset, :polynomial] setup=[
-    setupGridTests,
-] begin
+@testitem "grid_manifold_builds_causet" tags=[:cset, :polynomial] setup=[] begin
     rng = Random.MersenneTwister(1234)
     size = 30
     order = 3
@@ -212,7 +197,7 @@ end
     @test length(coords) == 2 * size
 end
 
-@testitem "grid_polynomial_input_errors" tags=[:cset, :errors] setup=[setupGridTests] begin
+@testitem "grid_input_errors" tags=[:cset, :errors] setup=[setupGridTests] begin
     rng = Random.MersenneTwister(1234)
 
     @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(

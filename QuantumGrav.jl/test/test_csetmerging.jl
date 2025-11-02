@@ -1,10 +1,10 @@
 using TestItems
+using QuantumGrav
+using CausalSets
+using Random
+using Distributions
 
 @testsnippet TestsCSetMerging begin
-    using QuantumGrav
-    using CausalSets
-    using Random
-    using Distributions
 
     rng = Random.Xoshiro(42)
     rng2 = Random.Xoshiro(24)

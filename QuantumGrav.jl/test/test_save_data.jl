@@ -1,9 +1,6 @@
 using TestItems
-
-@testsnippet importModules begin
-    using QuantumGrav
-    import Zarr
-end
+using QuantumGrav
+using Zarr: Zarr
 
 @testitem "test_default_chunks" tags = [:save_data] setup=[importModules] begin
     data = rand(Float32, 100, 200, 50)
@@ -25,7 +22,7 @@ end
 
 
 
-@testitem "test_write_arraylike" tags=[:save_data] setup=[importModules] begin
+@testitem "test_write_arraylike" tags=[:save_data] begin
 
     if isdir(joinpath(tempdir(), "test.zarr"))
         rm(joinpath(tempdir(), "test.zarr"), recursive = true)

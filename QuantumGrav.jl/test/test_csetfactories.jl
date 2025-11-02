@@ -1,15 +1,12 @@
 
 using TestItems
+using QuantumGrav
+using CausalSets
+using SparseArrays
+using Random
+using Distributions
+using JSONSchema
 
-@testsnippet importModules begin
-    using QuantumGrav
-    using TestItemRunner
-    using CausalSets
-    using SparseArrays
-    using Random
-    using Distributions
-    using JSONSchema
-end
 
 @testsnippet config begin
     cfg = Dict(
@@ -84,7 +81,7 @@ end
             "flip_distribution_args" => [4.0, 2.0],
             "flip_distribution_kwargs" => Dict(),
         ),
-        "grid_polynomial" => Dict(
+        "grid" => Dict(
             "grid_distribution" => "DiscreteUniform",
             "grid_distribution_args" => [1, 6],
             "grid_distribution_kwargs" => Dict(),
@@ -128,7 +125,7 @@ end
             ),
         ),
         "seed" => 42,
-        "num_datapoins" => 5,
+        "num_datapoints" => 5,
         "csetsize_distr_args" => [10, 20],
         "csetsize_distr" => "DiscreteUniform",
         "output" => "./",
@@ -137,7 +134,7 @@ end
     return cfg
 end
 
-@testitem "test_Csetfactory_works" tags=[:csetfactories] setup = [importModules, config] begin
+@testitem "test_Csetfactory_works" tags=[:csetfactories] setup = [config] begin
     csetfactory = CsetFactory(cfg)
     @test csetfactory.rng isa Random.Xoshiro
     @test csetfactory.npoint_distribution isa Distributions.DiscreteUniform
@@ -149,24 +146,28 @@ end
         "merged",
         "polynomial",
         "layered",
-        "grid_polynomial",
+        "grid",
         "destroyed",
     ]
         @test key in keys(csetfactory.conf)
     end
 end
 
-@testitem "test_Csetfactory_broken_config" tags=[:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_Csetfactory_broken_config" tags=[:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["output"] = nothing
-    @test isvalid(QuantumGrav.configschema, broken_cfg)
+    @test_throws ArgumentError CsetFactory(broken_cfg)
 
+    broken_cfg = deepcopy(cfg)
+    broken_cfg["unallowed_key"] = "blah"
+    @test_throws ArgumentError CsetFactory(broken_cfg)
+
+    broken_cfg = deepcopy(cfg)
+    broken_cfg["grid"] = Dict()
     @test_throws ArgumentError CsetFactory(broken_cfg)
 end
 
-@testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
     csetmaker = PolynomialCsetMaker(cfg["polynomial"])
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
     @test params(csetmaker.order_distribution) ==
@@ -176,8 +177,7 @@ end
           tuple(cfg["polynomial"]["r_distribution_args"]...)
 end
 
-@testitem "test_polynomial_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_polynomial_factory_broken_config" tags = [:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["polynomial"]["order_distribution"] = nothing
     @test_throws ArgumentError PolynomialCsetMaker(broken_cfg["polynomial"])
@@ -188,8 +188,7 @@ end
 
 end
 
-@testitem "test_polynomial_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_polynomial_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
     csetmaker = PolynomialCsetMaker(cfg["polynomial"])
     rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
@@ -197,8 +196,7 @@ end
     @test cset.atom_count == 25
 end
 
-@testitem "test_random_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_random_factory_construction" tags = [:csetfactories] setup = [config] begin
     csetmaker = RandomCsetMaker(cfg["random"])
     @test csetmaker.connectivity_distribution isa Distributions.Cauchy
     @test params(csetmaker.connectivity_distribution) ==
@@ -206,8 +204,7 @@ end
     @test csetmaker.num_tries == 100
 end
 
-@testitem "test_random_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_random_factory_broken_config" tags = [:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["random"]["connectivity_distribution"] = nothing
     @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
@@ -221,8 +218,7 @@ end
     @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
 end
 
-@testitem "test_random_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_random_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
     csetmaker = RandomCsetMaker(cfg["random"])
     rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
@@ -230,8 +226,7 @@ end
     @test cset.atom_count == 25
 end
 
-@testitem "test_layered_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_layered_factory_construction" tags = [:csetfactories] setup = [config] begin
     csetmaker = LayeredCsetMaker(cfg["layered"])
 
     @test csetmaker.connectivity_distribution isa Distributions.Uniform
@@ -247,8 +242,7 @@ end
           tuple(cfg["layered"]["layer_distribution_args"]...)
 end
 
-@testitem "test_layered_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_layered_factory_broken_config" tags = [:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["connectivity_distribution"] = nothing
     @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
@@ -274,8 +268,7 @@ end
     @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
 end
 
-@testitem "test_layered_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_layered_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
     csetmaker = LayeredCsetMaker(cfg["layered"])
     rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
@@ -283,8 +276,7 @@ end
     @test cset.atom_count == 25
 end
 
-@testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
     csetmaker = DestroyedCsetMaker(cfg["destroyed"])
 
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
@@ -301,8 +293,7 @@ end
 
 end
 
-@testitem "test_destroyed_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_destroyed_factory_broken_config" tags = [:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["order_distribution"] = nothing
     @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
@@ -329,8 +320,7 @@ end
 
 end
 
-@testitem "test_destroyed_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_destroyed_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
     csetmaker = DestroyedCsetMaker(cfg["destroyed"])
     rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
@@ -338,8 +328,7 @@ end
     @test cset.atom_count == 25
 end
 
-@testitem "test_merged_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_merged_factory_construction" tags = [:csetfactories] setup = [config] begin
     csetmaker = MergedCsetMaker(cfg["merged"])
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
     @test params(csetmaker.order_distribution) ==
@@ -361,8 +350,7 @@ end
           tuple(cfg["merged"]["link_prob_distribution_args"]...)
 end
 
-@testitem "test_merged_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_merged_factory_broken_config" tags = [:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["order_distribution"] = nothing
     @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
@@ -405,8 +393,7 @@ end
 
 end
 
-@testitem "test_merged_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_merged_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
     csetmaker = MergedCsetMaker(cfg["merged"])
     rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
@@ -415,7 +402,7 @@ end
 end
 
 @testitem "test_complex_topology_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+    [config] begin
     csetmaker = ComplexTopCsetMaker(cfg["complex_topology"])
 
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
@@ -437,7 +424,7 @@ end
 end
 
 @testitem "test_complex_topology_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+    [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["complex_topology"]["order_distribution"] = nothing
     @test_throws ArgumentError ComplexTopCsetMaker(broken_cfg["complex_topology"])
@@ -456,7 +443,7 @@ end
 end
 
 @testitem "test_complex_topology_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+    [config] begin
     csetmaker = ComplexTopCsetMaker(cfg["complex_topology"])
     rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
@@ -464,8 +451,7 @@ end
     @test cset.atom_count <= 25
 end
 
-@testitem "test_grid_factory_construction" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_grid_factory_construction" tags = [:csetfactories] setup = [config] begin
     csetmaker = GridCsetMakerPolynomial(cfg["grid"])
 
     @test csetmaker.grid_distribution isa Distributions.DiscreteUniform
@@ -492,8 +478,7 @@ end
     @test haskey(csetmaker.grid_lookup, 6)
 end
 
-@testitem "test_grid_factory_broken_config" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_grid_factory_broken_config" tags = [:csetfactories] setup = [config] begin
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["grid_distribution"] = nothing
     @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
@@ -527,8 +512,7 @@ end
     @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
 end
 
-@testitem "test_grid_factory_produce_csets" tags = [:csetfactories] setup =
-    [importModules, config] begin
+@testitem "test_grid_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
     # Test all grid types: quadratic, rectangular, rhombic, hexagonal, triangular, oblique
     grid_types =
         ["quadratic", "rectangular", "rhombic", "hexagonal", "triangular", "oblique"]

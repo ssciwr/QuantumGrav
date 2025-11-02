@@ -1,10 +1,10 @@
 using TestItems
+using QuantumGrav
+using CausalSets
+using Distributions
+using Random
 
 @testsnippet setupTests begin
-    using QuantumGrav
-    using CausalSets
-    using Distributions
-    using Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
@@ -19,8 +19,15 @@ end
     order = rand(rng, order_distribution)
     num_flips = 1
 
-    cset, sprinkling, chebyshev_coefs =
-        QuantumGrav.destroy_manifold_cset(npoints, num_flips, rng, order, r; d = 2, type = Float32)
+    cset, sprinkling, chebyshev_coefs = QuantumGrav.destroy_manifold_cset(
+        npoints,
+        num_flips,
+        rng,
+        order,
+        r;
+        d = 2,
+        type = Float32,
+    )
 
     @test length(sprinkling) == npoints
     @test size(chebyshev_coefs) == (order, order)
