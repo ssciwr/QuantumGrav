@@ -129,14 +129,15 @@
 end
 
 @testitem "test_Csetfactory_works" tags=[:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Random
-    using Distributions
+    import QuantumGrav
+    import Random
+    import Distributions
 
-    csetfactory = CsetFactory(cfg)
-    @test csetfactory.rng isa Xoshiro
-    @test csetfactory.npoint_distribution isa DiscreteUniform
-    @test params(csetfactory.npoint_distribution) == tuple(cfg["csetsize_distr_args"]...)
+    csetfactory = QuantumGrav.CsetFactory(cfg)
+    @test csetfactory.rng isa Random.Xoshiro
+    @test csetfactory.npoint_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetfactory.npoint_distribution) ==
+          tuple(cfg["csetsize_distr_args"]...)
     @test csetfactory.conf == cfg
     for key in [
         "random",
@@ -152,132 +153,132 @@ end
 end
 
 @testitem "test_Csetfactory_broken_config" tags=[:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["output"] = nothing
-    @test_throws ArgumentError CsetFactory(broken_cfg)
+    @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["unallowed_key"] = "blah"
-    @test_throws ArgumentError CsetFactory(broken_cfg)
+    @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"] = Dict()
-    @test_throws ArgumentError CsetFactory(broken_cfg)
+    @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
 end
 
 @testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Distributions
+    import QuantumGrav
+    import Distributions
 
-    csetmaker = PolynomialCsetMaker(cfg["polynomial"])
-    @test csetmaker.order_distribution isa DiscreteUniform
-    @test params(csetmaker.order_distribution) ==
+    csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
+    @test csetmaker.order_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.order_distribution) ==
           tuple(cfg["polynomial"]["order_distribution_args"]...)
-    @test csetmaker.r_distribution isa Normal
-    @test params(csetmaker.r_distribution) ==
+    @test csetmaker.r_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.r_distribution) ==
           tuple(cfg["polynomial"]["r_distribution_args"]...)
 end
 
 @testitem "test_polynomial_factory_broken_config" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
     broken_cfg = deepcopy(cfg)
     broken_cfg["polynomial"]["order_distribution"] = nothing
-    @test_throws ArgumentError PolynomialCsetMaker(broken_cfg["polynomial"])
+    @test_throws ArgumentError QuantumGrav.PolynomialCsetMaker(broken_cfg["polynomial"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["polynomial"]["r_distribution"] = nothing
-    @test_throws ArgumentError PolynomialCsetMaker(broken_cfg["polynomial"])
+    @test_throws ArgumentError QuantumGrav.PolynomialCsetMaker(broken_cfg["polynomial"])
 
 end
 
 @testitem "test_polynomial_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random
-    using QuantumGrav
+    import Random
+    import QuantumGrav
 
-    csetmaker = PolynomialCsetMaker(cfg["polynomial"])
-    rng = Xoshiro(cfg["seed"])
+    csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
+    rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
 end
 
 @testitem "test_random_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions
-    using QuantumGrav
+    import Distributions
+    import QuantumGrav
 
-    csetmaker = RandomCsetMaker(cfg["random"])
-    @test csetmaker.connectivity_distribution isa Cauchy
-    @test params(csetmaker.connectivity_distribution) ==
+    csetmaker = QuantumGrav.RandomCsetMaker(cfg["random"])
+    @test csetmaker.connectivity_distribution isa Distributions.Cauchy
+    @test Distributions.params(csetmaker.connectivity_distribution) ==
           tuple(cfg["random"]["connectivity_distribution_args"]...)
     @test csetmaker.num_tries == 100
 end
 
 @testitem "test_random_factory_broken_config" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["random"]["connectivity_distribution"] = nothing
-    @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
+    @test_throws ArgumentError QuantumGrav.RandomCsetMaker(broken_cfg["random"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["random"]["max_iter"] = 0
-    @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
+    @test_throws ArgumentError QuantumGrav.RandomCsetMaker(broken_cfg["random"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["random"]["num_tries"] = 0
-    @test_throws ArgumentError RandomCsetMaker(broken_cfg["random"])
+    @test_throws ArgumentError QuantumGrav.RandomCsetMaker(broken_cfg["random"])
 end
 
 @testitem "test_random_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Random
+    import QuantumGrav
+    import Random
 
-    csetmaker = RandomCsetMaker(cfg["random"])
-    rng = Xoshiro(cfg["seed"])
+    csetmaker = QuantumGrav.RandomCsetMaker(cfg["random"])
+    rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
 end
 
 @testitem "test_layered_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Distributions
+    import QuantumGrav
+    import Distributions
 
-    csetmaker = LayeredCsetMaker(cfg["layered"])
+    csetmaker = QuantumGrav.LayeredCsetMaker(cfg["layered"])
 
-    @test csetmaker.connectivity_distribution isa Uniform
-    @test params(csetmaker.connectivity_distribution) ==
+    @test csetmaker.connectivity_distribution isa Distributions.Uniform
+    @test Distributions.params(csetmaker.connectivity_distribution) ==
           tuple(cfg["layered"]["connectivity_distribution_args"]...)
 
-    @test csetmaker.stddev_distribution isa Normal
-    @test params(csetmaker.stddev_distribution) ==
+    @test csetmaker.stddev_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.stddev_distribution) ==
           tuple(cfg["layered"]["stddev_distribution_args"]...)
 
-    @test csetmaker.layer_distribution isa DiscreteUniform
-    @test params(csetmaker.layer_distribution) ==
+    @test csetmaker.layer_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.layer_distribution) ==
           tuple(cfg["layered"]["layer_distribution_args"]...)
 end
 
 @testitem "test_layered_factory_broken_config" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["connectivity_distribution"] = nothing
-    @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
+    @test_throws ArgumentError QuantumGrav.LayeredCsetMaker(broken_cfg["layered"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["stddev_distribution"] = nothing
-    @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
+    @test_throws ArgumentError QuantumGrav.LayeredCsetMaker(broken_cfg["layered"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["layer_distribution"] = nothing
-    @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
+    @test_throws ArgumentError QuantumGrav.LayeredCsetMaker(broken_cfg["layered"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["layer_distribution_args"] = nothing
-    @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
+    @test_throws ArgumentError QuantumGrav.LayeredCsetMaker(broken_cfg["layered"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["stddev_distribution_args"] = nothing
@@ -285,138 +286,139 @@ end
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["connectivity_distribution_args"] = nothing
-    @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
+    @test_throws ArgumentError QuantumGrav.LayeredCsetMaker(broken_cfg["layered"])
 end
 
 @testitem "test_layered_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Random
-    csetmaker = LayeredCsetMaker(cfg["layered"])
-    rng = Xoshiro(cfg["seed"])
+    import QuantumGrav
+    import Random
+    csetmaker = QuantumGrav.LayeredCsetMaker(cfg["layered"])
+    rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
 end
 
 @testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Distributions
+    import QuantumGrav
+    import Distributions
 
-    csetmaker = DestroyedCsetMaker(cfg["destroyed"])
+    csetmaker = QuantumGrav.DestroyedCsetMaker(cfg["destroyed"])
 
-    @test csetmaker.order_distribution isa DiscreteUniform
-    @test params(csetmaker.order_distribution) ==
+    @test csetmaker.order_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.order_distribution) ==
           tuple(cfg["destroyed"]["order_distribution_args"]...)
 
-    @test csetmaker.r_distribution isa Uniform
-    @test params(csetmaker.r_distribution) ==
+    @test csetmaker.r_distribution isa Distributions.Uniform
+    @test Distributions.params(csetmaker.r_distribution) ==
           tuple(cfg["destroyed"]["r_distribution_args"]...)
 
-    @test csetmaker.flip_distribution isa Normal
-    @test params(csetmaker.flip_distribution) ==
+    @test csetmaker.flip_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.flip_distribution) ==
           tuple(cfg["destroyed"]["flip_distribution_args"]...)
 
 end
 
 @testitem "test_destroyed_factory_broken_config" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["order_distribution"] = nothing
-    @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
+    @test_throws ArgumentError QuantumGrav.DestroyedCsetMaker(broken_cfg["destroyed"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["r_distribution"] = nothing
-    @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
+    @test_throws ArgumentError QuantumGrav.DestroyedCsetMaker(broken_cfg["destroyed"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["flip_distribution"] = nothing
-    @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
+    @test_throws ArgumentError QuantumGrav.DestroyedCsetMaker(broken_cfg["destroyed"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["order_distribution_args"] = nothing
-    @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
+    @test_throws ArgumentError QuantumGrav.DestroyedCsetMaker(broken_cfg["destroyed"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["r_distribution_args"] = nothing
-    @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
+    @test_throws ArgumentError QuantumGrav.DestroyedCsetMaker(broken_cfg["destroyed"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["destroyed"]["flip_distribution_args"] = nothing
-    @test_throws ArgumentError DestroyedCsetMaker(broken_cfg["destroyed"])
+    @test_throws ArgumentError QuantumGrav.DestroyedCsetMaker(broken_cfg["destroyed"])
 
 end
 
 @testitem "test_destroyed_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Random
+    import QuantumGrav
+    import Random
 
-    csetmaker = DestroyedCsetMaker(cfg["destroyed"])
-    rng = Xoshiro(cfg["seed"])
+    csetmaker = QuantumGrav.DestroyedCsetMaker(cfg["destroyed"])
+    rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
 end
 
 @testitem "test_merged_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Distributions
+    import QuantumGrav
+    import Distributions
 
-    csetmaker = MergedCsetMaker(cfg["merged"])
-    @test csetmaker.order_distribution isa DiscreteUniform
-    @test params(csetmaker.order_distribution) ==
+    csetmaker = QuantumGrav.MergedCsetMaker(cfg["merged"])
+    @test csetmaker.order_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.order_distribution) ==
           tuple(cfg["merged"]["order_distribution_args"]...)
 
-    @test csetmaker.r_distribution isa Normal
-    @test params(csetmaker.r_distribution) == tuple(cfg["merged"]["r_distribution_args"]...)
+    @test csetmaker.r_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.r_distribution) ==
+          tuple(cfg["merged"]["r_distribution_args"]...)
 
-    @test csetmaker.n2_rel_distribution isa Cauchy
-    @test params(csetmaker.n2_rel_distribution) ==
+    @test csetmaker.n2_rel_distribution isa Distributions.Cauchy
+    @test Distributions.params(csetmaker.n2_rel_distribution) ==
           tuple(cfg["merged"]["n2_rel_distribution_args"]...)
 
-    @test csetmaker.connectivity_distribution isa Beta
-    @test params(csetmaker.connectivity_distribution) ==
+    @test csetmaker.connectivity_distribution isa Distributions.Beta
+    @test Distributions.params(csetmaker.connectivity_distribution) ==
           tuple(cfg["merged"]["connectivity_distribution_args"]...)
 
-    @test csetmaker.link_prob_distribution isa Normal
-    @test params(csetmaker.link_prob_distribution) ==
+    @test csetmaker.link_prob_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.link_prob_distribution) ==
           tuple(cfg["merged"]["link_prob_distribution_args"]...)
 end
 
 @testitem "test_merged_factory_broken_config" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["order_distribution"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["r_distribution"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["n2_rel_distribution"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["link_prob_distribution"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["connectivity_distribution"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["order_distribution_args"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["r_distribution_args"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["n2_rel_distribution_args"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["link_prob_distribution_args"] = nothing
@@ -429,10 +431,10 @@ end
 end
 
 @testitem "test_merged_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Random
-    csetmaker = MergedCsetMaker(cfg["merged"])
-    rng = Xoshiro(cfg["seed"])
+    import QuantumGrav
+    import Random
+    csetmaker = QuantumGrav.MergedCsetMaker(cfg["merged"])
+    rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count > 25
@@ -440,83 +442,92 @@ end
 
 @testitem "test_complex_topology_factory_construction" tags = [:csetfactories] setup =
     [config] begin
-    using QuantumGrav
-    using Distributions
+    import QuantumGrav
+    import Distributions
 
-    csetmaker = ComplexTopCsetMaker(cfg["complex_topology"])
+    csetmaker = QuantumGrav.ComplexTopCsetMaker(cfg["complex_topology"])
 
-    @test csetmaker.order_distribution isa DiscreteUniform
-    @test params(csetmaker.order_distribution) ==
+    @test csetmaker.order_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.order_distribution) ==
           tuple(cfg["complex_topology"]["order_distribution_args"]...)
 
-    @test csetmaker.r_distribution isa Normal
-    @test params(csetmaker.r_distribution) ==
+    @test csetmaker.r_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.r_distribution) ==
           tuple(cfg["complex_topology"]["r_distribution_args"]...)
 
-    @test csetmaker.vertical_cut_distribution isa Cauchy
-    @test params(csetmaker.vertical_cut_distribution) ==
+    @test csetmaker.vertical_cut_distribution isa Distributions.Cauchy
+    @test Distributions.params(csetmaker.vertical_cut_distribution) ==
           tuple(cfg["complex_topology"]["vertical_cut_distribution_args"]...)
 
-    @test csetmaker.finite_cut_distribution isa Normal
-    @test params(csetmaker.finite_cut_distribution) ==
+    @test csetmaker.finite_cut_distribution isa Distributions.Normal
+    @test Distributions.params(csetmaker.finite_cut_distribution) ==
           tuple(cfg["complex_topology"]["finite_cut_distribution_args"]...)
 
 end
 
 @testitem "test_complex_topology_factory_broken_config" tags = [:csetfactories] setup =
     [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["complex_topology"]["order_distribution"] = nothing
-    @test_throws ArgumentError ComplexTopCsetMaker(broken_cfg["complex_topology"])
+    @test_throws ArgumentError QuantumGrav.ComplexTopCsetMaker(
+        broken_cfg["complex_topology"],
+    )
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["complex_topology"]["r_distribution"] = nothing
-    @test_throws ArgumentError ComplexTopCsetMaker(broken_cfg["complex_topology"])
+    @test_throws ArgumentError QuantumGrav.ComplexTopCsetMaker(
+        broken_cfg["complex_topology"],
+    )
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["complex_topology"]["vertical_cut_distribution"] = nothing
-    @test_throws ArgumentError ComplexTopCsetMaker(broken_cfg["complex_topology"])
+    @test_throws ArgumentError QuantumGrav.ComplexTopCsetMaker(
+        broken_cfg["complex_topology"],
+    )
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["complex_topology"]["finite_cut_distribution"] = nothing
-    @test_throws ArgumentError ComplexTopCsetMaker(broken_cfg["complex_topology"])
+    @test_throws ArgumentError QuantumGrav.ComplexTopCsetMaker(
+        broken_cfg["complex_topology"],
+    )
 end
 
 @testitem "test_complex_topology_factory_produce_csets" tags = [:csetfactories] setup =
     [config] begin
-    using QuantumGrav
-    using Random
+    import QuantumGrav
+    import Random
 
-    csetmaker = ComplexTopCsetMaker(cfg["complex_topology"])
-    rng = Xoshiro(cfg["seed"])
+    csetmaker = QuantumGrav.ComplexTopCsetMaker(cfg["complex_topology"])
+    rng = Random.Xoshiro(cfg["seed"])
     cset = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count <= 25
 end
 
 @testitem "test_grid_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Distributions
+    import QuantumGrav
+    import Distributions
 
-    csetmaker = GridCsetMakerPolynomial(cfg["grid"])
+    csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
-    @test csetmaker.grid_distribution isa DiscreteUniform
-    @test params(csetmaker.grid_distribution) ==
+    @test csetmaker.grid_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.grid_distribution) ==
           tuple(cfg["grid"]["grid_distribution_args"]...)
 
-    @test csetmaker.rotate_distribution isa Uniform
-    @test params(csetmaker.rotate_distribution) ==
+    @test csetmaker.rotate_distribution isa Distributions.Uniform
+    @test Distributions.params(csetmaker.rotate_distribution) ==
           tuple(cfg["grid"]["rotate_distribution_args"]...)
 
 
-    @test csetmaker.order_distribution isa DiscreteUniform
-    @test params(csetmaker.order_distribution) ==
+    @test csetmaker.order_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetmaker.order_distribution) ==
           tuple(cfg["grid"]["order_distribution_args"]...)
 
-    @test csetmaker.r_distribution isa Uniform
-    @test params(csetmaker.r_distribution) == tuple(cfg["grid"]["r_distribution_args"]...)
+    @test csetmaker.r_distribution isa Distributions.Uniform
+    @test Distributions.params(csetmaker.r_distribution) ==
+          tuple(cfg["grid"]["r_distribution_args"]...)
 
     @test haskey(csetmaker.grid_lookup, 1)
     @test haskey(csetmaker.grid_lookup, 2)
@@ -527,31 +538,31 @@ end
 end
 
 @testitem "test_grid_factory_broken_config" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
+    import QuantumGrav
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["grid_distribution"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["rotate_distribution"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["order_distribution"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["r_distribution"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["grid_distribution_args"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["rotate_distribution_args"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["order_distribution_args"] = nothing
@@ -559,20 +570,20 @@ end
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["r_distribution_args"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 end
 
 @testitem "test_grid_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using QuantumGrav
-    using Random
+    import QuantumGrav
+    import Random
     # Test all grid types: quadratic, rectangular, rhombic, hexagonal, triangular, oblique
     grid_types =
         ["quadratic", "rectangular", "rhombic", "hexagonal", "triangular", "oblique"]
 
-    rng = Xoshiro(cfg["seed"])
+    rng = Random.Xoshiro(cfg["seed"])
 
     for grid_type in grid_types
-        csetmaker = GridCsetMakerPolynomial(cfg["grid"])
+        csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
         # Produce a cset for this grid type
         cset = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
@@ -580,7 +591,7 @@ end
         @test cset.atom_count == 25
     end
 
-    csetmaker = GridCsetMakerPolynomial(cfg["grid"])
+    csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
     cset = csetmaker(25, rng, cfg["grid"]) # randomly chosen grid type
     @test isnothing(cset) === false
     @test cset.atom_count == 25

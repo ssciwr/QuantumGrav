@@ -1,7 +1,7 @@
 
 @testitem "test_default_chunks" tags = [:save_data] begin
-    using QuantumGrav
-    using Zarr
+    import QuantumGrav
+    import Zarr
 
     data = rand(Float32, 100, 200, 50)
     chunks = QuantumGrav.default_chunks(data)
@@ -23,8 +23,8 @@ end
 
 
 @testitem "test_write_arraylike" tags=[:save_data] begin
-    using QuantumGrav
-    using Zarr
+    import QuantumGrav
+    import Zarr
 
     if isdir(joinpath(tempdir(), "test.zarr"))
         rm(joinpath(tempdir(), "test.zarr"), recursive = true)
@@ -68,8 +68,8 @@ end
 
 
 @testitem "dict_to_zarr" tags=[:save_data] begin
-    using QuantumGrav
-    using Zarr
+    import QuantumGrav
+    import Zarr
     if isdir(joinpath(tempdir(), "dict_test.zarr"))
         rm(joinpath(tempdir(), "dict_test.zarr"), recursive = true)
     end

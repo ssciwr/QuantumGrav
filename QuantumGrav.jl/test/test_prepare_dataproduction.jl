@@ -1,9 +1,9 @@
 
 @testitem "check_copy_sourcecode" tags = [:graph_utils] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+    import QuantumGrav
     mktempdir() do targetpath
-        funcs = [cardinality_of, make_adj]
+        funcs = [CausalSets.cardinality_of, QuantumGrav.make_adj]
         @test length(filter(x -> occursin(".jl", x), readdir(targetpath))) == 0
 
         QuantumGrav.copy_sourcecode(funcs, targetpath)
@@ -14,8 +14,8 @@ end
 
 
 @testitem "get_git_info" tags = [:graph_utils] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+    import QuantumGrav
     config = Dict{String,Any}()
 
     QuantumGrav.get_git_info!(config)
@@ -27,8 +27,8 @@ end
 end
 
 @testitem "prepare_dataproduction" tags = [:graph_utils] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+    import QuantumGrav
     mktempdir() do targetpath
         config = Dict{String,Any}(
             "num_datapoints" => 5,
@@ -52,8 +52,8 @@ end
 
 
 @testitem "prepare_dataproduction_throws" tags = [:graph_utils] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+    import QuantumGrav
     mktempdir() do targetpath
         config = Dict{String,Any}(
             "num_datapoints" => 5,

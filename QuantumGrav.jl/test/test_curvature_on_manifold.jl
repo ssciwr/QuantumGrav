@@ -2,8 +2,8 @@
 
 
 @testsnippet CurvatureOnManifold begin
-    using CausalSets
-    using Random
+    import CausalSets
+    import Random
     Random.seed!(1234)
     rng = Random.Xoshiro(1234)
 end
@@ -133,7 +133,7 @@ end
     # Generate a sprinkling of points on 2D curved geometry
     cset, sprinkling, coefs = QuantumGrav.make_polynomial_manifold_cset(
         npoints,
-        MersenneTwister(1234),
+        Random.MersenneTwister(1234),
         5,
         3.0;
         type = Float64,
