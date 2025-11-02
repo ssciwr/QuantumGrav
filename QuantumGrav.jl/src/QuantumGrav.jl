@@ -7,11 +7,9 @@ import SparseArrays
 import CausalSets
 import Distributions
 import YAML
-import HDF5
 import Zarr
-import ProgressMeter
 import Dates
-import Pkg ## needed for make_data
+import JSONSchema
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -57,8 +55,8 @@ export make_adj,
     DestroyedCsetMaker,
     GridCsetMakerPolynomial,
     MergedCsetMaker,
-    ComplexTopCsetMaker
-# data saving
-dict_to_zarr
-
+    ComplexTopCsetMaker,
+    CsetFactory,
+    encode_csettype,# data saving
+    dict_to_zarr
 end # module QuantumGrav
