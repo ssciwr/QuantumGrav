@@ -1,15 +1,17 @@
-using TestItems
+
 
 
 @testsnippet LayeredTests begin
-    using QuantumGrav
-    using CausalSets
     using Random
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
 end
 
 @testitem "test_make_simple_layered_cset" tags = [:layeredgeneration] setup = [LayeredTests] begin
+    using QuantumGrav
+    using CausalSets
+    using Random
+
     cset, cuts = QuantumGrav.create_random_layered_causet(100, 3; rng = rng)
 
     @test cset.atom_count == 100

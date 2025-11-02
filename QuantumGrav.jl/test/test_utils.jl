@@ -1,12 +1,7 @@
-using TestItems
 
-
-@testsnippet importModules begin
-
+@testitem "test_make_pseudosprinkling" tags = [:utils] begin
+    using QuantumGrav
     using Random
-end
-
-@testitem "test_make_pseudosprinkling" tags = [:utils] setup=[importModules] begin
     n = 10
     d = 3
     box_min = -1.0

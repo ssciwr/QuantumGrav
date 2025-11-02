@@ -1,4 +1,4 @@
-using TestItems
+
 
 @testsnippet TestsCSetByConnectivity begin
 
@@ -21,6 +21,8 @@ end
 
 @testitem "test_make_simple_cset_by_connectivity" tags = [:csetgenerationbyconnectivity] setup =
     [TestsCSetByConnectivity] begin
+    using QuantumGrav
+
     connectivity_goal = 0.5
     cset, converged = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
@@ -50,6 +52,8 @@ end
 
 @testitem "test_simple_cset_by_connectivity_throws" tags =
     [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivity] begin
+    using QuantumGrav
+
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(
         -1,
         0.5,
@@ -102,6 +106,9 @@ end
 
 @testitem "test_make_simple_cset_by_connectivity_distribution" tags =
     [:csetgenerationbyconnectivitydist] setup = [TestsCSetByConnectivityDistribution] begin
+    using QuantumGrav
+    using Distributions
+
     dist = Distributions.Beta(2, 2)
     cset, converged = QuantumGrav.random_causet_by_connectivity_distribution(
         2^10,
@@ -132,6 +139,8 @@ end
 
 @testitem "test_simple_cset_by_connectivity_distribution_throws" tags =
     [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivityDistribution] begin
+    using QuantumGrav
+
     @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
         -1,
         Distributions.Beta(2, 2),

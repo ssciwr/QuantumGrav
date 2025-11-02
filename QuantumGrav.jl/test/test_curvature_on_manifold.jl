@@ -1,4 +1,4 @@
-using TestItems
+
 
 
 @testsnippet CurvatureOnManifold begin
