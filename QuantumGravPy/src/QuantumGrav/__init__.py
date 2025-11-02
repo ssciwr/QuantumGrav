@@ -36,6 +36,8 @@ from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .linear_sequential import LinearSequential
 
+from .load_zarr import zarr_to_dict
+
 __all__ = [
     # julia interface
     "JuliaWorker",
@@ -80,4 +82,6 @@ __all__ = [
     # config handler
     "get_loader",
     "ConfigHandler",
+    # zarr loading
+    "zarr_to_dict",
 ]
