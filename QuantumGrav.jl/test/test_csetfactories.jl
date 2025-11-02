@@ -1,14 +1,15 @@
 
 using TestItems
-using QuantumGrav
-using CausalSets
-using SparseArrays
-using Random
-using Distributions
-using JSONSchema
 
 
 @testsnippet config begin
+    using QuantumGrav
+    using CausalSets
+    using SparseArrays
+    using Random
+    using Distributions
+    using JSONSchema
+
     cfg = Dict(
         "polynomial" => Dict(
             "order_distribution" => "DiscreteUniform",

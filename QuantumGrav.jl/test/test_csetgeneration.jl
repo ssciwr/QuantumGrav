@@ -1,14 +1,10 @@
 using TestItems
-using QuantumGrav
-using CausalSets
-using SparseArrays
-using Distributions
-using Random
-using Graphs
-using HDF5
-using YAML
+
 
 @testsnippet setupTests begin
+    using CausalSets
+    using Distributions
+    using Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)

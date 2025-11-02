@@ -1,14 +1,12 @@
 using TestItems
-using QuantumGrav
-using TestItemRunner
-using CausalSets
-using SparseArrays
-using Random
-using Distributions
 
 
 @testsnippet makeData begin
-
+    using CausalSets
+    using SparseArrays
+    using Random
+    using Distributions
+    using Graphs
 
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()

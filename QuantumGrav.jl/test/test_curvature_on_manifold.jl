@@ -1,10 +1,9 @@
 using TestItems
-using QuantumGrav
-using CausalSets
-using Random
+
 
 @testsnippet CurvatureOnManifold begin
-
+    using CausalSets
+    using Random
     Random.seed!(1234)
     rng = Random.Xoshiro(1234)
 end

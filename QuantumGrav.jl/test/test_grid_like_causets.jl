@@ -1,12 +1,16 @@
 using TestItems
-using QuantumGrav
-using CausalSets
-using LinearAlgebra
-using Random
 
+@testsnippet importModules begin
+    using CausalSets
+    using LinearAlgebra
+    using Random
+end
 
 # ---------------- Helpers (property checks) ----------------
 @testsnippet propHelpers begin
+    using CausalSets
+    using LinearAlgebra
+    using Random
     # Solve for barycentric parameters t in x = origin + E * t
     function inv_map(
         E::AbstractMatrix{<:Real},
@@ -162,7 +166,9 @@ end
 
 
 # ---------------- create_grid_causet_2D ----------------
-@testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[] begin
+@testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] setup=[
+    importModules,
+] begin
     grid = QuantumGrav.generate_grid_2d(30, "square"; a = 1.0, rotate_deg = 0)
     cset, _, coords = QuantumGrav.create_grid_causet_2D(
         30,
@@ -176,7 +182,7 @@ end
     @test length(coords) == 60
 end
 
-@testitem "grid_manifold_builds_causet" tags=[:cset, :polynomial] setup=[] begin
+@testitem "grid_manifold_builds_causet" tags=[:cset, :polynomial] setup=[importModules] begin
     rng = Random.MersenneTwister(1234)
     size = 30
     order = 3

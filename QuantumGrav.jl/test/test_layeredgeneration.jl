@@ -1,9 +1,10 @@
 using TestItems
-using QuantumGrav
-using CausalSets
-using Random
+
 
 @testsnippet LayeredTests begin
+    using QuantumGrav
+    using CausalSets
+    using Random
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
 end

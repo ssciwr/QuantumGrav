@@ -1,10 +1,11 @@
 using TestItems
-using QuantumGrav
-using CausalSets
-using Distributions
-using Random
 
 @testsnippet branchedtests begin
+    using QuantumGrav
+    using CausalSets
+    using Distributions
+    using Random
+
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
     npoint_distribution = Distributions.DiscreteUniform(2, 1000)
