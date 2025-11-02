@@ -2,7 +2,7 @@ using TestItems
 
 @testsnippet importModules begin
     using QuantumGrav
-    using Zarr
+    import Zarr
 end
 
 @testitem "test_default_chunks" tags = [:save_data] setup=[importModules] begin

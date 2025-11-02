@@ -1,5 +1,5 @@
 """
-	default_chunks(data::AbstractArray)
+    default_chunks(data::AbstractArray)
 
 Default chunking strategy for Zarr arrays. Chunks of size 128 along each dimension, or smaller if the dimension size is less than 128.
 """
@@ -16,7 +16,7 @@ function default_chunks(data::AbstractArray)
 end
 
 """
-	write_arraylike_to_zarr(group::Zarr.ZGroup, key::String, data::AbstractArray; type = eltype(data), chunks = nothing, compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2))
+    write_arraylike_to_zarr(group::Zarr.ZGroup, key::String, data::AbstractArray; type = eltype(data), chunks = nothing, compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2))
 
 Write a Julia AbstractArray to a Zarr group.
 
@@ -49,7 +49,7 @@ function write_arraylike_to_zarr(
 end
 
 """
-	dict_to_zarr(file_or_group::Union{Zarr.DirectoryStore, Zarr.ZGroup}, data::Dict{String, Any}, compressor_kwargs = Dict(clevel => 9, cname => "lz4", shuffle => 2), chunking_strategy::Union{Dict{String, Function}, Function, Nothing} = default_chunks)
+    dict_to_zarr(file_or_group::Union{Zarr.DirectoryStore, Zarr.ZGroup}, data::Dict{String, Any}, compressor_kwargs = Dict(clevel => 9, cname => "lz4", shuffle => 2), chunking_strategy::Union{Dict{String, Function}, Function, Nothing} = default_chunks)
 
 Recursively write a nested dictionary to a Zarr group.
 

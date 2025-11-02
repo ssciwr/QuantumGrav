@@ -9,6 +9,7 @@ import Distributions
 import YAML
 import Zarr
 import Dates
+import Pkg
 import JSONSchema
 
 include("utils.jl")

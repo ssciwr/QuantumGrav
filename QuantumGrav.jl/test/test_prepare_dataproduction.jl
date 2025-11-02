@@ -1,9 +1,9 @@
 using TestItems
 
 @testsnippet importModules begin
-    using QuantumGrav
+    import QuantumGrav
     using TestItemRunner
-    using CausalSets
+    import CausalSets
     using SparseArrays
     using Random
     using Distributions
