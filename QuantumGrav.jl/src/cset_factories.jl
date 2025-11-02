@@ -93,11 +93,12 @@ const PolynomialCsetMaker_schema = JSONSchema.Schema("""{
 
 	Creates a causal set maker for a polynomial manifold.
 
-# Fields:
+# Arguments:
 - config::Dict: configuration dictionary
 """
 function PolynomialCsetMaker(config)
-    isvalid(PolynomialCsetMaker_schema, config)
+    validate_config(PolynomialCsetMaker_schema, config)
+
     order_distribution = build_distr(config, "order_distribution")
     r_distribution = build_distr(config, "r_distribution")
 
@@ -199,7 +200,7 @@ const LayeredCsetMaker_schema = JSONSchema.Schema(
 	- config::Dict: configuration dictionary
 """
 function LayeredCsetMaker(config::Dict)
-    isvalid(LayeredCsetMaker_schema, config)
+    validate_config(LayeredCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
     stddev_distr = build_distr(config, "stddev_distribution")
@@ -266,7 +267,7 @@ const RandomCsetMaker_schema = JSONSchema.Schema("""{
                                                      "connectivity_distribution": { "type": "string" },
                                                      "connectivity_distribution_args": {
                                                        "type": "array",
-                                                       "items": { "type": "integer" }
+                                                       "items": { "type": "number" }
                                                      },
                                                      "connectivity_distribution_kwargs": {
                                                        "type": "object",
@@ -297,7 +298,7 @@ const RandomCsetMaker_schema = JSONSchema.Schema("""{
 - config::Dict: configuration dictionary
 """
 function RandomCsetMaker(config::Dict)
-    isvalid(RandomCsetMaker_schema, config)
+    validate_config(RandomCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
 
@@ -441,7 +442,7 @@ const DestroyedCsetMaker_schema = JSONSchema.Schema("""{
 Create a new `destroyed` causal set maker object from the config dictionary.
 """
 function DestroyedCsetMaker(config::Dict)
-    isvalid(DestroyedCsetMaker_schema, config)
+    validate_config(DestroyedCsetMaker_schema, config)
 
     order_distribution = build_distr(config, "order_distribution")
 
@@ -677,7 +678,7 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
 	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 """
 function GridCsetMakerPolynomial(config::Dict)
-    isvalid(GridCsetMakerPolynomial_schema, config)
+    validate_config(GridCsetMakerPolynomial_schema, config)
 
     grid_distribution = build_distr(config, "grid_distribution")
 
@@ -844,7 +845,8 @@ const ComplexTopCsetMaker_schema = JSONSchema.Schema("""{
 	Create a new `ComplexTopCsetMaker` object from the config dictionary.
 """
 function ComplexTopCsetMaker(config::Dict)
-    isvalid(ComplexTopCsetMaker_schema, config)
+    validate_config(ComplexTopCsetMaker_schema, config)
+
     vertical_cut_distr = build_distr(config, "vertical_cut_distribution")
     finite_cut_distr = build_distr(config, "finite_cut_distribution")
     order_distr = build_distr(config, "order_distribution")
@@ -1001,6 +1003,8 @@ const MergedCsetMaker_schema = JSONSchema.Schema("""{
 Make a new merged causal set maker from a given configuration dictionary.
 """
 function MergedCsetMaker(config::Dict)
+    validate_config(MergedCsetMaker_schema, config)
+
     order_distr = build_distr(config, "order_distribution")
     r_distr = build_distr(config, "r_distribution")
     link_prob_distr = build_distr(config, "link_prob_distribution")
@@ -1047,7 +1051,7 @@ function (mcm::MergedCsetMaker)(
     return cset
 end
 
-configschema = JSONSchema.Schema("""
+csetfactory_schema = JSONSchema.Schema("""
                                 	{
                                 	  "\$schema": "http://json-schema.org/draft-06/schema#",
                                 	  "title": "QuantumGrav Cset Factory Config",
@@ -1094,7 +1098,7 @@ configschema = JSONSchema.Schema("""
                                 		  "properties": {},
                                 		  "additionalProperties": true
                                 		},
-                                		"grid_polynomial": {
+                                		"grid": {
                                 		  "type": "object",
                                 		  "properties": {},
                                 		  "additionalProperties": true
@@ -1119,7 +1123,7 @@ configschema = JSONSchema.Schema("""
                                 		"merged",
                                 		"complex_topology",
                                 		"destroyed",
-                                		"grid_polynomial",
+                                		"grid",
                                 		"seed",
                                 		"num_datapoints",
                                 		"csetsize_distr",
@@ -1152,7 +1156,8 @@ end
 Bundle cset factories into one object
 """
 function CsetFactory(config::Dict{String,Any})
-    isvalid(configschema, config)
+    validate_config(csetfactory_schema, config)
+
     npoint_distribution = build_distr(config, "csetsize_distr")
     rng = Random.Xoshiro(config["seed"])
     cset_makers = Dict(
@@ -1164,8 +1169,7 @@ function CsetFactory(config::Dict{String,Any})
             MergedCsetMaker(get(config, "merged_ambiguous", config["merged"])),
         "polynomial" => PolynomialCsetMaker(Dict{String,Any}(config["polynomial"])),
         "layered" => LayeredCsetMaker(Dict{String,Any}(config["layered"])),
-        "grid_polynomial" =>
-            GridCsetMakerPolynomial(Dict{String,Any}(config["grid_polynomial"])),
+        "grid" => GridCsetMakerPolynomial(Dict{String,Any}(config["grid"])),
         "destroyed" => DestroyedCsetMaker(Dict{String,Any}(config["destroyed"])),
         "destroyed_ambiguous" => DestroyedCsetMaker(
             Dict{String,Any}(get(config, "destroyed_ambiguous", config["destroyed"])),
@@ -1204,7 +1208,7 @@ encode_csettype = Dict(
     "polynomial" => 1,
     "layered" => 2,
     "random" => 3,
-    "grid_polynomial" => 4,
+    "grid" => 4,
     "destroyed" => 5,
     "destroyed_ambiguous" => 6,
     "merged" => 7,
