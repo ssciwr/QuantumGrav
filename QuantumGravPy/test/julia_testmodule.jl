@@ -1,4 +1,4 @@
- as QG
+import QuantumGrav as QG
 import Random
 import Distributions
 
