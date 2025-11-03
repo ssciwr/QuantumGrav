@@ -1,7 +1,7 @@
 
 
 @testsnippet branchedtests begin
-    using Random
+    import Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
@@ -9,8 +9,8 @@ end
 
 @testitem "are_colinear_overlapping" tags = [:branchedcsetgeneration, :branch_points] setup =
     [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     seg1 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 0.0)))
     seg2 = (CausalSets.Coordinates{2}((0.5, 0.0)), CausalSets.Coordinates{2}((1.5, 0.0))) # colinear and overlapping with seg1
     seg3 = (CausalSets.Coordinates{2}((1.5, 0.0)), CausalSets.Coordinates{2}((2.0, 0.0))) # colinear but not overlapping with seg1
@@ -23,8 +23,8 @@ end
 
 @testitem "are_colinear_overlapping_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     seg1 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 0.0)))
     seg2 = (CausalSets.Coordinates{2}((0.5, 0.0)), CausalSets.Coordinates{2}((1.5, 0.0)))
     tolerance = -1.0 # negative tolerance
@@ -39,8 +39,8 @@ end
 @testitem "is_colinear_overlapping_with_cuts" tags=[:branchedcsetgeneration, :branch_points] setup=[
     branchedtests,
 ] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     seg = (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
     single = [CausalSets.Coordinates{2}((0.5, 1.0))]
     tuples =
@@ -56,8 +56,8 @@ end
 
 @testitem "is_colinear_overlapping_with_cuts_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     seg = (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
     single = [CausalSets.Coordinates{2}((0.5, 1.0))]
     tuples =
@@ -73,8 +73,8 @@ end
 end
 
 @testitem "interpolate_point" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((1.0, 2.0))
     # Interpolate t=0.5 along segment
@@ -87,8 +87,8 @@ end
 
 @testitem "interpolate_point_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
 
     x = CausalSets.Coordinates{2}((0.0, 1.0))
     y = CausalSets.Coordinates{2}((0.0, 2.0))
@@ -107,8 +107,8 @@ end
 
 @testitem "segments_intersect" tags = [:branchedcsetgeneration, :branch_points] setup =
     [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     # Simple intersection (diagonal crossing)
     seg1 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
     seg2 = (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 0.0)))
@@ -133,8 +133,8 @@ end
 
 @testitem "segments_intersect_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     seg1 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
     seg2 = (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 0.0)))
     # Throws if tolerance <= 0
@@ -145,8 +145,8 @@ end
 @testitem "generate_random_branch_points" tags=[:branchedcsetgeneration] setup=[
     branchedtests,
 ] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     pts, cuts = QuantumGrav.generate_random_branch_points(
         8,
         10;
@@ -171,15 +171,15 @@ end
 
 @testitem "generate_random_branch_points_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     @test_throws ArgumentError QuantumGrav.generate_random_branch_points(-1, 1)
     @test_throws ArgumentError QuantumGrav.generate_random_branch_points(1, -2)
 end
 
 @testitem "point_segment_distance" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     p = CausalSets.Coordinates{2}((0.5, 0.5)) # point whose distance is to be computed
     a = CausalSets.Coordinates{2}((0.0, 0.0)) # endpoint segment
     b = CausalSets.Coordinates{2}((1.0, 0.0)) # endpoint segment
@@ -195,8 +195,8 @@ end
 
 @testitem "point_segment_distance_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     p = CausalSets.Coordinates{2}((0.5, 0.5)) # point whose distance is to be computed
     a = CausalSets.Coordinates{2}((0.0, 0.0)) # endpoint segment
     b = CausalSets.Coordinates{2}((1.0, 0.0)) # endpoint segment
@@ -209,8 +209,8 @@ end
 end
 
 @testitem "filter_sprinkling_near_cuts" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     spr = [
         CausalSets.Coordinates{2}((0.1, 0.0)),
         CausalSets.Coordinates{2}((0.5, 0.5)),
@@ -228,8 +228,8 @@ end
 
 @testitem "filter_sprinkling_near_cuts_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     # Throws for unsorted
     spr = [
         CausalSets.Coordinates{2}((0.1, 0.0)),
@@ -253,8 +253,8 @@ end
 end
 
 @testitem "next_intersection" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((1.0, 1.0))
     slope = 1.0
@@ -271,8 +271,8 @@ end
 
 @testitem "next_intersection_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((1.0, 1.0))
     slope = 1.0
@@ -290,8 +290,8 @@ end
 
 
 @testitem "diamond_corners" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -302,8 +302,8 @@ end
 
 @testitem "diamond_corners_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup =
     [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -312,8 +312,8 @@ end
 end
 
 @testitem "point_in_diamond" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     p1 = CausalSets.Coordinates{2}((1.0, 0.5))
@@ -325,8 +325,8 @@ end
 
 @testitem "point_in_diamond_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     p = CausalSets.Coordinates{2}((1.0, 0.5))
@@ -336,8 +336,8 @@ end
 end
 
 @testitem "cut_crosses_diamond" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     cut1 = (CausalSets.Coordinates{2}((1.0, -1.5)), CausalSets.Coordinates{2}((1.0, 1.5))) # cuts diamond
@@ -349,8 +349,8 @@ end
 
 @testitem "cut_crosses_diamond_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     cut = (CausalSets.Coordinates{2}((1.0, -1.5)), CausalSets.Coordinates{2}((1.0, 1.5))) # cuts diamond
@@ -371,8 +371,8 @@ end
 @testitem "intersected_cut_crosses_diamond" tags=[:branchedcsetgeneration] setup=[
     branchedtests,
 ] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.5, 0.1))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     cut1 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((2.0, 0.0)))
@@ -400,8 +400,8 @@ end
 
 @testitem "intersected_cut_crosses_diamond_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.5, 0.1))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     cut1 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((2.0, 0.0)))
@@ -423,8 +423,8 @@ end
 end
 
 @testitem "propagate_ray" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -570,8 +570,8 @@ end
 
 @testitem "propagate_ray_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup =
     [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -590,8 +590,8 @@ end
 
 
 @testitem "cut_intersections" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     cuts = [
         (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 1.0))),
         (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 0.0))),
@@ -607,8 +607,8 @@ end
 
 @testitem "cut_intersections_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     cuts = [
         (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 1.0))),
         (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 0.0))),
@@ -620,8 +620,8 @@ end
 end
 
 @testitem "in_wedge_of" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -669,8 +669,8 @@ end
 
 @testitem "in_wedge_of_throws" tags = [:branchedcsetgeneration, :branch_points, :throws] setup =
     [branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -687,8 +687,8 @@ end
 end
 
 @testitem "in_past_of (branched)" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((2.0, 0.0))
     manifold = CausalSets.MinkowskiManifold{2}()
@@ -748,8 +748,8 @@ end
 @testitem "in_past_of (branched) throws" tags=[:branchedcsetgeneration, :throws] setup=[
     branchedtests,
 ] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     # Throws for N != 2
     x3 = CausalSets.Coordinates{3}((0.0, 0.0, 0.0))
     y3 = CausalSets.Coordinates{3}((1.0, 0.0, 0.0))
@@ -778,8 +778,8 @@ end
 @testitem "BranchedManifoldCauset constructor and in_past_of_unchecked" tags=[
     :branchedcsetgeneration,
 ] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
     coords = [CausalSets.Coordinates{2}((i / 10, 0.0)) for i = 1:10]
     branch_points = ([coords[3], coords[4]], [(coords[3], coords[4])])
@@ -794,8 +794,8 @@ end
 end
 
 @testitem "convert to BitArrayCauset" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
     x = CausalSets.Coordinates{2}((0.0, 0.0))
     y = CausalSets.Coordinates{2}((0.0, 0.1))
@@ -816,8 +816,8 @@ end
 @testitem "convert to BitArrayCauset throws" tags=[:branchedcsetgeneration, :throws] setup=[
     branchedtests,
 ] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     # Throws for bad tolerance
     polym = CausalSets.PolynomialManifold{2}(randn(rng, 3, 3))
     x = CausalSets.Coordinates{2}((0.0, 0.0))
@@ -834,8 +834,8 @@ end
 end
 
 @testitem "make_branched_manifold_cset" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     npoints = 30
     n_vertical_cuts = 3
     n_finite_cuts = 2
@@ -860,8 +860,8 @@ end
 @testitem "make_branched_manifold_cset" tags=[:branchedcsetgeneration, :throws] setup=[
     branchedtests,
 ] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     # Throws for bad arguments
     npoints = 30
     n_vertical_cuts = 3

@@ -128,8 +128,8 @@ end
 
 # ---------------- sort_grid_by_time_from_manifold ----------------
 @testitem "ordering_is_monotone" tags=[:ordering] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
     grid = QuantumGrav.generate_grid_2d(25, "square"; a = 1.0, rotate_deg = 0)
     sorted =
         QuantumGrav.sort_grid_by_time_from_manifold(CausalSets.MinkowskiManifold{2}(), grid)
@@ -149,8 +149,8 @@ end
 
 # ---------------- center_and_rescale_grid_to_box ----------------
 @testitem "centering_and_rescaling" tags=[:centering, :rescaling] begin
-    using CausalSets
-    using QuantumGrav
+    import CausalSets
+
 
     grid = QuantumGrav.generate_grid_2d(25, "square"; a = 1.0, rotate_deg = 0)
     box = (CausalSets.Coordinates{2}((-2.0, 0)), CausalSets.Coordinates{2}((-1.0, 1)))
