@@ -127,7 +127,6 @@
 
     return cfg
 end
-@testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
 
 @testitem "test_Csetfactory_works" tags=[:csetfactories] setup = [config] begin
     import Random
