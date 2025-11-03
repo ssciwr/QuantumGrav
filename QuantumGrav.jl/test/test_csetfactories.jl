@@ -168,7 +168,6 @@ end
 end
 
 @testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
-    import QuantumGrav
     import Distributions
 
     csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
