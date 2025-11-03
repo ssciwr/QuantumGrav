@@ -67,7 +67,6 @@ function dict_to_zarr(
 )
     for (key, value) in data
         if value isa Dict
-            print("going deeper: ", key)
             group = Zarr.zgroup(file_or_group, string(key))
             dict_to_zarr(
                 group,
@@ -76,7 +75,6 @@ function dict_to_zarr(
                 chunking_strategy = chunking_strategy,
             )
         else
-            print("key: ", key, ", valuetype: ", typeof(value))
             chunking_strategy_key =
                 chunking_strategy isa Dict ? get(chunking_strategy, key, default_chunks) :
                 chunking_strategy
