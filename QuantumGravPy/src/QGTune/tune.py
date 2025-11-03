@@ -2,30 +2,13 @@ import optuna.storages.journal
 import yaml
 from pathlib import Path
 import optuna
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 import copy
 import sys
+import QuantumGrav as QG
 
 
-def _is_yaml_tuple_of_3(value: Any) -> bool:
-    """Check if a value is a yaml tuple of 3 elements.
-
-    Args:
-        value (Any): The value to check.
-
-    Returns:
-        bool: True if the value is a tuple with 3 elements,
-            False otherwise.
-    """
-    is_tuple_of_3 = (
-        isinstance(value, dict)
-        and value.get("type") == "tuple"
-        and len(value.get("value", [])) == 3
-    )
-    return is_tuple_of_3
-
-
-def _is_flat_list(value: Any) -> bool:
+def is_flat_list(value: Any) -> bool:
     """Check if a value is a flat list (not nested).
 
     Args:
@@ -39,7 +22,7 @@ def _is_flat_list(value: Any) -> bool:
     )
 
 
-def _is_suggest_categorical(value: Any) -> bool:
+def is_categorical_suggestion(value: Any) -> bool:
     """Check if a value should be an input for an Optuna suggest_categorical.
     The value would be a list of possible categories.
     E.g. ['relu', 'tanh', 'sigmoid'] or [16, 32, 64]
@@ -55,11 +38,11 @@ def _is_suggest_categorical(value: Any) -> bool:
         all(v is not None and isinstance(v, (bool, str, float, int)) for v in value)
         if non_empty_list
         else False
-    ) and _is_flat_list(value)
+    ) and is_flat_list(value)
     return non_empty_list and valid_elements
 
 
-def _is_suggest_float(value: Any) -> bool:
+def is_float_suggestion(value: Any) -> bool:
     """Check if a value should be an input for an Optuna suggest_float.
     The value would be a tuple of (min, max, step) or (min, max, log).
     E.g. (0.001, 0.1, 0.001) or (1e-5, 1e-1, True)
@@ -73,8 +56,8 @@ def _is_suggest_float(value: Any) -> bool:
             and the third is either a float or a bool.
             False otherwise.
     """
-    is_tuple_of_3 = _is_yaml_tuple_of_3(value)
-    num_values = tuple(value.get("value", [])) if is_tuple_of_3 else ()
+    is_tuple_of_3 = len(value) == 3
+    num_values = tuple(value) if is_tuple_of_3 else ()
     two_floats = (
         (isinstance(num_values[0], float) and isinstance(num_values[1], float))
         if is_tuple_of_3
@@ -88,7 +71,7 @@ def _is_suggest_float(value: Any) -> bool:
     return is_tuple_of_3 and two_floats and third_is_float_or_bool
 
 
-def _is_suggest_int(value: Any) -> bool:
+def is_int_suggestion(value: Any) -> bool:
     """Check if a value should be an input for an Optuna suggest_int.
     The value would be a tuple of (min, max, step).
     E.g. (16, 128, 16)
@@ -101,99 +84,22 @@ def _is_suggest_int(value: Any) -> bool:
             All three are integers.
             False otherwise.
     """
-    is_tuple_of_3 = _is_yaml_tuple_of_3(value)
-    num_values = tuple(value.get("value", [])) if is_tuple_of_3 else ()
+    is_tuple_of_3 = len(value) == 3
+    num_values = tuple(value) if is_tuple_of_3 else ()
     all_ints = all(isinstance(v, int) for v in num_values) if is_tuple_of_3 else False
     return is_tuple_of_3 and all_ints
 
 
-def _convert_to_suggestion(
-    param_name: str, value: Any, trial: optuna.trial.Trial
-) -> Any:
-    """Convert a value to an Optuna trial suggestion.
-
-    Args:
-        param_name (str): The name of the parameter.
-        value (Any): The value to convert.
-        trial (optuna.trial.Trial): The Optuna trial object.
-
-    Returns:
-        Any: The converted value.
-    """
-    if param_name.split(".")[-1] == "norm_args":
-        # special case since norm_args can be a list of int
-        return value
-
-    if _is_suggest_categorical(value):
-        return trial.suggest_categorical(param_name, value)
-    elif _is_suggest_float(value):
-        number_values = value.get("value", [])
-        if isinstance(number_values[2], bool):
-            return trial.suggest_float(
-                param_name,
-                float(number_values[0]),  # e.g. 1e-5
-                float(number_values[1]),
-                log=number_values[2],
-            )
-        else:
-            return trial.suggest_float(
-                param_name, number_values[0], number_values[1], step=number_values[2]
-            )
-    elif _is_suggest_int(value):
-        number_values = value.get("value", [])
-        return trial.suggest_int(
-            param_name, number_values[0], number_values[1], step=number_values[2]
-        )
-    else:
-        return value
-
-
-def get_suggestion(
-    config: Dict[str, Any] | List, trial: optuna.trial.Trial, traced_param: list = []
-) -> Dict[str, Any]:
-    """Get a dictionary of suggestions from a configuration dictionary.
-
-    Args:
-        config (Dict[str, Any] | List): The configuration dictionary or list.
-        trial (optuna.trial.Trial): The Optuna trial object.
-        traced_param (list, optional): The list of traced parameters.
-
-    Returns:
-        Dict[str, Any]: A dictionary of suggestions.
-    """
-    if isinstance(config, list):
-        items = enumerate(config)
-        suggestions = [None] * len(config)
-    elif isinstance(config, dict):
-        items = config.items()
-        suggestions = {}
-    else:
-        return {}
-
-    for param, value in items:
-        traced_param.append(str(param))
-        traced_name = ".".join(traced_param)
-        suggestion = _convert_to_suggestion(traced_name, value, trial)
-        if isinstance(suggestion, dict) or (
-            isinstance(suggestion, list) and not _is_flat_list(suggestion)
-        ):
-            suggestions[param] = get_suggestion(suggestion, trial, traced_param)
-        else:
-            suggestions[param] = suggestion
-        traced_param.pop()
-    return suggestions
-
-
-def _resolve_dependencies(config: Dict[str, Any], ref_path: str) -> Any:
-    """Resolve dependencies in a configuration.
+def get_value_of_ref(config: Dict[str, Any], ref_path: str) -> Any:
+    """Get the value pointed by a reference path in the configuration dictionary.
 
     Args:
         config (Dict[str, Any]): The configuration dictionary.
-        ref_path (str): The reference path to the current position in the config.
+        ref_path (str): The reference path to a position in the config.
             E.g. `gcn_net[0].out_dim`
 
     Returns:
-        Any: The resolved value pointed by the reference path.
+        Any: The value pointed by the reference path.
     """
     parts = ref_path.replace("]", "").replace("[", ".").split(".")
     current = config
@@ -206,15 +112,183 @@ def _resolve_dependencies(config: Dict[str, Any], ref_path: str) -> Any:
     return current
 
 
-def _walk_to_ref(node: Any, walk_path: List[str], config: Dict[str, Any]) -> None:
-    """Walk recursively to a reference in a dependency dictionary
-    and resolve dependencies.
+def convert_to_suggestion(
+    param_name: str,
+    node: Dict[str, Any],
+    trial: optuna.trial.Trial,
+    config: Dict[str, Any],
+) -> Any:
+    """Convert a value to an Optuna trial suggestion.
 
     Args:
-        node (Any): The current node in the dependency dictionary.
-        walk_path (List[str]): The path that has been walked so far.
-        config (Dict[str, Any]): The configuration dictionary.
+        param_name (str): The name of the parameter.
+        node (Dict[str, Any]): The YAML node containing the value.
+        trial (optuna.trial.Trial): The Optuna trial object.
+        config (Dict[str, Any]): The configuration dictionary for resolving references.
+
+    Returns:
+        Any: The converted value.
     """
+    node_type = node.get("type")
+    is_sweep = node_type == "sweep"
+    is_coupled_sweep = node_type == "coupled-sweep"
+    is_range = node_type == "range"
+
+    if is_range:
+        node_values = node.get("tune_values")
+    else:
+        node_values = node.get("values")
+
+    if is_sweep and is_categorical_suggestion(node_values):
+        return trial.suggest_categorical(param_name, node_values)
+    elif is_range and is_float_suggestion(node_values):
+        start, stop, step_or_log = node_values
+        if isinstance(step_or_log, bool):
+            return trial.suggest_float(
+                param_name,
+                float(start),  # e.g. 1e-5
+                float(stop),
+                log=step_or_log,
+            )
+        else:
+            return trial.suggest_float(param_name, start, stop, step=step_or_log)
+    elif is_range and is_int_suggestion(node_values):
+        return trial.suggest_int(
+            param_name, node_values[0], node_values[1], step=node_values[2]
+        )
+    elif is_coupled_sweep:
+        # return dictionary mapping target values and coupled values
+        target_values = get_value_of_ref(config, node.get("target"))
+        coupled_values = node.get("values")
+        if len(target_values) != len(coupled_values):
+            raise ValueError(
+                f"Length of target values of {node.get("target")} "
+                f"and coupled values of {param_name} do not match."
+            )
+        mapped_values = dict(zip(target_values, coupled_values))
+        coupled_sweep = {
+            "type": "coupled-sweep-mapping",
+            "target": node.get(
+                "target"
+            ),  # keep target to map with Optuna suggestions in later steps
+            "mapping": mapped_values,
+        }
+        return coupled_sweep
+    else:
+        return node  # return the original value for deeper processing
+
+
+def get_suggestion(
+    config: Dict[str, Any],
+    current_node: Dict[str, Any] | List,
+    trial: optuna.trial.Trial,
+    traced_param: list = [],
+    coupled_sweep_mapping: Dict[str, Any] = {},
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Get a dictionary of suggestions from a configuration dictionary.
+
+    Args:
+        config (Dict[str, Any]): The configuration dictionary.
+        current_node (Dict[str, Any] | List): The current configuration node.
+        trial (optuna.trial.Trial): The Optuna trial object.
+        traced_param (list, optional): The list of traced parameters.
+        coupled_sweep_mapping (Dict[str, Any], optional): The mapping for coupled sweeps.
+
+    Returns:
+        Tuple[Dict[str, Any], Dict[str, Any]]: A tuple containing:
+            - A dictionary of suggestions.
+            - A dictionary mapping coupled sweep targets to their values.
+    """
+    if isinstance(current_node, list):
+        items = enumerate(current_node)
+        suggestions = [None] * len(current_node)
+    elif isinstance(current_node, dict):
+        items = current_node.items()
+        suggestions = {}
+    else:
+        return {}
+
+    for param, value in items:
+        traced_param.append(str(param))
+        traced_name = ".".join(traced_param)
+
+        suggestion = convert_to_suggestion(traced_name, value, trial, config)
+
+        is_dict = isinstance(suggestion, dict)
+        is_list = isinstance(suggestion, list)
+
+        # Handle coupled-sweep-mapping separately
+        if is_dict and suggestion.get("type") == "coupled-sweep-mapping":
+            coupled_sweep_mapping[traced_name] = suggestion.get("mapping")
+            suggestions[param] = {
+                "type": suggestion.get("type"),
+                "target": suggestion.get("target"),  # for resolving later
+            }
+
+        # Handle nested structures that require further processing
+        elif (is_dict and suggestion.get("type") != "coupled-sweep-mapping") or (
+            is_list and not is_flat_list(suggestion)
+        ):
+            suggestions[param], coupled_sweep_mapping[traced_name] = get_suggestion(
+                config, suggestion, trial, traced_param, coupled_sweep_mapping
+            )
+
+        # Handle simple (base) suggestions
+        else:
+            suggestions[param] = suggestion
+
+        traced_param.pop()
+
+    return suggestions, coupled_sweep_mapping
+
+
+def resolve_references(
+    config: Dict[str, Any],
+    node: Dict[str, Any],
+    walked_path: List[str],
+    coupled_sweep_mapping: Dict[str, Any],
+) -> None:
+    """Recursively resolve references in a configuration dictionary.
+
+    Args:
+        config (Dict[str, Any]): The configuration dictionary. Vaues in this dictionary will be updated through recursion.
+        node (Dict[str, Any]): The current node to process.
+        walked_path (List[str]): The path that has been walked so far.
+        coupled_sweep_mapping (Dict[str, Any]): The mapping values for coupled sweeps.
+    """
+
+    def set_value_at_path(
+        root: Dict[str, Any], path: List[str], key: Any, value: Any
+    ) -> None:
+        """Navigate to the parent specified by `path` and set `key` to `value`."""
+        parent = root
+        for step in path:
+            parent = parent[step]
+        parent[key] = value
+
+    def resolve_reference(ref_dict: Dict[str, Any]) -> Any:
+        """Resolve a 'reference' node."""
+        ref_path = ref_dict.get("target")
+        return get_value_of_ref(config, ref_path)
+
+    def resolve_coupled_mapping(
+        mapping_dict: Dict[str, Any], full_path: List[str]
+    ) -> Any:
+        """Resolve a 'coupled-sweep-mapping' node."""
+        ref_path = mapping_dict.get("target")
+        target_value = get_value_of_ref(config, ref_path)
+
+        coupled_node = ".".join(full_path)
+        coupled_values = coupled_sweep_mapping.get(coupled_node)
+        if coupled_values is None:
+            raise ValueError(f"No coupled sweep mapping found for {coupled_node}.")
+        if target_value not in coupled_values:
+            raise ValueError(
+                f"Target value {target_value} not found in coupled sweep mapping for {coupled_node}."
+            )
+        return coupled_values[target_value]
+
+    # determine items to iterate over
     if isinstance(node, dict):
         items = node.items()
     elif isinstance(node, list):
@@ -223,32 +297,24 @@ def _walk_to_ref(node: Any, walk_path: List[str], config: Dict[str, Any]) -> Non
         return
 
     for key, value in items:
-        if isinstance(value, (dict, list)):
-            _walk_to_ref(value, walk_path + [key], config)
-        else:
-            resolved_value = _resolve_dependencies(config, value)
-            parent = config
-            for p in walk_path:
-                parent = parent[p]
-            # structure of depmap must map the structure of config
-            parent[key] = resolved_value
+        # recursive cases
+        if isinstance(value, list) or (
+            isinstance(value, dict)
+            and value.get("type") not in ["reference", "coupled-sweep-mapping"]
+        ):
+            resolve_references(
+                config, value, walked_path + [key], coupled_sweep_mapping
+            )
+            continue
 
+        # reference cases
+        if isinstance(value, dict) and value.get("type") == "reference":
+            resolved_value = resolve_reference(value)
+            set_value_at_path(config, walked_path, key, resolved_value)
 
-def apply_dependencies(
-    config: Dict[str, Any], depmap: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Apply dependencies from a dependency map to a configuration dictionary.
-
-    Args:
-        config (Dict[str, Any]): The configuration dictionary.
-        depmap (Dict[str, Any]): The dependency map.
-            E.g. {"model.gcn_net[0].in_dim": "data.num_node_features"}
-
-    Returns:
-        Dict[str, Any]: The configuration dictionary with dependencies applied.
-    """
-    _walk_to_ref(depmap, [], config)
-    return config
+        elif isinstance(value, dict) and value.get("type") == "coupled-sweep-mapping":
+            resolved_value = resolve_coupled_mapping(value, walked_path + [key])
+            set_value_at_path(config, walked_path, key, resolved_value)
 
 
 def load_yaml(file: Path | str, description: str) -> Dict[str, Any]:
@@ -262,9 +328,10 @@ def load_yaml(file: Path | str, description: str) -> Dict[str, Any]:
         Dict[str, Any]: The contents of the YAML file as a dictionary.
     """
     if not file or not Path(str(file)).exists():
-        raise FileNotFoundError(f"{description} file {file} does not exist.")
+        raise FileNotFoundError(f"File {file} does not exist.")
+    custom_loader = QG.config_utils.get_loader()
     with open(file, "r") as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f, Loader=custom_loader)
 
 
 def build_search_space_with_dependencies(

@@ -115,6 +115,7 @@ def range_constructor(
     else:  # no step or log specified
         default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
         values = np.arange(start, end + min_num, default_step)
+        step_or_log = default_step
 
     return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
 
