@@ -1,7 +1,6 @@
-using TestItems
+
 
 @testsnippet setupTests begin
-    using QuantumGrav
     using CausalSets
     using Distributions
     using Random
@@ -14,13 +13,25 @@ using TestItems
 end
 
 @testitem "test_destroy_manifold_cset" tags = [:destroy_causets] setup = [setupTests] begin
+    using CausalSets
+    using Distributions
+    using Random
+    using QuantumGrav
+
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
     num_flips = 1
 
-    cset, sprinkling, chebyshev_coefs =
-        QuantumGrav.destroy_manifold_cset(npoints, num_flips, rng, order, r; d = 2, type = Float32)
+    cset, sprinkling, chebyshev_coefs = QuantumGrav.destroy_manifold_cset(
+        npoints,
+        num_flips,
+        rng,
+        order,
+        r;
+        d = 2,
+        type = Float32,
+    )
 
     @test length(sprinkling) == npoints
     @test size(chebyshev_coefs) == (order, order)

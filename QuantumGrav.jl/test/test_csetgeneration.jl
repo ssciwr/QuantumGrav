@@ -1,14 +1,10 @@
-using TestItems
+
+
 
 @testsnippet setupTests begin
-    using QuantumGrav: QuantumGrav
-    using CausalSets: CausalSets
-    using SparseArrays: SparseArrays
-    using Distributions: Distributions
-    using Random: Random
-    using Graphs: Graphs
-    using HDF5: HDF5
-    using YAML: YAML
+    using CausalSets
+    using Distributions
+    using Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
@@ -19,6 +15,7 @@ end
 
 @testitem "test_make_polynomial_manifold_cset" tags = [:chebyshev_causets] setup =
     [setupTests] begin
+    using QuantumGrav
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
@@ -59,6 +56,7 @@ end
 @testitem "test_make_polynomial_manifold_cset_throws" tags = [:chebyshev_causets] setup =
     [setupTests] begin
 
+    using QuantumGrav
     @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset(
         100,
         rng,
@@ -88,6 +86,9 @@ end
 
 @testitem "test_make_manifold_cset_positivity_of_squared_polynomial" tags =
     [:chebyshev_causets, :positivity] setup = [setupTests] begin
+    using CausalSets
+    using QuantumGrav
+
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
@@ -111,6 +112,9 @@ end
 
 @testitem "test_make_manifold_cset_squared_polynomial_symmetry_from_symmetric_chebyshev" tags =
     [:chebyshev_causets, :symmetry] setup = [setupTests] begin
+    using QuantumGrav
+    using CausalSets
+
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
