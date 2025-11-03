@@ -1,15 +1,7 @@
-using TestItems
 
-@testsnippet importModules begin
-    using QuantumGrav
-    using TestItemRunner
-    using CausalSets
-    using SparseArrays
-    using Random
-    using Distributions
-end
+@testitem "check_copy_sourcecode" tags = [:graph_utils] begin
+    import CausalSets
 
-@testitem "check_copy_sourcecode" tags = [:graph_utils] setup = [importModules] begin
     mktempdir() do targetpath
         funcs = [CausalSets.cardinality_of, QuantumGrav.make_adj]
         @test length(filter(x -> occursin(".jl", x), readdir(targetpath))) == 0
@@ -21,7 +13,9 @@ end
 end
 
 
-@testitem "get_git_info" tags = [:graph_utils] setup = [importModules] begin
+@testitem "get_git_info" tags = [:graph_utils] begin
+    import CausalSets
+
     config = Dict{String,Any}()
 
     QuantumGrav.get_git_info!(config)
@@ -32,7 +26,8 @@ end
     @test haskey(config["QuantumGrav"], "git_tree_hash")
 end
 
-@testitem "prepare_dataproduction" tags = [:graph_utils] setup = [importModules] begin
+@testitem "prepare_dataproduction" tags = [:graph_utils] begin
+    import CausalSets
 
     mktempdir() do targetpath
         config = Dict{String,Any}(
@@ -56,7 +51,8 @@ end
 end
 
 
-@testitem "prepare_dataproduction_throws" tags = [:graph_utils] setup = [importModules] begin
+@testitem "prepare_dataproduction_throws" tags = [:graph_utils] begin
+    import CausalSets
 
     mktempdir() do targetpath
         config = Dict{String,Any}(

@@ -1,20 +1,8 @@
-using TestItems
 
-@testsnippet importModules begin
-    using QuantumGrav
-    using TestItemRunner
-    using CausalSets
-    using SparseArrays
-    using Random
-    using Distributions
-end
+
 
 @testsnippet makeData begin
-    using CausalSets
-    using SparseArrays
-    using QuantumGrav
-    using TestItemRunner
-    using Graphs
+    import Random
 
     function MockData(n)
         manifold = CausalSets.MinkowskiManifold{2}()
@@ -26,6 +14,9 @@ end
 end
 
 @testitem "test_make_adj" tags = [:graph_utils] setup = [makeData] begin
+    import CausalSets
+    using SparseArrays
+    using Graphs
     cset, _ = MockData(10)
     adj = QuantumGrav.make_adj(cset; type = Float32)
 
@@ -38,6 +29,9 @@ end
 end
 
 @testitem "test_max_pathlen" tags = [:graph_utils] setup = [makeData] begin
+    import CausalSets
+    using SparseArrays
+    using Graphs
     cset, _ = MockData(10)
 
     g = Graphs.SimpleDiGraph(transpose(hcat(cset.future_relations...)))
@@ -56,6 +50,8 @@ end
 end
 
 @testitem "make_transitive_reduction" tags = [:graph_utils] setup = [makeData] begin
+    import CausalSets
+    using Graphs
     cset, _ = MockData(25)
 
     g = Graphs.SimpleDiGraph(transpose(hcat(cset.future_relations...)))
