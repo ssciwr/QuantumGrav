@@ -1,15 +1,10 @@
 
 
 @testsnippet branchedtests begin
-
-    using Distributions
     using Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
-    npoint_distribution = Distributions.DiscreteUniform(2, 1000)
-    order_distribution = Distributions.DiscreteUniform(2, 9)
-    r_distribution = Distributions.Uniform(1.0, 2.0)
 end
 
 @testitem "are_colinear_overlapping" tags = [:branchedcsetgeneration, :branch_points] setup =

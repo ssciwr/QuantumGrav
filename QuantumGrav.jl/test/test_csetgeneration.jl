@@ -2,7 +2,6 @@
 
 
 @testsnippet setupTests begin
-    using CausalSets
     using Distributions
     using Random
 

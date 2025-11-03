@@ -1,9 +1,7 @@
 
 # ---------------- Helpers (property checks) ----------------
 @testsnippet propHelpers begin
-    import CausalSets
     import LinearAlgebra
-    import Random
     # Solve for barycentric parameters t in x = origin + E * t
     function inv_map(
         E::AbstractMatrix{<:Real},
@@ -27,10 +25,8 @@ end
 @testitem "brillouin_cell_points_in_unit_param_cube" tags=[:cell, :props] setup=[
     propHelpers,
 ] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
+
 
     edges = square_edges(1.0)
     origin = (0.0, 0.0)
@@ -44,20 +40,15 @@ end
 end
 
 @testitem "degenerate_edges_throw" tags=[:cell, :errors] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
+
     edges = ((1.0, 0.0), (2.0, 0.0))
     @test_throws ArgumentError QuantumGrav.generate_grid_from_brillouin_cell(10, edges)
 end
 
 @testitem "square_expected_small_grids" tags=[:cell, :expected] begin
     # k=2 (4 points)
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
     edges = ((1.0, 0.0), (0.0, 1.0))
     pts4 = QuantumGrav.generate_grid_from_brillouin_cell(4, edges)
     @test Set(pts4) == Set([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)])
@@ -71,10 +62,7 @@ end
 end
 
 @testitem "rotation_equivariance" tags=[:cell, :props] setup=[propHelpers] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
     edges = rect_edges(2.0, 1.0)
     origin = (0.1, -0.2)
     pts = QuantumGrav.generate_grid_from_brillouin_cell(16, edges; origin = origin)
@@ -93,10 +81,7 @@ end
 
 # ---------------- generate_grid_2d (wrapper) ----------------
 @testitem "wrapper_square_expected_values" tags=[:wrapper, :expected] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
     pts = QuantumGrav.generate_grid_2d(9, "square"; a = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
     for i = 0:2, j = 0:2
@@ -106,10 +91,7 @@ end
 end
 
 @testitem "wrapper_rectangular_expected_values" tags=[:wrapper, :expected] setup=[] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
     pts = QuantumGrav.generate_grid_2d(9, "rectangular"; a = 2.0, b = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
     for i = 0:2, j = 0:2
@@ -119,10 +101,7 @@ end
 end
 
 @testitem "wrapper_hexagonal_expected_values" tags=[:wrapper, :expected] setup=[propHelpers] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
 
     pts = QuantumGrav.generate_grid_2d(9, "hexagonal"; a = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
@@ -135,10 +114,7 @@ end
 end
 
 @testitem "wrapper_auto_rotation_prefers_y_extent" tags=[:wrapper, :props] setup=[] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
     pts = QuantumGrav.generate_grid_2d(40, "rectangular"; a = 2.0, b = 0.5)  # auto-rotate
     xs = first.(pts);
     ys = last.(pts)
@@ -146,18 +122,13 @@ end
 end
 
 @testitem "wrapper_bad_name_throws" tags=[:wrapper, :errors] begin
-    import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
     @test_throws ArgumentError QuantumGrav.generate_grid_2d(5, "not-a-lattice")
 end
 
 # ---------------- sort_grid_by_time_from_manifold ----------------
 @testitem "ordering_is_monotone" tags=[:ordering] begin
     using CausalSets
-    using LinearAlgebra
-    using Random
     using QuantumGrav
     grid = QuantumGrav.generate_grid_2d(25, "square"; a = 1.0, rotate_deg = 0)
     sorted =
@@ -179,8 +150,6 @@ end
 # ---------------- center_and_rescale_grid_to_box ----------------
 @testitem "centering_and_rescaling" tags=[:centering, :rescaling] begin
     using CausalSets
-    using LinearAlgebra
-    using Random
     using QuantumGrav
 
     grid = QuantumGrav.generate_grid_2d(25, "square"; a = 1.0, rotate_deg = 0)
@@ -208,9 +177,7 @@ end
 # ---------------- create_grid_causet_2D ----------------
 @testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] begin
     import CausalSets
-    import LinearAlgebra
-    import Random
-    import QuantumGrav
+
 
     grid = QuantumGrav.generate_grid_2d(30, "square"; a = 1.0, rotate_deg = 0)
     cset, _, coords = QuantumGrav.create_grid_causet_2D(
@@ -227,9 +194,8 @@ end
 
 @testitem "grid_manifold_builds_causet" tags=[:cset, :polynomial] begin
     import CausalSets
-    import LinearAlgebra
     import Random
-    import QuantumGrav
+
 
     rng = Random.MersenneTwister(1234)
     size = 30
@@ -252,10 +218,8 @@ end
 end
 
 @testitem "grid_input_errors" tags=[:cset, :errors] begin
-    import CausalSets
-    import LinearAlgebra
     import Random
-    import QuantumGrav
+
 
     rng = Random.MersenneTwister(1234)
 

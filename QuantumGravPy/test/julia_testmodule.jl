@@ -1,9 +1,9 @@
-import QuantumGrav as QG
+ as QG
 import Random
 import Distributions
 
 """
-This is a dummy module only used for testing purposes. It shows how to create a Julia module that can be called from Python using the `jlcall` package. 
+This is a dummy module only used for testing purposes. It shows how to create a Julia module that can be called from Python using the `jlcall` package.
 In detail, this module defines a `Generator` struct and a call operator that generates a batch of data points for testing purposes.
 """
 
@@ -24,7 +24,7 @@ end
 
 Initialize the generator with a configuration dictionary containing a seed.
 
-Args: 
+Args:
 - config::AbstractDict: A dictionary containing the configuration parameters, including a "seed" key.
 Returns:
 - `Generator`: An instance of the `Generator` struct initialized with the provided seed.
@@ -38,7 +38,7 @@ end
 
 Call the generator to create a batch of data points.
 
-Args: 
+Args:
 - `batchsize::Int`: The number of data points to generate.
 
 Returns:
@@ -55,7 +55,7 @@ Returns:
 function (gen::Generator)(batchsize::Int)
 
     # set of manifolds and boundaries to choose from
-    # min, max sizes of the causal sets. 
+    # min, max sizes of the causal sets.
     min_atomcount = 5
     max_atomcount = 15
 

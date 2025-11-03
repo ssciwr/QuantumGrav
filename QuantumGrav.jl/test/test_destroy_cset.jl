@@ -1,7 +1,6 @@
 
 
 @testsnippet setupTests begin
-    using CausalSets
     using Distributions
     using Random
 
@@ -13,9 +12,6 @@
 end
 
 @testitem "test_destroy_manifold_cset" tags = [:destroy_causets] setup = [setupTests] begin
-    using CausalSets
-    using Distributions
-    using Random
     using QuantumGrav
 
     r = 1.0 + rand(rng, r_distribution)
