@@ -35,16 +35,16 @@ are_colinear_overlapping(seg1, seg2)  # returns true
 ```
 """
 function are_colinear_overlapping(
-    seg1::Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}},
-    seg2::Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}};
-    tolerance::Float64=1e-12
-)::Bool where N
+    seg1::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}},
+    seg2::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}};
+    tolerance::Float64 = 1e-12,
+)::Bool where {N}
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
     # Overlap: intervals overlap along every coordinate axis
-    for i in 1:N
+    for i = 1:N
         min1 = min(seg1[1][i], seg1[2][i])
         max1 = max(seg1[1][i], seg1[2][i])
         min2 = min(seg2[1][i], seg2[2][i])
@@ -61,8 +61,8 @@ function are_colinear_overlapping(
 
     # Colinearity helper: all 2x2 minors of two vectors are zero iff they are linearly dependent.
     function all_2x2_minors_zero(a, b, tol)
-        for i in 1:length(a)-1
-            for j in i+1:length(a)
+        for i = 1:(length(a)-1)
+            for j = (i+1):length(a)
                 minor = a[i]*b[j] - a[j]*b[i]
                 if abs(minor) > tol
                     return false
@@ -108,7 +108,7 @@ Check whether a proposed cut segment `seg` is colinear and overlapping with any 
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 seg = (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
 single_branch_points = [CausalSets.Coordinates{2}((0.5, 1.0))]
 branch_point_tuples = [(CausalSets.Coordinates{2}((0.2, 0.0)), CausalSets.Coordinates{2}((0.8, 0.0)))]
@@ -118,13 +118,13 @@ is_colinear_overlapping_with_cuts(seg, single_branch_points, branch_point_tuples
 ```
 """
 function is_colinear_overlapping_with_cuts(
-    seg::Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}}, 
-    single_branch_points::Vector{CausalSets.Coordinates{N}}, 
-    branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}}; 
-    tmax::Float64 = 1., 
-    tolerance::Float64=1e-12
-    )::Bool where N
-    
+    seg::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}},
+    single_branch_points::Vector{CausalSets.Coordinates{N}},
+    branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}};
+    tmax::Float64 = 1.0,
+    tolerance::Float64 = 1e-12,
+)::Bool where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -189,7 +189,7 @@ This function is useful for determining either the full spacetime point or a spe
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((1.0, 2.0))
 # Find the point along the segment from x to y where the first coordinate (t) equals 0.5
@@ -198,13 +198,15 @@ p = interpolate_point(x, y, 0.5, 1)  # returns Coordinates{2}((0.5, 1.0))
 xval = interpolate_point(x, y, 0.5, 1; idx_out=2)  # returns 1.0
 ```
 """
-function interpolate_point(x::CausalSets.Coordinates{N},
-                           y::CausalSets.Coordinates{N},
-                           interm::Float64,
-                           idx_in::Int64;
-                           idx_out::Union{Nothing,Int64}=nothing,
-                           tolerance::Float64 = 1e-12)::Union{CausalSets.Coordinates{N}, Float64} where {N}
-    
+function interpolate_point(
+    x::CausalSets.Coordinates{N},
+    y::CausalSets.Coordinates{N},
+    interm::Float64,
+    idx_in::Int64;
+    idx_out::Union{Nothing,Int64} = nothing,
+    tolerance::Float64 = 1e-12,
+)::Union{CausalSets.Coordinates{N},Float64} where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -269,11 +271,11 @@ segments_intersect(seg3, seg4)
 ```
 """
 function segments_intersect(
-    seg1::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}, 
-    seg2::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}; 
-    tolerance::Float64=1e-12
-    )::Tuple{Bool, Union{Nothing, CausalSets.Coordinates{2}}}
-    
+    seg1::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+    seg2::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}};
+    tolerance::Float64 = 1e-12,
+)::Tuple{Bool,Union{Nothing,CausalSets.Coordinates{2}}}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -283,11 +285,14 @@ function segments_intersect(
     xs1 = [point[2] for point in seg1]
     ts2 = [point[1] for point in seg2]
     xs2 = [point[2] for point in seg2]
-    
-    if min(ts1...) > max(ts2...) || min(ts2...) > max(ts1...) || min(xs1...) > max(xs2...) || min(xs2...) > max(xs1...) 
+
+    if min(ts1...) > max(ts2...) ||
+       min(ts2...) > max(ts1...) ||
+       min(xs1...) > max(xs2...) ||
+       min(xs2...) > max(xs1...)
         return false, nothing
     end
-    
+
     # Represent as: x1 + α*(y1-x1), x2 + β*(y2-x2), s,t in [0,1]
     # Solve: x1 + α*(y1-x1) = x2 + β*(y2-x2)
     # => 2x2 system for s,t
@@ -299,8 +304,8 @@ function segments_intersect(
 
     if abs(det) < tolerance
         # Colinear: check 1D overlap in both coordinates
-        if max(min(ts1...), min(ts2...)) <= min(max(ts1...), max(ts2...)) + tolerance && 
-            max(min(xs1...), min(xs2...)) <= min(max(xs1...), max(xs2...)) + tolerance
+        if max(min(ts1...), min(ts2...)) <= min(max(ts1...), max(ts2...)) + tolerance &&
+           max(min(xs1...), min(xs2...)) <= min(max(xs1...), max(xs2...)) + tolerance
             return true, nothing
         else
             return false, nothing
@@ -311,9 +316,9 @@ function segments_intersect(
     β = (dt1 * (xs1[1] - xs2[1]) + dx1 * (ts2[1] - ts1[1])) / det
 
     if -tolerance <= α <= 1 + tolerance && -tolerance <= β <= 1 + tolerance
-            t_int = ts1[1] + α * (ts1[2] - ts1[1])
-            x_int = xs1[1] + α * (xs1[2] - xs1[1])
-            return true, CausalSets.Coordinates{2}((t_int, x_int))
+        t_int = ts1[1] + α * (ts1[2] - ts1[1])
+        x_int = xs1[1] + α * (xs1[2] - xs1[1])
+        return true, CausalSets.Coordinates{2}((t_int, x_int))
     else
         return false, nothing
     end
@@ -333,7 +338,7 @@ Generate random branch points for a branched manifold causal set. Produces two c
 - `nPoints` single branch points (each induces a vertical cut extending upward in the time direction),
 - `nTuples` finite cut segments (each is a pair of points joined by a straight line).
 
-The branch points are chosen uniformly at random from the coordinate hypercube defined by coordinate_hypercube_edges.  
+The branch points are chosen uniformly at random from the coordinate hypercube defined by coordinate_hypercube_edges.
 Finite cut segments are generated iteratively to avoid colinear overlaps and, if requested, to limit intersections.
 
 # Arguments
@@ -349,11 +354,11 @@ Finite cut segments are generated iteratively to avoid colinear overlaps and, if
 # Returns
 - `Tuple{Vector{Coordinates{N}}, Vector{Tuple{Coordinates{N}, Coordinates{N}}}}`:
   - A vector of `nPoints` coordinates, sorted by time (first coordinate).
-  - A vector of `nTuples` ordered pairs `(a,b)`, each representing a finite topological cut segment with `a[1] ≤ b[1]`.  
+  - A vector of `nTuples` ordered pairs `(a,b)`, each representing a finite topological cut segment with `a[1] ≤ b[1]`.
     The endpoints of each segment are time ordered. The list is sorted by time of the first, i. e., earlier point.
 
 # Throws
-- `ArgumentError`: 
+- `ArgumentError`:
     - If `nPoints < 0` or `nTuples < 0`.
     - If `tolerance <= 0`.
 
@@ -374,11 +379,17 @@ function generate_random_branch_points(
     nPoints::Int,
     nTuples::Int;
     consecutive_intersections::Bool = false,
-    coordinate_hypercube_edges::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}} = (CausalSets.Coordinates{2}((-1., -1.)), CausalSets.Coordinates{2}((1., 1.))),
+    coordinate_hypercube_edges::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}} = (
+        CausalSets.Coordinates{2}((-1.0, -1.0)),
+        CausalSets.Coordinates{2}((1.0, 1.0)),
+    ),
     rng::Random.AbstractRNG = Random.default_rng(),
-    tolerance::Float64=1e-12,
-)::Tuple{Vector{CausalSets.Coordinates{N}}, Vector{Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}}}} where N
-    
+    tolerance::Float64 = 1e-12,
+)::Tuple{
+    Vector{CausalSets.Coordinates{N}},
+    Vector{Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}},
+} where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -393,28 +404,46 @@ function generate_random_branch_points(
     end
 
     if isnothing(coordinate_hypercube_edges)
-        coordinate_hypercube_edges = (CausalSets.Coordinates{d}(-1 .* ones(d)), CausalSets.Coordinates{d}(ones(d)))
+        coordinate_hypercube_edges =
+            (CausalSets.Coordinates{d}(-1 .* ones(d)), CausalSets.Coordinates{d}(ones(d)))
     end
 
-    rand_point() = ntuple(i -> rand(rng) * (coordinate_hypercube_edges[2][i] - coordinate_hypercube_edges[1][i]) + coordinate_hypercube_edges[1][i], N)
+    rand_point() = ntuple(
+        i ->
+            rand(rng) *
+            (coordinate_hypercube_edges[2][i] - coordinate_hypercube_edges[1][i]) +
+            coordinate_hypercube_edges[1][i],
+        N,
+    )
 
     # Generate random points in [-1,1]^N
-    single_points = [rand_point() for _ in 1:nPoints]
+    single_points = [rand_point() for _ = 1:nPoints]
 
     # Generate tuples of random points in [-1,1]^N iteratively with colinearity and (optionally) intersection check
-    tuple_points = [(bound_cuts, CausalSets.Coordinates{N}((coordinate_hypercube_edges[2][1], bound_cuts[2]))) for bound_cuts in single_points]
-    
+    tuple_points = [
+        (
+            bound_cuts,
+            CausalSets.Coordinates{N}((coordinate_hypercube_edges[2][1], bound_cuts[2])),
+        ) for bound_cuts in single_points
+    ]
+
     if !consecutive_intersections
         num_intersections = zeros(nPoints)
     end
-    
+
     while length(tuple_points) < nPoints + nTuples
         a = rand_point()
         b = rand_point()
         seg = a[1] <= b[1] ? (a, b) : (b, a)
 
         # Check colinearity and overlap
-        if is_colinear_overlapping_with_cuts(seg, single_points, tuple_points; tolerance = tolerance, tmax = coordinate_hypercube_edges[2][1])
+        if is_colinear_overlapping_with_cuts(
+            seg,
+            single_points,
+            tuple_points;
+            tolerance = tolerance,
+            tmax = coordinate_hypercube_edges[2][1],
+        )
             continue
         end
 
@@ -423,7 +452,8 @@ function generate_random_branch_points(
             num_intersections_new = copy(num_intersections)
             push!(num_intersections_new, 0)  # reserve slot for the new candidate
             for (i, existing_segs) in enumerate(tuple_points)
-                intersects, _ = segments_intersect(seg, existing_segs; tolerance = tolerance)
+                intersects, _ =
+                    segments_intersect(seg, existing_segs; tolerance = tolerance)
                 # Count intersections
                 if intersects
                     # True intersection (not colinear/overlap): increase intersection count for both involved cuts.
@@ -485,7 +515,7 @@ It is primarily used for filtering sprinkled points that are too close to topolo
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 p = CausalSets.Coordinates{2}((0.5, 0.5))
 a = CausalSets.Coordinates{2}((0.0, 0.0))
 b = CausalSets.Coordinates{2}((1.0, 0.0))
@@ -498,10 +528,10 @@ dist = point_segment_distance(p, (a, b))
 """
 function point_segment_distance(
     p::CausalSets.Coordinates{N},
-    seg::Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}};
-    tolerance::Float64=1e-12,
-)::Float64 where N
-    
+    seg::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}};
+    tolerance::Float64 = 1e-12,
+)::Float64 where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -511,18 +541,18 @@ function point_segment_distance(
     ab = ntuple(i -> b[i] - a[i], N)
     ap = ntuple(i -> p[i] - a[i], N)
     # Compute squared norm of ab
-    denom = sum(ab[i]^2 for i in 1:N)
+    denom = sum(ab[i]^2 for i = 1:N)
     if denom < tolerance
         # Degenerate segment: return distance from p to a
-        return sqrt(sum((p[i] - a[i])^2 for i in 1:N))
+        return sqrt(sum((p[i] - a[i])^2 for i = 1:N))
     end
     # Compute projection scalar s = ((p-a) ⋅ (b-a)) / |b-a|^2, clamp to [0,1]
-    dot_ap_ab = sum(ap[i]*ab[i] for i in 1:N)
+    dot_ap_ab = sum(ap[i]*ab[i] for i = 1:N)
     s = clamp(dot_ap_ab / denom, 0.0, 1.0)
     # Compute projected point
     proj = ntuple(i -> a[i] + s*ab[i], N)
     # Distance from p to projection
-    return sqrt(sum((p[i] - proj[i])^2 for i in 1:N))
+    return sqrt(sum((p[i] - proj[i])^2 for i = 1:N))
 end
 
 """
@@ -535,7 +565,7 @@ end
 Filter out sprinkled points that lie too close to any topological cut (finite or vertical).
 
 # Purpose
-Removes points from the input `sprinkling` that are within a given minimal Euclidean distance (`tolerance`) of any topological cut in the geometry. 
+Removes points from the input `sprinkling` that are within a given minimal Euclidean distance (`tolerance`) of any topological cut in the geometry.
 Topological cuts are either finite (segments between two points) or vertical (extending upward from a single branch point to the maximal time in the sprinkling). This is essential for ensuring that no sprinkled point lies directly on or dangerously close to a topological cut, which could otherwise cause ambiguity or artifacts in the causal set structure.
 
 # Arguments
@@ -551,7 +581,7 @@ Topological cuts are either finite (segments between two points) or vertical (ex
 - `Vector{Coordinates{2}}`: The filtered list of sprinkled points, with all points near any cut (within `tolerance`) removed.
 
 # Throws
-- `ArgumentError`: 
+- `ArgumentError`:
     - If `tolerance` is not positive.
     - If `sprinkling` is not sorted by coordinate time (first coordinate).
 
@@ -564,7 +594,7 @@ Topological cuts are either finite (segments between two points) or vertical (ex
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 sprinkling = [
     CausalSets.Coordinates{2}((0.1, 0.0)),
     CausalSets.Coordinates{2}((0.5, 0.5)),
@@ -573,8 +603,8 @@ sprinkling = [
 single_branch_points = [CausalSets.Coordinates{2}((0.3, 0.5))]
 branch_point_tuples = [(CausalSets.Coordinates{2}((0.6, 0.0)), CausalSets.Coordinates{2}((0.6, 1.0)))]
 filtered = filter_sprinkling_near_cuts(
-    sprinkling, 
-    (single_branch_points, branch_point_tuples); 
+    sprinkling,
+    (single_branch_points, branch_point_tuples);
     tolerance=0.11
 )
 # The point at (0.5, 0.5) will be removed if it is within 0.11 of the vertical cut at x=0.5 or the finite cut at x=0.6.
@@ -585,15 +615,18 @@ This function ensures the integrity of the causal set by removing points that wo
 """
 function filter_sprinkling_near_cuts(
     sprinkling::Vector{CausalSets.Coordinates{2}},
-    branch_point_info::Tuple{Vector{CausalSets.Coordinates{2}},Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}};
-    tolerance::Float64 = 1e-12
+    branch_point_info::Tuple{
+        Vector{CausalSets.Coordinates{2}},
+        Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},
+    };
+    tolerance::Float64 = 1e-12,
 )
 
     if tolerance <= 0
         throw(ArgumentError("tolerance must be positive, got $tolerance"))
     end
 
-    if any(sprinkling[i][1] > sprinkling[i+1][1] for i in 1:length(sprinkling)-1)
+    if any(sprinkling[i][1] > sprinkling[i+1][1] for i = 1:(length(sprinkling)-1))
         throw(ArgumentError("sprinkling must be sorted by coordinate time."))
     end
 
@@ -607,7 +640,7 @@ function filter_sprinkling_near_cuts(
         too_close = false
         # check tuples
         for cut in branch_point_tuples
-            if point_segment_distance(p, cut; tolerance=tolerance) < tolerance
+            if point_segment_distance(p, cut; tolerance = tolerance) < tolerance
                 too_close = true
                 break
             end
@@ -615,15 +648,15 @@ function filter_sprinkling_near_cuts(
         # check vertical cuts
         if !too_close
             for b in single_branch_points
-                v_end = CausalSets.Coordinates{2}((tmax,b[2]))
-                if point_segment_distance(p, (b, v_end); tolerance=tolerance) < tolerance
+                v_end = CausalSets.Coordinates{2}((tmax, b[2]))
+                if point_segment_distance(p, (b, v_end); tolerance = tolerance) < tolerance
                     too_close = true
                     break
                 end
             end
         end
         if !too_close
-            push!(filtered,p)
+            push!(filtered, p)
         end
     end
     return filtered
@@ -671,7 +704,7 @@ This function is used to propagate a null ray (with slope ±1, i.e., left- or ri
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 # Define a right-moving null ray from (0.0, 0.0) to (1.0, 1.0)
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((1.0, 1.0))
@@ -695,10 +728,16 @@ function next_intersection(
     x::CausalSets.Coordinates{2},
     y::CausalSets.Coordinates{2},
     slope::Float64;
-    null_separated::Bool=false,
-    tolerance::Float64 = 1e-12
-)::Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}, Nothing}
-    
+    null_separated::Bool = false,
+    tolerance::Float64 = 1e-12,
+)::Union{
+    Tuple{
+        CausalSets.Coordinates{2},
+        Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+    },
+    Nothing,
+}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -708,18 +747,19 @@ function next_intersection(
     best_time = nothing
 
     backward = y[1] < x[1] # detect backward propagation in time
-    dir_sign = backward ? -1. : 1
+    dir_sign = backward ? -1.0 : 1
 
     # Compute the endpoint of the ray segment as (y[1], ray_origin[2] + slope * (y[1] - ray_origin[1]))
     ray_end = CausalSets.Coordinates{2}((y[1], x[2] + slope * (y[1] - x[1])))
     ray_segment = (x, ray_end)
 
     for cut in branch_point_tuples # go through all cuts and find the next intersection
-        ok, pt = segments_intersect(ray_segment, cut; tolerance=tolerance)
-        if ok && pt !== nothing && dir_sign * x[1] - tolerance <= dir_sign * pt[1] <= dir_sign * y[1] + tolerance &&
-            (null_separated ? true : (backward ? y[1] <= pt[1] : pt[1] <= y[1]))
-            if best_intersection === nothing ||
-                (dir_sign * pt[1] < dir_sign * best_time) 
+        ok, pt = segments_intersect(ray_segment, cut; tolerance = tolerance)
+        if ok &&
+           pt !== nothing &&
+           dir_sign * x[1] - tolerance <= dir_sign * pt[1] <= dir_sign * y[1] + tolerance &&
+           (null_separated ? true : (backward ? y[1] <= pt[1] : pt[1] <= y[1]))
+            if best_intersection === nothing || (dir_sign * pt[1] < dir_sign * best_time)
                 best_intersection, best_cut = pt, cut
                 best_time = pt[1]
             end
@@ -731,8 +771,8 @@ end
 
 """
     diamond_corners(
-    x::CausalSets.Coordinates{2}, 
-    y::CausalSets.Coordinates{2}; 
+    x::CausalSets.Coordinates{2},
+    y::CausalSets.Coordinates{2};
     check_causal_relation::Bool=true)
         -> Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}
 
@@ -764,7 +804,7 @@ extent of the causal diamond between `x` and `y`.
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 left, right = diamond_corners(x, y)
@@ -772,10 +812,11 @@ left, right = diamond_corners(x, y)
 # right = Coordinates{2}((1.0,  1.0))
 """
 function diamond_corners(
-    manifold::CausalSets.AbstractManifold, 
-    x::CausalSets.Coordinates{2}, 
-    y::CausalSets.Coordinates{2}; 
-    check_causal_relation::Bool=true)::Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}
+    manifold::CausalSets.AbstractManifold,
+    x::CausalSets.Coordinates{2},
+    y::CausalSets.Coordinates{2};
+    check_causal_relation::Bool = true,
+)::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}
 
     if check_causal_relation && !CausalSets.in_past_of(manifold, x, y)
         throw(ArgumentError("y must be in the causal past of x, but is not."))
@@ -804,7 +845,7 @@ end
 Check whether a point `p` lies inside the causal diamond defined by two events `x` (past) and `y` (future) neglecting topological obstructions.
 
 # Purpose
-Tests if `p` is causally between `x` and `y`, i.e. inside the causal diamond spanned by their lightcones.  
+Tests if `p` is causally between `x` and `y`, i.e. inside the causal diamond spanned by their lightcones.
 This requires that `x` is in the causal past of `y`, and that `p` lies causally between them.
 
 # Arguments
@@ -823,12 +864,12 @@ This requires that `x` is in the causal past of `y`, and that `p` lies causally 
 - `ArgumentError`: If `y` is not in the causal future of `x`, not taking into account topological obstructions.
 
 # Notes
-- A point `p` is in the diamond iff both `x ≺ p` and `p ≺ y`.  
+- A point `p` is in the diamond iff both `x ≺ p` and `p ≺ y`.
 - Works for arbitrary manifolds that implement `in_past_of`.
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 p1 = CausalSets.Coordinates{2}((1.0, 0.5))
@@ -838,16 +879,17 @@ point_in_diamond(CausalSets.MinkowskiManifold{2}(), p1, x, y)  # true
 point_in_diamond(CausalSets.MinkowskiManifold{2}(), p2, x, y)  # false
 """
 function point_in_diamond(
-    manifold::CausalSets.AbstractManifold, 
-    p::CausalSets.Coordinates{2}, 
-    x::CausalSets.Coordinates{2}, 
-    y::CausalSets.Coordinates{2}; 
-    check_causal_relation::Bool = true,)::Bool
+    manifold::CausalSets.AbstractManifold,
+    p::CausalSets.Coordinates{2},
+    x::CausalSets.Coordinates{2},
+    y::CausalSets.Coordinates{2};
+    check_causal_relation::Bool = true,
+)::Bool
 
     if check_causal_relation && !CausalSets.in_past_of(manifold, x, y)
         throw(ArgumentError("y must be in the causal future of x but is not."))
     end
-    
+
     return CausalSets.in_past_of(manifold, x, p) && CausalSets.in_past_of(manifold, p, y)
 end
 
@@ -864,7 +906,7 @@ end
 Check whether a finite topological cut segment obstructs the causal diamond between two events `x` (past) and `y` (future).
 
 # Purpose
-Determines if the cut segment lies across the causal diamond defined by `x` and `y`, thereby obstructing null rays that would otherwise connect them.  
+Determines if the cut segment lies across the causal diamond defined by `x` and `y`, thereby obstructing null rays that would otherwise connect them.
 This models the effect of finite topological cuts (e.g., in trousers-type topology change) on causal relations.
 
 # Arguments
@@ -878,12 +920,12 @@ This models the effect of finite topological cuts (e.g., in trousers-type topolo
 - `tolerance::Float64` = 1e-12: Numerical tolerance for detecting intersections.
 
 # Returns
-- `Bool`: 
+- `Bool`:
     - `true` if the cut crosses and obstructs the causal diamond between `x` and `y`.
     - `false` otherwise.
 
 # Throws
-- `ArgumentError`: 
+- `ArgumentError`:
     - If `y` is not in the causal future of `x`, not taking into account topological obstructions.
     - If `tolerance <= 0`.
 
@@ -894,7 +936,7 @@ This models the effect of finite topological cuts (e.g., in trousers-type topolo
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 cut1 = (CausalSets.Coordinates{2}((1., -1.5)), CausalSets.Coordinates{2}((1.0, 1.5)))
@@ -905,13 +947,14 @@ cut_crosses_diamond(manifold, x, y, cut1)  # true, cut passes through diamond
 cut_crosses_diamond(manifold, x, y, cut2)  # false, cut endpoint lies inside diamond
 """
 function cut_crosses_diamond(
-    manifold::CausalSets.AbstractManifold, 
-    x::CausalSets.Coordinates{2}, 
-    y::CausalSets.Coordinates{2}, 
-    cut::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}; 
+    manifold::CausalSets.AbstractManifold,
+    x::CausalSets.Coordinates{2},
+    y::CausalSets.Coordinates{2},
+    cut::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}};
     check_causal_relation::Bool = true,
-    tolerance::Float64=1e-12)
-    
+    tolerance::Float64 = 1e-12,
+)
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -924,7 +967,9 @@ function cut_crosses_diamond(
     (b1, b2) = cut
 
     # Check if endpoints are on different sides of both y[2] and x[2], return false if true.
-    if (b1[2] - y[2]) * (b2[2] - y[2]) > 0 && (b1[2] - x[2]) * (b2[2] - x[2]) > 0 && (b1[2] - x[2]) * (b1[2] - y[2]) > 0
+    if (b1[2] - y[2]) * (b2[2] - y[2]) > 0 &&
+       (b1[2] - x[2]) * (b2[2] - x[2]) > 0 &&
+       (b1[2] - x[2]) * (b1[2] - y[2]) > 0
         return false
     end
 
@@ -935,12 +980,18 @@ function cut_crosses_diamond(
     end
 
     # Check whether at least one endpoint is inside the diamond
-    if point_in_diamond(manifold, b1, x, y; check_causal_relation = check_causal_relation) || point_in_diamond(manifold, b2, x, y; check_causal_relation = check_causal_relation)
+    if point_in_diamond(
+        manifold,
+        b1,
+        x,
+        y;
+        check_causal_relation = check_causal_relation,
+    ) || point_in_diamond(manifold, b2, x, y; check_causal_relation = check_causal_relation)
         return false
     end
 
     # Cut crosses diamond if crossing time is between x[1] (lower corner) and y[1] (upper corner)
-    return segments_intersect(cut, (x, y); tolerance=tolerance)[1]
+    return segments_intersect(cut, (x, y); tolerance = tolerance)[1]
 end
 
 
@@ -960,9 +1011,9 @@ end
 Check whether two intersecting topological cuts jointly obstruct the causal diamond between `x` (past) and `y` (future).
 
 # Purpose
-When two finite cut segments intersect inside spacetime, the intersection splits each cut into two subsegments.  
-This function checks whether some combination of these subsegments blocks both the left- and right-moving null rays 
-that define the causal diamond `[x, y]`. If so, no causal curve can cross the diamond, and the cuts together 
+When two finite cut segments intersect inside spacetime, the intersection splits each cut into two subsegments.
+This function checks whether some combination of these subsegments blocks both the left- and right-moving null rays
+that define the causal diamond `[x, y]`. If so, no causal curve can cross the diamond, and the cuts together
 form a full obstruction.
 
 # Arguments
@@ -974,18 +1025,18 @@ form a full obstruction.
 - `intersection::Coordinates{2}`: The intersection point of `cut1` and `cut2`.
 
 # Keyword Arguments
-- `corners::Union{Nothing, Tuple{Coordinates{2}, Coordinates{2}}} = nothing`: Optional precomputed diamond corners `(left, right)`.  
+- `corners::Union{Nothing, Tuple{Coordinates{2}, Coordinates{2}}} = nothing`: Optional precomputed diamond corners `(left, right)`.
   If `nothing`, they are recomputed from `(x, y)` using `diamond_corners`.
 - `check_causal_relation::Bool = true`: If false, turns off check whether x is in past of y.
 - `tolerance::Float64 = 1e-12`: Numerical tolerance for detecting intersections.
 
 # Returns
-- `Bool`: 
+- `Bool`:
     - `true` if some combination of the subsegments of `cut1` and `cut2` obstructs the causal diamond between `x` and `y`.
     - `false` otherwise.
 
 # Throws
-- `ArgumentError`: 
+- `ArgumentError`:
     - If `y` is not in the causal future of `x`, not taking into account topological obstructions.
     - If `tolerance <= 0`.
 
@@ -997,7 +1048,7 @@ form a full obstruction.
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 cut1 = (CausalSets.Coordinates{2}((1.0, -1.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
@@ -1012,15 +1063,15 @@ function intersected_cut_crosses_diamond(
     cut1::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
     cut2::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
     intersection::CausalSets.Coordinates{2};
-    corners::Union{Nothing,Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}=nothing,
+    corners::Union{Nothing,Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}} = nothing,
     check_causal_relation::Bool = true,
-    tolerance::Float64=1e-12,
+    tolerance::Float64 = 1e-12,
 )::Bool
-    
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
-    
+
     if check_causal_relation && !CausalSets.in_past_of(manifold, x, y)
         throw(ArgumentError("y must be in the causal future of x but is not."))
     end
@@ -1033,8 +1084,9 @@ function intersected_cut_crosses_diamond(
 
     # Diamond corners (left, right)
     left_corner, right_corner =
-        isnothing(corners) ? diamond_corners(manifold, x, y; check_causal_relation = false) : corners
-    
+        isnothing(corners) ?
+        diamond_corners(manifold, x, y; check_causal_relation = false) : corners
+
     # For simplicity, treat each edge as a segment: (x, left_corner), (left_corner, y), (x, right_corner), (right_corner, y)
     left_edges = [(x, left_corner), (left_corner, y)]
     right_edges = [(x, right_corner), (right_corner, y)]
@@ -1049,13 +1101,13 @@ function intersected_cut_crosses_diamond(
     for (c1seg, c2seg) in Iterators.product(c1subs, c2subs)
         for (l_edge, r_edge) in Iterators.product(left_edges, right_edges)
             # (c1seg with left edge) and (c2seg with right edge)
-            if segments_intersect(c1seg, l_edge; tolerance=tolerance)[1] &&
-               segments_intersect(c2seg, r_edge; tolerance=tolerance)[1]
+            if segments_intersect(c1seg, l_edge; tolerance = tolerance)[1] &&
+               segments_intersect(c2seg, r_edge; tolerance = tolerance)[1]
                 return true
             end
             # (c2seg with left edge) and (c1seg with right edge)
-            if segments_intersect(c2seg, l_edge; tolerance=tolerance)[1] &&
-               segments_intersect(c1seg, r_edge; tolerance=tolerance)[1]
+            if segments_intersect(c2seg, l_edge; tolerance = tolerance)[1] &&
+               segments_intersect(c1seg, r_edge; tolerance = tolerance)[1]
                 return true
             end
         end
@@ -1074,11 +1126,11 @@ end
         tolerance::Float64 = 1e-12
     ) -> Vector{CausalSets.Coordinates{2}}
 
-Propagate a null ray from `x` towards `y` (forward or backward in time) with slope ±1 through a background containing finite topological cuts.  
+Propagate a null ray from `x` towards `y` (forward or backward in time) with slope ±1 through a background containing finite topological cuts.
 The function returns the full piecewise path of the ray, deflecting it at each encountered cut.
 
 # Purpose
-This routine follows the trajectory of a left- or right-moving null ray in 2D spacetime in the presence of topological cuts.  
+This routine follows the trajectory of a left- or right-moving null ray in 2D spacetime in the presence of topological cuts.
 Whenever the ray intersects a cut, it continues from an endpoint of the cut according to geometric rules:
 - For **spacelike or null cuts**, the ray continues from the endpoint opposite to its approach side (spatially opposite to the incoming slope).
 - For **timelike cuts**, the ray continues from the future (or past, if propagating backward) endpoint of the cut.
@@ -1101,7 +1153,7 @@ Whenever the ray intersects a cut, it continues from an endpoint of the cut acco
 - `Vector{Coordinates{2}}`: Ordered sequence of points along the piecewise ray, starting at `x` and ending at either `y` or a boundary point of the diamond.
 
 # Throws
-- `ArgumentError`: 
+- `ArgumentError`:
     - If `y` is not in the causal future of `x`, not taking into account topological obstructions.
     - If `tolerance <= 0`.
 
@@ -1113,7 +1165,7 @@ Whenever the ray intersects a cut, it continues from an endpoint of the cut acco
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 cut = (CausalSets.Coordinates{2}((1.0, -1.0)), CausalSets.Coordinates{2}((1.0, 1.0)))
@@ -1127,13 +1179,25 @@ function propagate_ray(
     y::CausalSets.Coordinates{2},
     slope::Float64,
     branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}};
-    corners::Union{Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},Nothing}=nothing,
-    intersecting_cuts::Union{Nothing, Vector{Tuple{Tuple{Int,Int}, CausalSets.Coordinates{2}}}}=nothing,
-    precomputed_intersection::Union{Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}}, Nothing}=nothing,
+    corners::Union{
+        Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}},
+        Nothing,
+    } = nothing,
+    intersecting_cuts::Union{
+        Nothing,
+        Vector{Tuple{Tuple{Int,Int},CausalSets.Coordinates{2}}},
+    } = nothing,
+    precomputed_intersection::Union{
+        Tuple{
+            CausalSets.Coordinates{2},
+            Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+        },
+        Nothing,
+    } = nothing,
     check_causal_relation::Bool = true,
-    tolerance::Float64=1e-12    
+    tolerance::Float64 = 1e-12,
 )::Vector{CausalSets.Coordinates{2}}
-    
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -1141,20 +1205,38 @@ function propagate_ray(
     is_precomputed_intersection = !isnothing(precomputed_intersection)
 
     backward = y[1] < x[1]
-    dir_sign = backward ? -1. : 1.
-    if check_causal_relation && !CausalSets.in_past_of(manifold, backward ? y : x, backward ? x : y)
+    dir_sign = backward ? -1.0 : 1.0
+    if check_causal_relation &&
+       !CausalSets.in_past_of(manifold, backward ? y : x, backward ? x : y)
         throw(ArgumentError("y must be in the causal future of x but is not."))
     end
     local_branch_point_tuples = copy(branch_point_tuples)
     pos = x
     path = [x]
     tfin = y[1]
-    intersecting_cuts = isnothing(intersecting_cuts) ? cut_intersections(branch_point_tuples) : intersecting_cuts
+    intersecting_cuts =
+        isnothing(intersecting_cuts) ? cut_intersections(branch_point_tuples) :
+        intersecting_cuts
     # Compute diamond corners
-    left_corner, right_corner = isnothing(corners) ? diamond_corners(manifold, backward ? y : x, backward ? x : y; check_causal_relation = false) : corners
-        
+    left_corner, right_corner =
+        isnothing(corners) ?
+        diamond_corners(
+            manifold,
+            backward ? y : x,
+            backward ? x : y;
+            check_causal_relation = false,
+        ) : corners
+
     while dir_sign * pos[1] < dir_sign * tfin
-        hit = is_precomputed_intersection ? precomputed_intersection : next_intersection(local_branch_point_tuples, pos, y, slope; tolerance = tolerance)
+        hit =
+            is_precomputed_intersection ? precomputed_intersection :
+            next_intersection(
+                local_branch_point_tuples,
+                pos,
+                y,
+                slope;
+                tolerance = tolerance,
+            )
         is_precomputed_intersection = false
         if isnothing(hit)
             # No more intersections: propagate straight to tfin
@@ -1190,25 +1272,48 @@ function propagate_ray(
         jumped_to_intersecting_cut = false
         other_cut = nothing
         # Check whether the current cut is intersected by another cut
-        for ((i,j),pt) in intersecting_cuts
-            cut_i = i <= length(local_branch_point_tuples) ? local_branch_point_tuples[i] : nothing
-            cut_j = j <= length(local_branch_point_tuples) ? local_branch_point_tuples[j] : nothing
-            if ((cut == cut_i) || (cut == cut_j)) && pt !== nothing && all(min(intersection[k], candidate[k]) - tolerance <= pt[k] <= max(intersection[k], candidate[k]) + tolerance for k in 1:2)
-                if point_in_diamond(manifold, pt, backward ? y : x, backward ? x : y; check_causal_relation = false)
+        for ((i, j), pt) in intersecting_cuts
+            cut_i =
+                i <= length(local_branch_point_tuples) ? local_branch_point_tuples[i] :
+                nothing
+            cut_j =
+                j <= length(local_branch_point_tuples) ? local_branch_point_tuples[j] :
+                nothing
+            if ((cut == cut_i) || (cut == cut_j)) &&
+               pt !== nothing &&
+               all(
+                   min(intersection[k], candidate[k]) - tolerance <=
+                   pt[k] <=
+                   max(intersection[k], candidate[k]) + tolerance for k = 1:2
+               )
+                if point_in_diamond(
+                    manifold,
+                    pt,
+                    backward ? y : x,
+                    backward ? x : y;
+                    check_causal_relation = false,
+                )
                     push!(path, pt)
                     # found intersecting cut at same place
                     other_cut = (cut == cut_i) ? cut_j : cut_i
                     # decide direction: always opposite to lateral ray direction
                     v = pt .- intersection
-                    possible_endpoints = other_cut === nothing ? [] : [other_cut[1], other_cut[2]]
+                    possible_endpoints =
+                        other_cut === nothing ? [] : [other_cut[1], other_cut[2]]
                     if length(possible_endpoints) == 2
-                        cross_prod = v[1]*(possible_endpoints[1][2]-pt[2]) - v[2]*(possible_endpoints[1][1]-pt[1])
+                        cross_prod =
+                            v[1]*(possible_endpoints[1][2]-pt[2]) -
+                            v[2]*(possible_endpoints[1][1]-pt[1])
                         if slope > 0
                             # slope > 0 → turn left
-                            candidate = cross_prod > 0 ? possible_endpoints[2] : possible_endpoints[1]
+                            candidate =
+                                cross_prod > 0 ? possible_endpoints[2] :
+                                possible_endpoints[1]
                         else
                             # slope < 0 → turn right
-                            candidate = cross_prod > 0 ? possible_endpoints[1] : possible_endpoints[2]
+                            candidate =
+                                cross_prod > 0 ? possible_endpoints[1] :
+                                possible_endpoints[2]
                         end
                     end
                     jumped_to_intersecting_cut = true
@@ -1219,7 +1324,13 @@ function propagate_ray(
         end
 
         # Check if candidate lies within causal diamond of (x,y)
-        if in_diamond && point_in_diamond(manifold, candidate, backward ? y : x, backward ? x : y; check_causal_relation = false)
+        if in_diamond && point_in_diamond(
+            manifold,
+            candidate,
+            backward ? y : x,
+            backward ? x : y;
+            check_causal_relation = false,
+        )
             pos = candidate
             push!(path, pos)
             if jumped_to_intersecting_cut && other_cut !== nothing
@@ -1233,17 +1344,23 @@ function propagate_ray(
         end
 
         # Define opposite boundary edges
-        opposite_diamond_edges = (backward && slope > 0.) || (!backward && slope < 0.) ? [(x, right_corner), (right_corner, y)] : [(x, left_corner), (left_corner, y)]
+        opposite_diamond_edges =
+            (backward && slope > 0.0) || (!backward && slope < 0.0) ?
+            [(x, right_corner), (right_corner, y)] : [(x, left_corner), (left_corner, y)]
 
         # Find intersection point of (intersection, candidate) with these edges if existent
         for edge in opposite_diamond_edges # If intersection is on the side opposite to the ray slope, ray ends.
-            intersect, pt = segments_intersect((intersection, candidate), edge, tolerance = tolerance)
+            intersect, pt =
+                segments_intersect((intersection, candidate), edge, tolerance = tolerance)
             if intersect && pt !== nothing
                 push!(path, pt) # Push endpoint to path
                 return path # Ray ends
             end
         end
-        pos = dir_sign * candidate[1] > dir_sign * tfin ? interpolate_point(intersection, candidate, tfin, 1; tolerance = tolerance) : candidate # No intersection with opposite side -> continue propagation
+        pos =
+            dir_sign * candidate[1] > dir_sign * tfin ?
+            interpolate_point(intersection, candidate, tfin, 1; tolerance = tolerance) :
+            candidate # No intersection with opposite side -> continue propagation
         push!(path, pos)
         if jumped_to_intersecting_cut && other_cut !== nothing
             filter!(c -> c !== other_cut, local_branch_point_tuples)
@@ -1285,7 +1402,7 @@ This function identifies all pairs of finite topolical cut segments that interse
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 cuts = [
     (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((1.0, 1.0))),
     (CausalSets.Coordinates{2}((0.0, 1.0)), CausalSets.Coordinates{2}((1.0, 0.0))),
@@ -1304,19 +1421,23 @@ intersections = cut_intersections(cuts)
   These cases are not included in the returned list, as there is no unique intersection point.
 """
 function cut_intersections(
-    branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}; 
-    tolerance::Float64=1e-12
-    )::Vector{Tuple{Tuple{Int64,Int64}, CausalSets.Coordinates{2}}}
-    
+    branch_point_tuples::Vector{Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}};
+    tolerance::Float64 = 1e-12,
+)::Vector{Tuple{Tuple{Int64,Int64},CausalSets.Coordinates{2}}}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
-    intersections = Vector{Tuple{Tuple{Int,Int}, Union{Nothing,CausalSets.Coordinates{2}}}}()
+    intersections = Vector{Tuple{Tuple{Int,Int},Union{Nothing,CausalSets.Coordinates{2}}}}()
     n = length(branch_point_tuples)
-    for i in 1:n-1
-        for j in i+1:n
-            intersect, point = segments_intersect(branch_point_tuples[i], branch_point_tuples[j]; tolerance=tolerance)
+    for i = 1:(n-1)
+        for j = (i+1):n
+            intersect, point = segments_intersect(
+                branch_point_tuples[i],
+                branch_point_tuples[j];
+                tolerance = tolerance,
+            )
             if intersect
                 if point === nothing
                     # colinear intersection: warn and skip
@@ -1346,8 +1467,8 @@ end
 Check whether the causal wedge of `x` (bounded by null rays) remains open up to the time of `y` in the presence of finite topological cuts.
 
 # Purpose
-Determines if the null wedge spanned by `x` survives up to `y` without collapsing due to obstructions from topological cuts.  
-This is done by propagating left-moving null rays both forward from `x` and backward from `y`, accounting for deflections at each cut.  
+Determines if the null wedge spanned by `x` survives up to `y` without collapsing due to obstructions from topological cuts.
+This is done by propagating left-moving null rays both forward from `x` and backward from `y`, accounting for deflections at each cut.
 The wedge is open if these rays meet without the left ray overtaking the right ray, ensuring causal connectivity between `x` and `y`.
 
 # Arguments
@@ -1363,7 +1484,7 @@ The wedge is open if these rays meet without the left ray overtaking the right r
 - `tolerance::Float64 = 1e-12`: Numerical tolerance for intersection detection. Used to handle floating point errors in geometric predicates.
 
 # Returns
-- `Bool`: 
+- `Bool`:
     - `true` if the wedge remains open up to `y` (causal connection possible),
     - `false` if the wedge collapses before reaching `y`.
 
@@ -1377,7 +1498,7 @@ The wedge is open if these rays meet without the left ray overtaking the right r
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 cuts = [(CausalSets.Coordinates{2}((1.0, -1.1)), CausalSets.Coordinates{2}((1.0, 1.1)))]
@@ -1390,54 +1511,114 @@ function in_wedge_of(
     x::CausalSets.Coordinates{2},
     y::CausalSets.Coordinates{2};
     check_causal_relation::Bool = true,
-    future_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}} = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}([nothing, nothing]),
-    past_intersections::Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}= Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}([nothing, nothing]),
+    future_intersections::Vector{
+        Union{
+            Nothing,
+            Tuple{
+                CausalSets.Coordinates{2},
+                Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+            },
+        },
+    } = Vector{
+        Union{
+            Nothing,
+            Tuple{
+                CausalSets.Coordinates{2},
+                Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+            },
+        },
+    }([nothing, nothing]),
+    past_intersections::Vector{
+        Union{
+            Nothing,
+            Tuple{
+                CausalSets.Coordinates{2},
+                Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+            },
+        },
+    } = Vector{
+        Union{
+            Nothing,
+            Tuple{
+                CausalSets.Coordinates{2},
+                Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+            },
+        },
+    }([nothing, nothing]),
     tolerance::Float64 = 1e-12,
 )::Bool
-    
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
     if check_causal_relation && !CausalSets.in_past_of(manifold, x, y)
         return false
-    end    
+    end
 
     # The wedge is open if the left-moving null ray from x to y can reach y, and
     # the left-moving null ray from y backward to x can reach x, and their paths intersect.
     # This checks if a continuous null curve can connect x to y along the left-moving direction,
     # i.e., the wedge is open.
-    left_forward = propagate_ray(manifold, x, y, -1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance, precomputed_intersection = past_intersections[1])
+    left_forward = propagate_ray(
+        manifold,
+        x,
+        y,
+        -1.0,
+        branch_point_tuples;
+        check_causal_relation = false,
+        tolerance = tolerance,
+        precomputed_intersection = past_intersections[1],
+    )
     if left_forward[end][2] > y[2] || left_forward[end][1] < y[1]
         return false
     end
 
-    right_forward = propagate_ray(manifold, x, y, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance, precomputed_intersection = past_intersections[2])
+    right_forward = propagate_ray(
+        manifold,
+        x,
+        y,
+        1.0,
+        branch_point_tuples;
+        check_causal_relation = false,
+        tolerance = tolerance,
+        precomputed_intersection = past_intersections[2],
+    )
     if right_forward[end][2] < y[2] || left_forward[end][1] < y[1]
         return false
     end
 
-    for i in 1:length(left_forward)-1
-        for j in 1:length(right_forward)-1
+    for i = 1:(length(left_forward)-1)
+        for j = 1:(length(right_forward)-1)
             intersect, pt = segments_intersect(
-                (left_forward[i], left_forward[i+1]), 
-                (right_forward[j], right_forward[j+1]); 
-                tolerance = tolerance)
+                (left_forward[i], left_forward[i+1]),
+                (right_forward[j], right_forward[j+1]);
+                tolerance = tolerance,
+            )
             if intersect && pt != x && pt != y
                 return false
             end
         end
     end
 
-    left_backward = propagate_ray(manifold, y, x, 1.0, branch_point_tuples; check_causal_relation = false, tolerance = tolerance, precomputed_intersection = future_intersections[1])
+    left_backward = propagate_ray(
+        manifold,
+        y,
+        x,
+        1.0,
+        branch_point_tuples;
+        check_causal_relation = false,
+        tolerance = tolerance,
+        precomputed_intersection = future_intersections[1],
+    )
     if left_backward[end][2] > x[2] || left_backward[end][1] > x[1]
         return false
     end
 
     # Check if the two piecewise paths intersect (i.e., share any segment intersection)
-    for i in 1:length(left_forward)-1
+    for i = 1:(length(left_forward)-1)
         seg1 = (left_forward[i], left_forward[i+1])
-        for j in 1:length(left_backward)-1
+        for j = 1:(length(left_backward)-1)
             seg2 = (left_backward[j], left_backward[j+1])
             if segments_intersect(seg1, seg2; tolerance = tolerance)[1]
                 return true
@@ -1459,7 +1640,7 @@ end
 Determine whether `x` lies in the causal past of `y` in a conformally timesliceable manifold with topological cuts, which can be either timelike and intersect the boundary (trouser-geometry like) or timelike or spacelike but finite.
 
 # Purpose
-This extends the standard causal relation by incorporating **topological obstructions**.  
+This extends the standard causal relation by incorporating **topological obstructions**.
 Besides the manifold’s lightcone structure, causal paths may be blocked by:
 - **Timelike boundary-connecting cuts** from single branch points (extending at constant spatial coordinate position up to the boundary).
 - **Finite cuts** (segments between two points).
@@ -1477,13 +1658,13 @@ Besides the manifold’s lightcone structure, causal paths may be blocked by:
 - `tolerance::Float64 = 1e-12`: Numerical tolerance for distance and intersection checks.
 
 # Returns
-- `Bool`:  
-  - `true` if `x ≺ y` and no topological obstruction blocks the causal path.  
+- `Bool`:
+  - `true` if `x ≺ y` and no topological obstruction blocks the causal path.
   - `false` otherwise.
 
 # Throws
-- `ArgumentError`:  
-  - If `N ≠ 2` (unsupported dimension).  
+- `ArgumentError`:
+  - If `N ≠ 2` (unsupported dimension).
   - If `tolerance <= 0`.
 
 # Notes
@@ -1497,7 +1678,7 @@ Besides the manifold’s lightcone structure, causal paths may be blocked by:
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 x = CausalSets.Coordinates{2}((0.0, 0.0))
 y = CausalSets.Coordinates{2}((2.0, 0.0))
 single_branch_points = [CausalSets.Coordinates{2}((1.0, 0.5))]
@@ -1511,37 +1692,43 @@ function CausalSets.in_past_of(
     manifold::CausalSets.ConformallyTimesliceableManifold{N},
     branch_point_info::Tuple{
         Vector{CausalSets.Coordinates{N}},
-        Vector{Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}}}
+        Vector{Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}},
     },
     x::CausalSets.Coordinates{N},
     y::CausalSets.Coordinates{N};
-    tolerance::Float64=1e-12
-)::Bool where N
-    
+    tolerance::Float64 = 1e-12,
+)::Bool where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
 
     if N != 2
-        throw(ArgumentError("Currently, nontrivial topologies are only implemented for dimensionality N=2, is $(N)."))
+        throw(
+            ArgumentError(
+                "Currently, nontrivial topologies are only implemented for dimensionality N=2, is $(N).",
+            ),
+        )
     end
-    
+
     # Check standard causal relation
     CausalSets.in_past_of(manifold, x, y) || return false
 
     single_branch_points, branch_point_tuples = branch_point_info
 
     # Prune irrelevant finite cuts
-    corners = diamond_corners(manifold, x,y; check_causal_relation = false)
+    corners = diamond_corners(manifold, x, y; check_causal_relation = false)
     branch_point_tuples = [
-        (p,q) for (p,q) in branch_point_tuples
-        if y[1] > p[1] && q[1] > x[1] && min(p[2],q[2]) < corners[2][2] && max(p[2],q[2]) > corners[1][2]
+        (p, q) for (p, q) in branch_point_tuples if y[1] > p[1] &&
+        q[1] > x[1] &&
+        min(p[2], q[2]) < corners[2][2] &&
+        max(p[2], q[2]) > corners[1][2]
     ]
     # Prune irrelevant constant-time cuts
     single_branch_points = [
-        b for b in single_branch_points
-        if b[1] < y[1] && corners[1][2] < b[2] < corners[2][2]
+        b for
+        b in single_branch_points if b[1] < y[1] && corners[1][2] < b[2] < corners[2][2]
     ]
 
     # Check for topological cuts that obstruct causality
@@ -1553,14 +1740,20 @@ function CausalSets.in_past_of(
 
     # Efficient obstruction test for single cuts intersecting whole diamond
     for cut in branch_point_tuples
-        if cut_crosses_diamond(manifold, x, y, cut; check_causal_relation = false, tolerance = tolerance)
+        if cut_crosses_diamond(
+            manifold,
+            x,
+            y,
+            cut;
+            check_causal_relation = false,
+            tolerance = tolerance,
+        )
             return false
         end
     end
 
-    vertical_cuts = Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}[
-    (bp, (y[1] + tolerance, bp[2]))
-    for bp in single_branch_points
+    vertical_cuts = Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}}[
+        (bp, (y[1] + tolerance, bp[2])) for bp in single_branch_points
     ]
     all_cuts = vcat(branch_point_tuples, vertical_cuts)
     # Reorder each tuple so that p[1] <= q[1]
@@ -1569,11 +1762,47 @@ function CausalSets.in_past_of(
     all_cuts = sort(all_cuts, by = t -> t[1][1])
 
     # Check whether causal diamond edges are inhibited by cuts
-    past_intersections   = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of
-    future_intersections = Vector{Union{Nothing, Tuple{CausalSets.Coordinates{2}, Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}}}(undef, 2) # save in case we can reuse this in in_wedge_of
-    for i in 1:2 
-        past_intersections[i] = next_intersection(all_cuts, x, corners[i], (-1.)^i; null_separated = true, tolerance = tolerance)
-        future_intersections[i] = next_intersection(all_cuts, y, corners[i], (-1.)^(i+1); null_separated = true, tolerance = tolerance)
+    past_intersections = Vector{
+        Union{
+            Nothing,
+            Tuple{
+                CausalSets.Coordinates{2},
+                Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+            },
+        },
+    }(
+        undef,
+        2,
+    ) # save in case we can reuse this in in_wedge_of
+    future_intersections = Vector{
+        Union{
+            Nothing,
+            Tuple{
+                CausalSets.Coordinates{2},
+                Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+            },
+        },
+    }(
+        undef,
+        2,
+    ) # save in case we can reuse this in in_wedge_of
+    for i = 1:2
+        past_intersections[i] = next_intersection(
+            all_cuts,
+            x,
+            corners[i],
+            (-1.0)^i;
+            null_separated = true,
+            tolerance = tolerance,
+        )
+        future_intersections[i] = next_intersection(
+            all_cuts,
+            y,
+            corners[i],
+            (-1.0)^(i+1);
+            null_separated = true,
+            tolerance = tolerance,
+        )
         if isnothing(past_intersections[i]) && isnothing(future_intersections[i])
             return true
         end
@@ -1586,12 +1815,31 @@ function CausalSets.in_past_of(
         seg1 = all_cuts[i]
         seg2 = all_cuts[j]
         # Check for obstruction
-        if intersected_cut_crosses_diamond(manifold, x, y, seg1, seg2, intersection_point; corners=corners, check_causal_relation = false, tolerance = tolerance)
+        if intersected_cut_crosses_diamond(
+            manifold,
+            x,
+            y,
+            seg1,
+            seg2,
+            intersection_point;
+            corners = corners,
+            check_causal_relation = false,
+            tolerance = tolerance,
+        )
             return false
         end
     end
 
-    return in_wedge_of(manifold, all_cuts, x, y; check_causal_relation = false, tolerance = tolerance, past_intersections = past_intersections, future_intersections = future_intersections)
+    return in_wedge_of(
+        manifold,
+        all_cuts,
+        x,
+        y;
+        check_causal_relation = false,
+        tolerance = tolerance,
+        past_intersections = past_intersections,
+        future_intersections = future_intersections,
+    )
 end
 
 """
@@ -1606,7 +1854,7 @@ A causal set embedded in a background manifold with topological branch points (c
 # Fields
 - `atom_count::Int64`: Number of elements (atoms) in the causet.
 - `manifold::M`: The background manifold defining the causal structure.
-- `branch_point_info::Tuple{Vector{Coordinates{N}}, Vector{Tuple{Coordinates{N}, Coordinates{N}}}}`: 
+- `branch_point_info::Tuple{Vector{Coordinates{N}}, Vector{Tuple{Coordinates{N}, Coordinates{N}}}}`:
     - First element: Single branch points (each induces a timelike topological cut extending to the boundary).
     - Second element: Finite topological cuts (segments between two points).
 - `sprinkling::Vector{Coordinates{N}}`: Coordinates of the sprinkled points, typically sorted by time.
@@ -1621,7 +1869,7 @@ Encodes both the geometry and topology of the geometry underlying the causal set
 
 # Example
 ```julia
-using CausalSets
+import CausalSets
 manifold = CausalSets.MinkowskiManifold{2}()
 sprinkling = [CausalSets.Coordinates{2}((0.1, 0.0)), CausalSets.Coordinates{2}((0.9, 0.0))]
 single_branch_points = [CausalSets.Coordinates{2}((0.5, 0.0))]
@@ -1629,12 +1877,13 @@ finite_cuts = [(CausalSets.Coordinates{2}((0.3, -1.0)), CausalSets.Coordinates{2
 causet = BranchedManifoldCauset(manifold, (single_branch_points, finite_cuts), sprinkling)
 ```
 """
-struct BranchedManifoldCauset{N, M} <: CausalSets.AbstractCauset where {N, M<:CausalSets.AbstractManifold}
+struct BranchedManifoldCauset{N,M} <:
+       CausalSets.AbstractCauset where {N,M<:CausalSets.AbstractManifold}
     atom_count::Int64
     manifold::M
     branch_point_info::Tuple{
         Vector{CausalSets.Coordinates{N}},
-        Vector{Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}}}
+        Vector{Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}},
     }
     sprinkling::Vector{CausalSets.Coordinates{N}}
 end
@@ -1664,12 +1913,17 @@ Construct a `BranchedManifoldCauset{N, M}` representing a causal set sprinkled i
 function BranchedManifoldCauset(
     manifold::M,
     branch_point_info::Tuple{
-    Vector{CausalSets.Coordinates{N}},
-    Vector{Tuple{CausalSets.Coordinates{N}, CausalSets.Coordinates{N}}}
+        Vector{CausalSets.Coordinates{N}},
+        Vector{Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}},
     },
-    sprinkling::Vector{CausalSets.Coordinates{N}}
-)::BranchedManifoldCauset{N, M} where {N, M<:CausalSets.AbstractManifold{N}}
-    return BranchedManifoldCauset{N, M}(length(sprinkling), manifold, branch_point_info, sprinkling)
+    sprinkling::Vector{CausalSets.Coordinates{N}},
+)::BranchedManifoldCauset{N,M} where {N,M<:CausalSets.AbstractManifold{N}}
+    return BranchedManifoldCauset{N,M}(
+        length(sprinkling),
+        manifold,
+        branch_point_info,
+        sprinkling,
+    )
 end
 
 """
@@ -1677,7 +1931,11 @@ end
 
 Returns `true` if element `i` is in the past of element `j`, based on both spacetime and branch relations.
 """
-function CausalSets.in_past_of_unchecked(causet::BranchedManifoldCauset, i::Int, j::Int)::Bool
+function CausalSets.in_past_of_unchecked(
+    causet::BranchedManifoldCauset,
+    i::Int,
+    j::Int,
+)::Bool
     x = causet.sprinkling[i]
     y = causet.sprinkling[j]
     return CausalSets.in_past_of(causet.manifold, causet.branch_point_info, x, y)
@@ -1688,8 +1946,11 @@ end
 
 Constructs a `BitArrayCauset` by computing causal relations from a `BranchedManifoldCauset`.
 """
-function CausalSets.BitArrayCauset(causet::BranchedManifoldCauset{N}; tolerance::Float64 = 1e-12)::CausalSets.BitArrayCauset where {N}
-    
+function CausalSets.BitArrayCauset(
+    causet::BranchedManifoldCauset{N};
+    tolerance::Float64 = 1e-12,
+)::CausalSets.BitArrayCauset where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -1702,8 +1963,12 @@ end
 
 Computes the causal matrix for a `BranchedManifoldCauset` and returns a `BitArrayCauset`. Note: this function uses all available threads.
 """
-function Base.convert(::Type{CausalSets.BitArrayCauset}, causet::BranchedManifoldCauset{N}; tolerance::Float64=1e-12)::CausalSets.BitArrayCauset where {N}
-    
+function Base.convert(
+    ::Type{CausalSets.BitArrayCauset},
+    causet::BranchedManifoldCauset{N};
+    tolerance::Float64 = 1e-12,
+)::CausalSets.BitArrayCauset where {N}
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -1713,14 +1978,20 @@ function Base.convert(::Type{CausalSets.BitArrayCauset}, causet::BranchedManifol
     future_relations = Vector{BitVector}(undef, atom_count)
     past_relations = Vector{BitVector}(undef, atom_count)
 
-    for i in 1:atom_count
+    for i = 1:atom_count
         future_relations[i] = falses(atom_count)
         past_relations[i] = falses(atom_count)
     end
 
-    Threads.@threads for i in 1:atom_count
-        for j in i+1:atom_count
-            if CausalSets.in_past_of(causet.manifold, causet.branch_point_info, causet.sprinkling[i], causet.sprinkling[j]; tolerance = tolerance)
+    Threads.@threads for i = 1:atom_count
+        for j = (i+1):atom_count
+            if CausalSets.in_past_of(
+                causet.manifold,
+                causet.branch_point_info,
+                causet.sprinkling[i],
+                causet.sprinkling[j];
+                tolerance = tolerance,
+            )
                 future_relations[i][j] = true
                 past_relations[j][i] = true
             end
@@ -1773,9 +2044,9 @@ This function builds a toy model of a branched spacetime:
 A 4-tuple `(cset, sprinkling, branch_point_info, chebyshev_coefs)`:
 - `cset::BitArrayCauset`: The causal set with branch cuts encoded.
 - `sprinkling::Vector{Coordinates{2}}`: The filtered sprinkled points.
-- `branch_point_info::Tuple{Vector{Coordinates{2}}, Vector{Tuple{Coordinates{2}, Coordinates{2}}}}`:  
-  - Single branch points (for timelike boundary-connecting cuts),  
-  - Finite cut segments.  
+- `branch_point_info::Tuple{Vector{Coordinates{2}}, Vector{Tuple{Coordinates{2}, Coordinates{2}}}}`:
+  - Single branch points (for timelike boundary-connecting cuts),
+  - Finite cut segments.
 - `chebyshev_coefs::Matrix{T}`: Chebyshev coefficients of the random polynomial manifold.
 
 # Throws
@@ -1803,9 +2074,14 @@ function make_branched_manifold_cset(
     order::Int64,
     r::Float64;
     d::Int64 = 2,
-    tolerance::Float64=1e-12,
-    type::Type{T} = Float32
-)::Tuple{CausalSets.BitArrayCauset, Vector{Tuple{T,Vararg{T}}}, Tuple{Vector{Tuple{T,Vararg{T}}}, Vector{Tuple{Tuple{T,Vararg{T}}, Tuple{T,Vararg{T}}}}},Matrix{T}} where {T<:Number} #)::Tuple{CausalSets.BitArrayCauset, Vector{CausalSets.Coordinates{2}}, Tuple{Vector{CausalSets.Coordinates{2}}, Vector{Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}},Matrix{T}} where {T<:Number}
+    tolerance::Float64 = 1e-12,
+    type::Type{T} = Float32,
+)::Tuple{
+    CausalSets.BitArrayCauset,
+    Vector{Tuple{T,Vararg{T}}},
+    Tuple{Vector{Tuple{T,Vararg{T}}},Vector{Tuple{Tuple{T,Vararg{T}},Tuple{T,Vararg{T}}}}},
+    Matrix{T},
+} where {T<:Number} #)::Tuple{CausalSets.BitArrayCauset, Vector{CausalSets.Coordinates{2}}, Tuple{Vector{CausalSets.Coordinates{2}}, Vector{Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}},Matrix{T}} where {T<:Number}
 
     if npoints <= 0
         throw(ArgumentError("npoints must be greater than 0, got $npoints"))
@@ -1834,7 +2110,7 @@ function make_branched_manifold_cset(
     if d != 2
         throw(ArgumentError("Currently, only 2D is supported, got $d"))
     end
-    
+
     if tolerance <= 0
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
@@ -1867,13 +2143,18 @@ function make_branched_manifold_cset(
     sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints)
 
     # Randomly promote nbranchpoints of the sprinkling points to branch points
-    branch_point_info = generate_random_branch_points(n_vertical_cuts, n_finite_cuts; tolerance = tolerance)
+    branch_point_info =
+        generate_random_branch_points(n_vertical_cuts, n_finite_cuts; tolerance = tolerance)
 
     # Remove points on sprinkling on cuts
-    branched_sprinkling = filter_sprinkling_near_cuts(sprinkling, branch_point_info; tolerance = tolerance)
+    branched_sprinkling =
+        filter_sprinkling_near_cuts(sprinkling, branch_point_info; tolerance = tolerance)
 
     # Construct the causal set from the manifold and sprinkling
     cset = BranchedManifoldCauset(polym, branch_point_info, branched_sprinkling)
 
-    return CausalSets.BitArrayCauset(cset; tolerance = tolerance), branched_sprinkling, branch_point_info, type.(chebyshev_coefs)
+    return CausalSets.BitArrayCauset(cset; tolerance = tolerance),
+    branched_sprinkling,
+    branch_point_info,
+    type.(chebyshev_coefs)
 end

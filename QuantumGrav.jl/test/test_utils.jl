@@ -1,7 +1,7 @@
 
 @testitem "test_make_pseudosprinkling" tags = [:utils] begin
-    using QuantumGrav
-    using Random
+
+    import Random
     n = 10
     d = 3
     box_min = -1.0

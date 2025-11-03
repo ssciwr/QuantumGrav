@@ -1,9 +1,8 @@
 
 
 @testsnippet setupTests begin
-    using CausalSets
-    using Distributions
-    using Random
+    import Distributions
+    import Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
@@ -13,10 +12,6 @@
 end
 
 @testitem "test_destroy_manifold_cset" tags = [:destroy_causets] setup = [setupTests] begin
-    using CausalSets
-    using Distributions
-    using Random
-    using QuantumGrav
 
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)

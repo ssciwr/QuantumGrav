@@ -1,19 +1,15 @@
 
 
 @testsnippet TestsCSetByConnectivity begin
-
-    using CausalSets
-    using Random
+    import Random
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
 end
 
 @testsnippet TestsCSetByConnectivityDistribution begin
-
-    using CausalSets
-    using Random
-    using Distributions
+    import Random
+    import Distributions
 
     Random.seed!(42)  # Set a seed for reproducibility
     rng = Random.Xoshiro(42)
@@ -21,8 +17,8 @@ end
 
 @testitem "test_make_simple_cset_by_connectivity" tags = [:csetgenerationbyconnectivity] setup =
     [TestsCSetByConnectivity] begin
-    using QuantumGrav
 
+    import CausalSets
     connectivity_goal = 0.5
     cset, converged = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
@@ -52,7 +48,6 @@ end
 
 @testitem "test_simple_cset_by_connectivity_throws" tags =
     [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivity] begin
-    using QuantumGrav
 
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(
         -1,
@@ -106,8 +101,8 @@ end
 
 @testitem "test_make_simple_cset_by_connectivity_distribution" tags =
     [:csetgenerationbyconnectivitydist] setup = [TestsCSetByConnectivityDistribution] begin
-    using QuantumGrav
-    using Distributions
+
+    import Distributions
 
     dist = Distributions.Beta(2, 2)
     cset, converged = QuantumGrav.random_causet_by_connectivity_distribution(
@@ -139,7 +134,8 @@ end
 
 @testitem "test_simple_cset_by_connectivity_distribution_throws" tags =
     [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivityDistribution] begin
-    using QuantumGrav
+
+    import Distributions
 
     @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
         -1,
@@ -151,7 +147,7 @@ end
 
     @test_throws ArgumentError QuantumGrav.random_causet_by_connectivity_distribution(
         2^7,
-        Normal(2, 2), # distribution with support outside [0,1]
+        Distributions.Normal(2, 2), # distribution with support outside [0,1]
         20,
         rng;
         abs_tol = 0.01,

@@ -8,9 +8,8 @@
 end
 
 @testitem "test_make_simple_layered_cset" tags = [:layeredgeneration] setup = [LayeredTests] begin
-    import QuantumGrav
+
     import CausalSets
-    import Random
 
     cset, cuts = QuantumGrav.create_random_layered_causet(100, 3; rng = rng)
 

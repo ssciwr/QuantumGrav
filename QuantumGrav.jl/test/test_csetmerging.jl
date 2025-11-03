@@ -1,9 +1,8 @@
 
 
 @testsnippet TestsCSetMerging begin
-    using CausalSets
-    using Random
-    using Distributions
+    import Random
+    import CausalSets
     rng = Random.Xoshiro(42)
     rng2 = Random.Xoshiro(24)
 
@@ -24,10 +23,8 @@ end
 
 
 @testitem "test_merge_csets" tags = [:csetmerging] setup = [TestsCSetMerging] begin
-    using QuantumGrav
-    using CausalSets
-    using Random
-    using Distributions
+
+    import CausalSets
 
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
@@ -56,7 +53,6 @@ end
 end
 
 @testitem "test_merge_cset_throws" tags = [:csetmergingthrows] setup = [TestsCSetMerging] begin
-    using QuantumGrav
 
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
@@ -76,7 +72,6 @@ end
 end
 
 @testitem "test_insert_cset" tags = [:csetmerging] setup = [TestsCSetMerging] begin
-    using QuantumGrav
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         100,
         0.4,
@@ -102,7 +97,6 @@ end
 end
 
 @testitem "test_insert_cset_throws" tags = [:csetmergingthrows] setup = [TestsCSetMerging] begin
-    using QuantumGrav
 
     cset1, _ =
         QuantumGrav.sample_bitarray_causet_by_connectivity(50, 0.4, 10, rng; abs_tol = 0.01)
@@ -134,7 +128,8 @@ end
 
 @testitem "test_insert_KR_into_manifoldlike" tags = [:csetmerging] setup =
     [TestsCSetMerging] begin
-    using QuantumGrav
+
+    import CausalSets
 
     n2_rel = 0.05
     cset, flag, coords = QuantumGrav.insert_KR_into_manifoldlike(
@@ -148,14 +143,13 @@ end
 
     @test is_toposorted(cset)
     @test flag === true
-    @test isa(cset, BitArrayCauset)
+    @test isa(cset, CausalSets.BitArrayCauset)
     @test cset.atom_count == 200
     @test size(coords, 1) == 200
 end
 
 @testitem "test_insert_KR_into_manifoldlike_throws" tags = [:csetmergingthrows] setup =
     [TestsCSetMerging] begin
-    using QuantumGrav
 
     @test_throws ArgumentError QuantumGrav.insert_KR_into_manifoldlike(
         100,

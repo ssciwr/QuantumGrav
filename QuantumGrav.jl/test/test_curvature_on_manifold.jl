@@ -2,7 +2,6 @@
 
 
 @testsnippet CurvatureOnManifold begin
-    import CausalSets
     import Random
     Random.seed!(1234)
     rng = Random.Xoshiro(1234)
@@ -36,6 +35,8 @@ end
 
 @testitem "test_chebyshev_derivative_2D" tags = [:curvatureonmanifold] setup =
     [CurvatureOnManifold] begin
+
+    import CausalSets
 
     N = 4
     # Define coefficients for f(x,y) = x - y in Chebyshev basis
@@ -79,6 +80,7 @@ end
 
 @testitem "test_chebyshev_evaluate_2D" tags = [:curvatureonmanifold] setup =
     [CurvatureOnManifold] begin
+    import CausalSets
     N = 3
     coefs = [
         1.0 2.0 3.0 4.0;
@@ -93,6 +95,8 @@ end
 end
 
 @testitem "test_Ricci_scalar_2D" tags = [:curvatureonmanifold] setup = [CurvatureOnManifold] begin
+    import CausalSets
+
     N = 5
     # Define a flat manifold metric (identity matrix) on the grid
     # We use a simple function with zero curvature: f(x,y) = constant
@@ -117,6 +121,8 @@ end
 
 @testitem "test_Ricci_scalar_2D throws" tags = [:curvatureonmanifold, :throws] setup =
     [CurvatureOnManifold] begin
+    import CausalSets
+
     # differing orders in space and time
     coefs = [
         1.0 2.0 3.0 4.0;
@@ -129,6 +135,8 @@ end
 
 @testitem "test_Ricci_scalar_2D_of_sprinkling" tags = [:curvatureonmanifold] setup =
     [CurvatureOnManifold] begin
+    import CausalSets
+
     npoints = 100
     # Generate a sprinkling of points on 2D curved geometry
     cset, sprinkling, coefs = QuantumGrav.make_polynomial_manifold_cset(
