@@ -2,6 +2,7 @@ import QuantumGrav as QG
 import pytest
 import yaml
 import torch_geometric
+import numpy as np
 
 
 @pytest.fixture(scope="session")
@@ -41,6 +42,20 @@ def yaml_text():
                 start: 1
                 stop: 6
                 step: 2
+
+            lr: !range
+                start: 1e-5
+                stop: 1e-2
+                log: true
+                size: 4
+
+            drop_rate: !range
+                start: 0.1
+                stop: 0.5
+                step: 0.2
+
+            foo_ref: !reference
+                target: model.foo[1].x
         """
     return yaml_text
 
@@ -106,6 +121,24 @@ def test_read_yaml(yaml_text):
     assert isinstance(rn, dict)
     assert rn["type"] == "range"
     assert list(rn["values"]) == [1, 3, 5]
+
+    rn_lr = cfg["trainer"]["lr"]
+    assert isinstance(rn_lr, dict)
+    assert rn_lr["type"] == "range"
+    assert len(rn_lr["values"]) == 4
+    assert all(isinstance(v, float) for v in rn_lr["values"])
+    assert rn_lr["values"][0] >= 1e-5 and rn_lr["values"][-1] <= 1e-2
+
+    rn_drop_rate = cfg["trainer"]["drop_rate"]
+    assert isinstance(rn_drop_rate, dict)
+    assert rn_drop_rate["type"] == "range"
+    assert np.allclose(rn_drop_rate["values"], [0.1, 0.3, 0.5])
+
+    # reference node
+    ref = cfg["trainer"]["foo_ref"]
+    assert isinstance(ref, dict)
+    assert ref["type"] == "reference"
+    assert ref["target"] == ["model", "foo", 1, "x"]
 
     # type nodes
     tn = cfg["model"]["type"]

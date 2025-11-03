@@ -1,6 +1,7 @@
 epoch: !range
-  start: 2.5
-  stop: 10
+  start: 1e-5
+  stop: 1e-1
   log: true
+  size: 3
 epoch_clone: !reference
   target: something.somethingelse[1].anotherthing

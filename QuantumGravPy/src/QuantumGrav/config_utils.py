@@ -71,9 +71,13 @@ def range_constructor(
       start: 1.0e-05
       stop: 0.1
       log: true
+      size: 5
 
     In the latter case, sample value in the log domain.
     The 'step' or 'log' field is optional.
+    If there is no `size` specified for `log`, use 5 as default value.
+
+    The end value is inclusive when step is given to make it consistent with Optuna sampling.
 
     Args:
         loader (yaml.SafeLoader): loader that loads the yaml file
@@ -81,7 +85,7 @@ def range_constructor(
 
     Returns:
         Dict[str, Any]: dict of the form: {"type": "range",
-                                            "values": np.arange(start, end, step),
+                                            "values": values as np.array,
                                             "tune_values": Tuple[start, end, step or log]}
     """
     # using PyYAML's mapping constructor to ensure value types are correct
@@ -92,19 +96,25 @@ def range_constructor(
     end = mapping.get(node.value[1][0].value)
     step_or_log = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
 
+    min_num = 1e-5
+
     # prepare values
-    if step_or_log is not None and isinstance(step_or_log, bool):
+    if isinstance(step_or_log, bool):
+        size = mapping.get(node.value[3][0].value) if len(node.value) > 3 else 5
+        # in case start or end are given as 1e-5 etc., convert to float
+        start = float(start)
+        end = float(end)
         if step_or_log:  # log = true
-            values = np.exp(np.random.uniform(np.log(start), np.log(end)))
+            values = np.exp(np.random.uniform(np.log(start), np.log(end), size=size))
         else:  # log = false
-            values = np.random.uniform(start, end)
-    elif step_or_log is not None and isinstance(step_or_log, (int, float)):
-        values = np.arange(start, end, step_or_log)
-    else:
-        if isinstance(start, int) and isinstance(end, int):
-            values = np.arange(start, end, 1)
-        else:
-            values = np.arange(start, end, 0.1)
+            values = np.random.uniform(start, end, size=size)
+
+    elif isinstance(step_or_log, (int, float)):
+        values = np.arange(start, end + min_num, step_or_log)
+
+    else:  # no step or log specified
+        default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
+        values = np.arange(start, end + min_num, default_step)
 
     return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
 
