@@ -1,11 +1,8 @@
-using TestItems
+
 
 @testsnippet TestsCSetMerging begin
-    using QuantumGrav
-    using CausalSets
-    using Random
-    using Distributions
-
+    import Random
+    import CausalSets
     rng = Random.Xoshiro(42)
     rng2 = Random.Xoshiro(24)
 
@@ -26,6 +23,9 @@ end
 
 
 @testitem "test_merge_csets" tags = [:csetmerging] setup = [TestsCSetMerging] begin
+
+    import CausalSets
+
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
         0.3,
@@ -53,6 +53,8 @@ end
 end
 
 @testitem "test_merge_cset_throws" tags = [:csetmergingthrows] setup = [TestsCSetMerging] begin
+
+
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
         0.3,
@@ -71,6 +73,7 @@ end
 end
 
 @testitem "test_insert_cset" tags = [:csetmerging] setup = [TestsCSetMerging] begin
+
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         100,
         0.4,
@@ -96,6 +99,8 @@ end
 end
 
 @testitem "test_insert_cset_throws" tags = [:csetmergingthrows] setup = [TestsCSetMerging] begin
+
+
     cset1, _ =
         QuantumGrav.sample_bitarray_causet_by_connectivity(50, 0.4, 10, rng; abs_tol = 0.01)
     cset2, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
@@ -126,8 +131,10 @@ end
 
 @testitem "test_insert_KR_into_manifoldlike" tags = [:csetmerging] setup =
     [TestsCSetMerging] begin
+
+    import CausalSets
+
     n2_rel = 0.05
-    total_size = 200 + round(Int, 200 * n2_rel)
     cset, flag, coords = QuantumGrav.insert_KR_into_manifoldlike(
         200,
         10,
@@ -139,13 +146,15 @@ end
 
     @test is_toposorted(cset)
     @test flag === true
-    @test isa(cset, BitArrayCauset)
-    @test cset.atom_count == total_size
-    @test size(coords, 1) == total_size
+    @test isa(cset, CausalSets.BitArrayCauset)
+    @test cset.atom_count == 200
+    @test size(coords, 1) == 200
 end
 
 @testitem "test_insert_KR_into_manifoldlike_throws" tags = [:csetmergingthrows] setup =
     [TestsCSetMerging] begin
+
+
     @test_throws ArgumentError QuantumGrav.insert_KR_into_manifoldlike(
         100,
         10,

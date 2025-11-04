@@ -3,14 +3,14 @@
 
 
 # QuantumGrav
-Quantum gravity project experimental repo. 
+Quantum gravity project experimental repo.
 
 ## Installation
 
 ### Julia
-1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav). 
+1. Clone the repository from [here](https://github.com/ssciwr/QuantumGrav).
 
-We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
+We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself.
 
 2. Open a terminal and start the Julia REPL
 
@@ -22,34 +22,34 @@ activate path/to/your/project
 # press backspace or Ctrl+C to leave the pkg prompt
 ```
 
-4. Add the QuantumGrav package as a dependendy. This must be done from a local path
+4. Add the QuantumGrav package as a dependency. This must be done from a local path
 
-```julia 
+```julia
 # press ] to enter the package manager prompt, then:
 add /path/to/QuantumGrav/QuantumGrav.jl
 ```
-This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia. 
+This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia.
 
 ### Python
 For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/getting_started/)
 
 ## Installation as a developer
-1. Clone the repository from [here](https://ssciwr.github.io/QuantumGrav/getting_started/). 
+1. Clone the repository from [here](https://ssciwr.github.io/QuantumGrav/getting_started/).
 
 ### Julia (developer workflow)
-We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself. 
+We will assume you want to use the QuantumGrav.jl package in another environment that you create yourself.
 
-2. Open a terminal, start the Julia REPL and activate your target environment 
+2. Open a terminal, start the Julia REPL and activate your target environment
 ```bash
 activate path/to/your/project
 ```
 
-3. Check out `QuantumGrav.jl` for development 
+3. Check out `QuantumGrav.jl` for development
 ```bash
 # press ] to enter the package manager prompt, then:
 develop path/to/QuantumGrav/QuantumGrav.jl
 ```
-This will track the changes you made automatically. 
+This will track the changes you made automatically.
 
 4. Running tests from the Julia REPL (recommended for detailed output):
 ```julia
@@ -74,8 +74,6 @@ mkdocs serve
 ```
 Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package documentation [here](https://documenter.juliadocs.org/stable/).
 
-Training and evaluation scripts live under `QuantumGravPy/src/QuantumGrav/` (`train.py`, `train_ddp.py`) and can be run once dependencies are installed.
-See the [training section](./training_a_model.md) for more. 
 
 ## Notes and troubleshooting
 

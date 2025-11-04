@@ -1,17 +1,17 @@
 name: test
 
-on: 
-    push: 
-        branches: 
+on:
+    push:
+        branches:
             - main
-    pull_request: 
-    workflow_dispatch: 
+    pull_request:
+    workflow_dispatch:
 
 permissions:
     contents: read
-    actions: write 
+    actions: write
 
-jobs: 
+jobs:
     test_julia:
         runs-on: ${{ matrix.os }}
         strategy:
@@ -28,7 +28,7 @@ jobs:
                 show-versioninfo: true
             - uses: julia-actions/cache@v2
             - uses: julia-actions/julia-buildpkg@v1
-              with: 
+              with:
                 project: QuantumGrav.jl
             - uses: julia-actions/julia-runtest@v1
               with:
@@ -45,16 +45,16 @@ jobs:
               with:
                 python-version: ${{ matrix.python-version }}
             - name: install torch[CPU]
-              run: | 
+              run: |
+                ls
                 python -m pip install --upgrade pip
-                pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+                pip install -r QuantumGravPy/requirements-cpu.txt
             - name: Install package and dependencies
               working-directory: ./QuantumGravPy
               run: |
                 python -m pip install --upgrade pip
-                pip install -e .[dev]
+                pip install -e .[dev,docs]
             - name: Run tests
               working-directory: ./QuantumGravPy
               run: |
-                pytest test --cov=./src/QuantumGrav --cov-report=xml 
-            
+                pytest test --cov=./src/QuantumGrav --cov-report=xml

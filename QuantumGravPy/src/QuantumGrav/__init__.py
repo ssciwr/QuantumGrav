@@ -20,6 +20,8 @@ from .utils import (
     list_registered_pooling_aggregations,
     register_evaluation_function,
     list_evaluation_functions,
+    assign_at_path,
+    get_at_path,
 )
 from .dataset_ondisk import QGDataset
 from .gnn_model import GNNModel
@@ -29,6 +31,7 @@ from .evaluate import (
     DefaultTester,
     DefaultValidator,
 )
+from .config_utils import ConfigHandler
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
@@ -59,6 +62,9 @@ __all__ = [
     "list_registered_pooling_aggregations",
     "register_evaluation_function",
     "list_evaluation_functions",
+    # nested config helpers
+    "assign_at_path",
+    "get_at_path",
     # models
     "GNNBlock",
     "GNNModel",
@@ -73,4 +79,6 @@ __all__ = [
     "DefaultValidator",
     "DefaultTester",
     "DefaultEarlyStopping",
+    # config handler
+    "ConfigHandler",
 ]

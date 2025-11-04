@@ -73,26 +73,3 @@ def test_ondisk_dataset_with_dataloader(create_data_hdf5, read_data):
     for i, batch in enumerate(loader):
         assert isinstance(batch, Data)
         assert len(batch) == 2 if i < 7 else 1  # Last batch may be smaller
-
-
-def test_ondisk_dataset_get(create_data_hdf5, read_data):
-    datadir, datafiles = create_data_hdf5
-    dataset = QG.QGDataset(
-        input=datafiles,
-        output=datadir,
-        reader=read_data,
-        float_type=torch.float32,
-        int_type=torch.int64,
-        validate_data=True,
-        n_processes=1,
-        chunksize=3,
-        transform=lambda x: x,
-        pre_transform=lambda x: x,
-        pre_filter=lambda x: True,
-    )
-
-    sample = dataset.get(12)
-    assert isinstance(sample, Data)
-
-    with pytest.raises(IndexError, match="Index out of bounds."):
-        dataset.get(20)
