@@ -1,7 +1,7 @@
 name = "QuantumGrav"
 uuid = "f7c7699e-e939-438e-b944-97232f27dad4"
 version = "0.1.0"
-authors = ["Fabian Wagner f.wagner@thphys.uni-heidelberg.de", "Tuyen Le tuyen.le@iwr.uni-heidelberg.de", "Harald Mack <harald.mack@protonmail.com>"]
+authors = ["Fabian Wagner <f.wagner@thphys.uni-heidelberg.de>", "Tuyen Le <tuyen.le@iwr.uni-heidelberg.de>", "Harald Mack <harald.mack@protonmail.com>"]
 
 [deps]
 CausalSets = "2cd3ca5d-4cd6-4e37-88b9-1a897f702e70"
