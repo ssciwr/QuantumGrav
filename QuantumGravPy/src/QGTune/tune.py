@@ -261,7 +261,7 @@ def resolve_references(
     Args:
         config (Dict[str, Any]): The configuration dictionary.
             Values in this dictionary will be updated through recursion.
-        node (Dict[str, Any]): The current node to process.
+        node (Dict[str, Any]): The current node in the config to process.
         walked_path (List[str]): The path that has been walked so far.
         coupled_sweep_mapping (Dict[str, Any]): The mapping values for coupled sweeps.
     """
@@ -354,20 +354,16 @@ def build_search_space(
     config = load_yaml(config_file)
 
     search_space, coupled_sweep_mapping = get_suggestion(
-        config=config,
-        current_node=config,
-        trial=trial,
-        traced_param=[],
-        coupled_sweep_mapping={},
+        config=config, current_node=config, trial=trial, traced_param=[]
     )
-    search_space_with_ref = resolve_references(
-        config=config,
+    resolve_references(
+        config=search_space,
         node=search_space,
         walked_path=[],
         coupled_sweep_mapping=coupled_sweep_mapping,
     )
 
-    return search_space_with_ref, coupled_sweep_mapping
+    return search_space, coupled_sweep_mapping
 
 
 def create_study(tuning_config: Dict[str, Any]) -> None:

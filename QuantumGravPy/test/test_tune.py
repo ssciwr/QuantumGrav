@@ -94,15 +94,49 @@ def get_coupled_sweep_mapping():
 
 
 @pytest.fixture
+def get_best_config():
+    return {
+        "model": {
+            "name": "test_model",
+            "layers": 2,
+            "type": GNNBlock,
+            "convtype": SAGEConv,
+            "bs": 32,
+            "lr": 0.01,
+            "foo": [
+                {"x": 3, "y": 5},
+                {"x": 1, "y": 2},
+            ],
+            "bar": [
+                {
+                    "x": -1,
+                }
+            ],
+            "baz": [
+                {
+                    "x": -10,
+                }
+            ],
+        },
+        "trainer": {
+            "epochs": 5,
+            "lr": 0.001,
+            "drop_rate": 0.3,
+            "foo_ref": 1,
+        },
+    }
+
+
+@pytest.fixture
 def get_fixed_trial(get_best_trial):
     return optuna.trial.FixedTrial(params=get_best_trial)
 
 
 @pytest.fixture
-def get_config_file(tmp_path, get_config):
+def get_config_file(tmp_path, yaml_text):
     yaml_file = tmp_path / "sample.yaml"
     with open(yaml_file, "w") as f:
-        yaml.safe_dump(get_config, f)
+        f.write(yaml_text)
     return yaml_file
 
 
@@ -268,30 +302,22 @@ def test_convert_to_suggestion(get_config):
 def test_get_suggestions_single():
     config = {"name": "MyModel"}
     trial = optuna.trial.FixedTrial({"name": "MyModel"})
-    suggestions, _ = tune.get_suggestion(
-        config, config, trial, traced_param=[], coupled_sweep_mapping={}
-    )
+    suggestions, _ = tune.get_suggestion(config, config, trial, traced_param=[])
     assert suggestions == {"name": "MyModel"}
 
     config = {"lr": {"type": "range", "tune_values": (1e-5, 1e-1, True)}}
     trial = optuna.trial.FixedTrial({"lr": 0.0001})
-    suggestions, _ = tune.get_suggestion(
-        config, config, trial, traced_param=[], coupled_sweep_mapping={}
-    )
+    suggestions, _ = tune.get_suggestion(config, config, trial, traced_param=[])
     assert suggestions == {"lr": 0.0001}
 
     config = {"num_layers": {"type": "range", "tune_values": (1, 3, 1)}}
     trial = optuna.trial.FixedTrial({"num_layers": 2})
-    suggestions, _ = tune.get_suggestion(
-        config, config, trial, traced_param=[], coupled_sweep_mapping={}
-    )
+    suggestions, _ = tune.get_suggestion(config, config, trial, traced_param=[])
     assert suggestions == {"num_layers": 2}
 
     config = {"activation": {"type": "sweep", "values": ["relu", "tanh", "sigmoid"]}}
     trial = optuna.trial.FixedTrial({"activation": "tanh"})
-    suggestions, _ = tune.get_suggestion(
-        config, config, trial, traced_param=[], coupled_sweep_mapping={}
-    )
+    suggestions, _ = tune.get_suggestion(config, config, trial, traced_param=[])
     assert suggestions == {"activation": "tanh"}
 
 
@@ -360,13 +386,9 @@ def test_load_yaml_invalid(tmp_path):
         tune.load_yaml(tmp_path / "non_existent.yaml")
 
 
-def test_load_yaml_valid(yaml_text, tmp_path):
-    # create a temporary YAML file
-    yaml_file = tmp_path / "sample.yaml"
-    with open(yaml_file, "w") as f:
-        f.write(yaml_text)
+def test_load_yaml_valid(get_config_file):
 
-    config = tune.load_yaml(yaml_file)
+    config = tune.load_yaml(get_config_file)
 
     assert "model" in config
     assert "trainer" in config
@@ -374,35 +396,16 @@ def test_load_yaml_valid(yaml_text, tmp_path):
     assert config["trainer"]["lr"]["type"] == "range"
 
 
-# def test_build_search_space_with_dependencies_tune_all(
-#     get_config_file, get_dependencies_file, get_fixed_trial
-# ):
-#     search_space = tune.build_search_space_with_dependencies(
-#         get_config_file,
-#         get_dependencies_file,
-#         get_fixed_trial,
-#         tune_model=True,
-#         tune_training=True,
-#         base_settings_file=None,
-#     )
-
-#     expected_search_space = {
-#         "model": {
-#             "gcn_net": [
-#                 {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
-#                 {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
-#             ],
-#             "classifier": {"in_dim": 64},
-#             "num_layers": 2,
-#             "activation": "tanh",
-#             "name": "MyModel",
-#         },
-#         "training": {
-#             "lr": 0.0001,
-#             "batch_size": 32,
-#         },
-#     }
-#     assert search_space == expected_search_space
+@pytest.mark.filterwarnings("ignore::UserWarning")  # Optuna warning about (1, 6, 2)
+def test_build_search_space(
+    get_config_file, get_fixed_trial, get_best_config, get_coupled_sweep_mapping
+):
+    search_space, coupled_mapping = tune.build_search_space(
+        get_config_file,
+        get_fixed_trial,
+    )
+    assert search_space == get_best_config
+    assert coupled_mapping == get_coupled_sweep_mapping
 
 
 def test_create_study(get_tune_config):
