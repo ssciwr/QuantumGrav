@@ -6,61 +6,6 @@ import numpy as np
 
 
 @pytest.fixture(scope="session")
-def yaml_text():
-    yaml_text = """
-        model:
-            name: test_model
-            layers: !sweep
-                values: [1, 2]
-
-            type: !pyobject QuantumGrav.GNNBlock
-            convtype: !pyobject torch_geometric.nn.SAGEConv
-            bs: !coupled-sweep
-                target: model.layers
-                values: [16, 32]
-            lr: !sweep
-                values: [0.1, 0.01, 0.001]
-            foo:
-                -
-                    x: 3
-                    y: 5
-                -
-                    x: !sweep
-                        values: [1, 2]
-                    y: 2
-            bar:
-                - x: !coupled-sweep
-                    target: model.foo[1].x
-                    values: [-1, -2]
-            baz:
-                - x: !coupled-sweep
-                    target: model.foo[1].x
-                    values: [-10, -20]
-
-        trainer:
-            epochs: !range
-                start: 1
-                stop: 6
-                step: 2
-
-            lr: !range
-                start: 1e-5
-                stop: 1e-2
-                log: true
-                size: 4
-
-            drop_rate: !range
-                start: 0.1
-                stop: 0.5
-                step: 0.2
-
-            foo_ref: !reference
-                target: model.foo[1].x
-        """
-    return yaml_text
-
-
-@pytest.fixture(scope="session")
 def yaml_text_nonsweep():
     yaml_text = """
         model:
@@ -121,6 +66,7 @@ def test_read_yaml(yaml_text):
     assert isinstance(rn, dict)
     assert rn["type"] == "range"
     assert list(rn["values"]) == [1, 3, 5]
+    assert rn["tune_values"] == (1, 6, 2)
 
     rn_lr = cfg["trainer"]["lr"]
     assert isinstance(rn_lr, dict)
@@ -128,11 +74,13 @@ def test_read_yaml(yaml_text):
     assert len(rn_lr["values"]) == 4
     assert all(isinstance(v, float) for v in rn_lr["values"])
     assert rn_lr["values"][0] >= 1e-5 and rn_lr["values"][-1] <= 1e-2
+    assert rn_lr["tune_values"] == (1e-5, 1e-2, True)
 
     rn_drop_rate = cfg["trainer"]["drop_rate"]
     assert isinstance(rn_drop_rate, dict)
     assert rn_drop_rate["type"] == "range"
     assert np.allclose(rn_drop_rate["values"], [0.1, 0.3, 0.5])
+    assert np.allclose(rn_drop_rate["tune_values"], (0.1, 0.5, 0.2))
 
     # reference node
     ref = cfg["trainer"]["foo_ref"]

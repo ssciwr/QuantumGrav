@@ -56,15 +56,14 @@ def is_float_suggestion(value: Any) -> bool:
             and the third is either a float or a bool.
             False otherwise.
     """
-    is_tuple_of_3 = len(value) == 3
-    num_values = tuple(value) if is_tuple_of_3 else ()
+    is_tuple_of_3 = isinstance(value, tuple) and len(value) == 3
     two_floats = (
-        (isinstance(num_values[0], float) and isinstance(num_values[1], float))
+        (isinstance(value[0], float) and isinstance(value[1], float))
         if is_tuple_of_3
         else False
     )
     third_is_float_or_bool = (
-        (isinstance(num_values[2], float) or isinstance(num_values[2], bool))
+        (isinstance(value[2], float) or isinstance(value[2], bool))
         if is_tuple_of_3
         else False
     )
@@ -84,31 +83,28 @@ def is_int_suggestion(value: Any) -> bool:
             All three are integers.
             False otherwise.
     """
-    is_tuple_of_3 = len(value) == 3
-    num_values = tuple(value) if is_tuple_of_3 else ()
-    all_ints = all(isinstance(v, int) for v in num_values) if is_tuple_of_3 else False
+    is_tuple_of_3 = isinstance(value, tuple) and len(value) == 3
+    all_ints = all(isinstance(v, int) for v in value) if is_tuple_of_3 else False
     return is_tuple_of_3 and all_ints
 
 
-def get_value_of_ref(config: Dict[str, Any], ref_path: str) -> Any:
+def get_value_of_ref(config: Dict[str, Any], ref_path: List[Any]) -> Any:
     """Get the value pointed by a reference path in the configuration dictionary.
 
     Args:
         config (Dict[str, Any]): The configuration dictionary.
-        ref_path (str): The reference path to a position in the config.
+        ref_path (List[Any]): The reference path to a position in the config.
             E.g. `gcn_net[0].out_dim`
 
     Returns:
         Any: The value pointed by the reference path.
     """
-    parts = ref_path.replace("]", "").replace("[", ".").split(".")
     current = config
-    for part in parts:
+    for part in ref_path:
         try:
-            index = int(part)
-            current = current[index]
-        except ValueError:  # part is not an integer
-            current = current.get(part)
+            current = current[part]
+        except Exception:
+            raise ValueError(f"Invalid reference path: {ref_path}")
     return current
 
 
@@ -129,14 +125,13 @@ def convert_to_suggestion(
     Returns:
         Any: The converted value.
     """
-    node_type = node.get("type")
-    is_sweep = node_type == "sweep"
-    is_coupled_sweep = node_type == "coupled-sweep"
-    is_range = node_type == "range"
+    is_sweep = isinstance(node, dict) and node.get("type") == "sweep"
+    is_coupled_sweep = isinstance(node, dict) and node.get("type") == "coupled-sweep"
+    is_range = isinstance(node, dict) and node.get("type") == "range"
 
     if is_range:
         node_values = node.get("tune_values")
-    else:
+    elif is_sweep or is_coupled_sweep:
         node_values = node.get("values")
 
     if is_sweep and is_categorical_suggestion(node_values):
@@ -158,7 +153,12 @@ def convert_to_suggestion(
         )
     elif is_coupled_sweep:
         # return dictionary mapping target values and coupled values
-        target_values = get_value_of_ref(config, node.get("target"))
+        target_node = get_value_of_ref(config, node.get("target"))
+        if target_node.get("type") != "sweep":
+            raise ValueError(
+                f"Target of coupled-sweep {node.get('target')} is not a sweep node."
+            )
+        target_values = target_node.get("values")
         coupled_values = node.get("values")
         if len(target_values) != len(coupled_values):
             raise ValueError(
@@ -183,7 +183,6 @@ def get_suggestion(
     current_node: Dict[str, Any] | List,
     trial: optuna.trial.Trial,
     traced_param: list = [],
-    coupled_sweep_mapping: Dict[str, Any] = {},
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Get a dictionary of suggestions from a configuration dictionary.
 
@@ -192,12 +191,13 @@ def get_suggestion(
         current_node (Dict[str, Any] | List): The current configuration node.
         trial (optuna.trial.Trial): The Optuna trial object.
         traced_param (list, optional): The list of traced parameters.
-        coupled_sweep_mapping (Dict[str, Any], optional): The mapping for coupled sweeps.
 
     Returns:
         Tuple[Dict[str, Any], Dict[str, Any]]: A tuple containing:
             - A dictionary of suggestions.
             - A dictionary mapping coupled sweep targets to their values.
+                Key is the full path to the coupled sweep node.
+                Value is the mapping dict between target values and coupled values.
     """
     if isinstance(current_node, list):
         items = enumerate(current_node)
@@ -207,6 +207,12 @@ def get_suggestion(
         suggestions = {}
     else:
         return {}
+
+    # store coupled sweep mappings under the current node
+    # key is full path to the coupled sweep node
+    # value is the mapping dict between target values and coupled values
+    # e.g. {"model.bar.0.x": { -1: -10, -2: -20 }
+    coupled_sweep_mapping = {}
 
     for param, value in items:
         traced_param.append(str(param))
@@ -229,9 +235,11 @@ def get_suggestion(
         elif (is_dict and suggestion.get("type") != "coupled-sweep-mapping") or (
             is_list and not is_flat_list(suggestion)
         ):
-            suggestions[param], coupled_sweep_mapping[traced_name] = get_suggestion(
-                config, suggestion, trial, traced_param, coupled_sweep_mapping
+            suggestions[param], tmp_coupled_mapping = get_suggestion(
+                config, suggestion, trial, traced_param
             )
+            if tmp_coupled_mapping:
+                coupled_sweep_mapping.update(tmp_coupled_mapping)
 
         # Handle simple (base) suggestions
         else:
@@ -251,20 +259,19 @@ def resolve_references(
     """Recursively resolve references in a configuration dictionary.
 
     Args:
-        config (Dict[str, Any]): The configuration dictionary. Vaues in this dictionary will be updated through recursion.
+        config (Dict[str, Any]): The configuration dictionary.
+            Values in this dictionary will be updated through recursion.
         node (Dict[str, Any]): The current node to process.
         walked_path (List[str]): The path that has been walked so far.
         coupled_sweep_mapping (Dict[str, Any]): The mapping values for coupled sweeps.
     """
 
-    def set_value_at_path(
-        root: Dict[str, Any], path: List[str], key: Any, value: Any
-    ) -> None:
+    def set_value_at_path(root: Dict[str, Any], path: List[str], value: Any) -> None:
         """Navigate to the parent specified by `path` and set `key` to `value`."""
         parent = root
-        for step in path:
+        for step in path[:-1]:
             parent = parent[step]
-        parent[key] = value
+        parent[path[-1]] = value
 
     def resolve_reference(ref_dict: Dict[str, Any]) -> Any:
         """Resolve a 'reference' node."""
@@ -272,13 +279,13 @@ def resolve_references(
         return get_value_of_ref(config, ref_path)
 
     def resolve_coupled_mapping(
-        mapping_dict: Dict[str, Any], full_path: List[str]
+        mapping_dict: Dict[str, Any], full_path: List[str | int]
     ) -> Any:
         """Resolve a 'coupled-sweep-mapping' node."""
         ref_path = mapping_dict.get("target")
         target_value = get_value_of_ref(config, ref_path)
 
-        coupled_node = ".".join(full_path)
+        coupled_node = ".".join([str(part) for part in full_path])
         coupled_values = coupled_sweep_mapping.get(coupled_node)
         if coupled_values is None:
             raise ValueError(f"No coupled sweep mapping found for {coupled_node}.")
@@ -288,6 +295,18 @@ def resolve_references(
             )
         return coupled_values[target_value]
 
+    # reference cases
+    if isinstance(node, dict) and node.get("type") == "reference":
+        resolved_value = resolve_reference(node)
+        set_value_at_path(config, walked_path, resolved_value)
+        return
+
+    elif isinstance(node, dict) and node.get("type") == "coupled-sweep-mapping":
+        resolved_value = resolve_coupled_mapping(node, walked_path)
+        set_value_at_path(config, walked_path, resolved_value)
+        return
+
+    # recursive cases
     # determine items to iterate over
     if isinstance(node, dict):
         items = node.items()
@@ -297,32 +316,14 @@ def resolve_references(
         return
 
     for key, value in items:
-        # recursive cases
-        if isinstance(value, list) or (
-            isinstance(value, dict)
-            and value.get("type") not in ["reference", "coupled-sweep-mapping"]
-        ):
-            resolve_references(
-                config, value, walked_path + [key], coupled_sweep_mapping
-            )
-            continue
-
-        # reference cases
-        if isinstance(value, dict) and value.get("type") == "reference":
-            resolved_value = resolve_reference(value)
-            set_value_at_path(config, walked_path, key, resolved_value)
-
-        elif isinstance(value, dict) and value.get("type") == "coupled-sweep-mapping":
-            resolved_value = resolve_coupled_mapping(value, walked_path + [key])
-            set_value_at_path(config, walked_path, key, resolved_value)
+        resolve_references(config, value, walked_path + [key], coupled_sweep_mapping)
 
 
-def load_yaml(file: Path | str, description: str) -> Dict[str, Any]:
+def load_yaml(file: Path | str) -> Dict[str, Any]:
     """Load a YAML file, raising an error if it doesn't exist.
 
     Args:
         file (Path | str): Path to the YAML file.
-        description (str): Description of the file for error messages.
 
     Returns:
         Dict[str, Any]: The contents of the YAML file as a dictionary.
@@ -331,75 +332,42 @@ def load_yaml(file: Path | str, description: str) -> Dict[str, Any]:
         raise FileNotFoundError(f"File {file} does not exist.")
     custom_loader = QG.config_utils.get_loader()
     with open(file, "r") as f:
-        return yaml.safe_load(f, Loader=custom_loader)
+        return yaml.load(f, Loader=custom_loader)
 
 
-def build_search_space_with_dependencies(
-    search_space_file: Path,
-    depmap_file: Path,
+def build_search_space(
+    config_file: Path,
     trial: optuna.trial.Trial,
-    tune_model: bool = False,
-    tune_training: bool = True,
-    base_settings_file: Path = None,
-    built_search_space_file: Path = None,
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Build a hyperparameter search space from a YAML configuration file
-    and a dependency map file, using an Optuna trial object.
+    and an Optuna trial object.
 
     Args:
-        search_space_file (Path): Path to the YAML configuration file.
-        depmap_file (Path): Path to the dependency map YAML file.
-        trial (optuna.trial.Trial): Optuna trial object for suggesting hyperparameters.
-        tune_model (bool, optional): Whether to tune model hyperparameters.
-            Defaults to False, meaning values for model will be taken from base settings.
-        tune_training (bool, optional): Whether to tune training hyperparameters.
-            Defaults to True, meaning values for training will be taken from search space.
-        base_settings_file (Path, optional): Path to the base settings YAML file.
-            This is required if either `tune_model` or `tune_training` is False.
-            Defaults to None.
-        built_search_space_file (Path, optional): Path to save the built search space
-            with dependencies applied. If None, the built search space will not be saved.
-            Defaults to None.
+        config_file (Path): Path to the configuration YAML file.
+        trial (optuna.trial.Trial): The Optuna trial object.
 
     Returns:
-        Dict[str, Any]: A dictionary representing the hyperparameter search space
-            with dependencies applied.
+        Tuple[Dict[str, Any], Dict[str, Any]]: A tuple containing:
+            - The search space dictionary with resolved references.
+            - A dictionary mapping coupled sweep targets to their values.
     """
-    search_space = load_yaml(search_space_file, description="Search space")
-    depmap = load_yaml(depmap_file, description="Dependency map")
-    base_settings = {}
+    config = load_yaml(config_file)
 
-    if not tune_model or not tune_training:
-        base_settings = load_yaml(
-            base_settings_file,
-            description="Base settings file is required "
-            "if you do not want to tune model or training. Base settings",
-        )
+    search_space, coupled_sweep_mapping = get_suggestion(
+        config=config,
+        current_node=config,
+        trial=trial,
+        traced_param=[],
+        coupled_sweep_mapping={},
+    )
+    search_space_with_ref = resolve_references(
+        config=config,
+        node=search_space,
+        walked_path=[],
+        coupled_sweep_mapping=coupled_sweep_mapping,
+    )
 
-        if not tune_model:
-            search_space["model"] = base_settings["model"]
-        if not tune_training:
-            search_space["training"] = base_settings["training"]
-
-    search_space_with_suggestions = get_suggestion(search_space, trial)
-    search_space_with_deps = apply_dependencies(search_space_with_suggestions, depmap)
-
-    if built_search_space_file:
-        with open(built_search_space_file, "w") as f:
-            yaml.safe_dump(search_space_with_deps, f)
-    return search_space_with_deps
-
-
-def get_tuning_settings(tuning_config_path: Path) -> Dict[str, Any]:
-    """Get hyperparameter tuning settings from a YAML configuration file.
-
-    Args:
-        tuning_config_path (Path): Path to the tuning configuration YAML file.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the tuning settings.
-    """
-    return load_yaml(tuning_config_path, description="Tuning config")
+    return search_space_with_ref, coupled_sweep_mapping
 
 
 def create_study(tuning_config: Dict[str, Any]) -> None:
@@ -439,74 +407,77 @@ def create_study(tuning_config: Dict[str, Any]) -> None:
     return study
 
 
-def save_best_trial(study: optuna.study.Study, output_path: Path) -> None:
-    """Save the best trial of an Optuna study to a YAML file.
+def get_best_trial(study: optuna.study.Study, output_path: Path | None = None) -> None:
+    """Get the best trial of an Optuna study
+    and save its parameters to a YAML file if the output path is provided.
+
+    The best trial only contains parameters that were sampled by Optuna.
 
     Args:
         study (optuna.study.Study): The Optuna study object.
-        output_path (Path): Path to the output YAML file.
+        output_path (Path | None): Path to the output YAML file.
+            Default is None.
     """
     best_trial = study.best_trial
     best_params = best_trial.params
 
-    with open(output_path, "w") as file:
-        yaml.safe_dump(best_params, file)
+    if output_path is not None:
+        with open(output_path, "w") as file:
+            yaml.safe_dump(best_params, file)
 
-    print(f"Best trial parameters saved to {output_path}.")
+        print(f"Best trial parameters saved to {output_path}.")
+
+    return best_params
 
 
 def save_best_config(
-    built_search_space_file: Path,
-    best_trial_file: Path,
-    depmap_file: Path,
+    config: Dict[str, Any],
+    best_params: Dict[str, Any],
+    coupled_sweep_mapping: Dict[str, Any],
     output_file: Path,
 ):
     """Save the best configuration by combining the best trial parameters
-    with the built search space.
+    with the original config file.
 
     Args:
-        built_search_space_file (Path): Path to the built search space YAML file.
-        best_trial_file (Path): Path to the best trial parameters YAML file.
-            Keys in this file are joined keys from the built search space.
-        depmap_file (Path): Path to the dependency map YAML file.
-            This is necessary to resolve dependencies in the built search space.
-            As the built search space was saved with first trial values.
+        config (Dict[str, Any]): The original configuration dictionary.
+        best_params (Dict[str, Any]): The best trial parameters.
+        coupled_sweep_mapping (Dict[str, Any]): The mapping for coupled sweeps.
         output_file (Path): Path to the output YAML file for the best configuration.
     """
     if not output_file:
         raise ValueError("Output file path must be provided.")
 
-    built_search_space = load_yaml(
-        built_search_space_file, description="Built search space"
-    )
-    best_trial = load_yaml(best_trial_file, description="Best trial")
+    best_config = copy.deepcopy(config)
 
-    best_config = copy.deepcopy(built_search_space)
-
-    def _get_next(current: dict, part: str | int):
+    def get_next(current: dict, part: str | int):
         try:
             index = int(part)
             return current[index]
         except ValueError:
             return current.get(part)
 
-    def _set_next(current: dict, part: str | int, value: Any):
+    def set_next(current: dict, part: str | int, value: Any):
         try:
             index = int(part)
             current[index] = value
         except ValueError:
             current[part] = value
 
-    for key, value in best_trial.items():
+    for key, value in best_params.items():
         parts = key.split(".")
         current = best_config
         for part in parts[:-1]:
-            current = _get_next(current, part)
-        _set_next(current, parts[-1], value)
+            current = get_next(current, part)
+        set_next(current, parts[-1], value)
 
     # apply dependencies to resolve any changes
-    depmap = load_yaml(depmap_file, description="Dependency map")
-    best_config = apply_dependencies(best_config, depmap)
+    best_config = resolve_references(
+        config=best_config,
+        node=best_config,
+        walked_path=[],
+        coupled_sweep_mapping=coupled_sweep_mapping,
+    )
 
     with open(output_file, "w") as file:
         yaml.safe_dump(best_config, file)

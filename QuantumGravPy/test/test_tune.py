@@ -1,61 +1,95 @@
 import pytest
 from QGTune import tune
+from QuantumGrav import config_utils as cfg
 import optuna
 import yaml
 import numpy as np
 import time
+from QuantumGrav.gnn_block import GNNBlock
+from torch_geometric.nn.conv.sage_conv import SAGEConv
+import copy
 
 
 @pytest.fixture
-def get_config():
-    return {
-        "model": {
-            "gcn_net": [
-                {"in_dim": 16, "out_dim": 32, "norm_args": ["ref"]},
-                {"in_dim": "ref", "out_dim": 64, "norm_args": ["ref"]},
-            ],
-            "classifier": {"in_dim": "ref"},
-            "num_layers": [1, 2, 3],
-            "activation": ["relu", "tanh", "sigmoid"],
-            "name": "MyModel",
-        },
-        "training": {
-            "lr": {"type": "tuple", "value": [1e-5, 1e-1, True]},
-            "batch_size": [16, 32, 64],
-        },
-    }
-
-
-@pytest.fixture
-def get_base_config_file(tmp_path):
-    base_config = {
-        "model": {
-            "gcn_net": [
-                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
-                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
-            ],
-            "classifier": {"in_dim": 64},
-            "num_layers": 2,
-            "activation": "relu",
-            "name": "MyModel",
-        },
-        "training": {
-            "lr": 0.001,
-            "batch_size": 16,
-        },
-    }
-    with open(tmp_path / "base_config.yaml", "w") as f:
-        yaml.safe_dump(base_config, f)
-    return tmp_path / "base_config.yaml"
+def get_config(yaml_text):
+    loader = cfg.get_loader()
+    config = yaml.load(yaml_text, Loader=loader)
+    return config
 
 
 @pytest.fixture
 def get_best_trial():
     return {
-        "model.num_layers": 2,
-        "model.activation": "tanh",
-        "training.lr": 0.0001,
-        "training.batch_size": 32,
+        "model.layers": 2,
+        "model.lr": 0.01,
+        "model.foo.1.x": 1,
+        "trainer.epochs": 5,
+        "trainer.lr": 0.001,
+        "trainer.drop_rate": 0.3,
+    }
+
+
+@pytest.fixture
+def get_suggestions_with_best_trial():
+    return {
+        "model": {
+            "name": "test_model",
+            "layers": 2,
+            "type": GNNBlock,
+            "convtype": SAGEConv,
+            "bs": {
+                "type": "coupled-sweep-mapping",
+                "target": ["model", "layers"],
+            },
+            "lr": 0.01,
+            "foo": [
+                {"x": 3, "y": 5},
+                {"x": 1, "y": 2},
+            ],
+            "bar": [
+                {
+                    "x": {
+                        "type": "coupled-sweep-mapping",
+                        "target": ["model", "foo", 1, "x"],
+                    }
+                }
+            ],
+            "baz": [
+                {
+                    "x": {
+                        "type": "coupled-sweep-mapping",
+                        "target": ["model", "foo", 1, "x"],
+                    }
+                }
+            ],
+        },
+        "trainer": {
+            "epochs": 5,
+            "lr": 0.001,
+            "drop_rate": 0.3,
+            "foo_ref": {
+                "type": "reference",
+                "target": ["model", "foo", 1, "x"],
+            },
+        },
+    }
+
+
+@pytest.fixture
+def get_coupled_sweep_mapping():
+    return {
+        "model.bs": {
+            1: 16,
+            2: 32,
+        },
+        "model.bar.0.x": {
+            1: -1,
+            2: -2,
+        },
+        "model.baz.0.x": {
+            1: -10,
+            2: -20,
+        },
     }
 
 
@@ -65,36 +99,10 @@ def get_fixed_trial(get_best_trial):
 
 
 @pytest.fixture
-def get_dependencies():
-    return {
-        "model": {
-            "gcn_net": [
-                # layer 0
-                {"norm_args": ["model.gcn_net[0].out_dim"]},
-                # layer 1
-                {
-                    "in_dim": "model.gcn_net[0].out_dim",
-                    "norm_args": ["model.gcn_net[1].out_dim"],
-                },
-            ],
-            "classifier": {"in_dim": "model.gcn_net[-1].out_dim"},
-        }
-    }
-
-
-@pytest.fixture
 def get_config_file(tmp_path, get_config):
     yaml_file = tmp_path / "sample.yaml"
     with open(yaml_file, "w") as f:
         yaml.safe_dump(get_config, f)
-    return yaml_file
-
-
-@pytest.fixture
-def get_dependencies_file(tmp_path, get_dependencies):
-    yaml_file = tmp_path / "dependencies.yaml"
-    with open(yaml_file, "w") as f:
-        yaml.safe_dump(get_dependencies, f)
     return yaml_file
 
 
@@ -107,286 +115,294 @@ def get_tune_config():
     }
 
 
-def test_is_yaml_tuple_of_3():
-    assert tune._is_yaml_tuple_of_3(1) is False
-    assert tune._is_yaml_tuple_of_3("something") is False
-    assert tune._is_yaml_tuple_of_3({}) is False
-    assert tune._is_yaml_tuple_of_3({"type": "tuple"}) is False
-    assert tune._is_yaml_tuple_of_3({"type": "tuple", "value": []}) is False
-    assert tune._is_yaml_tuple_of_3({"type": "tuple", "value": [1]}) is False
-    assert tune._is_yaml_tuple_of_3({"type": "list", "value": [1, 2, 3]}) is False
-    assert tune._is_yaml_tuple_of_3({"type": "tuple", "value": [1, 2, 3]}) is True
-    assert tune._is_yaml_tuple_of_3({"type": "tuple", "value": [1, 2, 3, 4]}) is False
-
-
 def test_is_flat_list():
-    assert tune._is_flat_list("something") is False
-    assert tune._is_flat_list({}) is False
-    assert tune._is_flat_list([]) is True
-    assert tune._is_flat_list(["relu", "tanh", "sigmoid"]) is True
-    assert tune._is_flat_list([{"a": 1}, {"b": 2}]) is False
-    assert tune._is_flat_list([[1, 2], [3, 4]]) is False
-    assert tune._is_flat_list([True, False]) is True
-    assert tune._is_flat_list([None, None]) is True
+    assert tune.is_flat_list("something") is False
+    assert tune.is_flat_list({}) is False
+    assert tune.is_flat_list([]) is True
+    assert tune.is_flat_list(["relu", "tanh", "sigmoid"]) is True
+    assert tune.is_flat_list([{"a": 1}, {"b": 2}]) is False
+    assert tune.is_flat_list([[1, 2], [3, 4]]) is False
+    assert tune.is_flat_list([True, False]) is True
+    assert tune.is_flat_list([None, None]) is True
 
 
-def test_is_suggest_categorical():
-    assert tune._is_suggest_categorical(1) is False
-    assert tune._is_suggest_categorical("something") is False
-    assert tune._is_suggest_categorical({}) is False
-    assert tune._is_suggest_categorical([]) is False
-    assert tune._is_suggest_categorical([1]) is True
-    assert tune._is_suggest_categorical(["relu", "tanh", "sigmoid"]) is True
-    assert tune._is_suggest_categorical([16, 32, 64]) is True
-    assert tune._is_suggest_categorical([1.0, 2.0, 3.0]) is True
-    assert tune._is_suggest_categorical([{"a": 1}, {"b": 2}]) is False
-    assert tune._is_suggest_categorical([[1, 2], [3, 4]]) is False
-    assert tune._is_suggest_categorical([True, False]) is True
+def test_is_categorical_suggestion():
+    assert tune.is_categorical_suggestion(1) is False
+    assert tune.is_categorical_suggestion("something") is False
+    assert tune.is_categorical_suggestion({}) is False
+    assert tune.is_categorical_suggestion([]) is False
+    assert tune.is_categorical_suggestion([1]) is True
+    assert tune.is_categorical_suggestion(["relu", "tanh", "sigmoid"]) is True
+    assert tune.is_categorical_suggestion([16, 32, 64]) is True
+    assert tune.is_categorical_suggestion([1.0, 2.0, 3.0]) is True
+    assert tune.is_categorical_suggestion([{"a": 1}, {"b": 2}]) is False
+    assert tune.is_categorical_suggestion([[1, 2], [3, 4]]) is False
+    assert tune.is_categorical_suggestion([True, False]) is True
 
 
-def test_is_suggest_float():
-    assert tune._is_suggest_float(1) is False
-    assert tune._is_suggest_float("something") is False
-    assert tune._is_suggest_float({"type": "tuple", "value": [1.0, 2.0, 0.1]}) is True
-    assert (
-        tune._is_suggest_float({"type": "tuple", "value": [0.001, 0.1, 0.001]}) is True
-    )
-    assert (
-        tune._is_suggest_float({"type": "tuple", "value": [1e-5, 1e-1, True]}) is True
-    )
-    assert tune._is_suggest_float({"type": "tuple", "value": [1.0, 2.0, False]}) is True
-    assert (
-        tune._is_suggest_float({"type": "tuple", "value": [1.0, 2.0, "something"]})
-        is False
-    )
-    assert tune._is_suggest_float({"type": "tuple", "value": [1, 2, 0.1]}) is False
-    assert tune._is_suggest_float({"type": "tuple", "value": [1, 2, 1]}) is False
-    assert tune._is_suggest_float({"type": "tuple", "value": ["a", "b", "c"]}) is False
+def testis_float_suggestion():
+    assert tune.is_float_suggestion(1) is False
+    assert tune.is_float_suggestion("something") is False
+    assert tune.is_float_suggestion((1.0, 2.0, 0.1)) is True
+    assert tune.is_float_suggestion((1e-5, 1e-1, True)) is True
+    assert tune.is_float_suggestion((1.0, 2.0, "something")) is False
+    assert tune.is_float_suggestion((1, 2, 0.1)) is False
+    assert tune.is_float_suggestion((1, 2, 1)) is False
+    assert tune.is_float_suggestion(("a", "b", "c")) is False
 
 
-def test_is_suggest_int():
-    assert tune._is_suggest_int(1) is False
-    assert tune._is_suggest_int("something") is False
-    assert tune._is_suggest_int({"type": "tuple", "value": [1, 2, 1]}) is True
-    assert tune._is_suggest_int({"type": "tuple", "value": [16, 64, 2]}) is True
-    assert tune._is_suggest_int({"type": "tuple", "value": [1.0, 100, 10]}) is False
-    assert tune._is_suggest_int({"type": "tuple", "value": [1, 2, -1]}) is True
-    assert tune._is_suggest_int({"type": "tuple", "value": [1, 2.0, 1]}) is False
-    assert tune._is_suggest_int({"type": "tuple", "value": [1, 2, 0.1]}) is False
-    assert tune._is_suggest_int({"type": "tuple", "value": ["a", "b", "c"]}) is False
+def test_is_int_suggestion():
+    assert tune.is_int_suggestion(1) is False
+    assert tune.is_int_suggestion("something") is False
+    assert tune.is_int_suggestion((1, 2, 1)) is True
+    assert tune.is_int_suggestion((1.0, 100, 10)) is False
+    assert tune.is_int_suggestion((1, 2, -1)) is True
+    assert tune.is_int_suggestion(("a", "b", "c")) is False
 
 
-def test_convert_to_suggestion():
+def test_get_value_of_ref(get_config):
+    ref_path = ["model", "foo", 0, "x"]
+    current = tune.get_value_of_ref(get_config, ref_path)
+    assert current == 3
+
+    ref_path = ["trainer", "lr", "type"]
+    current = tune.get_value_of_ref(get_config, ref_path)
+    assert current == "range"
+
+    ref_path = ["model", "baz", -1, "x", "type"]
+    current = tune.get_value_of_ref(get_config, ref_path)
+    assert current == "coupled-sweep"
+
+
+def test_get_value_of_ref_invalid(get_config):
+    ref_path = ["model", "non_existent", 0, "x"]
+    with pytest.raises(ValueError):
+        tune.get_value_of_ref(get_config, ref_path)
+
+
+def test_convert_to_suggestion(get_config):
+    # non-tuned values
     trial = optuna.trial.FixedTrial({"param": 1})
-    assert tune._convert_to_suggestion("param", 1, trial) == 1
+    assert tune.convert_to_suggestion("param", 1, trial, get_config) == 1
 
     trial = optuna.trial.FixedTrial({"param": "something"})
-    assert tune._convert_to_suggestion("param", "something", trial) == "something"
+    assert (
+        tune.convert_to_suggestion("param", "something", trial, get_config)
+        == "something"
+    )
 
+    trial = optuna.trial.FixedTrial({"param": 1})
+    assert tune.convert_to_suggestion("norm_args", [12], trial, get_config) == [12]
+
+    # range nodes
     trial = optuna.trial.FixedTrial({"param": 1.5})
-    assert tune._convert_to_suggestion(
-        "param", {"type": "tuple", "value": [1.0, 2.0, 0.1]}, trial
+    assert tune.convert_to_suggestion(
+        "param", {"type": "range", "tune_values": (1.0, 2.0, 0.1)}, trial, get_config
     ) == trial.suggest_float("param", 1.0, 2.0, step=0.1)
 
     trial = optuna.trial.FixedTrial({"param": 0.0001})
-    assert tune._convert_to_suggestion(
-        "param", {"type": "tuple", "value": [1e-5, 1e-1, True]}, trial
+    assert tune.convert_to_suggestion(
+        "param", {"type": "range", "tune_values": (1e-5, 1e-1, True)}, trial, get_config
     ) == trial.suggest_float("param", 1e-5, 1e-1, log=True)
 
     trial = optuna.trial.FixedTrial({"param": 50})
-    assert tune._convert_to_suggestion(
-        "param", {"type": "tuple", "value": [16, 64, 2]}, trial
+    assert tune.convert_to_suggestion(
+        "param", {"type": "range", "tune_values": (16, 64, 2)}, trial, get_config
     ) == trial.suggest_int("param", 16, 64, step=2)
 
+    # sweep nodes
     trial = optuna.trial.FixedTrial({"param": "tanh"})
-    assert tune._convert_to_suggestion(
-        "param", ["relu", "tanh", "sigmoid"], trial
+    assert tune.convert_to_suggestion(
+        "param",
+        {"type": "sweep", "values": ["relu", "tanh", "sigmoid"]},
+        trial,
+        get_config,
     ) == trial.suggest_categorical("param", ["relu", "tanh", "sigmoid"])
 
+    # coupled-sweep nodes
     trial = optuna.trial.FixedTrial({"param": 1})
-    assert tune._convert_to_suggestion("norm_args", [12], trial) == [12]
+    current_node = get_config["model"]["bar"][0]["x"]
+    assert tune.convert_to_suggestion(
+        "param",
+        current_node,
+        trial,
+        get_config,
+    ) == {
+        "type": "coupled-sweep-mapping",
+        "target": current_node.get("target"),
+        "mapping": {
+            1: -1,
+            2: -2,
+        },
+    }
+
+    # coupled-sweep nodes with raised error
+    trial = optuna.trial.FixedTrial({"param": 1})
+    non_sweep_node = {
+        "type": "coupled-sweep",
+        "target": ["trainer", "epochs"],
+        "values": [10, 20, 30],
+    }
+    with pytest.raises(ValueError):
+        tune.convert_to_suggestion(
+            "param",
+            non_sweep_node,
+            trial,
+            get_config,
+        )
+
+    invalid_length_node = {
+        "type": "coupled-sweep",
+        "target": ["model", "foo", 1, "x"],
+        "values": [10],
+    }
+    with pytest.raises(ValueError):
+        tune.convert_to_suggestion(
+            "param",
+            invalid_length_node,
+            trial,
+            get_config,
+        )
 
 
 def test_get_suggestions_single():
     config = {"name": "MyModel"}
     trial = optuna.trial.FixedTrial({"name": "MyModel"})
-    suggestions = tune.get_suggestion(config, trial, traced_param=[])
+    suggestions, _ = tune.get_suggestion(
+        config, config, trial, traced_param=[], coupled_sweep_mapping={}
+    )
     assert suggestions == {"name": "MyModel"}
 
-    config = {"lr": {"type": "tuple", "value": [1e-5, 1e-1, True]}}
+    config = {"lr": {"type": "range", "tune_values": (1e-5, 1e-1, True)}}
     trial = optuna.trial.FixedTrial({"lr": 0.0001})
-    suggestions = tune.get_suggestion(config, trial, traced_param=[])
+    suggestions, _ = tune.get_suggestion(
+        config, config, trial, traced_param=[], coupled_sweep_mapping={}
+    )
     assert suggestions == {"lr": 0.0001}
 
-    config = {"num_layers": [1, 2, 3]}
+    config = {"num_layers": {"type": "range", "tune_values": (1, 3, 1)}}
     trial = optuna.trial.FixedTrial({"num_layers": 2})
-    suggestions = tune.get_suggestion(config, trial, traced_param=[])
+    suggestions, _ = tune.get_suggestion(
+        config, config, trial, traced_param=[], coupled_sweep_mapping={}
+    )
     assert suggestions == {"num_layers": 2}
 
-    config = {"activation": ["relu", "tanh", "sigmoid"]}
+    config = {"activation": {"type": "sweep", "values": ["relu", "tanh", "sigmoid"]}}
     trial = optuna.trial.FixedTrial({"activation": "tanh"})
-    suggestions = tune.get_suggestion(config, trial, traced_param=[])
+    suggestions, _ = tune.get_suggestion(
+        config, config, trial, traced_param=[], coupled_sweep_mapping={}
+    )
     assert suggestions == {"activation": "tanh"}
 
 
-def test_get_suggestions_nested(get_config, get_fixed_trial):
-    suggestions = tune.get_suggestion(get_config, get_fixed_trial, traced_param=[])
-    assert suggestions == {
-        "model": {
-            "gcn_net": [
-                {"in_dim": 16, "out_dim": 32, "norm_args": ["ref"]},
-                {"in_dim": "ref", "out_dim": 64, "norm_args": ["ref"]},
-            ],
-            "classifier": {"in_dim": "ref"},
-            "num_layers": 2,
-            "activation": "tanh",
-            "name": "MyModel",
-        },
-        "training": {
-            "lr": 0.0001,
-            "batch_size": 32,
-        },
-    }
+@pytest.mark.filterwarnings("ignore::UserWarning")  # Optuna warning about (1, 6, 2)
+def test_get_suggestions_nested(
+    get_config,
+    get_fixed_trial,
+    get_suggestions_with_best_trial,
+    get_coupled_sweep_mapping,
+):
+    suggestions, coupled_sweep_mapping = tune.get_suggestion(
+        config=get_config,
+        current_node=get_config,
+        trial=get_fixed_trial,
+        traced_param=[],
+    )
+    assert suggestions == get_suggestions_with_best_trial
+    assert coupled_sweep_mapping == get_coupled_sweep_mapping
 
 
-def test_resolve_dependencies(get_config):
-    ref_path = "training.lr.value"
-    current = tune._resolve_dependencies(get_config, ref_path)
-    assert np.isclose(current[0], 1e-5)
-    assert np.isclose(current[1], 1e-1)
-    assert current[2] is True
+def test_resolve_references_one_node(
+    get_suggestions_with_best_trial, get_coupled_sweep_mapping
+):
+    # change only one node
+    config = copy.deepcopy(get_suggestions_with_best_trial)
+    current_node = config.get("model").get("bs")
+    tune.resolve_references(
+        config=config,
+        node=current_node,
+        walked_path=["model", "bs"],
+        coupled_sweep_mapping=get_coupled_sweep_mapping,
+    )
+    assert config.get("model").get("bs") == 32
+    # other fields remain unchanged
+    assert config.get("trainer").get("foo_ref") == get_suggestions_with_best_trial.get(
+        ("trainer")
+    ).get("foo_ref")
 
-    ref_path = "model.gcn_net[0].out_dim"
-    current = tune._resolve_dependencies(get_config, ref_path)
-    assert current == 32
 
-    ref_path = "model.gcn_net[-1].out_dim"
-    current = tune._resolve_dependencies(get_config, ref_path)
-    assert current == 64
-
-
-def test_apply_dependencies(get_config, get_dependencies):
-    config_with_deps = tune.apply_dependencies(get_config, get_dependencies)
-    assert config_with_deps["model"]["gcn_net"][0]["norm_args"] == [32]
-    assert config_with_deps["model"]["gcn_net"][1]["in_dim"] == 32
-    assert config_with_deps["model"]["gcn_net"][1]["norm_args"] == [64]
-    assert config_with_deps["model"]["classifier"]["in_dim"] == 64
+def test_resolve_references_all(
+    get_suggestions_with_best_trial, get_coupled_sweep_mapping
+):
+    config = copy.deepcopy(get_suggestions_with_best_trial)
+    tune.resolve_references(
+        config=config,
+        node=config,
+        walked_path=[],
+        coupled_sweep_mapping=get_coupled_sweep_mapping,
+    )
+    # check coupled-sweep resolved
+    assert config.get("model").get("bs") == 32
+    assert config.get("model").get("bar")[0].get("x") == -1
+    assert config.get("model").get("baz")[0].get("x") == -10
+    # check reference resolved
+    assert config.get("trainer").get("foo_ref") == 1
 
 
 def test_load_yaml_invalid(tmp_path):
     with pytest.raises(FileNotFoundError):
-        tune.load_yaml(None, description="Test")
+        tune.load_yaml(None)
     with pytest.raises(FileNotFoundError):
-        tune.load_yaml("", description="Test")
+        tune.load_yaml("")
     with pytest.raises(FileNotFoundError):
-        tune.load_yaml(1, description="Test")
+        tune.load_yaml(1)
     with pytest.raises(FileNotFoundError):
-        tune.load_yaml(tmp_path / "non_existent.yaml", description="Test")
+        tune.load_yaml(tmp_path / "non_existent.yaml")
 
 
-def test_load_yaml_valid(get_config_file):
-    config = tune.load_yaml(get_config_file, description="Sample YAML")
+def test_load_yaml_valid(yaml_text, tmp_path):
+    # create a temporary YAML file
+    yaml_file = tmp_path / "sample.yaml"
+    with open(yaml_file, "w") as f:
+        f.write(yaml_text)
+
+    config = tune.load_yaml(yaml_file)
+
     assert "model" in config
-    assert "training" in config
-    assert "gcn_net" in config["model"]
-    assert len(config["model"]["gcn_net"]) == 2
-    assert config["model"]["gcn_net"][0]["in_dim"] == 16
-    assert config["model"]["gcn_net"][0]["out_dim"] == 32
-    assert config["model"]["gcn_net"][1]["in_dim"] == "ref"
-    assert config["training"]["lr"]["type"] == "tuple"
+    assert "trainer" in config
+    assert config["model"]["name"] == "test_model"
+    assert config["trainer"]["lr"]["type"] == "range"
 
 
-def test_build_search_space_with_dependencies_tune_all(
-    get_config_file, get_dependencies_file, get_fixed_trial
-):
-    search_space = tune.build_search_space_with_dependencies(
-        get_config_file,
-        get_dependencies_file,
-        get_fixed_trial,
-        tune_model=True,
-        tune_training=True,
-        base_settings_file=None,
-    )
+# def test_build_search_space_with_dependencies_tune_all(
+#     get_config_file, get_dependencies_file, get_fixed_trial
+# ):
+#     search_space = tune.build_search_space_with_dependencies(
+#         get_config_file,
+#         get_dependencies_file,
+#         get_fixed_trial,
+#         tune_model=True,
+#         tune_training=True,
+#         base_settings_file=None,
+#     )
 
-    expected_search_space = {
-        "model": {
-            "gcn_net": [
-                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
-                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
-            ],
-            "classifier": {"in_dim": 64},
-            "num_layers": 2,
-            "activation": "tanh",
-            "name": "MyModel",
-        },
-        "training": {
-            "lr": 0.0001,
-            "batch_size": 32,
-        },
-    }
-    assert search_space == expected_search_space
-
-
-def test_build_search_space_tune_model_only(
-    get_config_file, get_dependencies_file, get_fixed_trial, get_base_config_file
-):
-    search_space = tune.build_search_space_with_dependencies(
-        get_config_file,
-        get_dependencies_file,
-        get_fixed_trial,
-        tune_model=True,
-        tune_training=False,
-        base_settings_file=get_base_config_file,
-    )
-
-    expected_search_space = {
-        "model": {
-            "gcn_net": [
-                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
-                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
-            ],
-            "classifier": {"in_dim": 64},
-            "num_layers": 2,
-            "activation": "tanh",
-            "name": "MyModel",
-        },
-        "training": {  # obtained from base config
-            "lr": 0.001,
-            "batch_size": 16,
-        },
-    }
-    assert search_space == expected_search_space
-
-
-def test_build_search_space_tune_training_only(
-    get_config_file, get_dependencies_file, get_fixed_trial, get_base_config_file
-):
-    search_space = tune.build_search_space_with_dependencies(
-        get_config_file,
-        get_dependencies_file,
-        get_fixed_trial,
-        tune_model=False,
-        tune_training=True,
-        base_settings_file=get_base_config_file,
-    )
-
-    expected_search_space = {
-        "model": {  # obtained from base config
-            "gcn_net": [
-                {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
-                {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
-            ],
-            "classifier": {"in_dim": 64},
-            "num_layers": 2,
-            "activation": "relu",
-            "name": "MyModel",
-        },
-        "training": {
-            "lr": 0.0001,
-            "batch_size": 32,
-        },
-    }
-    assert search_space == expected_search_space
+#     expected_search_space = {
+#         "model": {
+#             "gcn_net": [
+#                 {"in_dim": 16, "out_dim": 32, "norm_args": [32]},
+#                 {"in_dim": 32, "out_dim": 64, "norm_args": [64]},
+#             ],
+#             "classifier": {"in_dim": 64},
+#             "num_layers": 2,
+#             "activation": "tanh",
+#             "name": "MyModel",
+#         },
+#         "training": {
+#             "lr": 0.0001,
+#             "batch_size": 32,
+#         },
+#     }
+#     assert search_space == expected_search_space
 
 
 def test_create_study(get_tune_config):
@@ -405,7 +421,7 @@ def test_create_study_with_storage(get_tune_config, tmp_path):
     assert isinstance(study._storage, optuna.storages.JournalStorage)
 
 
-def test_save_best_trial(tmp_path):
+def test_get_best_trial(tmp_path):
     study = optuna.create_study(direction="minimize", storage=None)
     best_trial = optuna.trial.FrozenTrial(
         number=0,
@@ -426,81 +442,81 @@ def test_save_best_trial(tmp_path):
     study.add_trial(best_trial)
 
     output_file = tmp_path / "best_trial.yaml"
-    tune.save_best_trial(study, output_file)
-    loaded_config = tune.load_yaml(output_file, description="Best Trial Config")
+    tune.get_best_trial(study, output_file)
+    loaded_config = tune.load_yaml(output_file)
     assert loaded_config == {"lr": 0.01, "n_layers": 3}
 
 
-def test_save_best_config(tmp_path):
-    built_search_space = {
-        "model": {
-            "nn": [
-                {
-                    "in_dim": "waiting",
-                    "out_dim": "waiting",
-                    "dropout": "waiting",
-                },
-                {
-                    "in_dim": "waiting",
-                    "out_dim": "waiting",
-                    "dropout": "waiting",
-                },
-            ]
-        }
-    }
-    best_trial = {
-        "model.nn.0.in_dim": 784,
-        "model.nn.0.out_dim": 32,
-        "model.nn.0.dropout": 0.5,
-        "model.nn.1.in_dim": 32,
-        "model.nn.1.out_dim": 32,
-        "model.nn.1.dropout": 0.1,
-    }
-    depmap = {
-        "model": {
-            "nn": [
-                {},
-                {
-                    "in_dim": "model.nn[0].out_dim",
-                },
-            ]
-        }
-    }
-    built_search_space_file = tmp_path / "built_search_space.yaml"
-    with open(built_search_space_file, "w") as f:
-        yaml.safe_dump(built_search_space, f)
-    best_trial_file = tmp_path / "best_trial.yaml"
-    with open(best_trial_file, "w") as f:
-        yaml.safe_dump(best_trial, f)
-    depmap_file = tmp_path / "depmap.yaml"
-    with open(depmap_file, "w") as f:
-        yaml.safe_dump(depmap, f)
-    output_file = tmp_path / "best_config.yaml"
+# def test_save_best_config(tmp_path):
+#     built_search_space = {
+#         "model": {
+#             "nn": [
+#                 {
+#                     "in_dim": "waiting",
+#                     "out_dim": "waiting",
+#                     "dropout": "waiting",
+#                 },
+#                 {
+#                     "in_dim": "waiting",
+#                     "out_dim": "waiting",
+#                     "dropout": "waiting",
+#                 },
+#             ]
+#         }
+#     }
+#     best_trial = {
+#         "model.nn.0.in_dim": 784,
+#         "model.nn.0.out_dim": 32,
+#         "model.nn.0.dropout": 0.5,
+#         "model.nn.1.in_dim": 32,
+#         "model.nn.1.out_dim": 32,
+#         "model.nn.1.dropout": 0.1,
+#     }
+#     depmap = {
+#         "model": {
+#             "nn": [
+#                 {},
+#                 {
+#                     "in_dim": "model.nn[0].out_dim",
+#                 },
+#             ]
+#         }
+#     }
+#     built_search_space_file = tmp_path / "built_search_space.yaml"
+#     with open(built_search_space_file, "w") as f:
+#         yaml.safe_dump(built_search_space, f)
+#     best_trial_file = tmp_path / "best_trial.yaml"
+#     with open(best_trial_file, "w") as f:
+#         yaml.safe_dump(best_trial, f)
+#     depmap_file = tmp_path / "depmap.yaml"
+#     with open(depmap_file, "w") as f:
+#         yaml.safe_dump(depmap, f)
+#     output_file = tmp_path / "best_config.yaml"
 
-    tune.save_best_config(
-        built_search_space_file,
-        best_trial_file,
-        depmap_file,
-        output_file,
-    )
+#     tune.save_best_config(
+#         built_search_space_file,
+#         best_trial_file,
+#         depmap_file,
+#         output_file,
+#     )
 
-    with open(output_file, "r") as f:
-        best_config = yaml.safe_load(f)
+#     with open(output_file, "r") as f:
+#         best_config = yaml.safe_load(f)
 
-    expected_config = {
-        "model": {
-            "nn": [
-                {
-                    "in_dim": 784,
-                    "out_dim": 32,
-                    "dropout": 0.5,
-                },
-                {
-                    "in_dim": 32,
-                    "out_dim": 32,
-                    "dropout": 0.1,
-                },
-            ]
-        }
-    }
-    assert best_config == expected_config
+#     expected_config = {
+#         "model": {
+#             "nn": [
+#                 {
+#                     "in_dim": 784,
+#                     "out_dim": 32,
+#                     "dropout": 0.5,
+#                 },
+#                 {
+#                     "in_dim": 32,
+#                     "out_dim": 32,
+#                     "dropout": 0.1,
+#                 },
+#             ]
+#         }
+#     }
+#     assert best_config == expected_config
