@@ -14,7 +14,6 @@ end
 
 @testitem "test_make_polynomial_manifold_cset" tags = [:chebyshev_causets] setup =
     [setupTests] begin
-
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
@@ -54,7 +53,6 @@ end
 
 @testitem "test_make_polynomial_manifold_cset_throws" tags = [:chebyshev_causets] setup =
     [setupTests] begin
-
 
     @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset(
         100,

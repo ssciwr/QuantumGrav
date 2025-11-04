@@ -48,7 +48,6 @@ end
 
 @testitem "square_expected_small_grids" tags=[:cell, :expected] begin
     # k=2 (4 points)
-
     edges = ((1.0, 0.0), (0.0, 1.0))
     pts4 = QuantumGrav.generate_grid_from_brillouin_cell(4, edges)
     @test Set(pts4) == Set([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)])
@@ -62,7 +61,6 @@ end
 end
 
 @testitem "rotation_equivariance" tags=[:cell, :props] setup=[propHelpers] begin
-
     edges = rect_edges(2.0, 1.0)
     origin = (0.1, -0.2)
     pts = QuantumGrav.generate_grid_from_brillouin_cell(16, edges; origin = origin)
@@ -81,7 +79,6 @@ end
 
 # ---------------- generate_grid_2d (wrapper) ----------------
 @testitem "wrapper_square_expected_values" tags=[:wrapper, :expected] begin
-
     pts = QuantumGrav.generate_grid_2d(9, "square"; a = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
     for i = 0:2, j = 0:2
@@ -91,7 +88,6 @@ end
 end
 
 @testitem "wrapper_rectangular_expected_values" tags=[:wrapper, :expected] setup=[] begin
-
     pts = QuantumGrav.generate_grid_2d(9, "rectangular"; a = 2.0, b = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
     for i = 0:2, j = 0:2
@@ -101,7 +97,6 @@ end
 end
 
 @testitem "wrapper_hexagonal_expected_values" tags=[:wrapper, :expected] setup=[propHelpers] begin
-
 
     pts = QuantumGrav.generate_grid_2d(9, "hexagonal"; a = 1.0, rotate_deg = 0)
     expected9 = Tuple{Float64,Float64}[]
@@ -114,7 +109,6 @@ end
 end
 
 @testitem "wrapper_auto_rotation_prefers_y_extent" tags=[:wrapper, :props] setup=[] begin
-
     pts = QuantumGrav.generate_grid_2d(40, "rectangular"; a = 2.0, b = 0.5)  # auto-rotate
     xs = first.(pts);
     ys = last.(pts)
@@ -122,7 +116,6 @@ end
 end
 
 @testitem "wrapper_bad_name_throws" tags=[:wrapper, :errors] begin
-
     @test_throws ArgumentError QuantumGrav.generate_grid_2d(5, "not-a-lattice")
 end
 
@@ -177,7 +170,6 @@ end
 # ---------------- create_grid_causet_2D ----------------
 @testitem "grid_ordering_consistent_with_coordinate_time_order" tags=[:cset] begin
     import CausalSets
-
 
     grid = QuantumGrav.generate_grid_2d(30, "square"; a = 1.0, rotate_deg = 0)
     cset, _, coords = QuantumGrav.create_grid_causet_2D(

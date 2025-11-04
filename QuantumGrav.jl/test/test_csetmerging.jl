@@ -54,7 +54,6 @@ end
 
 @testitem "test_merge_cset_throws" tags = [:csetmergingthrows] setup = [TestsCSetMerging] begin
 
-
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         2^10,
         0.3,
@@ -73,7 +72,6 @@ end
 end
 
 @testitem "test_insert_cset" tags = [:csetmerging] setup = [TestsCSetMerging] begin
-
     cset1, _ = QuantumGrav.sample_bitarray_causet_by_connectivity(
         100,
         0.4,
@@ -99,7 +97,6 @@ end
 end
 
 @testitem "test_insert_cset_throws" tags = [:csetmergingthrows] setup = [TestsCSetMerging] begin
-
 
     cset1, _ =
         QuantumGrav.sample_bitarray_causet_by_connectivity(50, 0.4, 10, rng; abs_tol = 0.01)
@@ -153,7 +150,6 @@ end
 
 @testitem "test_insert_KR_into_manifoldlike_throws" tags = [:csetmergingthrows] setup =
     [TestsCSetMerging] begin
-
 
     @test_throws ArgumentError QuantumGrav.insert_KR_into_manifoldlike(
         100,
