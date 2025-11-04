@@ -1,3 +1,4 @@
+import importlib
 import torch
 import torch_geometric.nn as tgnn
 
@@ -89,6 +90,8 @@ graph_features_aggregations: dict[str, Callable | type[torch.nn.Module]] = {
     "identity": torch.nn.Identity,
 }
 
+evaluation_funcs: dict[str, Callable | type] = {}
+
 graph_features_aggregations_names: dict[type[torch.nn.Module] | Callable, str] = {
     torch.cat: "cat0",
     cat1: "cat1",
@@ -132,6 +135,37 @@ def list_registered_pooling_aggregations() -> list[str]:
         list[str]: A list of registered pooling aggregation function names.
     """
     return list(pooling_aggregations.keys())
+
+
+def list_evaluation_functions() -> list[str]:
+    """list the registered evaluation functions
+
+    Returns:
+        list[str]: list of names of eval functions
+    """
+    return list(evaluation_funcs.keys())
+
+
+def register_evaluation_function(name: str, func: Callable | type) -> None:
+    """register a new evaluation function by name
+
+    Args:
+        name (str): name of the function
+        func (Callable | type): function to register
+    """
+    evaluation_funcs[name] = func
+
+
+def get_evaluation_function(name: str) -> Callable | type | None:
+    """Get a registered evaluation function by name
+
+    Args:
+        name (str): name of the function to get
+
+    Returns:
+        Callable | type | None: a callable or type if registered function is found, None otherwise
+    """
+    return evaluation_funcs.get(name, None)
 
 
 def register_pooling_layer(
@@ -316,6 +350,7 @@ def get_graph_features_aggregation(
 
 
 def verify_config_node(cfg) -> bool:
+    # TODO: remove when schemas are there
     """Verify that a config node has the required keys.
 
     Args:
@@ -334,6 +369,32 @@ def verify_config_node(cfg) -> bool:
     if not isinstance(cfg["kwargs"], dict):
         return False
     return True
+
+
+def import_and_get(importpath: str) -> type | None:
+    """Import a module and get an object from it.
+
+    Args:
+        importpath (str): The import path of the object to get.
+
+    Returns:
+        type | None: The object from the module.
+    """
+    parts = importpath.split(".")
+    module_name = ".".join(parts[:-1])
+    object_name = parts[-1]
+
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as e:
+        raise ValueError(f"Importing module {module_name} unsuccessful") from e
+    tpe = None
+    try:
+        tpe = getattr(module, object_name)
+    except Exception as e:
+        raise ValueError(f"Could not load name {object_name} from {module_name}") from e
+
+    return tpe
 
 
 def assign_at_path(cfg: dict, path: Sequence[Any], value: Any) -> None:

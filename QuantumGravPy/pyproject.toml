@@ -25,6 +25,7 @@ dependencies = [
     "PyYAML",
     "zarr",
     "optuna",
+    "jsonschema"
 ]
 
 [tool.hatch.build.targets.wheel]

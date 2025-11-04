@@ -4,35 +4,174 @@ import torch_geometric
 import numpy as np
 import pandas as pd
 import logging
+from abc import abstractmethod
+from sklearn.metrics import f1_score
+from jsonschema import validate, ValidationError
+from inspect import isclass
+
+from . import utils
+from . import base
 
 
-class DefaultEvaluator:
+class DefaultEvaluator(base.Configurable):
     """Default evaluator for model evaluation - testing and validation during training"""
+
+    json_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Evaluator Configuration",
+        "type": "object",
+        "properties": {
+            "device": {
+                "type": "string",
+                "description": "The device to run the evaluation on.",
+            },
+            "criterion": {
+                "type": "object",
+                "description": "The loss function to use for evaluation.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "the type name of the callable to compute the loss",
+                    },
+                    "args": {
+                        "type": "array",
+                        "description": "Optional positional arguments for the callable.",
+                        "items": {},
+                    },
+                    "kwargs": {
+                        "type": "object",
+                        "description": "Optional keyword arguments for the callable.",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["name"],
+                "additionalProperties": True,
+            },
+            "compute_per_task": {
+                "type": "object",
+                "description": "Task-specific metrics to compute.",
+                "additionalProperties": {
+                    "type": "array",
+                    "description": "a list of {name, args, kwargs} dictionaries that define what metrics should be computed per task",
+                    "items": {
+                        "type": "object",
+                        "description": "A single task definition",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "the type name of the callable to compute the desired quantity",
+                            },
+                            "name_in_data": {
+                                "type": "string",
+                                "description": "the name the result of this computation should have in the final dataframe",
+                            },
+                            "args": {
+                                "type": "array",
+                                "description": "Optional positional arguments for the callable.",
+                                "items": {},
+                            },
+                            "kwargs": {
+                                "type": "object",
+                                "description": "Optional keyword arguments for the callable.",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "required": ["name"],
+                        "additionalProperties": True,
+                    },
+                },
+            },
+            "get_target_per_task": {
+                "type": "object",
+                "description": "Function to get the target for each task.",
+                "additionalProperties": True,
+            },
+            "apply_model": {
+                "type": "object",
+                "description": "Optional apply model function",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "the type name of the callable to compute the desired quantity",
+                    },
+                    "args": {
+                        "type": "array",
+                        "description": "Optional positional arguments for the callable.",
+                        "items": {},
+                    },
+                    "kwargs": {
+                        "type": "object",
+                        "description": "Optional keyword arguments for the callable.",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["name"],
+                "additionalProperties": True,
+            },
+        },
+        "required": [
+            "device",
+            "criterion",
+            "compute_per_task",
+            "get_target_per_task",
+        ],
+        "additionalProperties": False,
+    }
 
     def __init__(
         self,
         device: str | torch.device | int,
         criterion: Callable,
+        compute_per_task: dict[int, dict[Any, Callable]],
+        get_target_per_task: dict[
+            int, Callable[[dict[int, torch.Tensor], int], torch.Tensor]
+        ],
         apply_model: Callable | None = None,
     ):
-        """Default evaluator for model evaluation.
+        """Initialize a new default evaluator
 
         Args:
-            device (str | torch.device | int): The device to run the evaluation on.
-            criterion (Callable): The loss function to use for evaluation.
-            apply_model (Callable): A function to apply the model to the data.
+            device (str | torch.device | int): device to work on
+            criterion (Callable): Loss computation for the evaluation run
+            compute_per_task (dict[int, dict[Any, Callable]]): Dictionary mapping task IDs to a set of named metrics to compute for each task
+            get_target_per_task (dict[ int, Callable[[dict[int, torch.Tensor], int], torch.Tensor] ]): Function to get the target for each task
+            apply_model (Callable | None, optional): Function to apply the model to the data. Defaults to None.
         """
         self.criterion = criterion
         self.apply_model = apply_model
         self.device = device
-        self.data: pd.DataFrame | list = []
+        self.data: pd.DataFrame | None = None
         self.logger = logging.getLogger(__name__)
+        self.compute_per_task = compute_per_task
+        self.get_target_per_task = get_target_per_task
+        self.active_tasks = []
+
+    def reset(self) -> None:
+        """Reset the evaluator's recorded data."""
+        self.data = None
+        self.active_tasks = []
+
+    def _update_held_data(self, current_data: dict[str, Any]) -> None:
+        # add current_data to self.data
+        if self.data is None:
+            self.data = pd.DataFrame(current_data)
+        else:
+            # when the dataframe has not all columns present yet, add them with NaN values
+            # this can happen when the active tasks change during training
+            for k in current_data.keys():
+                if k not in self.data.columns:
+                    self.data[k] = np.nan
+
+            # add the necessary data
+            self.data = pd.concat(
+                [self.data, pd.DataFrame(current_data)], ignore_index=True
+            )
 
     def evaluate(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Evaluate the model on the given data loader.
 
         Args:
@@ -43,8 +182,14 @@ class DefaultEvaluator:
              list[Any]: A list of evaluation results.
         """
         model.eval()
-        current_data = []
+        current_data = dict()
 
+        self.active_tasks = set()
+        for i, task in enumerate(model.active_tasks):
+            if task:
+                self.active_tasks.add(i)
+
+        # apply model on validation data
         with torch.no_grad():
             for i, batch in enumerate(data_loader):
                 data = batch.to(self.device)
@@ -53,40 +198,188 @@ class DefaultEvaluator:
                 else:
                     outputs = model(data.x, data.edge_index, data.batch)
                 loss = self.criterion(outputs, data)
-                current_data.append(loss)
+                current_data["loss"] = current_data.get("loss", []) + [loss.item()]
 
-        return current_data
+                # record outputs and targets per task
+                for i, out in outputs.items():
+                    y = self.get_target_per_task[i](data.y, i)
+                    current_data[f"output_{i}"] = current_data.get(
+                        f"output_{i}", []
+                    ) + [out.cpu()]  # append outputs
+                    current_data[f"target_{i}"] = current_data.get(
+                        f"target_{i}", []
+                    ) + [y.cpu()]  # append targets
 
-    def report(self, data: list | pd.Series | torch.Tensor | np.ndarray) -> None:
-        """Report the evaluation results.
+        # compute metrics
+        for i, task in self.compute_per_task.items():
+            if i in self.active_tasks:
+                for name, func in task.items():
+                    if name not in current_data:
+                        current_data[name] = func(current_data, i)
+
+                # clean up outputs and targets
+                del current_data[f"output_{i}"]
+                del current_data[f"target_{i}"]
+
+        self._update_held_data(current_data)
+
+    @abstractmethod
+    def report(self) -> None:
+        """Report the evaluation results stored in the calling instance.
 
         Args:
-            data (list | pd.Series | torch.Tensor | np.ndarray): The evaluation results.
+            data (pd.DataFrame | torch.Tensor | list | dict): Evaluation results to report.
+        """
+        pass
+
+    @classmethod
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        try:
+            validate(config, cls.json_schema)
+        except ValidationError as e:
+            logging.error(f"Config validation error: {e}")
+            return False
+        return True
+
+    @classmethod
+    def _find_function_or_class(cls, name: str) -> Any:
+        """Helper method to find a function or class by name in globals or import it.
+
+        Args:
+            name (str): Name of the function or class to find.
+        Returns:
+            Any: The found function or class.
         """
 
-        if isinstance(data, torch.Tensor):
-            data = data.cpu().numpy()
+        obj = utils.get_evaluation_function(name)
 
-        if isinstance(data, list):
-            for i, d in enumerate(data):
-                if isinstance(d, torch.Tensor):
-                    data[i] = d.cpu().numpy()
+        if obj is None:
+            try:
+                obj = utils.import_and_get(name)
+            except Exception as e:
+                raise ValueError(f"Failed to import {name}: {e}")
+        return obj
 
-        avg = np.mean(data)
-        sigma = np.std(data)
-        self.logger.info(f"Average loss: {avg}, Standard deviation: {sigma}")
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "DefaultEvaluator":
+        """Create DefaultEvaluator from configuration dictionary.
 
-        if isinstance(self.data, list):
-            self.data.append((avg, sigma))
-        else:
-            self.data = pd.concat(
-                [
-                    self.data,
-                    pd.DataFrame({"loss": avg, "std": sigma}, index=[0]),
-                ],
-                axis=0,
-                ignore_index=True,
-            )
+        Args:
+            config (dict[str, Any]): Configuration dictionary with keys 'device', 'criterion', 'compute_per_task', 'get_target_per_task', and 'apply_model'.
+
+        Returns:
+            DefaultEvaluator: An instance of DefaultEvaluator initialized with the provided configuration.
+        """
+        if not cls.verify_config(config):
+            raise ValueError("Invalid configuration")
+
+        criterion_cfg = config.get("criterion", None)
+        if criterion_cfg is None:
+            raise ValueError("Criterion must be specified.")
+
+        criterion_type = criterion_cfg["name"]
+        criterion_args = criterion_cfg.get("args", [])
+        criterion_kwargs = criterion_cfg.get("kwargs", {})
+
+        compute_per_task = config.get("compute_per_task", None)
+        if compute_per_task is None:
+            raise ValueError("Compute per task must be specified.")
+
+        get_target_per_task = config.get("get_target_per_task", None)
+        if get_target_per_task is None:
+            raise ValueError("Get target per task must be specified.")
+
+        # build criterion
+        try:
+            criterion_type = cls._find_function_or_class(criterion_type)
+            if criterion_type is None:
+                raise ValueError(f"Failed to import criterion: {criterion_type}")
+            if isclass(criterion_type):
+                criterion = criterion_type(*criterion_args, **criterion_kwargs)
+            else:
+                criterion = criterion_type
+        except Exception as e:
+            raise ValueError(f"Failed to import criterion: {e}")
+
+        # build per_task_monitors. each task can have a dict of named comput tasks. in the config,
+        # these can refer to plain callables or classes to be instantiated
+        per_task_monitors = {}
+        for key, cfg_list in compute_per_task.items():
+            per_task_monitors[int(key)] = {}
+            for cfg in cfg_list:
+                # try to find the type in the module in this module
+                monitortype = cls._find_function_or_class(cfg["name"])
+                name_in_data = cfg["name_in_data"]
+                if monitortype is None:
+                    raise ValueError(
+                        f"Failed to import monitortype for task {key}: {cfg['name']}"
+                    )
+
+                if isclass(monitortype):
+                    try:
+                        metrics = monitortype.from_config(cfg)
+                    except Exception as _:
+                        try:
+                            metrics = monitortype(
+                                *cfg.get("args", []), **cfg.get("kwargs", {})
+                            )
+                        except Exception as e:
+                            raise ValueError(
+                                f"Failed to build monitortype for task {key} from config: {e}"
+                            )
+                elif callable(monitortype):
+                    metrics = monitortype
+                else:
+                    raise ValueError(
+                        f"Monitortype for task {key} is not a class or callable"
+                    )
+                per_task_monitors[int(key)][name_in_data] = metrics
+
+        # try to build target extractors
+        target_extractors = {}
+        for key, funcname in get_target_per_task.items():
+            targetgetter = cls._find_function_or_class(funcname)
+            if targetgetter is None:
+                raise ValueError(
+                    f"Failed to import targetgetter for task {key}: {funcname}"
+                )
+
+            if not callable(targetgetter):
+                raise ValueError(f"Target getter for task {key} is not callable")
+
+            target_extractors[int(key)] = targetgetter
+
+        # try to build apply_model
+        apply_model: Callable | None = None
+        apply_model_cfg = config.get("apply_model", None)
+        if apply_model_cfg is not None:
+            apply_model_type = cls._find_function_or_class(apply_model_cfg["name"])
+
+            if apply_model_type is None:
+                raise ValueError(
+                    f"Failed to import apply_model: {apply_model_cfg['name']}"
+                )
+
+            if isclass(apply_model_type):
+                apply_model_args = apply_model_cfg.get("args", [])
+                apply_model_kwargs = apply_model_cfg.get("kwargs", {})
+                apply_model = apply_model_type(*apply_model_args, **apply_model_kwargs)
+            elif callable(apply_model_type):
+                apply_model = apply_model_type
+            else:
+                raise ValueError(
+                    f"apply_model type is not a class or callable: {apply_model_type}"
+                )
+
+        device = config.get("device", "cpu")
+
+        return cls(
+            device=torch.device(device),
+            criterion=criterion,
+            compute_per_task=per_task_monitors,
+            get_target_per_task=target_extractors,
+            apply_model=apply_model,
+        )
 
 
 class DefaultTester(DefaultEvaluator):
@@ -97,39 +390,29 @@ class DefaultTester(DefaultEvaluator):
     using a specified criterion and optional model application function.
     """
 
-    def __init__(
-        self,
-        device: str | torch.device | int,
-        criterion: Callable,
-        apply_model: Callable | None = None,
-    ):
-        """Default tester for model testing.
-
-        Args:
-            device (str | torch.device | int,): The device to run the testing on.
-            criterion (Callable): The loss function to use for testing.
-            apply_model (Callable): A function to apply the model to the data.
-        """
-        super().__init__(device, criterion, apply_model)
-
     def test(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Test the model on the given data loader.
 
         Args:
             model (torch.nn.Module): Model to test.
             data_loader (torch_geometric.loader.DataLoader): Data loader for testing.
-
-        Returns:
-            list[Any]: A list of testing results.
         """
-        return self.evaluate(model, data_loader)
+        self.evaluate(model, data_loader)
+
+    def report(self) -> None:
+        """Report the testing results."""
+        if self.data is not None:
+            self.logger.info("Testing Results:")
+            self.logger.info(self.data.tail(1).to_string(index=False))
+        else:
+            self.logger.info("No testing data to report.")
 
 
-class DefaultValidator(DefaultEvaluator):
+class DefaultValidator(DefaultTester):
     """Default validator for model validation.
 
     Args:
@@ -137,236 +420,247 @@ class DefaultValidator(DefaultEvaluator):
     using a specified criterion and optional model application function.
     """
 
-    def __init__(
-        self,
-        device: str | torch.device | int,
-        criterion: Callable,
-        apply_model: Callable | None = None,
-    ):
-        """Default validator for model validation.
-
-        Args:
-            device (str | torch.device | int,): The device to run the validation on.
-            criterion (Callable): The loss function to use for validation.
-            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
-        """
-        super().__init__(device, criterion, apply_model)
-
     def validate(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Validate the model on the given data loader.
 
         Args:
             model (torch.nn.Module): Model to validate.
             data_loader (torch_geometric.loader.DataLoader): Data loader for validation.
-        Returns:
-            list[Any]: A list of validation results.
         """
-        return self.evaluate(model, data_loader)
+        self.evaluate(model, data_loader)
+
+    def report(self) -> None:
+        """Report the validation results."""
+        if self.data is not None:
+            self.logger.info("Validation Results:")
+            self.logger.info(self.data.tail(1).to_string(index=False))
+        else:
+            self.logger.info("No validation data to report.")
 
 
-# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
-class DefaultEarlyStopping:
-    """Early stopping based on a validation metric."""
+class F1ScoreEval(base.Configurable):
+    """F1Score evaluator, useful for evaluation of classification problems. A callable class that builds an f1 evaluator to a given set of specifications. Uses sklearn.metrics.f1_score for the computation of the f1 score."""
 
-    # put this into the package
+    json_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "F1ScoreEval Configuration",
+        "type": "object",
+        "properties": {
+            "average": {
+                "type": "string",
+                "enum": ["micro", "macro", "weighted", "none"],
+                "description": "Averaging method for F1 score as used by scikit-learn.",
+            },
+            "labels": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "List of numerical labels to include in the F1 score computation.",
+            },
+        },
+        "required": ["average"],
+        "additionalProperties": True,
+    }
+
     def __init__(
         self,
-        patience: int,
-        delta: list[float] = [1e-4],
-        window: list[int] = [7],
-        metric: list[str] = ["loss"],
-        smoothing: bool = False,
-        criterion: Callable = lambda early_stopping_instance,
-        data: early_stopping_instance.current_patience <= 0,
-        init_best_score: float = np.inf,
-        mode: str | Callable[[list[bool]], bool] = "any",
-        grace_period: list[int] = [
-            0,
-        ],
-        minimize: bool = False,
+        average: str = "macro",
+        labels: list[int] | None = None,
     ):
-        """Early stopping initialization.
+        """F1 score evaluator.
 
         Args:
-            patience (int): Number of epochs with no improvement after which training will be stopped.
-            delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
-            window (int, optional): Size of the moving window for smoothing. Defaults to 7.
-            metric (str, optional): Metric to monitor for early stopping. Defaults to "loss". This class always assumes that lower values for 'metric' are better.
-            smoothing (bool, optional): Whether to apply smoothed mean to the metric to dampen fluctuations. Defaults to False.
-            criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
-            init_best_score (float): initial best score value.
-            mode (str | Callable[[list[bool]], bool], optional): The mode for early stopping. Can be "any", "all", or a custom function. Defaults to "any". This decides wheather all tracked metrics have to improve or only one of them, or if something else should be done by applying a custom function to the array of evaluation results.
-            minimize: Bool: Whether to minimize or maximize the criterion
+            average (str, optional): Averaging method for F1 score. Defaults to "macro". Can be 'micro', 'macro', 'weighted', or 'none'.
         """
-        lw = len(window)
-        lm = len(metric)
-        ld = len(delta)
-        lg = len(grace_period)
+        self.average = average
+        self.labels = labels
 
-        if min([lw, lm, ld, lg]) != max([lw, lm, ld, lg]):
-            raise ValueError(
-                f"Inconsistent lengths for early stopping parameters: {lw}, {lm}, {ld}, {lg}"
-            )
-
-        self.patience = patience
-        self.current_patience = patience
-        self.delta = delta
-        self.window = window
-        self.found_better = [False for _ in range(lw)]
-        self.metric = metric
-        self.init_best_score = init_best_score
-        self.best_score = [init_best_score for _ in range(lw)]
-        self.smoothing = smoothing
-        self.logger = logging.getLogger(__name__)
-        self.criterion = criterion
-        self.mode = mode
-        self.found_better = [False for _ in range(lw)]
-        self.grace_period = grace_period
-        self.current_grace_period = [grace_period[i] for i in range(lg)]
-        self.minimize = minimize
-        self.logger = logging.getLogger(__name__)
-        self.num_tasks = len(self.window)
-
-    @property
-    def found_better_model(self) -> bool:
-        """Check if a better model has been found."""
-
-        if self.mode == "any":
-            self.logger.debug("Checking early stopping criteria (any mode).")
-            return any(self.found_better)
-        elif self.mode == "all":
-            self.logger.debug("Checking early stopping criteria (all mode).")
-            return all(self.found_better)
-        elif callable(self.mode):
-            self.logger.debug("Checking early stopping criteria (custom mode).")
-            return self.mode(self.found_better)
-        else:
-            raise ValueError("Mode must be 'any', 'all', or a callable in Evaluator")
-
-    def reset(self) -> None:
-        """Reset early stopping state."""
-        self.logger.debug("Resetting early stopping state.")
-        self.current_patience = self.patience
-        self.found_better = [False for _ in range(len(self.window))]
-        self.current_grace_period = self.grace_period
-
-    def add_task(
-        self, delta: float, window: int, metric: str, grace_period: int
-    ) -> None:
-        """Add a new task for early stopping.
+    def __call__(self, data: dict[Any, Any], task: int) -> float | np.ndarray:
+        """Compute F1 score for a given task.
 
         Args:
-            delta (float): Minimum change to consider an improvement.
-            window (int): Size of the moving window for smoothing.
-            metric (str): Metric to monitor for early stopping.
-            grace_period (int): Grace period for early stopping.
+            data (dict[Any, Any]): Dictionary containing outputs and targets.
+            task (int): Task index.
         """
-        self.logger.debug(
-            f"Adding new task for early stopping: {metric}, grace period {grace_period}, window {window}, delta {delta}"
-        )
-        self.delta.append(delta)
-        self.window.append(window)
-        self.metric.append(metric)
-        self.grace_period.append(grace_period)
-        self.current_grace_period.append(grace_period)
-        self.best_score.append(self.init_best_score)
-        self.found_better.append(False)
-        self.num_tasks += 1
+        # if the model output has more than one dimension, we need to adjust the y_pred accordingly
+        # and squeeze/unsqueeze as needed
+        if f"target_{task}" not in data or f"output_{task}" not in data:
+            raise KeyError(f"Task {task} not found in data for F1ScoreEval")
 
-    def remove_task(self, index: int) -> None:
-        """Remove a task from early stopping.
+        y_true_t = torch.cat(data[f"target_{task}"])
+        y_pred_t = torch.cat(data[f"output_{task}"])
+        if y_pred_t.shape != y_true_t.shape:
+            raise ValueError(f"Shape mismatch: {y_true_t.shape} vs {y_pred_t.shape}")
 
-        Args:
-            index (int): The index of the task to remove.
-        """
-        self.logger.debug(f"Removing task at index {index}")
-        self.delta.pop(index)
-        self.window.pop(index)
-        self.metric.pop(index)
-        self.grace_period.pop(index)
-        self.best_score.pop(index)
-        self.num_tasks -= 1
+        y_true = y_true_t.detach().cpu().numpy()
+        y_pred = y_pred_t.detach().cpu().numpy()
 
-    def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
-        """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
-        patience is reset and 'found_better' is set to True. Otherwise, if the number of datapoints in 'data' is greater than self.window, the patience is decremented.
+        avg = None if self.average == "none" else self.average
+
+        return f1_score(y_true, y_pred, average=avg, labels=self.labels)
+
+    @classmethod
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        """Verify the configuration via a json schema
 
         Args:
-            data (pd.DataFrame | pd.Series): Recorded evaluation metrics in a pandas structure.
+            config (dict[str, Any]): configuration to verify
 
         Returns:
-            bool: True if early stopping criteria are met, False otherwise.
+            bool: True if the configuration is valid, False otherwise
         """
-        self.found_better = [False for _ in range(self.num_tasks)]
-        ds = {}  # dict to hold current metric values
 
-        # go over all registered metrics and check if the model performs better on any of them
-        # then aggregrate the result with 'found_better_model'.
-        for i in range(self.num_tasks):
-            self.logger.debug(f"Evaluating early stopping criteria for task {i}.")
-            # prevent a skipped metric from affecting early stopping
-            if self.metric[i] not in data.columns:
-                self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
-                self.found_better[i] = True
-                ds[i] = 0.0
-                continue
+        try:
+            validate(instance=config, schema=cls.json_schema)
+        except ValidationError as e:
+            logging.error(f"Config validation error: {e}")
+            return False
+        return True
 
-            if self.smoothing:
-                self.logger.debug(f"Applying smoothing to metric {self.metric[i]}.")
-                d = (
-                    data[self.metric[i]]
-                    .rolling(window=self.window[i], min_periods=1)
-                    .mean()
-                )
-            else:
-                self.logger.debug(f"Using raw metric values for {self.metric[i]}.")
-                d = data[self.metric[i]]
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "F1ScoreEval":
+        """Create F1ScoreEval from configuration dictionary.
 
-            check = False
-            if self.minimize:
-                self.logger.debug("Early stopping is in 'minimize' mode.")
-                check = self.best_score[i] - self.delta[i] > d.iloc[-1]
-            else:
-                self.logger.debug("Early stopping is in 'maximize' mode.")
-                check = self.best_score[i] + self.delta[i] < d.iloc[-1]
+        Args:
+            config (dict[str, Any]): Configuration dictionary with keys 'average', 'mode', and 'labels'.
+        Returns:
+            F1ScoreEval: An instance of F1ScoreEval initialized with the provided configuration.
+        """
+        if not cls.verify_config(config):
+            raise ValidationError("Invalid configuration for F1ScoreEval")
 
-            if check and len(data):  # always minimize the metric
-                self.logger.info(
-                    f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
-                )
-                self.found_better[i] = True
+        return cls(
+            average=config.get("average", "macro"),
+            labels=config.get("labels", None),
+        )
 
-            ds[i] = d.iloc[-1]
 
-        if self.found_better_model:
-            # when we found a better model the stopping patience gets reset
-            self.logger.debug("Found better model")
-            for i in range(self.num_tasks):
-                self.logger.info(
-                    f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
-                )
-                self.best_score[i] = ds[i]  # record best score
-            self.current_patience = self.patience  # reset patience
+class AccuracyEval(base.Configurable):
+    """Accuracy evaluator, primarily useful for evaluation of regression problems. A callable class that builds an accuracy evaluator to a given set of specifications."""
 
-        # only when all grace periods are done will we reduce the patience
-        elif all([g <= 0 for g in self.current_grace_period]):
-            self.logger.debug("All grace periods are done, reducing patience.")
-            self.current_patience -= 1
+    json_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "AccuracyEval Configuration",
+        "type": "object",
+        "properties": {
+            "metric": {
+                "type": "string",
+                "description": "The name of the metric function to use.",
+            },
+            "metric_args": {
+                "type": "array",
+                "description": "The positional arguments (*args). Any JSON value type is permitted.",
+                "items": {},
+            },
+            "metric_kwargs": {
+                "type": "object",
+                "description": "The keyword arguments (**kwargs). Keys must be strings, values can be any JSON value type.",
+                "additionalProperties": {},
+            },
+        },
+        "required": ["metric"],
+        "additionalProperties": True,
+    }
+
+    def __init__(
+        self,
+        metric: Callable | type[torch.nn.Module] | None,
+        metric_args: list[Any] | None = None,
+        metric_kwargs: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize a new AccuracyEvaluator.
+
+        Args:
+            metric (Callable | type[torch.nn.Module] | None): The metric function or model to use.
+            metric_args (list[Any], optional): Positional arguments for the metric function. Defaults to [].
+            metric_kwargs (dict[str, Any], optional): Keyword arguments for the metric function. Defaults to {}.
+        """
+        if metric is None:
+            self.metric: Callable | torch.nn.Module = torch.nn.MSELoss()
+        elif callable(metric) and not isclass(metric):
+            self.metric = metric
+        elif isclass(metric):
+            self.metric = metric(*(metric_args or []), **(metric_kwargs or {}))
         else:
-            pass
-            # don't do anything here, we want at least 'grace_period' many epochs before patience is reduced
-
-        for i in range(self.num_tasks):
-            self.logger.info(
-                f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score[i]:.8f}, grace_period: {self.current_grace_period[i]}"
+            raise TypeError(
+                f"Metric must be a callable or a class. Metric type: {metric}"
             )
 
-        for i in range(self.num_tasks):
-            if self.current_grace_period[i] > 0:
-                self.current_grace_period[i] -= 1
+    def __call__(
+        self, data: dict[Any, Any], task: int
+    ) -> float | np.float64 | np.ndarray | list:
+        """Compute accuracy for a given task.
 
-        return self.criterion(self, data)
+        Args:
+            data (dict[Any, Any]): Dictionary containing outputs and targets.
+            task (int): Task index.
+        """
+        if f"target_{task}" not in data or f"output_{task}" not in data:
+            raise KeyError(f"Missing data for task {task} in AccuracyEval")
+
+        y_true = torch.cat(data[f"target_{task}"])
+        y_pred = torch.cat(data[f"output_{task}"])
+
+        result = self.metric(y_pred, y_true).item()
+
+        if isinstance(result, torch.Tensor):
+            return result.item()
+        else:
+            return result
+
+    @classmethod
+    def verify_config(cls, config: dict[str, Any]) -> bool:
+        """Verify configuration dict with a json schema.
+
+        Args:
+            config (dict[str, Any]): Config to verify
+
+        Raises:
+            ValueError: If the config is invalid
+
+        Returns:
+            bool: True if the config is valid, False otherwise
+        """
+
+        try:
+            validate(instance=config, schema=cls.json_schema)
+        except ValidationError as e:
+            logging.error(f"Configuration validation error for AccuracyEval: {e}")
+            return False
+        return True
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "AccuracyEval":
+        """Create AccuracyEval from configuration dictionary.
+
+        Args:
+            config (dict[str, Any]): Configuration dictionary with keys 'average', 'mode', and 'labels'.
+        Returns:
+            AccuracyEval: An instance of AccuracyEval initialized with the provided configuration.
+        """
+        if not cls.verify_config(config):
+            raise ValidationError("Invalid configuration for AccuracyEval")
+
+        metric = config.get("metric", None)
+        metricstype: Callable | type[torch.nn.Module] | None = None
+        if metric is not None:
+            try:
+                metricstype = utils.import_and_get(metric)
+            except ValueError as e:
+                raise ValueError(
+                    f"Could not import metrics {metric} for AccuracyEval"
+                ) from e
+        else:
+            # nothing to be done here because by default we use MSELoss
+            pass
+
+        args = config.get("metric_args", [])
+        kwargs = config.get("metric_kwargs", {})
+        return cls(
+            metric=metricstype,
+            metric_args=args,
+            metric_kwargs=kwargs,
+        )
