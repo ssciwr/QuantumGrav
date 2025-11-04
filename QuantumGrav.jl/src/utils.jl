@@ -7,7 +7,7 @@ Creates a manifold object based on an integer encoding and dimension.
 - `i`: Integer encoding of the manifold type (1-6)
 - `d`: Dimension of the manifold
 
-# Keyword Arguments 
+# Keyword Arguments
 - `size`: Manifold size parameter (dependent on desired manifold, see docs of CausalSets.jl)
 
 # Returns
@@ -15,7 +15,7 @@ Creates a manifold object based on an integer encoding and dimension.
 
 # Manifold Encodings
 - 1: Minkowski manifold
-- 2: Hypercylinder manifold  
+- 2: Hypercylinder manifold
 - 3: De Sitter manifold
 - 4: Anti-de Sitter manifold
 - 5: Torus manifold
@@ -51,7 +51,7 @@ Creates a manifold object based on an integer encoding and dimension.
 - `name`: Name of the manifold to be created. not case sensitive
 - `d`: Dimension of the manifold
 
-# Keyword Arguments 
+# Keyword Arguments
 - `size`: Manifold size parameter (dependent on desired manifold, see docs of CausalSets.jl)
 
 # Returns
@@ -59,7 +59,7 @@ Creates a manifold object based on an integer encoding and dimension.
 
 # Manifold Encodings
 - minkowski: Minkowski manifold
-- hypercylinder: Hypercylinder manifold  
+- hypercylinder: Hypercylinder manifold
 - desitter: De Sitter manifold
 - antidesitter: Anti-de Sitter manifold
 - torus: Torus manifold
@@ -99,8 +99,8 @@ Create a CausalSets.AbstractBoundary object from given parameters
 - `i`: boundary indicator
 - `d`: dimensionality of the underlying manifold
 
-# Keyword arguments: 
-- `limits`: Boundary edges, defaults to nothing. Dependent on the boundary type to be created. Defaults are: 
+# Keyword arguments:
+- `limits`: Boundary edges, defaults to nothing. Dependent on the boundary type to be created. Defaults are:
    - CausalDiamond: 1.0
    - TimeBoundary: (-1.0, 1.0)
    - BoxBoundary: d-dimensional box of size (-0.49, 0.49) in each dimension
@@ -151,7 +151,7 @@ Create a CausalSets.AbstractBoundary object from given parameters
 - `d`: dimensionality of the underlying manifold
 
 # Keyword arguments:
-- `limits`: Boundary edges, defaults to nothing. Dependent on the boundary type to be created. Defaults are: 
+- `limits`: Boundary edges, defaults to nothing. Dependent on the boundary type to be created. Defaults are:
    - CausalDiamond: 1.0
    - TimeBoundary: (-1.0, 1.0)
    - BoxBoundary: d-dimensional box of size (-0.49, 0.49) in each dimension
@@ -211,4 +211,26 @@ function make_pseudosprinkling(
     distr = Distributions.Uniform(box_min, box_max)
 
     return [[type(rand(rng, distr)) for _ = 1:d] for _ = 1:n]
+end
+
+"""
+     validate_config(schema, cfg)::Nothing
+Validate a config using a json schema it must adhere to
+
+# Arguments
+- schema: json schema to test against
+- config: config dictionary to test
+
+# Returns
+- nothing
+
+# throws
+Argument error: if validation fails
+"""
+function validate_config(schema, cfg)::Nothing
+
+    valid_res = JSONSchema.validate(schema, cfg)
+    if valid_res !== nothing
+        throw(ArgumentError("Config invalid:  $(valid_res)"))
+    end
 end
