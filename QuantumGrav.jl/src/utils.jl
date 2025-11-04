@@ -44,7 +44,7 @@ Validate a config using a json schema it must adhere to
 - schema: json schema to test against
 - config: config dictionary to test
 
-# Retruns
+# Returns
 - nothing
 
 # throws
