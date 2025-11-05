@@ -14,23 +14,17 @@ current_dir = Path(__file__).parent
 tmp_dir = current_dir / "tmp"
 
 
-def get_tuning_config_file(tmp_path):
+def create_tuning_config_file(tmp_path: Path) -> Path:
+    """Create a tuning configuration YAML file for testing purposes."""
     # Note on n_jobs: Multi-thread optimization has traditionally been inefficient
     # in Python due to the Global Interpreter Lock (GIL) (Python < 3.14)
     tuning_config = {
-        "tune_model": True,
-        "tune_training": True,
-        "base_settings_file": str(tmp_path / "base_config.yaml"),
-        "search_space_file": str(tmp_path / "search_space.yaml"),
-        "depmap_file": str(tmp_path / "deps.yaml"),
         "study_name": "test_study",
         "storage": str(tmp_path / "test_study.log"),
         "direction": "maximize",
         "n_trials": 10,
         "timeout": 600,
         "n_jobs": 1,  # set to >1 to enable multi-threading,
-        "built_search_space_file": str(tmp_path / "built_search_space.yaml"),
-        "best_trial_file": str(tmp_path / "best_trial.yaml"),
         "best_config_file": str(tmp_path / "best_config.yaml"),
         "n_processes": 2,
         "n_iterations": 2,
@@ -42,91 +36,56 @@ def get_tuning_config_file(tmp_path):
     return tuning_config_file
 
 
-def get_search_space_file(file_path):
-    search_space = {
-        "model": {
-            "n_layers": 3,
-            "nn": [
-                {
-                    "in_dim": 784,  # 28*28
-                    "out_dim": [128, 256],
-                    "dropout": {"type": "tuple", "value": [0.2, 0.5, 0.1]},
-                },
-                {
-                    "in_dim": "ref",
-                    "out_dim": [128, 256],
-                    "dropout": {"type": "tuple", "value": [0.2, 0.5, 0.1]},
-                },
-                {
-                    "in_dim": "ref",
-                    "out_dim": [16, 32],
-                    "dropout": {"type": "tuple", "value": [0.2, 0.5, 0.1]},
-                },
-            ],
-        },
-        "training": {
-            "batch_size": [16, 32],
-            "optimizer": ["Adam", "SGD"],
-            "lr": {"type": "tuple", "value": [1e-5, 1e-1, True]},
-            "epochs": [2, 5],
-        },
-    }
+def create_config_file(tmp_dir: Path) -> Path:
+    """Create a base configuration YAML file with tuning parameters for testing purposes."""
+    yaml_text = """
+        model:
+            n_layers: 3
+            nn:
+                -
+                    in_dim: 784
+                    out_dim: !sweep
+                        values: [128, 256]
+                    dropout: !range
+                        start: 0.2
+                        stop: 0.5
+                        step: 0.1
+                -
+                    in_dim: !reference
+                        target: model.nn[0].out_dim
+                    out_dim: !sweep
+                        values: [16, 32]
+                    dropout: !range
+                        start: 0.2
+                        stop: 0.5
+                        step: 0.1
+                -
+                    in_dim: !reference
+                        target: model.nn[1].out_dim
+                    out_dim: !sweep
+                        values: [16, 32]
+                    dropout: !range
+                        start: 0.2
+                        stop: 0.5
+                        step: 0.1
+        training:
+            batch_size: !sweep
+                values: [16, 32]
+            optimizer: !sweep
+                values: ["Adam", "SGD"]
+            lr: !range
+                start: 1e-5
+                stop: 1e-2
+                log: true
+            epochs: !sweep
+                values: [2, 5]
+    """
 
-    with open(file_path, "w") as f:
-        yaml.safe_dump(search_space, f)
+    config_file = tmp_dir / "config.yaml"
+    with open(config_file, "w") as f:
+        f.write(yaml_text)
 
-    return file_path
-
-
-def get_dependency_file(file_path):
-    deps = {
-        "model": {
-            "nn": [
-                {},
-                {
-                    "in_dim": "model.nn.0.out_dim",
-                },
-                {
-                    "in_dim": "model.nn.1.out_dim",
-                },
-            ],
-        }
-    }
-
-    with open(file_path, "w") as f:
-        yaml.safe_dump(deps, f)
-    return file_path
-
-
-def get_base_config_file(file_path):
-    base_config = {
-        "model": {
-            "n_layers": 3,
-            "nn": [
-                {
-                    "in_dim": 784,
-                    "out_dim": 256,
-                    "dropout": 0.2,
-                },
-                {
-                    "in_dim": 256,
-                    "out_dim": 256,
-                    "dropout": 0.2,
-                },
-                {
-                    "in_dim": 256,
-                    "out_dim": 32,
-                    "dropout": 0.2,
-                },
-            ],
-        },
-        "training": {"batch_size": 32, "optimizer": "Adam", "lr": 0.001, "epochs": 5},
-    }
-
-    with open(file_path, "w") as f:
-        yaml.safe_dump(base_config, f)
-
-    return file_path
+    return config_file
 
 
 def define_small_model(config):
@@ -167,7 +126,7 @@ def load_data(config, dir_path):
 
 
 def objective(trial, tuning_config):
-    base_config_file = get_base_config_file(tuning_config.get("base_settings_file"))
+    config_file = get_base_config_file(tuning_config.get("base_settings_file"))
     search_space_file = get_search_space_file(tuning_config.get("search_space_file"))
     depmap_file = get_dependency_file(tuning_config.get("depmap_file"))
     tune_model = tuning_config.get("tune_model")
