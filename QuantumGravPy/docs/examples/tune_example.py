@@ -1,3 +1,7 @@
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""  # make sure no GPU is used
+
 from QGTune import tune
 import optuna
 import yaml
@@ -7,9 +11,10 @@ from torchvision import datasets, transforms
 from pathlib import Path
 from multiprocessing import Pool
 from functools import partial
-
+from optuna.storages.journal import JournalStorage, JournalFileBackend
 
 DEVICE = torch.device("cpu")
+
 current_dir = Path(__file__).parent
 tmp_dir = current_dir / "tmp"
 
@@ -19,10 +24,11 @@ def create_tuning_config_file(tmp_path: Path) -> Path:
     # Note on n_jobs: Multi-thread optimization has traditionally been inefficient
     # in Python due to the Global Interpreter Lock (GIL) (Python < 3.14)
     tuning_config = {
+        "config_file": str(tmp_path / "config.yaml"),
         "study_name": "test_study",
         "storage": str(tmp_path / "test_study.log"),
         "direction": "maximize",
-        "n_trials": 10,
+        "n_trials": 15,
         "timeout": 600,
         "n_jobs": 1,  # set to >1 to enable multi-threading,
         "best_config_file": str(tmp_path / "best_config.yaml"),
@@ -36,7 +42,7 @@ def create_tuning_config_file(tmp_path: Path) -> Path:
     return tuning_config_file
 
 
-def create_config_file(tmp_dir: Path) -> Path:
+def create_config_file(file_path: Path) -> Path:
     """Create a base configuration YAML file with tuning parameters for testing purposes."""
     yaml_text = """
         model:
@@ -78,14 +84,11 @@ def create_config_file(tmp_dir: Path) -> Path:
                 stop: 1e-2
                 log: true
             epochs: !sweep
-                values: [2, 5]
+                values: [2, 5, 7]
     """
 
-    config_file = tmp_dir / "config.yaml"
-    with open(config_file, "w") as f:
+    with open(file_path, "w") as f:
         f.write(yaml_text)
-
-    return config_file
 
 
 def define_small_model(config):
@@ -125,22 +128,11 @@ def load_data(config, dir_path):
     return train_loader, valid_loader
 
 
-def objective(trial, tuning_config):
-    config_file = get_base_config_file(tuning_config.get("base_settings_file"))
-    search_space_file = get_search_space_file(tuning_config.get("search_space_file"))
-    depmap_file = get_dependency_file(tuning_config.get("depmap_file"))
-    tune_model = tuning_config.get("tune_model")
-    tune_training = tuning_config.get("tune_training")
-    built_search_space_file = tuning_config.get("built_search_space_file")
+def objective(trial, config_file: Path):
 
-    search_space = tune.build_search_space_with_dependencies(
-        search_space_file,
-        depmap_file,
-        trial,
-        tune_model=tune_model,
-        tune_training=tune_training,
-        base_settings_file=base_config_file,
-        built_search_space_file=built_search_space_file,
+    search_space = tune.build_search_space(
+        config_file=config_file,
+        trial=trial,
     )
 
     # prepare model
@@ -161,6 +153,7 @@ def objective(trial, tuning_config):
     n_train_examples = batch_size * 30
     n_valid_examples = batch_size * 10
 
+    # training loop
     for epoch in range(epochs):
         model.train()
         for batch_idx, (data, target) in enumerate(train_loader):
@@ -190,18 +183,20 @@ def objective(trial, tuning_config):
 
         accuracy = correct / min(len(valid_loader.dataset), n_valid_examples)
 
+        # report value to Optuna
         trial.report(accuracy, epoch)
 
+        # prune trial if needed
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
     return accuracy
 
 
-def tune_integration(_, tuning_config):  # _ is the iteration index
+def tune_integration(run_idx, tuning_config):  # run_idx is the iteration index
 
     study = tune.create_study(tuning_config)
     study.optimize(
-        partial(objective, tuning_config=tuning_config),
+        partial(objective, config_file=Path(tuning_config["config_file"])),
         n_trials=tuning_config["n_trials"],
         timeout=tuning_config["timeout"],
         n_jobs=tuning_config["n_jobs"],
@@ -214,12 +209,47 @@ def tune_integration(_, tuning_config):  # _ is the iteration index
         deepcopy=False, states=[optuna.trial.TrialState.COMPLETE]
     )
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
-    print("  Number of pruned trials: ", len(pruned_trials))
-    print("  Number of complete trials: ", len(complete_trials))
+    return (
+        len(study.trials),
+        len(pruned_trials),
+        len(complete_trials),
+        study.best_trial.value,
+    )
 
-    print("Best trial:")
+
+if __name__ == "__main__":
+    if not tmp_dir.exists():
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    # create tuning config
+    tuning_config = tune.load_yaml(create_tuning_config_file(tmp_dir))
+    n_processes = tuning_config.get("n_processes", 1)
+    n_iterations = tuning_config.get("n_iterations", 1)
+
+    # create config file
+    create_config_file(Path(tuning_config["config_file"]))
+
+    print("Starting the tuning integration process...")
+    with Pool(processes=n_processes) as pool:
+        local_results = pool.map(
+            partial(tune_integration, tuning_config=tuning_config), range(n_iterations)
+        )
+
+    print("Tuning results for each run:------------------")
+    for i, result in local_results:
+        n_trials, n_pruned, n_complete, best_value = result
+        print(f"Study statistics for run {i}: ")
+        print("  Number of finished trials: ", n_trials)
+        print("  Number of pruned trials: ", n_pruned)
+        print("  Number of complete trials: ", n_complete)
+        print("  Best trial value: ", best_value)
+
+    storage = JournalStorage(
+        JournalFileBackend(tuning_config["storage"])  # use uncompressed journal
+    )
+    study = optuna.load_study(study_name=tuning_config["study_name"], storage=storage)
+
+    print("Best trial global:----------------------------")
     trial = study.best_trial
 
     print("  Value: ", trial.value)
@@ -228,28 +258,9 @@ def tune_integration(_, tuning_config):  # _ is the iteration index
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
 
-    print("Save best trial to best_trial.yaml")
-    tune.save_best_trial(study, tmp_dir / "best_trial.yaml")
-
-    print("Save best config to best_config.yaml")
+    print("Saving the best configuration...")
     tune.save_best_config(
-        built_search_space_file=tmp_dir / "built_search_space.yaml",
-        best_trial_file=tmp_dir / "best_trial.yaml",
-        depmap_file=tmp_dir / "deps.yaml",
-        output_file=tmp_dir / "best_config.yaml",
+        config_file=Path(tuning_config["config_file"]),
+        best_trial=trial,
+        output_file=Path(tuning_config["best_config_file"]),
     )
-
-
-if __name__ == "__main__":
-    if not tmp_dir.exists():
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    tuning_config = tune.get_tuning_settings(get_tuning_config_file(tmp_dir))
-    n_processes = tuning_config.get("n_processes", 1)
-    n_iterations = tuning_config.get("n_iterations", 1)
-
-    print("Starting the tuning integration process...")
-    with Pool(processes=n_processes) as pool:
-        pool.map(
-            partial(tune_integration, tuning_config=tuning_config), range(n_iterations)
-        )

@@ -401,16 +401,12 @@ def test_build_search_space(
     get_config_file,
     get_fixed_trial,
     get_best_config,
-    get_coupled_sweep_mapping,
-    get_suggestions_with_best_trial,
 ):
-    search_space, coupled_mapping, search_space_w_refs = tune.build_search_space(
+    search_space = tune.build_search_space(
         get_config_file,
         get_fixed_trial,
     )
     assert search_space == get_best_config
-    assert coupled_mapping == get_coupled_sweep_mapping
-    assert search_space_w_refs == get_suggestions_with_best_trial
 
 
 def test_create_study(get_tune_config):
@@ -427,32 +423,6 @@ def test_create_study_with_storage(get_tune_config, tmp_path):
     assert study.study_name == "test_study"
     assert study._storage is not None
     assert isinstance(study._storage, optuna.storages.JournalStorage)
-
-
-def test_get_best_trial_params(tmp_path):
-    study = optuna.create_study(direction="minimize", storage=None)
-    best_trial = optuna.trial.FrozenTrial(
-        number=0,
-        state=optuna.trial.TrialState.COMPLETE,
-        value=0.5,
-        datetime_start=time.time(),
-        datetime_complete=time.time(),
-        params={"lr": 0.01, "n_layers": 3},
-        distributions={
-            "lr": optuna.distributions.FloatDistribution(1e-5, 1e-1, log=True),
-            "n_layers": optuna.distributions.IntDistribution(1, 5),
-        },
-        user_attrs={},
-        system_attrs={},
-        intermediate_values={},
-        trial_id=0,
-    )
-    study.add_trial(best_trial)
-
-    output_file = tmp_path / "best_trial.yaml"
-    tune.get_best_trial_params(study, output_file)
-    loaded_config = tune.load_yaml(output_file)
-    assert loaded_config == {"lr": 0.01, "n_layers": 3}
 
 
 def test_convert_to_pyobject_tags(get_best_config):
@@ -474,24 +444,23 @@ def test_convert_to_pyobject_tags(get_best_config):
     assert config_with_tags["trainer"]["epochs"] == 5
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")  # Optuna warning about (1, 6, 2)
 def test_save_best_config(
-    get_suggestions_with_best_trial,
-    get_mock_best_trial_params,
-    get_coupled_sweep_mapping,
+    get_config_file,
+    get_fixed_trial,
     tmp_path,
     get_best_config,
 ):
     output_file = tmp_path / "best_config.yaml"
 
     tune.save_best_config(
-        search_space_w_refs=get_suggestions_with_best_trial,
-        best_trial_params=get_mock_best_trial_params,
-        coupled_sweep_mapping=get_coupled_sweep_mapping,
+        config_file=get_config_file,
+        best_trial=get_fixed_trial,
         output_file=output_file,
     )
 
     with open(output_file, "r") as f:
-        best_config = yaml.safe_load(f)
+        best_config = yaml.safe_load(f)  # use safe_load to keep pyobject tags unchanged
 
     # convert class in mock best config to pyobject tags for comparison
     expected_config = tune.convert_to_pyobject_tags(get_best_config)

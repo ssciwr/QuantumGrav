@@ -335,10 +335,7 @@ def load_yaml(file: Path | str) -> Dict[str, Any]:
         return yaml.load(f, Loader=custom_loader)
 
 
-def build_search_space(
-    config_file: Path,
-    trial: optuna.trial.Trial,
-) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def build_search_space(config_file: Path, trial: optuna.trial.Trial) -> Dict[str, Any]:
     """Build a hyperparameter search space from a YAML configuration file
     and an Optuna trial object.
 
@@ -347,20 +344,15 @@ def build_search_space(
         trial (optuna.trial.Trial): The Optuna trial object.
 
     Returns:
-        Tuple[Dict[str, Any], Dict[str, Any]]: A tuple containing:
-            - The search space dictionary with resolved references.
-            - A dictionary mapping coupled sweep targets to their values.
-                Key is the full path to the coupled sweep node.
-                Value is the mapping dict between target values and coupled values.
-            - The search space dictionary before resolving references.
+        Dict[str, Any]: A dictionary representing the search space
+            with resolved references.
     """
     config = load_yaml(config_file)
 
-    search_space_w_refs, coupled_sweep_mapping = get_suggestion(
+    search_space, coupled_sweep_mapping = get_suggestion(
         config=config, current_node=config, trial=trial, traced_param=[]
     )
 
-    search_space = copy.deepcopy(search_space_w_refs)
     resolve_references(
         config=search_space,
         node=search_space,
@@ -368,7 +360,7 @@ def build_search_space(
         coupled_sweep_mapping=coupled_sweep_mapping,
     )
 
-    return search_space, coupled_sweep_mapping, search_space_w_refs
+    return search_space
 
 
 def create_study(tuning_config: Dict[str, Any]) -> None:
@@ -406,31 +398,6 @@ def create_study(tuning_config: Dict[str, Any]) -> None:
     )
     print(f"Study {study_name} was created and saved to {storage}.")
     return study
-
-
-def get_best_trial_params(
-    study: optuna.study.Study, output_path: Path | None = None
-) -> None:
-    """Get the best trial of an Optuna study
-    and save its parameters to a YAML file if the output path is provided.
-
-    The best trial only contains parameters that were sampled by Optuna.
-
-    Args:
-        study (optuna.study.Study): The Optuna study object.
-        output_path (Path | None): Path to the output YAML file.
-            Default is None.
-    """
-    best_trial = study.best_trial
-    best_params = best_trial.params
-
-    if output_path is not None:
-        with open(output_path, "w") as file:
-            yaml.safe_dump(best_params, file)
-
-        print(f"Best trial parameters saved to {output_path}.")
-
-    return best_params
 
 
 def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -483,23 +450,27 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def save_best_config(
-    search_space_w_refs: Dict[str, Any],
-    best_trial_params: Dict[str, Any],
-    coupled_sweep_mapping: Dict[str, Any],
+    config_file: Path,
+    best_trial: optuna.trial.FrozenTrial,
     output_file: Path,
 ):
     """Save the best configuration by combining the best trial parameters
     with the original config file.
 
     Args:
-        search_space_w_refs (Dict[str, Any]): The search space dictionary
-            with unresolved references.
-        best_trial_params (Dict[str, Any]): The best trial parameters.
-        coupled_sweep_mapping (Dict[str, Any]): The mapping for coupled sweeps.
+        config_file (Path): Path to the original configuration YAML file.
+        best_trial (optuna.trial.FrozenTrial): The best trial object.
         output_file (Path): Path to the output YAML file for the best configuration.
     """
     if not output_file:
         raise ValueError("Output file path must be provided.")
+
+    # create search space with references and coupled sweeps again from the config file
+    config = load_yaml(config_file)
+    search_space_w_refs, coupled_sweep_mapping = get_suggestion(
+        config=config, current_node=config, trial=best_trial, traced_param=[]
+    )
+    best_trial_params = best_trial.params
 
     best_config = copy.deepcopy(search_space_w_refs)
 
