@@ -1,10 +1,10 @@
 """
-    build_distr(cfg::Dict{String, Any}, name::String)
+    build_distr(cfg::Dict, name::String)
 
 Build a new Distributions.jl univariate distribution from a config dictionary.
 
 # Arguments:
-- cfg::Dict{String,Any} config dict
+- cfg::Dict config dict
 - name::String key in the dict referring to the type, args, kwargs needed
 
 # Example:
@@ -19,7 +19,7 @@ distributions = build_distr(config, "connectivity_distribution")
 ```
 
 """
-function build_distr(cfg::Dict{String,Any}, name::String)::Distributions.Distribution
+function build_distr(cfg::Dict, name::String)::Distributions.Distribution
 
     distribution_type::Union{Nothing,Type} = nothing
 
@@ -475,7 +475,7 @@ Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 function (dcm::DestroyedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{Dict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
     o = rand(rng, dcm.order_distribution)
@@ -671,8 +671,7 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
                                                              "order_distribution",
                                                              "order_distribution_args",
                                                              "r_distribution",
-                                                             "r_distribution_args",
-                                                             "r_distribution_kwargs"
+                                                             "r_distribution_args"
                                                            ]
                                                              }
                                                          """)
@@ -729,7 +728,7 @@ end
 function (gcm::GridCsetMakerPolynomial)(
     n::Int64,
     rng::Random.AbstractRNG,
-    config::Dict{String,Any};
+    config::Dict;
     grid::Union{String,Nothing} = nothing,
 )
 
@@ -884,7 +883,7 @@ end
 function (ctm::ComplexTopCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{Dict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
     n_vertical_cuts = rand(rng, ctm.vertical_cut_distribution)
@@ -1042,7 +1041,7 @@ end
 function (mcm::MergedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{Dict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
     o = rand(rng, mcm.order_distribution)
@@ -1120,7 +1119,16 @@ csetfactory_schema = JSONSchema.Schema("""
                                             "additionalProperties": true
                                         },
                                         "csetsize_distr": {"type": "string"},
-                                        "output": { "type": "string" }
+                                        "output": { "type": "string" },
+                                        "cset_type": {
+                                          "oneOf": [
+                                            { "type": "string" },
+                                            {
+                                              "type": "array",
+                                              "items": { "type": "string" }
+                                            }
+                                          ]
+                                        }
                                       },
                                       "required": [
                                         "polynomial",
@@ -1134,6 +1142,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                         "num_datapoints",
                                         "csetsize_distr",
                                         "csetsize_distr_args",
+                                        "cset_type",
                                         "output"
                                       ]
                                     }
@@ -1150,38 +1159,38 @@ and provides access to specialized factory functions for different cset types.
 - `npoint_distribution::Distributions.Distribution`: Distribution object for drawing number of elements in a cset
 - `conf::Dict`: config dictionary
 - `rng::Random.AbstractRNG`: random number generator to use
-- `cset_makers::Dict{String, Any}`: dict to hold all the different cset factory methods
+- `cset_makers::Dict`: dict to hold all the different cset factory methods
 """
 struct CsetFactory
     npoint_distribution::Distributions.Distribution
     conf::Dict
     rng::Random.AbstractRNG
-    cset_makers::Dict{String,Any}
+    cset_makers::Dict
 end
 
 """
-    CsetFactory(config::Dict{String, Any})
+    CsetFactory(config::Dict)
 
 Create a new CsetFactory instance that bundles all the different cset factories into one object
 """
-function CsetFactory(config::Dict{String,Any})
+function CsetFactory(config::Dict)
     validate_config(csetfactory_schema, config)
 
     npoint_distribution = build_distr(config, "csetsize_distr")
     rng = Random.Xoshiro(config["seed"])
     cset_makers = Dict(
-        "random" => RandomCsetMaker(Dict{String,Any}(config["random"])),
+        "random" => RandomCsetMaker(config["random"]),
         "complex_topology" =>
-            ComplexTopCsetMaker(Dict{String,Any}(config["complex_topology"])),
-        "merged" => MergedCsetMaker(Dict{String,Any}(config["merged"])),
+            ComplexTopCsetMaker(config["complex_topology"]),
+        "merged" => MergedCsetMaker(config["merged"]),
         "merged_ambiguous" =>
             MergedCsetMaker(get(config, "merged_ambiguous", config["merged"])),
-        "polynomial" => PolynomialCsetMaker(Dict{String,Any}(config["polynomial"])),
-        "layered" => LayeredCsetMaker(Dict{String,Any}(config["layered"])),
-        "grid" => GridCsetMakerPolynomial(Dict{String,Any}(config["grid"])),
-        "destroyed" => DestroyedCsetMaker(Dict{String,Any}(config["destroyed"])),
+        "polynomial" => PolynomialCsetMaker(config["polynomial"]),
+        "layered" => LayeredCsetMaker(config["layered"]),
+        "grid" => GridCsetMakerPolynomial(config["grid"]),
+        "destroyed" => DestroyedCsetMaker(config["destroyed"]),
         "destroyed_ambiguous" => DestroyedCsetMaker(
-            Dict{String,Any}(get(config, "destroyed_ambiguous", config["destroyed"])),
+            get(config, "destroyed_ambiguous", config["destroyed"]),
         ),
     )
     return CsetFactory(npoint_distribution, config, rng, cset_makers)
@@ -1189,7 +1198,7 @@ end
 
 
 """
-    cf::CsetFactory(csetname::String, n::Int64, rng::Random.AbstractRNG; config::Union{Dict{String, Any}, Nothing} = nothing)
+    cf::CsetFactory(csetname::String, n::Int64, rng::Random.AbstractRNG; config::Union{Dict, Nothing} = nothing)
 
 Create a new cset, accessing the specialized factory functors held by the caller.
 
@@ -1203,7 +1212,7 @@ function (cf::CsetFactory)(
     csetname::String,
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{Dict,Nothing} = nothing,
 )
     return cf.cset_makers[csetname](n, rng; config = config)
 end

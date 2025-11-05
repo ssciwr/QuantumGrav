@@ -122,6 +122,7 @@
         "num_datapoints" => 5,
         "csetsize_distr_args" => [10, 20],
         "csetsize_distr" => "DiscreteUniform",
+        "cset_type" => "polynomial",
         "output" => "./",
     )
 
