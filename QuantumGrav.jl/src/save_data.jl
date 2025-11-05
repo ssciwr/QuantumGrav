@@ -4,7 +4,14 @@
 Default chunking strategy for Zarr arrays. Chunks of size 128 along each dimension, or smaller if the dimension size is less than 128.
 """
 function default_chunks(data::AbstractArray)
-    size_per_dim = int(floor(1000000.0 / (sizeof(eltype(data)) * ndims(data))))
+    if eltype(data) === String
+        element_type_size = 1
+    else
+        element_type_size = sizeof(eltype(data))
+    end
+
+    # go to >= 1MB as per zarr performance tips
+    size_per_dim = convert(Int64, ceil((1e6 / element_type_size)^(1.0/ndims(data))))
     return Tuple(min(size(data, i), size_per_dim) for i = 1:ndims(data))
 end
 
@@ -27,14 +34,20 @@ function write_arraylike_to_zarr(
     data::AbstractArray;
     type = eltype(data),
     compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2),
-    chunking_strategy = default_chunks,
+    chunking_strategy::Union{Function,Nothing,Symbol} = default_chunks,
 )
+
+    if isnothing(chunking_strategy)
+        chunking_strategy = size(data)
+    end
+
     arr = Zarr.zcreate(
         type,
         group,
         key,
         size(data)...;
-        chunks = chunking_strategy(data),
+        chunks = chunking_strategy isa Function ? chunking_strategy(data) :
+                 chunking_strategy,
         compressor = Zarr.BloscCompressor(; compressor_kwargs...),
     )
 
@@ -56,7 +69,7 @@ function dict_to_zarr(
     file_or_group::Union{Zarr.DirectoryStore,Zarr.ZGroup},
     data::Dict;
     compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2),
-    chunking_strategy::Union{Dict{String,Function},Function,Nothing} = default_chunks,
+    chunking_strategy::Union{Dict{String,Function},Function,Nothing,Symbol} = default_chunks,
 )
     for (key, value) in data
         if value isa Dict
