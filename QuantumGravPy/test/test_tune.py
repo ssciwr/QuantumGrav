@@ -18,7 +18,7 @@ def get_config(yaml_text):
 
 
 @pytest.fixture
-def get_best_trial():
+def get_mock_best_trial_params():
     return {
         "model.layers": 2,
         "model.lr": 0.01,
@@ -128,8 +128,8 @@ def get_best_config():
 
 
 @pytest.fixture
-def get_fixed_trial(get_best_trial):
-    return optuna.trial.FixedTrial(params=get_best_trial)
+def get_fixed_trial(get_mock_best_trial_params):
+    return optuna.trial.FixedTrial(params=get_mock_best_trial_params)
 
 
 @pytest.fixture
@@ -398,14 +398,19 @@ def test_load_yaml_valid(get_config_file):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")  # Optuna warning about (1, 6, 2)
 def test_build_search_space(
-    get_config_file, get_fixed_trial, get_best_config, get_coupled_sweep_mapping
+    get_config_file,
+    get_fixed_trial,
+    get_best_config,
+    get_coupled_sweep_mapping,
+    get_suggestions_with_best_trial,
 ):
-    search_space, coupled_mapping = tune.build_search_space(
+    search_space, coupled_mapping, search_space_w_refs = tune.build_search_space(
         get_config_file,
         get_fixed_trial,
     )
     assert search_space == get_best_config
     assert coupled_mapping == get_coupled_sweep_mapping
+    assert search_space_w_refs == get_suggestions_with_best_trial
 
 
 def test_create_study(get_tune_config):
@@ -424,7 +429,7 @@ def test_create_study_with_storage(get_tune_config, tmp_path):
     assert isinstance(study._storage, optuna.storages.JournalStorage)
 
 
-def test_get_best_trial(tmp_path):
+def test_get_best_trial_params(tmp_path):
     study = optuna.create_study(direction="minimize", storage=None)
     best_trial = optuna.trial.FrozenTrial(
         number=0,
@@ -445,81 +450,50 @@ def test_get_best_trial(tmp_path):
     study.add_trial(best_trial)
 
     output_file = tmp_path / "best_trial.yaml"
-    tune.get_best_trial(study, output_file)
+    tune.get_best_trial_params(study, output_file)
     loaded_config = tune.load_yaml(output_file)
     assert loaded_config == {"lr": 0.01, "n_layers": 3}
 
 
-# def test_save_best_config(tmp_path):
-#     built_search_space = {
-#         "model": {
-#             "nn": [
-#                 {
-#                     "in_dim": "waiting",
-#                     "out_dim": "waiting",
-#                     "dropout": "waiting",
-#                 },
-#                 {
-#                     "in_dim": "waiting",
-#                     "out_dim": "waiting",
-#                     "dropout": "waiting",
-#                 },
-#             ]
-#         }
-#     }
-#     best_trial = {
-#         "model.nn.0.in_dim": 784,
-#         "model.nn.0.out_dim": 32,
-#         "model.nn.0.dropout": 0.5,
-#         "model.nn.1.in_dim": 32,
-#         "model.nn.1.out_dim": 32,
-#         "model.nn.1.dropout": 0.1,
-#     }
-#     depmap = {
-#         "model": {
-#             "nn": [
-#                 {},
-#                 {
-#                     "in_dim": "model.nn[0].out_dim",
-#                 },
-#             ]
-#         }
-#     }
-#     built_search_space_file = tmp_path / "built_search_space.yaml"
-#     with open(built_search_space_file, "w") as f:
-#         yaml.safe_dump(built_search_space, f)
-#     best_trial_file = tmp_path / "best_trial.yaml"
-#     with open(best_trial_file, "w") as f:
-#         yaml.safe_dump(best_trial, f)
-#     depmap_file = tmp_path / "depmap.yaml"
-#     with open(depmap_file, "w") as f:
-#         yaml.safe_dump(depmap, f)
-#     output_file = tmp_path / "best_config.yaml"
+def test_convert_to_pyobject_tags(get_best_config):
+    config_with_tags = tune.convert_to_pyobject_tags(get_best_config)
 
-#     tune.save_best_config(
-#         built_search_space_file,
-#         best_trial_file,
-#         depmap_file,
-#         output_file,
-#     )
+    # check if the types are converted to pyobject tags
+    assert (
+        config_with_tags["model"]["type"] == "!pyobject QuantumGrav.gnn_block.GNNBlock"
+    )
+    assert (
+        config_with_tags["model"]["convtype"]
+        == "!pyobject torch_geometric.nn.conv.sage_conv.SAGEConv"
+    )
 
-#     with open(output_file, "r") as f:
-#         best_config = yaml.safe_load(f)
+    # check if other values remain unchanged
+    assert config_with_tags["model"]["name"] == "test_model"
+    assert config_with_tags["model"]["layers"] == 2
+    assert config_with_tags["model"]["bs"] == 32
+    assert config_with_tags["trainer"]["epochs"] == 5
 
-#     expected_config = {
-#         "model": {
-#             "nn": [
-#                 {
-#                     "in_dim": 784,
-#                     "out_dim": 32,
-#                     "dropout": 0.5,
-#                 },
-#                 {
-#                     "in_dim": 32,
-#                     "out_dim": 32,
-#                     "dropout": 0.1,
-#                 },
-#             ]
-#         }
-#     }
-#     assert best_config == expected_config
+
+def test_save_best_config(
+    get_suggestions_with_best_trial,
+    get_mock_best_trial_params,
+    get_coupled_sweep_mapping,
+    tmp_path,
+    get_best_config,
+):
+    output_file = tmp_path / "best_config.yaml"
+
+    tune.save_best_config(
+        search_space_w_refs=get_suggestions_with_best_trial,
+        best_trial_params=get_mock_best_trial_params,
+        coupled_sweep_mapping=get_coupled_sweep_mapping,
+        output_file=output_file,
+    )
+
+    with open(output_file, "r") as f:
+        best_config = yaml.safe_load(f)
+
+    # convert class in mock best config to pyobject tags for comparison
+    expected_config = tune.convert_to_pyobject_tags(get_best_config)
+
+    assert best_config == expected_config

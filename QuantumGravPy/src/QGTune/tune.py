@@ -338,7 +338,7 @@ def load_yaml(file: Path | str) -> Dict[str, Any]:
 def build_search_space(
     config_file: Path,
     trial: optuna.trial.Trial,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """Build a hyperparameter search space from a YAML configuration file
     and an Optuna trial object.
 
@@ -350,12 +350,17 @@ def build_search_space(
         Tuple[Dict[str, Any], Dict[str, Any]]: A tuple containing:
             - The search space dictionary with resolved references.
             - A dictionary mapping coupled sweep targets to their values.
+                Key is the full path to the coupled sweep node.
+                Value is the mapping dict between target values and coupled values.
+            - The search space dictionary before resolving references.
     """
     config = load_yaml(config_file)
 
-    search_space, coupled_sweep_mapping = get_suggestion(
+    search_space_w_refs, coupled_sweep_mapping = get_suggestion(
         config=config, current_node=config, trial=trial, traced_param=[]
     )
+
+    search_space = copy.deepcopy(search_space_w_refs)
     resolve_references(
         config=search_space,
         node=search_space,
@@ -363,7 +368,7 @@ def build_search_space(
         coupled_sweep_mapping=coupled_sweep_mapping,
     )
 
-    return search_space, coupled_sweep_mapping
+    return search_space, coupled_sweep_mapping, search_space_w_refs
 
 
 def create_study(tuning_config: Dict[str, Any]) -> None:
@@ -403,7 +408,9 @@ def create_study(tuning_config: Dict[str, Any]) -> None:
     return study
 
 
-def get_best_trial(study: optuna.study.Study, output_path: Path | None = None) -> None:
+def get_best_trial_params(
+    study: optuna.study.Study, output_path: Path | None = None
+) -> None:
     """Get the best trial of an Optuna study
     and save its parameters to a YAML file if the output path is provided.
 
@@ -426,9 +433,58 @@ def get_best_trial(study: optuna.study.Study, output_path: Path | None = None) -
     return best_params
 
 
+def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert specific values in the configuration dictionary to `pyobject` YAML tags.
+    This is useful for saving the best configuration back to a YAML file,
+    and make sure that these tags are converted back to the original structures
+    when the YAML file is loaded again.
+
+    `pyobject` tags can only be applied to values that are not of built-in types.
+
+    Args:
+        config (Dict[str, Any]): The configuration dictionary.
+
+    Returns:
+        Dict[str, Any]: The configuration dictionary with converted custom tags.
+    """
+    # determine items to iterate over
+    if isinstance(config, dict):
+        items = config.items()
+        new_config = {}
+    elif isinstance(config, list):
+        items = enumerate(config)
+        new_config = [None] * len(config)
+    else:
+        return config
+
+    for key, value in items:
+        is_dict = isinstance(value, dict)
+        is_list = isinstance(value, list)
+
+        # recursive cases
+        if is_dict or is_list:
+            new_value = convert_to_pyobject_tags(value)
+            new_config[key] = new_value
+
+        # base cases
+        else:
+            # convert only non-built-in types to pyobject tags
+            if not isinstance(value, (bool, str, float, int, list, dict)):
+                # convert to !pyobject name_of_class
+                module = value.__module__
+                class_name = value.__name__
+                full_class_name = f"{module}.{class_name}"
+                pyobject_tag = f"!pyobject {full_class_name}"
+                new_config[key] = pyobject_tag
+            else:
+                new_config[key] = value
+
+    return new_config
+
+
 def save_best_config(
-    config: Dict[str, Any],
-    best_params: Dict[str, Any],
+    search_space_w_refs: Dict[str, Any],
+    best_trial_params: Dict[str, Any],
     coupled_sweep_mapping: Dict[str, Any],
     output_file: Path,
 ):
@@ -436,15 +492,16 @@ def save_best_config(
     with the original config file.
 
     Args:
-        config (Dict[str, Any]): The original configuration dictionary.
-        best_params (Dict[str, Any]): The best trial parameters.
+        search_space_w_refs (Dict[str, Any]): The search space dictionary
+            with unresolved references.
+        best_trial_params (Dict[str, Any]): The best trial parameters.
         coupled_sweep_mapping (Dict[str, Any]): The mapping for coupled sweeps.
         output_file (Path): Path to the output YAML file for the best configuration.
     """
     if not output_file:
         raise ValueError("Output file path must be provided.")
 
-    best_config = copy.deepcopy(config)
+    best_config = copy.deepcopy(search_space_w_refs)
 
     def get_next(current: dict, part: str | int):
         try:
@@ -460,7 +517,7 @@ def save_best_config(
         except ValueError:
             current[part] = value
 
-    for key, value in best_params.items():
+    for key, value in best_trial_params.items():
         parts = key.split(".")
         current = best_config
         for part in parts[:-1]:
@@ -468,12 +525,15 @@ def save_best_config(
         set_next(current, parts[-1], value)
 
     # apply dependencies to resolve any changes
-    best_config = resolve_references(
+    resolve_references(
         config=best_config,
         node=best_config,
         walked_path=[],
         coupled_sweep_mapping=coupled_sweep_mapping,
     )
+
+    # convert specific values to pyobject tags
+    best_config = convert_to_pyobject_tags(best_config)
 
     with open(output_file, "w") as file:
         yaml.safe_dump(best_config, file)
