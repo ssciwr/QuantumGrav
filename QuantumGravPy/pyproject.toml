@@ -7,6 +7,7 @@ name = "QuantumGrav"
 version = "0.1.0"
 description = "Graph neural networks for the causal set approach to quantum gravity"
 authors = [
+    {name = "Fabian Wagner", email = "f.wagner@thphys.uni-heidelberg.de"},
     { name = "Harald Mack", email = "harald.mack@protonmail.com" },
     { name = "Tuyen Le", email = "tuyen.le@iwr.uni-heidelberg.de" },
 ]

@@ -11,7 +11,8 @@ import HDF5
 import Zarr
 import ProgressMeter
 import Dates
-import Pkg ## needed for make_data
+import Pkg
+import JSONSchema
 
 include("utils.jl")
 include("csetgeneration.jl")
