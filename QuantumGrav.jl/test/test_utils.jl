@@ -1,16 +1,7 @@
-using TestItems
 
-@testsnippet importModules begin
-    using QuantumGrav
-    using TestItemRunner
-    using CausalSets
-    using SparseArrays
-    using Random
-    using Distributions
-end
+@testitem "test_make_pseudosprinkling" tags = [:utils] begin
 
-
-@testitem "test_make_pseudosprinkling" tags = [:utils] setup = [importModules] begin
+    import Random
     n = 10
     d = 3
     box_min = -1.0

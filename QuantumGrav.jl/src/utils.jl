@@ -35,3 +35,25 @@ function make_pseudosprinkling(
 
     return [[type(rand(rng, distr)) for _ = 1:d] for _ = 1:n]
 end
+
+"""
+     validate_config(schema, cfg)::Nothing
+Validate a config using a json schema it must adhere to
+
+# Arguments
+- schema: json schema to test against
+- config: config dictionary to test
+
+# Returns
+- nothing
+
+# throws
+Argument error: if validation fails
+"""
+function validate_config(schema, cfg)::Nothing
+
+    valid_res = JSONSchema.validate(schema, cfg)
+    if valid_res !== nothing
+        throw(ArgumentError("Config invalid:  $(valid_res)"))
+    end
+end

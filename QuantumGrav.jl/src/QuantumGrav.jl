@@ -7,10 +7,9 @@ import SparseArrays
 import CausalSets
 import Distributions
 import YAML
-import HDF5
 import Zarr
-import ProgressMeter
 import Dates
+import Pkg
 import JSONSchema
 
 include("utils.jl")
@@ -25,6 +24,7 @@ include("grid_like_causets.jl")
 include("graph_utils.jl")
 include("curvature_on_manifold.jl")
 include("cset_factories.jl")
+include("save_data.jl")
 
 export make_adj,
     max_pathlen,
@@ -58,5 +58,6 @@ export make_adj,
     MergedCsetMaker,
     ComplexTopCsetMaker,
     CsetFactory,
-    encode_csettype
+    encode_csettype,# data saving
+    dict_to_zarr
 end # module QuantumGrav
