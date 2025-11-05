@@ -5,9 +5,10 @@
     import Random
 
     function MockData(n)
+        rng = Random.Xoshiro(12345)
         manifold = CausalSets.MinkowskiManifold{2}()
         boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
-        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, Int(n))
+        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, Int(n); rng=rng)
         cset = CausalSets.BitArrayCauset(manifold, sprinkling)
         return cset, sprinkling
     end
