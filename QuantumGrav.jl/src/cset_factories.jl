@@ -198,14 +198,14 @@ const LayeredCsetMaker_schema = JSONSchema.Schema(
 )
 
 """
-    LayeredCsetMaker(config::Dict)
+    LayeredCsetMaker(config::Dict{String, Any})
 
     Creates a causal set maker for a layered causal set.
 
 # Arguments:
     - config::Dict: configuration dictionary
 """
-function LayeredCsetMaker(config::Dict)
+function LayeredCsetMaker(config::Dict{String, Any})
     validate_config(LayeredCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
@@ -296,14 +296,14 @@ const RandomCsetMaker_schema = JSONSchema.Schema("""{
                                                  """)
 
 """
-    RandomCsetMaker(config::Dict)
+    RandomCsetMaker(config::Dict{String, Any})
 
     Creates a causal set maker for a random causal set.
 
 # Fields:
 - config::Dict: configuration dictionary
 """
-function RandomCsetMaker(config::Dict)
+function RandomCsetMaker(config::Dict{String, Any})
     validate_config(RandomCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
@@ -443,11 +443,11 @@ const DestroyedCsetMaker_schema = JSONSchema.Schema("""{
                                                     """)
 
 """
-    DestroyedCsetMaker(config::Dict)
+    DestroyedCsetMaker(config::Dict{String, Any})
 
 Create a new `destroyed` causal set maker object from the config dictionary.
 """
-function DestroyedCsetMaker(config::Dict)
+function DestroyedCsetMaker(config::Dict{String, Any})
     validate_config(DestroyedCsetMaker_schema, config)
 
     order_distribution = build_distr(config, "order_distribution")
@@ -682,7 +682,7 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
 
     Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 """
-function GridCsetMakerPolynomial(config::Dict)
+function GridCsetMakerPolynomial(config::Dict{String, Any})
     validate_config(GridCsetMakerPolynomial_schema, config)
 
     grid_distribution = build_distr(config, "grid_distribution")
@@ -845,11 +845,11 @@ const ComplexTopCsetMaker_schema = JSONSchema.Schema("""{
                                                      """)
 
 """
-    ComplexTopCsetMaker(config::Dict)
+    ComplexTopCsetMaker(config::Dict{String, Any})
 
     Create a new `ComplexTopCsetMaker` object from the config dictionary.
 """
-function ComplexTopCsetMaker(config::Dict)
+function ComplexTopCsetMaker(config::Dict{String, Any})
     validate_config(ComplexTopCsetMaker_schema, config)
 
     vertical_cut_distr = build_distr(config, "vertical_cut_distribution")
@@ -1003,11 +1003,11 @@ const MergedCsetMaker_schema = JSONSchema.Schema("""{
                                                  """)
 
 """
-    MergedCsetMaker(config::Dict)
+    MergedCsetMaker(config::Dict{String, Any})
 
 Make a new merged causal set maker from a given configuration dictionary.
 """
-function MergedCsetMaker(config::Dict)
+function MergedCsetMaker(config::Dict{String, Any})
     validate_config(MergedCsetMaker_schema, config)
 
     order_distr = build_distr(config, "order_distribution")
