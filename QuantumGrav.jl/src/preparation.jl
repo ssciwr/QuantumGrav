@@ -62,13 +62,14 @@ Prepare the data production process from the config dict supplied.
 - copy over the source files of the passed functions. The user has to select these based on their importance for data production and whether they should be retained together with the data in the target directory
 - store the git info of the QuantumGrav package (branch, tree hash, source) used  
 - save the config file, augmented with git info,  to the target directory
-- create an hdf5 file or zarr directorystore based on the config file.
+- create a zarr directorystore based on the config file.
 
 # Arguments 
-config::Dict{String, Any} Config file defining the data generation system
-funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained 
+- config::Dict{String, Any} Config file defining the data generation system
+- funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained 
+- nameaddition::String Addition to the data file name to identify the data set
 """
-function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector)
+function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector; nameaddition::String = "data")
     # consistency checks
     for key in ["num_datapoints", "output", "seed", "output_format"]
         if !haskey(config, key)
@@ -106,23 +107,12 @@ function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector)
     )
 
     # create the output file
-    if config["output_format"] == "hdf5"
-        filepath = joinpath(
-            abspath(expanduser(config["output"])),
-            "data_$(getpid())_$(datetime).h5",
-        )
+    filepath = joinpath(
+        abspath(expanduser(config["output"])),
+        "$(nameaddition)_$(getpid())_$(datetime).zarr",
+    )
 
-        file = HDF5.h5open(filepath, get(config, "file_mode", "w"))
-    elseif config["output_format"] == "zarr"
-        filepath = joinpath(
-            abspath(expanduser(config["output"])),
-            "data_$(getpid())_$(datetime).zarr",
-        )
-
-        file = Zarr.DirectoryStore(filepath)
-    else
-        throw(ArgumentError("output_format must be either 'hdf5' or 'zarr'"))
-    end
+    file = Zarr.DirectoryStore(filepath)
 
     return filepath, file
 
