@@ -5,9 +5,10 @@
     import Random
 
     function MockData(n)
+        rng = Random.Xoshiro(123345)
         manifold = CausalSets.MinkowskiManifold{2}()
         boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
-        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, Int(n))
+        sprinkling = CausalSets.generate_sprinkling(manifold, boundary, Int(n); rng = rng)
         cset = CausalSets.BitArrayCauset(manifold, sprinkling)
         return cset, sprinkling
     end
@@ -44,6 +45,7 @@ end
     max_path_expected =
         Graphs.dag_longest_path(sdg; topological_order = collect(1:(cset.atom_count)))
 
+    # TODO: this seems just wrong I think?
     @test max_path > 1
     @test max_path <= cset.atom_count
     @test max_path == (length(max_path_expected) - 1) # dag_longest_path counts differently
