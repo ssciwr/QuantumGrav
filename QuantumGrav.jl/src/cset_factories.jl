@@ -672,7 +672,6 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
                                                              "order_distribution_args",
                                                              "r_distribution",
                                                              "r_distribution_args",
-                                                             "r_distribution_kwargs"
                                                            ]
                                                              }
                                                          """)
