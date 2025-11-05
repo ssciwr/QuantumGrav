@@ -1061,7 +1061,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                       "\$schema": "http://json-schema.org/draft-06/schema#",
                                       "title": "QuantumGrav Cset Factory Config",
                                       "type": "object",
-                                      "additionalProperties": false,
+                                      "additionalProperties": true,
                                       "properties": {
                                         "polynomial": {
                                           "type": "object",
@@ -1119,7 +1119,16 @@ csetfactory_schema = JSONSchema.Schema("""
                                             "additionalProperties": true
                                         },
                                         "csetsize_distr": {"type": "string"},
-                                        "output": { "type": "string" }
+                                        "output": { "type": "string" }, 
+                                        "cset_type": {
+                                          "oneOf": [
+                                            { "type": "string" },
+                                            {
+                                              "type": "array",
+                                              "items": { "type": "string" }
+                                            }
+                                          ]
+                                        }
                                       },
                                       "required": [
                                         "polynomial",
@@ -1133,6 +1142,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                         "num_datapoints",
                                         "csetsize_distr",
                                         "csetsize_distr_args",
+                                        "cset_type",
                                         "output"
                                       ]
                                     }
