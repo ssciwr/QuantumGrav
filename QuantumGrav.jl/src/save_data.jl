@@ -55,7 +55,7 @@ function write_arraylike_to_zarr(
 end
 
 """
-    dict_to_zarr(file_or_group::Union{Zarr.DirectoryStore, Zarr.ZGroup}, data::Dict{String, Any}, compressor_kwargs = Dict(clevel => 9, cname => "lz4", shuffle => 2), chunking_strategy::Union{Dict{String, Function}, Function, Nothing} = default_chunks)
+    dict_to_zarr(file_or_group::Union{Zarr.DirectoryStore, Zarr.ZGroup}, data::Dict{String, Any}, compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2), chunking_strategy::Union{Dict{String, Function}, Function, Nothing} = default_chunks)
 
 Recursively write a nested dictionary to a Zarr group.
 
