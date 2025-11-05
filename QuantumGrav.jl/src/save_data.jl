@@ -4,15 +4,8 @@
 Default chunking strategy for Zarr arrays. Chunks of size 128 along each dimension, or smaller if the dimension size is less than 128.
 """
 function default_chunks(data::AbstractArray)
-    if ndims(data) == 1
-        return (min(size(data, 1), 1024),)
-    elseif ndims(data) == 2
-        return Tuple(min(size(data, i), 64) for i = 1:ndims(data))
-    elseif ndims(data) == 3
-        return Tuple(min(size(data, i), 16) for i = 1:ndims(data))
-    else
-        return Tuple(min(size(data, i), 8) for i = 1:ndims(data))
-    end
+    size_per_dim = int(floor(1000000.0 / (sizeof(eltype(data)) * ndims(data))))
+    return Tuple(min(size(data, i), size_per_dim) for i = 1:ndims(data))
 end
 
 """
@@ -26,7 +19,7 @@ Write a Julia AbstractArray to a Zarr group.
 - `data`: Array to write
 - `type`: Data type of the array elements
 - `compressor_kwargs`: Compression options for the array
-- `chunking_strategy`: Function mapping input data to chunks in which it should be written to disk. When writing this function, be aware of the curse of dimensionality
+- `chunking_strategy`: Function mapping input data to chunks in which it should be written to disk. When writing this function, be aware of the curse of dimensionality. If you want not chunking, use 'nothing' here.
 """
 function write_arraylike_to_zarr(
     group::Zarr.ZGroup,
@@ -57,7 +50,7 @@ Recursively write a nested dictionary to a Zarr group.
 - `file_or_group`: Zarr DirectoryStore or Group to write the data to
 - `data`: Nested dictionary to write
 - `compressor_kwargs`: Compression options for the arrays
-- `chunking_strategy`: Chunking strategy for the arrays
+- `chunking_strategy`: Chunking strategy for the arrays. If you want not chunking, use 'nothing' here.
 """
 function dict_to_zarr(
     file_or_group::Union{Zarr.DirectoryStore,Zarr.ZGroup},

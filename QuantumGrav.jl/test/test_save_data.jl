@@ -63,8 +63,23 @@ end
     @test arr.metadata.chunks == (12, 15, 10)
     @test arr.metadata.shape[] == (100, 101, 102)
     @test arr[1:10, 1:3, 1:5] == dataarray[1:10, 1:3, 1:5]
-    rm(joinpath(tempdir(), "test.zarr"), recursive = true)
 
+    # no chunking
+    QuantumGrav.write_arraylike_to_zarr(
+        group,
+        "testdata_custom_nochunk",
+        dataarray;
+        chunking_strategy = nothing,
+    )
+
+    @test isdir(joinpath(tempdir(), "test.zarr", "testgroup", "testdata_custom_nochunk"))
+
+    arr = Zarr.zopen(file, "r"; path = joinpath("testgroup", "testdata_custom_nochunk"))
+
+    @test arr.metadata.chunks == (12, 15, 10)
+    @test arr.metadata.shape[] == (100, 101, 102)
+    @test arr[1:10, 1:3, 1:5] == dataarray[1:10, 1:3, 1:5]
+    rm(joinpath(tempdir(), "test.zarr"), recursive = true)
 end
 
 
