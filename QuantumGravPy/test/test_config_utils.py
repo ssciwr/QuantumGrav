@@ -32,6 +32,23 @@ def yaml_text_nonsweep():
     return yaml_text
 
 
+def test_arrange_inclusive():
+    values = QG.config_utils.arange_inclusive(1, 5, 1)
+    assert np.array_equal(values, np.array([1, 2, 3, 4, 5]))
+
+    values = QG.config_utils.arange_inclusive(0, 1, 0.2)
+    assert np.allclose(values, np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
+
+    values = QG.config_utils.arange_inclusive(5, 2, -1)
+    assert np.array_equal(values, np.array([5, 4, 3, 2]))
+
+    values = QG.config_utils.arange_inclusive(0.5, 0.1, -0.2)
+    assert np.allclose(values, np.array([0.5, 0.3, 0.1]))
+
+    values = QG.config_utils.arange_inclusive(1, 6, 2)
+    assert np.array_equal(values, np.array([1, 3, 5]))
+
+
 def test_read_yaml(yaml_text):
     # Parse a YAML string using the custom tags and ensure structures are constructed correctly
     loader = QG.config_utils.get_loader()

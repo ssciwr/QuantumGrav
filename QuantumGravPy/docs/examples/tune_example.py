@@ -236,7 +236,7 @@ if __name__ == "__main__":
         )
 
     print("Tuning results for each run:------------------")
-    for i, result in local_results:
+    for i, result in enumerate(local_results):
         n_trials, n_pruned, n_complete, best_value = result
         print(f"Study statistics for run {i}: ")
         print("  Number of finished trials: ", n_trials)

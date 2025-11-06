@@ -1,5 +1,0 @@
-epoch: !range
-  start: 1
-  stop: 5
-epoch_clone: !reference
-  target: something.somethingelse[1].anotherthing

@@ -56,6 +56,42 @@ def coupled_sweep_constructor(
     return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
 
+def arange_inclusive(
+    start: int | float, stop: int | float, step: int | float
+) -> np.ndarray:
+    """Return a numpy array from start to stop (inclusive),
+    with the given step, working for both int and float.
+
+    Args:
+        start (int | float): Start value
+        stop (int | float): Stop value (inclusive)
+        step (int | float): Step size
+
+    Returns:
+        np.ndarray: Numpy array of values from start to stop (inclusive)
+            with the given step.
+    """
+    if step == 0:
+        raise ValueError("step must not be zero")
+
+    # Compute number of steps (round to avoid float precision errors)
+    # +1 to include stop
+    num = int(round((stop - start) / step)) + 1
+
+    # Generate linearly spaced values (always includes stop)
+    values = np.linspace(start, start + (num - 1) * step, num)
+
+    # Adjust last value to exactly match stop when it's very close
+    if abs(values[-1] - stop) < abs(step) * 1e-9:
+        values[-1] = stop
+
+    # If all inputs were ints, cast result back to int
+    if all(isinstance(x, int) for x in (start, stop, step)):
+        values = values.astype(int)
+
+    return values
+
+
 def range_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
 ) -> Dict[str, Any]:
@@ -96,8 +132,6 @@ def range_constructor(
     end = mapping.get(node.value[1][0].value)
     step_or_log = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
 
-    min_num = 1e-5
-
     # prepare values
     if isinstance(step_or_log, bool):
         size = mapping.get(node.value[3][0].value) if len(node.value) > 3 else 5
@@ -110,11 +144,11 @@ def range_constructor(
             values = np.random.uniform(start, end, size=size)
 
     elif isinstance(step_or_log, (int, float)):
-        values = np.arange(start, end + min_num, step_or_log)
+        values = arange_inclusive(start, end, step_or_log)
 
     else:  # no step or log specified
         default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
-        values = np.arange(start, end + min_num, default_step)
+        values = arange_inclusive(start, end, default_step)
         step_or_log = default_step
 
     return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
