@@ -1,10 +1,8 @@
 import pytest
-from QGTune import tune
+from QuantumGrav.QGTune import tune
 from QuantumGrav import config_utils as cfg
 import optuna
 import yaml
-import numpy as np
-import time
 from QuantumGrav.gnn_block import GNNBlock
 from torch_geometric.nn.conv.sage_conv import SAGEConv
 import copy

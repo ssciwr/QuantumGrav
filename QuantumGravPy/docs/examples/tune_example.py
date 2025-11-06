@@ -2,7 +2,7 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""  # make sure no GPU is used
 
-from QGTune import tune
+from QuantumGrav.QGTune import tune
 import optuna
 import yaml
 import torch
