@@ -1,18 +1,84 @@
-# Hyperparameter Optimization with Optuna
+# Hyperparameter Optimization
 
 The `QuantumGrav` Python package lets users customize hyperparameters when building, training, validating, and testing GNN models. Choosing the right values is crucial for model performance.
 
-To accelerate this process, we developed `QGTune`, a subpackage that uses [Optuna](https://optuna.readthedocs.io/en/stable/index.html) to automatically find optimal hyperparameters for specific objectives (e.g. minimizing loss or maximizing accuracy).
+To accelerate this process, we developed two way to handle possible values of hyperparameters:
+* Using custom YAML tags to generate a list of configs based on the cartesian product of possible values of hyperparameters, then run training on each config.
+* Using [Optuna](https://optuna.readthedocs.io/en/stable/index.html) to create hyperparameter search space on a config file then automatically find optimal hyperparameters for specific objectives (e.g. minimizing loss or maximizing accuracy).
 
-## Define Optuna search space
+## Config handling with custom YAML tags
 
-To use Optuna, we first need to define the hyperparameter search space with methods from [optuna.trial.Trial](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.trial.Trial.html), including:
+We developed the following custom YAML tags to specify possible values of hyperparamters:
+
+* `!sweep` tag: Used to define possible categorical values for a hyperparameter. For example, if we want to experiment with two different values for the number of epochs (32 and 64), we can specify them as follows:
+    ```yaml
+    training:
+        ...
+        epochs: !sweep
+            values: [32, 64]
+    ```
+
+* `!coupled-sweep` tag: If a hyperparameter’s values depend on another sweep hyperparameter, we can use coupled-sweep to link them. For example, if we want the batch size to be 64 when training for 32 epochs and 128 when training for 64 epochs, we can specify the batch size as follows:
+    ```yaml
+    training:
+        ...
+        batch_size: !coupled-sweep
+            target: training.epochs
+            values; [64, 128]
+    ```
+
+* `!range` tag: If a hyperparameter takes values within an int or float range, the range can be specified as below:
+    ```yaml
+    epochs: !range # int range
+        start: 10
+        stop: 30
+        step: 5
+    drop_rate: !range # float range
+        start: 0.1
+        stop: 0.5
+        step: 0.2
+    lr: !range # float range in log domain
+        start: 1e-5
+        stop: 1e-2
+        log: true
+        size: 7
+    ```
+    **Note**: The stop value is included. For a `float` range in the log domain, we should specify size (number of values to generate); if omitted, the default is 5. If `log=False`, the range would be linear.
+
+* `!reference` tag: In some cases, a hyperparameter must share the same value as another. For instance, the input dimension of one layer and the output dimension of the previous layer. The `!reference` tag handles such cases:
+    ```yaml
+    model:
+        layers:
+            -
+                in_dim: 728
+                out_dim: 64
+            -
+                in_dim: !reference
+                    target: model.layers[0].out_dim
+    ```
+
+* `!pyobject` tag: Ultimately, to specify a Python object in the config file, we use the `!pyobject` tag. This is useful for assigning a Python object to a model or layer type. For example:
+    ```yaml
+    model:
+        conv_layer: !pyobject torch_geometric.nn.conv.sage_conv.SAGEConv
+    ```
+
+## Optimization with Optuna
+
+The second option for finding optimal hyperparameter values is to use Optuna together with the custom YAML tag.
+
+### Define Optuna search space
+
+We first need to define the hyperparameter search space with methods from [optuna.trial.Trial](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.trial.Trial.html), including:
 
 * `suggest_categorical()`: suggest a value for the categorical parameter
 * `suggest_float()`: suggest a value for the floating point parameter
 * `suggest_int()`: suggest a value for the integer parameter
 
-To define search space in `QuantumGrav`, users need three setting files:
+The first suggestion function corresponds to the `!sweep` tag described above, while the other two functions relate to the `!range` tag for float and int values, respectively.
+
+We developed a subpackage, QGTune to convert a config file with custom YAML tags to hyperparameter search space for Optuna.
+
 
 * Base setting file: contains all configurations for using the `QuantumGrav` Python package (see [the configuration `dict`](./training_a_model.md#the-configuration-dict)). The hyperparameter values in this file will serve as defaults when users want to enable only a subset of the search space (see details in [Build Optuna search space](#build-optuna-search-space)).
 * Search space file: specifies the hyperparameters to optimize and their ranges
