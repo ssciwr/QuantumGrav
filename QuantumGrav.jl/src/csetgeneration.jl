@@ -80,7 +80,7 @@ function make_polynomial_manifold_cset(
     boundary = CausalSets.BoxBoundary{d}(((-1.0, -1.0), (1.0, 1.0)))
 
     # Generate a sprinkling of npoints in the manifold within the boundary
-    sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints)
+    sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints; rng = rng)
 
     # Construct the causal set from the manifold and sprinkling
     cset = CausalSets.BitArrayCauset(polym, sprinkling)
