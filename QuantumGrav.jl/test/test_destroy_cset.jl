@@ -30,7 +30,7 @@ end
     )
 
     @test length(sprinkling) == npoints
-    @test size(chebyshev_coefs) == (order, order)
+    @test size(chebyshev_coefs) == (order + 1, order + 1)
     @test typeof(cset) != Nothing
     @test cset.atom_count == npoints
     @test length(cset.future_relations) == npoints
