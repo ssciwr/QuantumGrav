@@ -351,7 +351,7 @@ def test_resolve_references_one_node(
     assert config.get("model").get("bs") == 32
     # other fields remain unchanged
     assert config.get("trainer").get("foo_ref") == get_suggestions_with_best_trial.get(
-        ("trainer")
+        "trainer"
     ).get("foo_ref")
 
 

@@ -162,7 +162,7 @@ def convert_to_suggestion(
         coupled_values = node.get("values")
         if len(target_values) != len(coupled_values):
             raise ValueError(
-                f"Length of target values of {node.get("target")} "
+                f"Length of target values of {node.get('target')} "
                 f"and coupled values of {param_name} do not match."
             )
         mapped_values = dict(zip(target_values, coupled_values))

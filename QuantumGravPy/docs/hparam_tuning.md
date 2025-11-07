@@ -2,9 +2,9 @@
 
 The `QuantumGrav` Python package lets users customize hyperparameters when building, training, validating, and testing GNN models. Choosing the right values is crucial for model performance.
 
-To accelerate this process, we developed two way to handle possible values of hyperparameters:
+To accelerate this process, we developed two ways to handle possible values of hyperparameters:
 * Using custom YAML tags to generate a list of configs based on the cartesian product of possible values of hyperparameters, then run training on each config.
-* Using [Optuna](https://optuna.readthedocs.io/en/stable/index.html) to create hyperparameter search space on a config file then automatically find optimal hyperparameters for specific objectives (e.g. minimizing loss or maximizing accuracy).
+* Using [Optuna](https://optuna.readthedocs.io/en/stable/index.html) to create hyperparameter search space on a config file then automatically find optimal hyperparameter values for specific objectives (e.g. minimizing loss or maximizing accuracy).
 
 ## Config handling with custom YAML tags
 
@@ -24,7 +24,7 @@ We developed the following custom YAML tags to specify possible values of hyperp
         ...
         batch_size: !coupled-sweep
             target: training.epochs
-            values; [64, 128]
+            values: [64, 128]
     ```
 
 * `!range` tag: If a hyperparameter takes values within an int or float range, the range can be specified as below:
