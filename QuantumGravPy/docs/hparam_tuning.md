@@ -67,241 +67,67 @@ We developed the following custom YAML tags to specify possible values of hyperp
 
 The second option for finding optimal hyperparameter values is to use Optuna together with the custom YAML tag.
 
-### Define Optuna search space
+We developed a subpackage `QGTune` to convert a config file with custom YAML tags to hyperparameter search space for Optuna. Main purpose of the GQTune subpackage includes:
 
-We first need to define the hyperparameter search space with methods from [optuna.trial.Trial](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.trial.Trial.html), including:
+* Build Optuna search space from a model/trainer config YAML file (with above custom tags)
+* Create an Optuna study from a tuning config file (preferably YAML file)
+* Save the best config with optimal hyperparameter values back to a YAML file.
 
-* `suggest_categorical()`: suggest a value for the categorical parameter
-* `suggest_float()`: suggest a value for the floating point parameter
-* `suggest_int()`: suggest a value for the integer parameter
+### Define Optuna search space with QGTune
 
-The first suggestion function corresponds to the `!sweep` tag described above, while the other two functions relate to the `!range` tag for float and int values, respectively.
+#### Optuna suggestion with custom YAML tag
 
-We developed a subpackage, QGTune to convert a config file with custom YAML tags to hyperparameter search space for Optuna.
+Optuna use [optuna.trial.Trial](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.trial.Trial.html) to define hyperparameter search space for each study. Main functions include:
 
+* `suggest_categorical()`: suggest a value for a categorical parameter, which is a list of `bool`, `string`, `float`, or `int`
+* `suggest_float()`: suggest a value within a range for a floating point parameter, in linear or log domain
+* `suggest_int()`: suggest a value within a range for an integer parameter
 
-* Base setting file: contains all configurations for using the `QuantumGrav` Python package (see [the configuration `dict`](./training_a_model.md#the-configuration-dict)). The hyperparameter values in this file will serve as defaults when users want to enable only a subset of the search space (see details in [Build Optuna search space](#build-optuna-search-space)).
-* Search space file: specifies the hyperparameters to optimize and their ranges
-* Dependency mapping file: defines dependencies between hyperparameters. A common case is in GNN layers, where the input dimension of one layer must match the output dimension of the previous layer.
+The first suggestion function corresponds to the `!sweep` tag described above, while the other two functions relate to the `!range` tag for `float` and `int` values, respectively.
 
-### Base setting vs. Search space
-
-The search space file follows the same structure as the base setting file but replaces hyperparameter values with their ranges. For example:
-
-```yaml
-model:
-  name: "QuantumGravBase"
-  gcn_net:
-    - in_dim: 12
-      out_dim: 128
-      dropout: 0.3
-      gnn_layer_type: "sage"
-      normalizer: "batch_norm"
-      activation: "relu"
-```
-```yaml
-model:
-  name: "QuantumGravSearchSpace"
-  gcn_net:
-    - in_dim: 12 # number of node features
-      out_dim: [128, 256]
-      dropout:
-        type: tuple # to distinguish from categorical
-        value: [0.2, 0.5, 0.1] # range for dropout, min, max, step
-      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
-      normalizer: ["batch_norm", "identity", "layer_norm"]
-      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
-```
-
-* Categorical parameters are defined by assigning the parameter name a list of possible values (`bool`, `string`, `float`, or `int`). In the example above, this applies to `out_dim`, `gnn_layer_type`, `normalizer`, and `activation`,
-* Floating point and integer parameters are specified as a list of three items:
-    * [`float`, `float`, `float` or `bool`] for floats
-    * [`int`, `int`, `int`] for integers
-    * To avoid confusion with categorical lists, the hyperparameter structure includes two sub-fields:
-        * `type`: set to `"tuple"`
-        * `value`: hold the 3-item tuple
-    * Another example for floats:
-        ```yaml
-        learning_rate:
-            type: tuple
-            value: [1e-5, 1e-1, true]
-        ```
-
-Full example of the search space YAML file built based on the base setting from [the configuration `dict`](./training_a_model.md#the-configuration-dict):
+For example, the following configuration:
 
 ```yaml
-model:
-  name: "QuantumGravSearchSpace"
-  gcn_net:
-    - in_dim: 12 # number of node features
-      out_dim: [128, 256]
-      dropout:
-        type: tuple # to distinguish from categorical
-        value: [0.2, 0.5, 0.1] # range for dropout, min, max, step
-      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
-      normalizer: ["batch_norm", "identity", "layer_norm"]
-      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
-      norm_args: 
-        - 128 # should match out_dim, manually set later
-      gnn_layer_kwargs:
-        normalize: False
-        bias: True
-        project: False
-        root_weight: False
-        aggr: "mean"
-    - in_dim: 128 # should match previous layer's out_dim, manually set later
-      out_dim: [256, 512]
-      dropout:
-        type: tuple
-        value: [0.2, 0.5, 0.1]
-      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
-      normalizer: ["batch_norm", "identity", "layer_norm"]
-      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
-      norm_args: 
-        - 256 # should match out_dim, manually set later
-      gnn_layer_kwargs:
-        normalize: False
-        bias: True
-        project: False
-        root_weight: False
-        aggr: "mean"
-    - in_dim: 256 # should match previous layer's out_dim, manually set later
-      out_dim: [128, 256]
-      dropout:
-        type: tuple
-        value: [0.2, 0.5, 0.1]
-      gnn_layer_type: ["sage", "gcn", "gat", "gco"]
-      normalizer: ["batch_norm", "identity", "layer_norm"]
-      activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
-      norm_args: 
-        - 128 # should match out_dim, manually set later
-      gnn_layer_kwargs:
-        normalize: False
-        bias: True
-        project: False
-        root_weight: False
-        aggr: "mean"
-  pooling_layer: ["mean", "max", "sum"]
-  classifier:
-    input_dim: 128 # should match last gcn_net layer's out_dim, manually set later
-    output_dims: 
-      - 2 # number of classes in classification task
-    hidden_dims: 
-      - 48
-      - 18
-    activation: ["relu", "leaky_relu", "sigmoid", "tanh", "identity"]
-    backbone_kwargs: [{}, {}]
-    output_kwargs: [{}]
-    activation_kwargs: [{ "inplace": False }]
-
-training:
-  seed: 42
-  # training loop
-  device: "cuda"
-  early_stopping_patience: 5
-  early_stopping_window: 7
-  early_stopping_tol: 0.001
-  early_stopping_metric: "f1_weighted"
-  checkpoint_at: 2
-  checkpoint_path: /path/to/where/the/intermediate/models/should/go
-  # optimizer
-  learning_rate:
-    type: tuple
-    value: [1e-5, 1e-1, true]
-  weight_decay:
-    type: tuple
-    value: [1e-6, 1e-2, true]
-  # training loader
-  batch_size: [32, 64]
-  num_workers: 12
-  pin_memory: False
-  drop_last: True
-  num_epochs: [50, 100, 200]
-  split: 0.8
-validation: &valtest
-  batch_size: 32
-  num_workers: 12
-  pin_memory: False
-  drop_last: True
-  shuffle: True
-  persistent_workers: True
-  split: 0.1
-testing: *valtest
+epochs: !range
+    start: 10
+    stop: 30
+    step: 5
 ```
 
-### Dependency mapping
+is equivalent to calling `optuna.trial.Trial.suggest_int(param_name, start, stop, step)`. 
 
-Given the following hyperparameters in the search space (unrelated lines are substitude by `...` for simplicity):
+Here, `param_name` represents the parameter name stored in the Optuna study. We define this name as the path from the root node to the current node in the configuration file, e.g. `training.epochs` or `model.layer.0.in_dim`. Note that in this naming scheme, all parts are separated by dots (`.`). Unlike the `target` field in the `!reference` tag, no square brackets (`[]`) are used.
 
-```yaml
-model:
-  name: "QuantumGravSearchSpace"
-  gcn_net:
-    - in_dim: 12 # number of node features
-      out_dim: [128, 256]
-      ...
-      norm_args: 
-        - 128 # should match out_dim, manually set later
-      gnn_layer_kwargs:
-        ...
-    - in_dim: 128 # should match previous layer's out_dim, manually set later
-      out_dim: [256, 512]
-      dropout:
-        ...
+#### Create Optuna search space from a model/trainer config file
+
+To build an Optuna search space with `QGTune`, we can use `build_search_space()` function as in the following example:
+
+```python
+from QuantumGrav.QGTune import tune
+
+def objective(trial: optuna.trial.Trial, config_file: Path):
+
+    search_space = tune.build_search_space(
+        config_file=config_file,
+        trial=trial,
+    )
+  ...
 ```
 
-In this example, the first argument of `norm_args` must match `out_dim`, and the `in_dim` of the second layer must match the `out_dim` of the first layer. YAML anchors (`&`) and aliases (`*`) would not help here as they reference static values, while hyperparameters are assigned dynamically by Optuna at runtime.
+* `objective` is the function that will be used later by an Optuna study for optimization
+* `trial` is an object of `optuna.trial.Trial`, representing trials of an Optuna study
+* `config_file` is path to the model/trainer configuration file (see [the configuration `dict`](./training_a_model.md#the-configuration-dict) for an example)
+* `search_space` is a dictionary constructed from the model/trainer config file, where values of hyperparameters defined with custom YAML tags are replaced by their corresponding Optuna trial suggestions. For example, the `epochs` configuration shown earlier would be transformed into:
+    ```yaml
+    training:
+        epochs: optuna.trial.Trial.suggest_int("training.epochs", start, stop, step)
+    ```
 
-To handle such cases, we introduce another YAML file with the same structure as the search space file:
-
-```yaml
-model:
-  gcn_net:
-    # layer 0
-    - norm_args: 
-      - "model.gcn_net[0].out_dim"
-    # layer 1
-    - in_dim: "model.gcn_net[0].out_dim"
-      norm_args: 
-        ...
-```
-
-Here, the first value of `norm_args` in the first layer is set to `"model.gcn_net[0].out_dim"`, which points to the `out_dim` of the first element in `model` -> `gcn_net`. The same approach is used for the `in_dim` of the second layer.
-
-To use this mapping, users must understand the search space file's structure and ensure the dependency mapping file follows it exactly.
-
-Full example of dependency mapping file for the above search space file:
-
-```yaml
-model:
-  gcn_net:
-    # layer 0
-    - norm_args: 
-      - "model.gcn_net[0].out_dim"
-    # layer 1
-    - in_dim: "model.gcn_net[0].out_dim"
-      norm_args: 
-      - "model.gcn_net[1].out_dim"
-    # layer 2
-    - in_dim: "model.gcn_net[1].out_dim"
-      norm_args: 
-      - "model.gcn_net[2].out_dim"
-  classifier:
-    input_dim: "model.gcn_net[-1].out_dim"
-```
-
-## QGTune subpackage
-
-Main purpose of the GQTune subpackage includes:
-
-* Create an Optuna study from a config file (preferably YAML file)
-* Build Optuna search space from the three described YAML files
-* Save hyperparamter values of the best trial
-* Save hyperparameter values of the best config
+    Subsequently, this `search_space` dictionary would be used for creating a GNN model and training the model as described in [The Trainer class](./training_a_model.md#the-trainer-class).
 
 ### Create an Optuna study
 
-The input for creating an Optuna study is a configuration dictionary that should include essential keys like `"storage"`, `"study_name"`, and `"direction"`, for example:
+The input for creating an Optuna study is a tuning configuration dictionary that should include essential keys like `"storage"`, `"study_name"`, and `"direction"`, for example:
 
 ```python
 {
@@ -315,123 +141,410 @@ If `storage` is assigned to `None` (or `null` in YAML file), the study will be s
 
 For simplicity while working with multi-processing, we only support storage with [Optuna's JournalStorage](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.storages.JournalStorage.html).
 
-### Build an Optuna search space
+### Save the best config to a YAML file
 
-To build an Optuna search space with `QGTune`, users can use `build_search_space_with_dependencies()` function as in the following example:
-
-```python
-from QGTune import tune
-
-def objective(trial, tuning_config):
-  search_space_file = tuning_config.get("search_space_path")
-  depmap_file = tuning_config.get("dependency_mapping_path")
-  tune_model = tuning_config.get("tune_model")
-  tune_training = tuning_config.get("tune_training")
-  base_config_file = tuning_config.get("base_settings_path")
-  built_search_space_file = tuning_config.get("built_search_space_path")
-
-  search_space = tune.build_search_space_with_dependencies(
-        search_space_file,
-        depmap_file,
-        trial,
-        tune_model=tune_model,
-        tune_training=tune_training,
-        base_settings_file=base_config_file,
-        built_search_space_file=built_search_space_file,
-    )
-  
-  ...
-```
-
-* `search_space` is a dictionary whose keys correspond to hyperparameter names.
-* `objective` is the function that will be used later for optimization
-* `trial` is an object of `optuna.trial.Trial`
-* `tuning_config` serves as the configuration dictionary for `QGTune`, defined by users (see a full example at the end of section [Save best trial and best config](#save-best-trial-and-best-config))
-* `search_space_file`, `depmap_file`, `base_config_file` are paths to the search space file, dependency file, and base config file, respectively. These paths can be specified in `tuning_config`.
-* `tune_model`: whether to tune the hyperparameters associated with the `model` part of the search space
-* `tune_training`: whether to tune the hyperparameters associated with the `training` part of the search space
-* `built_search_space_file`: path to save the built search space. All hyperparameter values defined via `trial` suggestions will be recorded in this file as their initial suggestions. These values do not represent the best trial. This file serves as a reference for generating the best configuration later.
-
-Note that the `base_config_file` is required if either `tune_model` or `tune_training` is `False`. In this case, hyperparameter values from the base settings will overwrite the corresponding part in the `search_space` dictionary.
-
-### Save best trial and best config
-
-After running all trials, users can save hyperparameter values of the best trial to a YAML file with `save_best_trial(study, out_file)` function.
-
-However, hyperparameters in this saved file only cover for the ones with values defined via `trial` suggestions and not the ones with fixed values (e.g. `model.gcn_net[0].in_dim`).
-
-Therefore, to save all values of utilized parameters, users can use `save_best_config()` function.
+After completing all trials, the hyperparameter values from the best trial, along with other fixed parameters, can be saved to a YAML file using the `save_best_config()` function.
 
 ```python
 def save_best_config(
-    built_search_space_file: Path,
-    best_trial_file: Path,
-    depmap_file: Path,
+    config_file: Path,
+    best_trial: optuna.trial.FrozenTrial,
     output_file: Path,
 ):
 ```
 
-* `built_search_space_file` is the file created after running `build_search_space_with_dependencies()`
-* `best_trial_file` created by `save_best_trial()`
-* `depmap_file` is needed again to make sure that all parameter dependencies are resolved
+* `config_file` is the path to the model/trainer configuration file
+* `best_trial` is the trial with the optimal results, obtained from an Optuna study.
+* `output_file` is the path to the YAML output file
 
-Full example of tuning config YAML file used for `QGTune`
+### An example of tuning with QGTune
 
-```yaml
-tune_model: false # whether to use search space for model settings
-tune_training: true # whether to use search space for training settings
-base_settings_path: base_settings.yam # path to the base settings file
-search_space_path: search_space.yaml # path to the search space config file
-dependency_mapping_path: depmap.yaml # path to the dependency mapping file
-built_search_space_path: built_search_space.yaml # path to save the built search space with dependencies applied
-study_name: quantum_grav_study # name of the Optuna study
-storage: experiments/results.log # storage file for the Optuna study, only supports JournalStorage for multi-processing
-direction: minimize # direction of optimization ("minimize" or "maximize")
-n_trials: 20 # number of trials for hyperparameter tuning
-timeout: 600 # timeout in seconds for the study
-n_jobs: 1 # number of parallel jobs for multi-threading (set to 1 for single-threaded)
-n_processes: 4 # number of parallel processes for multi-processing, each process runs n_trials * n_iterations/n_processes
-n_iterations: 8 # number of iterations to run the tuning process (each iteration runs n_trials)
-best_trial_path: best_trial.yaml # path to save the best trial information
-best_param_path: best_params.yaml # path to save the best hyperparameters
-```
+We present here an example to demonstrate the functionality of `QGTune`.
 
-## An example of tuning with QGTune
+#### Example explanation
 
-We have provided an example in the [tune_example.py](./examples/tune_example.py) file to demonstrate the functionality of `QGTune`.
+In this example, we would:
+* create sample configuration files for tuning and model/trainer settings
+* define a small model based on [Optuna's PyTorch example](https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py).
+* load dat from [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist) dataset. 
+* define the Optuna `objective` function.
+    * The task is to classify each 28×28 grayscale image into one of 10 fashion categories, such as T-shirt, coat, or sneaker.
+    * To enable Optuna to monitor training progress, `trial.report()` should be called after each epoch to record the metric being optimized. In this example, we use `accuracy`.
 
-In this example, we created sample config for tuning, search space, dependency mapping, and base settings. A small model is also defined based on [Optuna's PyTorch example](https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py).
+      ```python
+      def objective(trial: optuna.trial.Trial, config_file: Path):
+        ...
+        search_space = ...
+        ...
+        # prepare model
+        ...
+        # prepare optimizer
+        ...
+        # prepare data
+        ...
+        for epoch in range(epochs):
+          # train the model
+          ...
+          # validate the model
+          ...
+          accuracy = ...
 
-The dataset used in this example is [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist). The task is to classify each 28×28 grayscale image into one of 10 classes.
+          trial.report(accuracy, epoch)
+          if trial.should_prune():
+              raise optuna.exceptions.TrialPruned()
+      ```
 
-To allow Optuna to track training progress, we need to call `trial.report` after each epoch:
+* run the optimization process for a specified number of trials (`n_trials`)
+* use Optuna's [multi-process optimization](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#multi-process-optimization) by setting the number of iterations (`n_iterations`) and processes (`n_processes`).
+
+#### Example code
 
 ```python
-def objective(trial, tuning_config):
-  ...
-  search_space = ...
-  ...
-  # prepare model
-  ...
-  # prepare optimizer
-  ...
-  # prepare data
-  ...
-  for epoch in range(epochs):
-    # train the model
-    ...
-    # validate the model
-    ...
-    accuracy = ...
+# tune_example.py
 
-    trial.report(accuracy, epoch)
-    if trial.should_prune():
-        raise optuna.exceptions.TrialPruned()
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""  # make sure no GPU is used
+
+from QuantumGrav.QGTune import tune
+import optuna
+import yaml
+import torch
+import torch.nn as nn
+from torchvision import datasets, transforms
+from pathlib import Path
+from multiprocessing import Pool
+from functools import partial
+from optuna.storages.journal import JournalStorage, JournalFileBackend
+
+DEVICE = torch.device("cpu")
+
+current_dir = Path(__file__).parent
+tmp_dir = current_dir / "tmp"
+
+
+def create_tuning_config_file(tmp_path: Path) -> Path:
+    """Create a tuning configuration YAML file for testing purposes."""
+    # Note on n_jobs: Multi-thread optimization has traditionally been inefficient
+    # in Python due to the Global Interpreter Lock (GIL) (Python < 3.14)
+    tuning_config = {
+        "config_file": str(tmp_path / "config.yaml"),
+        "study_name": "test_study",
+        "storage": str(tmp_path / "test_study.log"),
+        "direction": "maximize",
+        "n_trials": 15,
+        "timeout": 600,
+        "n_jobs": 1,  # set to >1 to enable multi-threading,
+        "best_config_file": str(tmp_path / "best_config.yaml"),
+        "n_processes": 2,
+        "n_iterations": 2,
+    }
+    tuning_config_file = tmp_path / "tuning_config.yaml"
+    with open(tuning_config_file, "w") as f:
+        yaml.safe_dump(tuning_config, f)
+
+    return tuning_config_file
+
+
+def create_config_file(file_path: Path) -> Path:
+    """Create a base configuration YAML file with tuning parameters for testing purposes."""
+    yaml_text = """
+        model:
+            n_layers: 3
+            nn:
+                -
+                    in_dim: 784
+                    out_dim: !sweep
+                        values: [128, 256]
+                    dropout: !range
+                        start: 0.2
+                        stop: 0.5
+                        step: 0.1
+                -
+                    in_dim: !reference
+                        target: model.nn[0].out_dim
+                    out_dim: !sweep
+                        values: [16, 32]
+                    dropout: !range
+                        start: 0.2
+                        stop: 0.5
+                        step: 0.1
+                -
+                    in_dim: !reference
+                        target: model.nn[1].out_dim
+                    out_dim: !sweep
+                        values: [16, 32]
+                    dropout: !range
+                        start: 0.2
+                        stop: 0.5
+                        step: 0.1
+        training:
+            batch_size: !sweep
+                values: [16, 32]
+            optimizer: !sweep
+                values: ["Adam", "SGD"]
+            lr: !range
+                start: 1e-5
+                stop: 1e-2
+                log: true
+            epochs: !sweep
+                values: [2, 5, 7]
+    """
+
+    with open(file_path, "w") as f:
+        f.write(yaml_text)
+
+
+def define_small_model(config):
+    n_layers = config["model"]["n_layers"]
+    layers = []
+
+    for i in range(n_layers):
+        in_dim = config["model"]["nn"][i]["in_dim"]
+        out_dim = config["model"]["nn"][i]["out_dim"]
+        layers.append(nn.Linear(in_dim, out_dim))
+        layers.append(nn.ReLU())
+        dropout = config["model"]["nn"][i]["dropout"]
+        layers.append(nn.Dropout(dropout))
+
+    layers.append(nn.Linear(out_dim, 10))  # classification of 10 classes
+    layers.append(nn.LogSoftmax(dim=1))
+
+    return nn.Sequential(*layers)
+
+
+def load_data(config, dir_path):
+    batch_size = config["training"]["batch_size"]
+    # Load FashionMNIST dataset.
+    train_loader = torch.utils.data.DataLoader(
+        datasets.FashionMNIST(
+            dir_path, train=True, download=True, transform=transforms.ToTensor()
+        ),
+        batch_size=batch_size,
+        shuffle=True,
+    )
+    valid_loader = torch.utils.data.DataLoader(
+        datasets.FashionMNIST(dir_path, train=False, transform=transforms.ToTensor()),
+        batch_size=batch_size,
+        shuffle=True,
+    )
+
+    return train_loader, valid_loader
+
+
+def objective(trial: optuna.trial.Trial, config_file: Path):
+
+    search_space = tune.build_search_space(
+        config_file=config_file,
+        trial=trial,
+    )
+
+    # prepare model
+    model = define_small_model(search_space).to(DEVICE)
+
+    # prepare optimizer
+    optimizer_name = search_space["training"]["optimizer"]
+    lr = search_space["training"]["lr"]
+    optimizer = getattr(torch.optim, optimizer_name)(model.parameters(), lr=lr)
+
+    # prepare data
+    data_dir = tmp_dir / "data"
+    train_loader, valid_loader = load_data(search_space, data_dir)
+
+    # train the model
+    epochs = search_space["training"]["epochs"]
+    batch_size = search_space["training"]["batch_size"]
+    n_train_examples = batch_size * 30
+    n_valid_examples = batch_size * 10
+
+    # training loop
+    for epoch in range(epochs):
+        model.train()
+        for batch_idx, (data, target) in enumerate(train_loader):
+            if batch_idx * batch_size > n_train_examples:
+                break
+
+            data, target = data.view(data.size(0), -1).to(DEVICE), target.to(DEVICE)
+
+            optimizer.zero_grad()
+            output = model(data)
+            loss = nn.NLLLoss()(output, target)
+            loss.backward()
+            optimizer.step()
+
+        # validate the model
+        model.eval()
+        correct = 0
+        with torch.no_grad():
+            for batch_idx, (data, target) in enumerate(valid_loader):
+                if batch_idx * batch_size > n_valid_examples:
+                    break
+
+                data, target = data.view(data.size(0), -1).to(DEVICE), target.to(DEVICE)
+                output = model(data)
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+
+        accuracy = correct / min(len(valid_loader.dataset), n_valid_examples)
+
+        # report value to Optuna
+        trial.report(accuracy, epoch)
+
+        # prune trial if needed
+        if trial.should_prune():
+            raise optuna.exceptions.TrialPruned()
+    return accuracy
+
+
+def tune_integration(run_idx, tuning_config):  # run_idx is the iteration index
+
+    study = tune.create_study(tuning_config)
+    study.optimize(
+        partial(objective, config_file=Path(tuning_config["config_file"])),
+        n_trials=tuning_config["n_trials"],
+        timeout=tuning_config["timeout"],
+        n_jobs=tuning_config["n_jobs"],
+    )
+
+    pruned_trials = study.get_trials(
+        deepcopy=False, states=[optuna.trial.TrialState.PRUNED]
+    )
+    complete_trials = study.get_trials(
+        deepcopy=False, states=[optuna.trial.TrialState.COMPLETE]
+    )
+
+    return (
+        len(study.trials),
+        len(pruned_trials),
+        len(complete_trials),
+        study.best_trial.value,
+    )
+
+
+if __name__ == "__main__":
+    if not tmp_dir.exists():
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    # create tuning config
+    tuning_config = tune.load_yaml(create_tuning_config_file(tmp_dir))
+    n_processes = tuning_config.get("n_processes", 1)
+    n_iterations = tuning_config.get("n_iterations", 1)
+
+    # create config file
+    create_config_file(Path(tuning_config["config_file"]))
+
+    print("Starting the tuning integration process...")
+    with Pool(processes=n_processes) as pool:
+        local_results = pool.map(
+            partial(tune_integration, tuning_config=tuning_config), range(n_iterations)
+        )
+
+    print("Tuning results for each run:------------------")
+    for i, result in enumerate(local_results):
+        n_trials, n_pruned, n_complete, best_value = result
+        print(f"Study statistics for run {i}: ")
+        print("  Number of finished trials: ", n_trials)
+        print("  Number of pruned trials: ", n_pruned)
+        print("  Number of complete trials: ", n_complete)
+        print("  Best trial value: ", best_value)
+
+    storage = JournalStorage(
+        JournalFileBackend(tuning_config["storage"])  # use uncompressed journal
+    )
+    study = optuna.load_study(study_name=tuning_config["study_name"], storage=storage)
+
+    print("Best trial global:----------------------------")
+    trial = study.best_trial
+
+    print("  Value: ", trial.value)
+
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print("    {}: {}".format(key, value))
+
+    print("Saving the best configuration...")
+    tune.save_best_config(
+        config_file=Path(tuning_config["config_file"]),
+        best_trial=trial,
+        output_file=Path(tuning_config["best_config_file"]),
+    )
 ```
 
-We also used Optuna's [multi-process optimization](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#multi-process-optimization) in this example.
+#### Example result
 
-## Notes on pruner and parallelization
+```bash
+Starting the tuning integration process...
+[I 2025-11-07 11:24:36,912] A new study created in Journal with name: test_study
+Study test_study was created and saved to /QuantumGrav/QuantumGravPy/docs/tmp/test_study.log.
+[I 2025-11-07 11:24:36,946] Using an existing study with name 'test_study' instead of creating a new one.
+Study test_study was created and saved to /QuantumGrav/QuantumGravPy/docs/tmp/test_study.log.
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 26.4M/26.4M [00:00<00:00, 57.6MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 26.4M/26.4M [00:00<00:00, 54.9MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 29.5k/29.5k [00:00<00:00, 4.39MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 29.5k/29.5k [00:00<00:00, 4.53MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 4.42M/4.42M [00:00<00:00, 43.7MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 4.42M/4.42M [00:00<00:00, 42.4MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5.15k/5.15k [00:00<00:00, 88.9MB/s]
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 5.15k/5.15k [00:00<00:00, 40.9MB/s]
+[I 2025-11-07 11:24:38,433] Trial 1 finished with value: 0.625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0016765190716563534, 'training.epochs': 5}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:38,632] Trial 2 finished with value: 0.075 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.30000000000000004, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'SGD', 'training.lr': 0.0002146791042032724, 'training.epochs': 2}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:38,666] Trial 0 finished with value: 0.08125 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.2, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.30000000000000004, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.5, 'training.batch_size': 32, 'training.optimizer': 'SGD', 'training.lr': 0.0003945248169221987, 'training.epochs': 7}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:38,894] Trial 3 finished with value: 0.0875 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.2, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.4, 'training.batch_size': 16, 'training.optimizer': 'SGD', 'training.lr': 0.00018633239421692437, 'training.epochs': 5}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:38,898] Trial 4 finished with value: 0.090625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.2, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.4, 'training.batch_size': 32, 'training.optimizer': 'SGD', 'training.lr': 0.00379972665577471, 'training.epochs': 2}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:39,314] Trial 6 finished with value: 0.13125 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.2, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'SGD', 'training.lr': 0.0008484799816474145, 'training.epochs': 7}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:39,435] Trial 5 finished with value: 0.1375 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.30000000000000004, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.30000000000000004, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'SGD', 'training.lr': 8.354945492960286e-05, 'training.epochs': 7}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:39,641] Trial 8 finished with value: 0.09375 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.30000000000000004, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.5, 'training.batch_size': 32, 'training.optimizer': 'SGD', 'training.lr': 8.08272287524503e-05, 'training.epochs': 2}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:39,718] Trial 7 finished with value: 0.11875 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.30000000000000004, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.2, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.5, 'training.batch_size': 16, 'training.optimizer': 'SGD', 'training.lr': 0.0006188877342998116, 'training.epochs': 7}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:39,822] Trial 9 finished with value: 0.103125 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.5, 'training.batch_size': 32, 'training.optimizer': 'SGD', 'training.lr': 0.0008168448454213926, 'training.epochs': 2}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:39,913] Trial 10 finished with value: 0.134375 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.30000000000000004, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.2, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.5, 'training.batch_size': 32, 'training.optimizer': 'SGD', 'training.lr': 0.00021660920841439104, 'training.epochs': 2}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:40,157] Trial 11 finished with value: 0.18125 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.00883615551351022, 'training.epochs': 5}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:40,269] Trial 12 finished with value: 0.15625 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.30000000000000004, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 1.5473312399729955e-05, 'training.epochs': 5}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:40,531] Trial 13 finished with value: 0.29375 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.009542442262415065, 'training.epochs': 5}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:40,610] Trial 14 finished with value: 0.40625 and parameters: {'model.nn.0.out_dim': 256, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.008577489282530437, 'training.epochs': 5}. Best is trial 1 with value: 0.625.
+[I 2025-11-07 11:24:40,855] Trial 15 finished with value: 0.6375 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.002801697167722077, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:40,924] Trial 16 finished with value: 0.5375 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0024869223253056747, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:41,217] Trial 17 finished with value: 0.5 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0017531394038905789, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:41,311] Trial 18 finished with value: 0.55625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0020300569180315316, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:41,545] Trial 19 finished with value: 0.54375 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.4, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0015706471695032163, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:41,628] Trial 20 finished with value: 0.5875 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.4, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0035034963024678494, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:41,852] Trial 21 finished with value: 0.60625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.004692563836368309, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:41,949] Trial 22 finished with value: 0.475 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.5, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.4, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.00413377148937998, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:42,158] Trial 23 finished with value: 0.5375 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.004366383387329541, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:42,268] Trial 24 finished with value: 0.55625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.005176248318654213, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:42,493] Trial 25 finished with value: 0.51875 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0011242281028770243, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:42,577] Trial 26 finished with value: 0.50625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.4, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.001187102582494059, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:43,038] Trial 27 finished with value: 0.44375 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.30000000000000004, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 32, 'training.optimizer': 'Adam', 'training.lr': 0.0013102961720892286, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:43,132] Trial 28 finished with value: 0.465625 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.4, 'model.nn.1.out_dim': 16, 'model.nn.1.dropout': 0.30000000000000004, 'model.nn.2.out_dim': 16, 'model.nn.2.dropout': 0.30000000000000004, 'training.batch_size': 32, 'training.optimizer': 'Adam', 'training.lr': 0.0005325671025809822, 'training.epochs': 5}. Best is trial 15 with value: 0.6375.
+[I 2025-11-07 11:24:43,504] Trial 29 finished with value: 0.7125 and parameters: {'model.nn.0.out_dim': 128, 'model.nn.0.dropout': 0.2, 'model.nn.1.out_dim': 32, 'model.nn.1.dropout': 0.5, 'model.nn.2.out_dim': 32, 'model.nn.2.dropout': 0.2, 'training.batch_size': 16, 'training.optimizer': 'Adam', 'training.lr': 0.0026496075439612654, 'training.epochs': 7}. Best is trial 29 with value: 0.7125.
+Tuning results for each run:------------------
+Study statistics for run 0: 
+  Number of finished trials:  29
+  Number of pruned trials:  0
+  Number of complete trials:  28
+  Best trial value:  0.6375
+Study statistics for run 1: 
+  Number of finished trials:  30
+  Number of pruned trials:  0
+  Number of complete trials:  30
+  Best trial value:  0.7125
+Best trial global:----------------------------
+  Value:  0.7125
+  Params: 
+    model.nn.0.out_dim: 128
+    model.nn.0.dropout: 0.2
+    model.nn.1.out_dim: 32
+    model.nn.1.dropout: 0.5
+    model.nn.2.out_dim: 32
+    model.nn.2.dropout: 0.2
+    training.batch_size: 16
+    training.optimizer: Adam
+    training.lr: 0.0026496075439612654
+    training.epochs: 7
+Saving the best configuration...
+Best configuration saved to /QuantumGrav/QuantumGravPy/docs/tmp/best_config.yaml.
+```
+
+#### Notes on pruner and parallelization
 
 We used [optuna.pruners.MedianPruner](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.pruners.MedianPruner.html) when creating an Optuna study (`QGTune.tune.create_study()`). Support for additional pruners may be added in the future if required.
 

@@ -363,11 +363,14 @@ def build_search_space(config_file: Path, trial: optuna.trial.Trial) -> Dict[str
     return search_space
 
 
-def create_study(tuning_config: Dict[str, Any]) -> None:
+def create_study(tuning_config: Dict[str, Any]) -> optuna.study.Study:
     """Create an Optuna study and save to a specified storage.
 
     Args:
         tuning_config (Dict[str, Any]): The configuration dictionary for tuning settings.
+
+    Returns:
+        optuna.study.Study: The created Optuna study.
     """
     storage = tuning_config.get("storage")
     study_name = tuning_config.get("study_name")
