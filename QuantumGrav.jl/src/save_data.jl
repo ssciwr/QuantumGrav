@@ -16,7 +16,7 @@ function default_chunks(data::AbstractArray)
 end
 
 """
-    write_arraylike_to_zarr(group::Zarr.ZGroup, key::String, data::AbstractArray; chunking_strategy = default_chunks, compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2))
+    write_arraylike_to_zarr(group::Zarr.ZGroup, key::String, data::AbstractArray; type = eltype(data), chunks = nothing, compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2))
 
 Write a Julia AbstractArray to a Zarr group.
 
@@ -24,6 +24,7 @@ Write a Julia AbstractArray to a Zarr group.
 - `group`: Group to write the array to
 - `key`: Key under which to store the array
 - `data`: Array to write
+- `type`: Data type of the array elements.
 - `compressor_kwargs`: Compression options for the array
 - `chunking_strategy`: Function mapping input data to chunks in which it should be written to disk. When writing this function, be aware of the curse of dimensionality. If you want not chunking, use 'nothing' here.
 """
@@ -31,6 +32,7 @@ function write_arraylike_to_zarr(
     group::Zarr.ZGroup,
     key::String,
     data::AbstractArray;
+    type = eltype(data),
     compressor_kwargs = Dict(:clevel => 9, :cname => "lz4", :shuffle => 2),
     chunking_strategy::Union{Function,Nothing,Symbol} = default_chunks,
 )
@@ -38,8 +40,6 @@ function write_arraylike_to_zarr(
     if isnothing(chunking_strategy)
         chunking_strategy = size(data)
     end
-
-    type = eltype(data)
 
     arr = Zarr.zcreate(
         type,
