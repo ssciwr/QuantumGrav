@@ -1119,7 +1119,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                             "additionalProperties": true
                                         },
                                         "csetsize_distr": {"type": "string"},
-                                        "output": { "type": "string" }, 
+                                        "output": { "type": "string" },
                                         "cset_type": {
                                           "oneOf": [
                                             { "type": "string" },

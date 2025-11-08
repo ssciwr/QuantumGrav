@@ -49,7 +49,6 @@ end
 @testitem "test_simple_cset_by_connectivity_throws" tags =
     [:csetgenerationbyconnectivitythrows] setup = [TestsCSetByConnectivity] begin
 
-
     @test_throws ArgumentError QuantumGrav.sample_bitarray_causet_by_connectivity(
         -1,
         0.5,

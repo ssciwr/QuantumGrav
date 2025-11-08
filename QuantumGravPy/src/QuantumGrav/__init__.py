@@ -30,13 +30,13 @@ from .evaluate import (
     DefaultEarlyStopping,
     DefaultValidator,
 )
-from .config_utils import (
-    ConfigHandler
-)
+from .config_utils import ConfigHandler, get_loader
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .linear_sequential import LinearSequential
+
+from .load_zarr import zarr_to_dict
 
 __all__ = [
     # julia interface
@@ -80,5 +80,8 @@ __all__ = [
     "DefaultTester",
     "DefaultEarlyStopping",
     # config handler
-    "ConfigHandler"
+    "get_loader",
+    "ConfigHandler",
+    # zarr loading
+    "zarr_to_dict",
 ]
