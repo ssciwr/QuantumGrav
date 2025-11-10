@@ -351,12 +351,7 @@ function (rcm::RandomCsetMaker)(
 
     tries = 1
 
-    while converged == false
-        if tries > rcm.num_tries
-            cset = nothing
-            break
-        end
-
+    while converged == false && tries <= rcm.num_tries
         cset_try, converged = sample_bitarray_causet_by_connectivity(
             n,
             connectivity_goal,
@@ -365,9 +360,15 @@ function (rcm::RandomCsetMaker)(
             abs_tol = rcm.abs_tol,
             rel_tol = rcm.rel_tol,
         )
+
+        if converged
+            cset = cset_try
+        else
+            cset = nothing
+        end
+
         tries += 1
 
-        cset = cset_try
     end
 
     if cset === nothing
@@ -1119,7 +1120,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                             "additionalProperties": true
                                         },
                                         "csetsize_distr": {"type": "string"},
-                                        "output": { "type": "string" }, 
+                                        "output": { "type": "string" },
                                         "cset_type": {
                                           "oneOf": [
                                             { "type": "string" },
