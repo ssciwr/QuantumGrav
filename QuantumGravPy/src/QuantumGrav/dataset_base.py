@@ -3,7 +3,6 @@ from torch_geometric.data import Data
 import torch
 
 # data handling
-import h5py
 import yaml
 import zarr
 
@@ -22,7 +21,7 @@ class QGDatasetBase:
         input: list[str | Path],
         output: str | Path,
         reader: Callable[
-            [h5py.File | zarr.Group, torch.dtype, torch.dtype, bool],
+            [zarr.Group, torch.dtype, torch.dtype, bool],
             list[Data],
         ]
         | None = None,
@@ -38,7 +37,7 @@ class QGDatasetBase:
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
             output (str | Path): The output directory where processed data will be stored.
-            reader (Callable[[h5py.File | zarr.Group, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
+            reader (Callable[[zarr.Group, torch.dtype, torch.dtype, bool], list[Data]] | None, optional): A function to load data from a file. Defaults to None.
             float_type (torch.dtype, optional): The data type to use for floating point values. Defaults to torch.float32.
             int_type (torch.dtype, optional): The data type to use for integer values. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
@@ -46,7 +45,7 @@ class QGDatasetBase:
             chunksize (int, optional): The size of the chunks to process in parallel. Defaults to 1000.
 
         Raises:
-            ValueError: If one of the input data files is not a valid HDF5 file
+            ValueError: If one of the input data files does not exist
             ValueError: If the metadata retrieval function is invalid.
             FileNotFoundError: If an input file does not exist.
         """
@@ -102,7 +101,7 @@ class QGDatasetBase:
             filepath (str | Path): The path to the file.
 
         Raises:
-            ValueError: If the file is not a valid HDF5 or Zarr file.
+            ValueError: If the file is not a valid Zarr file.
 
         Returns:
             int: The number of samples in the file.
@@ -130,7 +129,7 @@ class QGDatasetBase:
             else:
                 return max_shape
 
-        # same logic for Zarr and HDF5
+        # same logic for Zarr
         try:
             group = zarr.open_group(
                 zarr.storage.LocalStore(filepath, read_only=True),
