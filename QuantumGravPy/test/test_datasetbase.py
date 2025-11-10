@@ -97,7 +97,7 @@ def test_dataset_base_process_chunk_zarr(
         chunksize=4,
     )
     with zarr.storage.LocalStore(datafiles[0], read_only=True) as raw_file:
-        results = dataset.process_chunk_zarr(
+        results = dataset.process_chunk(
             raw_file, 0, pre_transform=lambda x: x, pre_filter=lambda x: True
         )
     assert len(results) == 4
