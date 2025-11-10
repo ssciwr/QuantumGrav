@@ -1,15 +1,15 @@
-# Training a Model 
+# Training a Model
 
-After the data processing, we can set up the training process. This is done using the `Trainer` class. 
+After the data processing, we can set up the training process. This is done using the `Trainer` class.
 
 The `Trainer` class follows a pattern in which code and training parameters are separated: It expects a dictionary containing all the parameters, and a set of objects that take care of evaluation of the training process.
 
-The config `dict` allows us to store the parameters in an external file (YAML would be the preferable option) and read it in from there, such that we can have different configs for different runs that can be stored alongside the experiments. This is helpful for reproducibility of experiments. 
+The config `dict` allows us to store the parameters in an external file (YAML would be the preferable option) and read it in from there, such that we can have different configs for different runs that can be stored alongside the experiments. This is helpful for reproducibility of experiments.
 
-## The Trainer class 
-Let's have a look at how the trainer class works first. It's constructor reads: 
+## The Trainer class
+Let's have a look at how the trainer class works first. It's constructor reads:
 
-```python 
+```python
 class Trainer:
     """Trainer class for training and evaluating GNN models."""
 
@@ -26,60 +26,60 @@ class Trainer:
         tester: DefaultTester | None = None,
     )
 ```
-The `config` argument has its own section [below](#the-configuration-dict). The `criterion` is a loss function that must have the following signature: 
-```python 
+The `config` argument has its own section [below](#the-configuration-dict). The `criterion` is a loss function that must have the following signature:
+```python
 criterion[[model_output, torch_geometric.data.Data], torch.Tensor]
 ```
-i.e., it allows for passing in arbitrary model outputs and the original data object (which contains the target for supervised learning for instance) and returns a `torch.Tensor` which contains a scalar. The second argument `data` can be ignored if it's not needed. 
+i.e., it allows for passing in arbitrary model outputs and the original data object (which contains the target for supervised learning for instance) and returns a `torch.Tensor` which contains a scalar. The second argument `data` can be ignored if it's not needed.
 
-The `apply_model` function is optional and defines how to call the model with the data. If you choose to use this class with your own model class, this might come in handy, especially if you change the signature of the model's `forward` method. 
+The `apply_model` function is optional and defines how to call the model with the data. If you choose to use this class with your own model class, this might come in handy, especially if you change the signature of the model's `forward` method.
 
-## The evaluators 
-The next three arguments are needed to evaluate and test the model and to implement a stopping criterion, so they deserve their own little section. 
+## The evaluators
+The next three arguments are needed to evaluate and test the model and to implement a stopping criterion, so they deserve their own little section.
 
 ### `tester` and `validator`
-We will start from the end, beginning with `tester`. This is an object of type `DefaultTester` (an instance thereof or an object derived from it). 
-This class is build like this: 
+We will start from the end, beginning with `tester`. This is an object of type `DefaultTester` (an instance thereof or an object derived from it).
+This class is build like this:
 
-```python 
+```python
 class DefaultTester(DefaultEvaluator):
     def __init__(
         self, device, criterion: Callable, apply_model: Callable | None = None
     )
 ```
 
-i.e., it takes a loss function and an optional function to apply the model to data as well as the device to run on as constructor input. It then has a `test` function: 
+i.e., it takes a loss function and an optional function to apply the model to data as well as the device to run on as constructor input. It then has a `test` function:
 
-```python 
+```python
 
     def test(
         self,
         model: torch.nn.Module,
-        data_loader: torch_geometric.loader.DataLoader,  
+        data_loader: torch_geometric.loader.DataLoader,
     ):
 ```
 
-which applies the model to the data in the passed `DataLoader` object using the `criterion` function. This will then be passed to a `report` function: 
+which applies the model to the data in the passed `DataLoader` object using the `criterion` function. This will then be passed to a `report` function:
 
-```python 
-def report(self, data: list | pd.Series | torch.Tensor | np.ndarray) 
+```python
+def report(self, data: list | pd.Series | torch.Tensor | np.ndarray)
 ```
 
-This is a function or callable object that decides when to stop the training process based on a metric it gets. It eats a list or other iterable that contains the output fo applying the model to the data using `criterion`, and, by default, computes the mean and standard deviation thereof and reports them to standard out. 
+This is a function or callable object that decides when to stop the training process based on a metric it gets. It eats a list or other iterable that contains the output fo applying the model to the data using `criterion`, and, by default, computes the mean and standard deviation thereof and reports them to standard out.
 
 The `validator` object works exactly the same, (`DefaultTester` and `DefaultValidator` have the same base class: `DefaultEvaluator`), so it's not documented separately here. The only difference is that what's called `test` in `DefaultTester` is called `validate` in `DefaultEvaluator`.
 
-Under the hood, they both use the `evalute` function of their parent class `DefaultEvaluator`. So in your derived classes, you can also overwrite that and then build your own type hierarcy on top of it. 
+Under the hood, they both use the `evalute` function of their parent class `DefaultEvaluator`. So in your derived classes, you can also overwrite that and then build your own type hierarcy on top of it.
 
-The idea behind these two classes is that the user derives their own class from them and adjusts the `test`, `validate` and `report` functions to their own needs, e.g., for reporting the F1 score in a classification task. 
-Note that you can also break the type annotation if you think you need and for instance use your own evaluator classes - just make sure the call signatures are correct. 
+The idea behind these two classes is that the user derives their own class from them and adjusts the `test`, `validate` and `report` functions to their own needs, e.g., for reporting the F1 score in a classification task.
+Note that you can also break the type annotation if you think you need and for instance use your own evaluator classes - just make sure the call signatures are correct.
 
 ### `early_stopping`
 This function is there to stop training once a certain condition has been reached. It eats the output of `Validator` and then computes a boolean that tells the `Trainer` object whether it should stop or continue training.
 
-For example, this can look like the following code block, where we use a moving average over the loss and a tolerance to determine if we should stop or not: Each epoch, the mean validation loss over the window is evaluated and compared to the current best one, and if it's above that we subtract 1 from the `patience` variable. if `patience` runs out, we stop training. When we find a better best mean loss, we reset patience and continue. 
+For example, this can look like the following code block, where we use a moving average over the loss and a tolerance to determine if we should stop or not: Each epoch, the mean validation loss over the window is evaluated and compared to the current best one, and if it's above that we subtract 1 from the `patience` variable. if `patience` runs out, we stop training. When we find a better best mean loss, we reset patience and continue.
 
-Note that we are not using a function here, but a callable object. This is useful for cases where your `early stopping` logic has parameters that need to be held somewhere. 
+Note that we are not using a function here, but a callable object. This is useful for cases where your `early stopping` logic has parameters that need to be held somewhere.
 
 ```python
 class EarlyStopping(DefaultEarlyStopping):
@@ -93,7 +93,7 @@ class EarlyStopping(DefaultEarlyStopping):
         self.logger = logging.getLogger("QuantumGrav.EarlyStopping")
 
     def __call__(self, data: pd.DataFrame | list[dict[Any]]) -> bool: # make it a callable object
-        if isinstance(data, pd.DataFrame) is False: 
+        if isinstance(data, pd.DataFrame) is False:
             data = pd.DataFrame(data)
 
         window = min(self.window, len(data))
@@ -109,11 +109,11 @@ class EarlyStopping(DefaultEarlyStopping):
 
         return self.current_patience <= 0
 ```
-This follows a similar principle to the other Evaluators: Derive from a common baseclass and overwrite the relevant methods with your own logic. In writing this, you need to make sure that the input of the `__call__` method must be compatible with the ouptut of the `validate` method of the `Validator` class. 
+This follows a similar principle to the other Evaluators: Derive from a common baseclass and overwrite the relevant methods with your own logic. In writing this, you need to make sure that the input of the `__call__` method must be compatible with the ouptut of the `validate` method of the `Validator` class.
 
 ## The configuration `dict`
-This provides all the necessary parameters for a training run, and as such has a fixed structure. This is best shown with an example: 
-```yaml 
+This provides all the necessary parameters for a training run, and as such has a fixed structure. This is best shown with an example:
+```yaml
 model:
   name: "QuantumGravTest"
   encoder:
@@ -123,7 +123,7 @@ model:
       gnn_layer_type: "sage"
       normalizer: "batch_norm"
       activation: "relu"
-      norm_args: 
+      norm_args:
         - 128
       gnn_layer_kwargs:
         normalize: False
@@ -137,7 +137,7 @@ model:
       gnn_layer_type: "sage"
       normalizer: "batch_norm"
       activation: "relu"
-      norm_args: 
+      norm_args:
         - 256
       gnn_layer_kwargs:
         normalize: False
@@ -151,7 +151,7 @@ model:
       gnn_layer_type: "sage"
       normalizer: "batch_norm"
       activation: "relu"
-      norm_args: 
+      norm_args:
         - 128
       gnn_layer_kwargs:
         normalize: False
@@ -162,9 +162,9 @@ model:
   pooling_layer: mean
   classifier:
     input_dim: 128
-    output_dims: 
+    output_dims:
       - 2
-    hidden_dims: 
+    hidden_dims:
       - 48
       - 18
     activation: "relu"
@@ -203,19 +203,19 @@ validation: &valtest
 testing: *valtest
 
 ```
-A config **must** have the high-level nodes 'model', 'training', 'validation', and 'testing'. Data processing is currently not governed by a config because it's too specialized for the task at hand. 
-All the nodes in `training` above are necessary and cannot be left out, because they are needed for the DataLoaders and the evaluation and training semantics.  
+A config **must** have the high-level nodes 'model', 'training', 'validation', and 'testing'. Data processing is currently not governed by a config because it's too specialized for the task at hand.
+All the nodes in `training` above are necessary and cannot be left out, because they are needed for the DataLoaders and the evaluation and training semantics.
 
 The `model` part defines the architecture of the model that's used, so please check the [`Graph Neural Network models`](./models.md) section again for how that works.
 
 ## Train a model
 
-The following is a complete end-to-end example for model training for a classification task. We are putting toghether the content from ['Using Datasets for data processing and batching'](./datasets_and_preprocessing.md) and from ['Training a model'](./training_a_model.md) and are overwriting the Evaluators to report F1 scores. Then, we set up the trainer class, prepare everything and run training. For completeness, we put everything into on file here, but it may be advisable to split your script into multiple files if you write as much code as here. Also, we might add several variants of evaluators as default in the future. To get a good idea of how the system works, please work through this example carefully and make sure you understand each step. 
+The following is a complete end-to-end example for model training for a classification task. We are putting toghether the content from ['Using Datasets for data processing and batching'](./datasets_and_preprocessing.md) and from ['Training a model'](./training_a_model.md) and are overwriting the Evaluators to report F1 scores. Then, we set up the trainer class, prepare everything and run training. For completeness, we put everything into on file here, but it may be advisable to split your script into multiple files if you write as much code as here. Also, we might add several variants of evaluators as default in the future. To get a good idea of how the system works, please work through this example carefully and make sure you understand each step.
 For bugs or issues, please report them [here](https://github.com/ssciwr/QuantumGrav/issues).
 
-### Full code example 
+### Full code example
 
-```python 
+```python
 from pathlib import Path
 import QuantumGrav as QG
 
@@ -223,7 +223,7 @@ import torch
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 
-import h5py
+import zarr
 import numpy as np
 import shutil
 import yaml
@@ -251,10 +251,10 @@ def find_files(directory: Path, file_list: list[Path] = []):
                 file_list.append(path)
 
 
-# load data from HDF5 file and put it into a dictionary for further processing
+# load data from zarr file and put it into a dictionary for further processing
 # This is a custom reader function for the QGDataset
 def load_data(
-    file: h5py.File,
+    file: zarr.Group,
     idx: int,
     float_dtype: torch.dtype,
     int_dtype: torch.dtype,
@@ -340,8 +340,8 @@ def pre_transform(data: dict) -> Data:
 
 
 ################################################################################
-# Testing and Validation helper classes. 
-class Validator(QG.DefaultValidator): 
+# Testing and Validation helper classes.
+class Validator(QG.DefaultValidator):
     def __init__(
         self,
         device,
@@ -436,7 +436,7 @@ class Validator(QG.DefaultValidator):
     def validate(self, model, data_loader):
         return self.evaluate(model, data_loader)
 
-class Tester(Validator): # this still works, even though it breaks the type annotation for `tester`. 
+class Tester(Validator): # this still works, even though it breaks the type annotation for `tester`.
     def __init__(
         self,
         device,
@@ -463,7 +463,7 @@ def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     return loss
 
 ################################################################################
-# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore over a set window. You can set this up for looking at the F1 score too for instance by changing the value for 'metric'. In this case, we are using a dataframe to collect the validation output. 
+# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore over a set window. You can set this up for looking at the F1 score too for instance by changing the value for 'metric'. In this case, we are using a dataframe to collect the validation output.
 class EarlyStopping(DefaultEarlyStopping):
 
     def __init__(
@@ -479,7 +479,7 @@ class EarlyStopping(DefaultEarlyStopping):
         window = min(self.window, len(data))
         smoothed = data[self.metric].rolling(window=window, min_periods=1).mean()
 
-        if isinstance(data, pd.DataFrame) is False: 
+        if isinstance(data, pd.DataFrame) is False:
             data = pd.DataFrame(data)
 
         if smoothed.iloc[-1] < self.best_score - self.delta:
@@ -614,7 +614,7 @@ if __name__ == "__main__":
     path_to_config = Path(
         "path/to/training_config.yaml"
     )
-    # execute training and save result data 
+    # execute training and save result data
     train_data, valid_data, test_data = main(path_to_data, path_to_config)
 
     # save result data

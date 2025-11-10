@@ -1,7 +1,7 @@
 # Using Datasets for data processing and batching
 
 ## Raw data
-`QuantumGrav` supports HDF5 and Zarr as raw data formats. Each of these can store n-dimensional arrays, in which our raw data will be stored. In most cases, you want one index, typically the first or the last, to be used as the sample index, such that each array has $$N = n_{sample} + 1$$ dimensions, with $$n_{sample}$$ being the dimensionality of the data for a single sample.
+`QuantumGrav` supports Zarr as a data format for storing the raw data. Each cset, by default, is stored in it's own group in the file. In most cases, you want one index, typically the first or the last, to be used as the sample index, such that each array has $$N = n_{sample} + 1$$ dimensions, with $$n_{sample}$$ being the dimensionality of the data for a single sample.
 For practicality, this should be the same in each stored array.
 
 ## Concept
@@ -23,13 +23,11 @@ Becausse this package does not make assumptions about the structure and characte
 
 The last three are part of `pytorch`/`pytorch_geometric`'s `Dataset` API, so check out the respective documentation to learn more about them.
 
-## Examples for InMemory- and On-disk datasets
-Each dataset must first know where the raw data is stored. This takes the form of one or more Zarr or HDF5 files, which are passed in as a list.
+## How to create a dataset object
+Each dataset must first know where the raw data is stored. A set of .zarr files can be passed as a list.
 
 Next, it needs to know where to store the processed data. This is given by a single `pathlib.Path` or `string` object. A `processed` directory will be created there and the result of `pretransform` for each sample will be stored there.
-While both `QGDatasetInMemory` and `QGDataset` store the processed data on disk, the former will load all the processed data into memory at once, while the latter will lazily load data when needed.
-
-So, let's start with the on-disk dataset `QGDataset`. The `InMemoryDataset` is treated in the same way. The first thing to do is to inspect the signature of the constructor:
+Let's inspect the signature of the constructor:
 
 ```python
 class QGDataset(QGDatasetBase, Dataset):
@@ -50,14 +48,14 @@ class QGDataset(QGDatasetBase, Dataset):
     )
 ```
 
-First, we need to define the list of input files. These can be a bunch of hdf5 files. We also need to choose the output directory. Since we are using hdf5, we leave the `mode` as is. If we used `zarr` files, we would put `zarr` here.
+First, we need to define the list of input files. We also need to choose the output directory.  If we used `zarr` files, we would put `zarr` here.
 
 ```python
-  input = ['path/to/file1.h5', 'path/to/file2.h5', 'path/to/file3.h5']
+  input = ['path/to/file1.zarr', 'path/to/file2.zarr', 'path/to/file3.zarr']
   output = 'path/to/output'
 ```
 
-Then, we have to define the function that reads data from the file. This eats a data source, e.g., an hdf5 file, a float and int type, and whether to validate the data or not. For example:
+Then, we have to define the function that reads data from the file. This eats a zarr file, a float and int type, and whether to validate the data or not. For example:
 
 ```python
 def reader(
@@ -67,8 +65,6 @@ def reader(
         # get the adjacency matrix
         adj_raw = f["adjacency_matrix"][idx, :, :]
         adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
-        edge_index, edge_weight = dense_to_sparse(adj_matrix)
-        adj_matrix = adj_matrix.to_sparse()
         node_features = []
 
         # Path lengths
@@ -80,9 +76,6 @@ def reader(
             f["max_pathlen_past"][idx, :], dtype=float_dtype
         ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
         node_features.extend([max_path_future, max_path_past])
-
-        # make the node features. We have no others here, so that's it for features.
-        x = torch.cat(node_features, dim=1)
 
         # make the targets
         manifold = f["manifold"][idx]
@@ -98,26 +91,17 @@ def reader(
         else:
             value_list = [manifold, boundary, dimension]
 
-        # create the data object
-        data = Data(
-            x=x,
-            edge_index=edge_index,
-            edge_attr=edge_weight.unsqueeze(1),
-            y=torch.tensor(
-                [
-                    value_list,
-                ],
-                dtype=int_dtype,
-            ),
-        )
-
-        # validate the data object
-        if validate and not data.validate():
-            raise ValueError("Data validation failed.")
-        return data
+        return {
+            "adj": adj_matrix,
+            "max_pathlen_future": max_path_future,
+            "max_pathlen_past": max_path_past,
+            "manifold": manifold,
+            "boundary": boundary,
+            "dimension": dimension
+        }
 ```
 
-Now we have a function that turns raw data into a `torch_geometric.data.Data` object. Next, we need the `pre_filter` and `pre_transform` functions. We want to retain all data, so `pre_filter` can just return true all the time:
+Now we have a function that turns raw data into a dictionary. Next, we need the `pre_filter` and `pre_transform` functions. We want to retain all data, so `pre_filter` can just return true all the time:
 
 ```python
 pre_filter = lambda x: true
@@ -128,7 +112,7 @@ or we can filter out some targets:
 pre_filter = lambda data: data.y[2] != 2
 ```
 
-Then, we need the `pre_transform` function. Here, we want to fix the adjacency matrix because Julia uses a different convention. we could have done this right away in the reader function, too, but it's a good way to show what `pre_transform` can do. We could also return another container from `reader`, like a dictionary, and only turn the data into a `Data` object in the `pre_transform function.
+Then, we need the `pre_transform` function which truns the returned dict into a `torch_geometric.data.Data` object. Here, we want to fix the adjacency matrix because Julia uses a different convention. we could have done this right away in the reader function, too, but it's a good way to show what `pre_transform` can do.
 
 ```python
 def pre_transform(data: Data) -> Data:
@@ -147,6 +131,8 @@ def pre_transform(data: Data) -> Data:
         node_features.append(data[feature_name])
     x = torch.cat(node_features, dim=1).to(torch.float32)
     y = torch.tensor(data["manifold_like"]).to(torch.long)
+
+    # make data object
     tgdata = Data(
         x=x,
         edge_index=edge_index,
