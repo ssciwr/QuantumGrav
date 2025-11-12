@@ -1,4 +1,4 @@
-from . import julia_worker  # noqa: F401
+from .julia_worker import JuliaWorker
 from .utils import (
     register_activation,
     register_gnn_layer,
@@ -19,6 +19,7 @@ from .utils import (
     list_registered_graph_features_aggregations,
     list_registered_pooling_aggregations,
     register_evaluation_function,
+    get_evaluation_function,
     list_evaluation_functions,
     assign_at_path,
     get_at_path,
@@ -42,6 +43,8 @@ from .early_stopping import DefaultEarlyStopping
 from .load_zarr import zarr_to_dict
 
 __all__ = [
+    # julia interface
+    "JuliaWorker",
     # datasets
     "QGDataset",
     # module registration
@@ -64,6 +67,7 @@ __all__ = [
     "list_registered_graph_features_aggregations",
     "list_registered_pooling_aggregations",
     "register_evaluation_function",
+    "get_evaluation_function",
     "list_evaluation_functions",
     # nested config helpers
     "assign_at_path",
