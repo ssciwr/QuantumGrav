@@ -39,8 +39,8 @@
             "r_distribution" => "Normal",
             "r_distribution_args" => [4.0, 2.0],
             "r_distribution_kwargs" => Dict(),
-            "n2_rel_distribution" => "Cauchy",
-            "n2_rel_distribution_args" => [2.0, 1.0],
+            "n2_rel_distribution" => "Uniform",
+            "n2_rel_distribution_args" => [0., 1.0],
             "n2_rel_distribution_kwargs" => Dict(),
             "connectivity_distribution" => "Beta",
             "connectivity_distribution_args" => [0.5, 0.1],
@@ -71,8 +71,8 @@
             "r_distribution" => "Uniform",
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
-            "flip_distribution" => "Normal",
-            "flip_distribution_args" => [4.0, 2.0],
+            "flip_distribution" => "Uniform",
+            "flip_distribution_args" => [0., 1.0],
             "flip_distribution_kwargs" => Dict(),
         ),
         "grid" => Dict(
@@ -214,9 +214,10 @@ end
 
     csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
     rng = Random.Xoshiro(cfg["seed"])
-    cset = csetmaker(25, rng)
+    cset, curvature_matrix = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
+    @test length(curvature_matrix) == 25
 end
 
 @testitem "test_random_factory_construction" tags = [:csetfactories] setup = [config] begin
@@ -303,9 +304,10 @@ end
     using Random: Random
     csetmaker = QuantumGrav.LayeredCsetMaker(cfg["layered"])
     rng = Random.Xoshiro(cfg["seed"])
-    cset = csetmaker(25, rng)
+    cset, layers = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
+    @test layers >= 2 
 end
 
 @testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
@@ -321,7 +323,7 @@ end
     @test Distributions.params(csetmaker.r_distribution) ==
           tuple(cfg["destroyed"]["r_distribution_args"]...)
 
-    @test csetmaker.flip_distribution isa Distributions.Normal
+    @test csetmaker.flip_distribution isa Distributions.Uniform
     @test Distributions.params(csetmaker.flip_distribution) ==
           tuple(cfg["destroyed"]["flip_distribution_args"]...)
 
@@ -360,9 +362,10 @@ end
 
     csetmaker = QuantumGrav.DestroyedCsetMaker(cfg["destroyed"])
     rng = Random.Xoshiro(cfg["seed"])
-    cset = csetmaker(25, rng)
+    cset, rel_num_flips = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
+    @test rel_num_flips >= 0.0 && rel_num_flips <= 1.0
 end
 
 @testitem "test_merged_factory_construction" tags = [:csetfactories] setup = [config] begin
@@ -377,7 +380,7 @@ end
     @test Distributions.params(csetmaker.r_distribution) ==
           tuple(cfg["merged"]["r_distribution_args"]...)
 
-    @test csetmaker.n2_rel_distribution isa Distributions.Cauchy
+    @test csetmaker.n2_rel_distribution isa Distributions.Uniform
     @test Distributions.params(csetmaker.n2_rel_distribution) ==
           tuple(cfg["merged"]["n2_rel_distribution_args"]...)
 
@@ -438,9 +441,10 @@ end
     using Random: Random
     csetmaker = QuantumGrav.MergedCsetMaker(cfg["merged"])
     rng = Random.Xoshiro(cfg["seed"])
-    cset = csetmaker(25, rng)
+    cset, n2_rel = csetmaker(25, rng)
     @test isnothing(cset) === false
-    @test cset.atom_count > 25
+    @test cset.atom_count == 25
+    @test n2_rel >= 0.0 && n2_rel <= 1.0
 end
 
 @testitem "test_complex_topology_factory_construction" tags = [:csetfactories] setup =
@@ -501,9 +505,10 @@ end
 
     csetmaker = QuantumGrav.ComplexTopCsetMaker(cfg["complex_topology"])
     rng = Random.Xoshiro(cfg["seed"])
-    cset = csetmaker(25, rng)
+    cset, curvature_matrix = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count <= 25
+    @test length(curvature_matrix) <= 25
 end
 
 @testitem "test_grid_factory_construction" tags = [:csetfactories] setup = [config] begin
@@ -583,14 +588,17 @@ end
         csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
         # Produce a cset for this grid type
-        cset = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
+        cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
         @test isnothing(cset) === false
         @test cset.atom_count == 25
+        @test grid_type == grid_type_out
     end
 
     csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
-    cset = csetmaker(25, rng, cfg["grid"]) # randomly chosen grid type
+    cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]) # randomly chosen grid type
     @test isnothing(cset) === false
     @test cset.atom_count == 25
+    @test length(curvature_matrix) == 25
+    @test grid_type_out in grid_types
 
 end

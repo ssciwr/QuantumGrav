@@ -122,16 +122,25 @@ end
 
 # Keyword arguments:
 - `config`: configuration dictionary
+- `derivation_matrix1`: optional derivation matrix transform characterising first derivative of chebyshev polynomials for curvature calculation
+- `derivation_matrix2`: optional derivation matrix transform characterising second derivative of chebyshev polynomials for curvature calculation
+
+# Returns
+- causal set (BitArrayCauset)
+- curvature at every point (Vector{Float64})
 """
 function (m::PolynomialCsetMaker)(
     n,
     rng;
     config::Union{Dict,Nothing} = nothing,
-)::CausalSets.BitArrayCauset
+    derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
+    derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
+)::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
     o = rand(rng, m.order_distribution)
     r = rand(rng, m.r_distribution)
-    cset, _, __ = make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
-    return cset
+    cset, sprinkling, chebyshev_coefs = make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
+    curvature_matrix = Ricci_scalar_2D_of_sprinkling(Float64.(chebyshev_coefs), Vector{CausalSets.Coordinates{2}}(sprinkling); derivation_matrix1 = derivation_matrix1, derivation_matrix2 = derivation_matrix2)
+    return cset, curvature_matrix
 end
 
 """
@@ -225,12 +234,16 @@ end
 
 # Keyword arguments:
 - `config`: configuration dictionary
+
+# Returns
+- causal set (BitArrayCauset)
+- number of layers
 """
 function (lm::LayeredCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
     config::Union{Dict,Nothing} = nothing,
-)::CausalSets.BitArrayCauset
+)::Tuple{CausalSets.BitArrayCauset,Int64}
     connectivity_goal = rand(rng, lm.connectivity_distribution)
     layers = rand(rng, lm.layer_distribution)
     layers = Int(ceil(layers))
@@ -245,7 +258,7 @@ function (lm::LayeredCsetMaker)(
         standard_deviation = s,
     )
 
-    return cset
+    return cset, layers
 end
 
 """
@@ -471,12 +484,16 @@ Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 # Keyword arguments:
 - `config`: configuration dictionary
 
+# Returns
+- causal set (BitArrayCauset)
+- number of flipped edges relative to size of causal set
+
 """
 function (dcm::DestroyedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
-)::CausalSets.BitArrayCauset
+    config::Union{Dict{String,Any},Nothing} = nothing,
+)::Tuple{CausalSets.BitArrayCauset,Float64}
 
     o = rand(rng, dcm.order_distribution)
 
@@ -485,7 +502,7 @@ function (dcm::DestroyedCsetMaker)(
     f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
 
     cset = destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
-    return cset
+    return cset, f/n
 end
 
 
@@ -722,7 +739,13 @@ end
 - `config`: configuration dictionary
 
 # Keyword arguments:
-- `grid`: name of the grid type to use. optional
+- `grid`: name of the grid type to use
+- `derivation_matrix1`: optional derivation matrix transform characterising first derivative of chebyshev polynomials for curvature calculation
+- `derivation_matrix2`: optional derivation matrix transform characterising second derivative of chebyshev polynomials for curvature calculation
+
+# Returns
+- causal set (BitArrayCauset)
+- grid type
 
 """
 function (gcm::GridCsetMakerPolynomial)(
@@ -730,7 +753,9 @@ function (gcm::GridCsetMakerPolynomial)(
     rng::Random.AbstractRNG,
     config::Dict;
     grid::Union{String,Nothing} = nothing,
-)
+    derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
+    derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
+)::Tuple{CausalSets.BitArrayCauset,Vector{Float64}, String}
 
     if isnothing(grid)
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
@@ -748,7 +773,7 @@ function (gcm::GridCsetMakerPolynomial)(
         grid == "quadratic" ? 1.0 :
         rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
 
-    cset, _, __ = create_grid_causet_2D_polynomial_manifold(
+    cset, _, pseudosprinkling, chebyshev_coefs = create_grid_causet_2D_polynomial_manifold(
         n,
         grid,
         rng,
@@ -761,8 +786,12 @@ function (gcm::GridCsetMakerPolynomial)(
         rotate_deg = rotate_angle_deg,
         origin = (0.0, 0.0),
     )
+    
+    trans_pseudosprinkling = [(Float64(x), Float64(y)) for (x, y) in eachrow(Float64.(pseudosprinkling))]
 
-    return cset
+    curvature_matrix = Ricci_scalar_2D_of_sprinkling(Float64.(chebyshev_coefs), trans_pseudosprinkling; derivation_matrix1 = derivation_matrix1, derivation_matrix2 = derivation_matrix2)
+
+    return cset, curvature_matrix, grid
 end
 
 
@@ -879,12 +908,17 @@ end
 
 # Keyword arguments:
 - `config`: configuration dictionary
+
+# Returns
+- causal set (BitArrayCauset)
 """
 function (ctm::ComplexTopCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
-)::CausalSets.BitArrayCauset
+    config::Union{Dict{String,Any},Nothing} = nothing,
+    derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
+    derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
+)::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
 
     n_vertical_cuts = rand(rng, ctm.vertical_cut_distribution)
     if n_vertical_cuts isa Float64
@@ -898,7 +932,7 @@ function (ctm::ComplexTopCsetMaker)(
 
     order = rand(rng, ctm.order_distribution)
     r = rand(rng, ctm.r_distribution)
-
+  
     cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
         make_branched_manifold_cset(
             n,
@@ -911,7 +945,9 @@ function (ctm::ComplexTopCsetMaker)(
             tolerance = ctm.tol,
         )
 
-    return cset
+    curvature_matrix = Ricci_scalar_2D_of_sprinkling(Float64.(chebyshev_coefs), Vector{CausalSets.Coordinates{2}}(branched_sprinkling); derivation_matrix1 = derivation_matrix1, derivation_matrix2 = derivation_matrix2)
+
+    return cset, curvature_matrix
 end
 
 
@@ -1037,12 +1073,16 @@ end
 
 # Keyword arguments:
 - `config`: configuration dictionary
+
+# Returns
+- causal set (BitArrayCauset)
+- size of inserted KR-order relative to size of causal set
 """
 function (mcm::MergedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
-)::CausalSets.BitArrayCauset
+    config::Union{Dict{String,Any},Nothing} = nothing,
+)::Tuple{CausalSets.BitArrayCauset,Float64}
 
     o = rand(rng, mcm.order_distribution)
     r = rand(rng, mcm.r_distribution)
@@ -1053,7 +1093,7 @@ function (mcm::MergedCsetMaker)(
     cset, success, sprinkling =
         insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
 
-    return cset
+    return cset, n2rel
 end
 
 csetfactory_schema = JSONSchema.Schema("""
@@ -1119,7 +1159,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                             "additionalProperties": true
                                         },
                                         "csetsize_distr": {"type": "string"},
-                                        "output": { "type": "string" }, 
+                                        "output": { "type": "string" },
                                         "cset_type": {
                                           "oneOf": [
                                             { "type": "string" },

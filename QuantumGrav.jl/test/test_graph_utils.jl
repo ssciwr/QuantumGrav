@@ -44,8 +44,8 @@ end
     sdg = Graphs.SimpleDiGraph(adj)
     max_path_expected =
         Graphs.dag_longest_path(sdg; topological_order = collect(1:(cset.atom_count)))
-    print("max_path_expected: ", max_path_expected, "\n")
-    print("max_path: ", max_path, "\n")
+
+    # TODO: this seems just wrong I think?
     @test max_path > 1
     @test max_path <= cset.atom_count
     @test max_path == (length(max_path_expected) - 1) # dag_longest_path counts differently

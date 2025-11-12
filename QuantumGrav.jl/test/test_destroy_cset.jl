@@ -13,7 +13,6 @@ end
 
 @testitem "test_destroy_manifold_cset" tags = [:destroy_causets] setup = [setupTests] begin
 
-
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
@@ -30,7 +29,7 @@ end
     )
 
     @test length(sprinkling) == npoints
-    @test size(chebyshev_coefs) == (order, order)
+    @test size(chebyshev_coefs) == (order + 1, order + 1)
     @test typeof(cset) != Nothing
     @test cset.atom_count == npoints
     @test length(cset.future_relations) == npoints

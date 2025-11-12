@@ -39,8 +39,8 @@ function make_polynomial_manifold_cset(
         throw(ArgumentError("npoints must be greater than 0, got $npoints"))
     end
 
-    if order <= 0
-        throw(ArgumentError("order must be greater than 0, got $order"))
+    if order < 0
+        throw(ArgumentError("order must be greater than -1, got $order"))
     end
 
     if r <= 1
@@ -57,15 +57,15 @@ function make_polynomial_manifold_cset(
 
     # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
     # it has to be a (order x order)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order, order)
-    for i = 1:order
-        for j = 1:order
+    chebyshev_coefs = zeros(Float64, order+1, order+1)
+    for i = 1:order+1
+        for j = 1:order+1
             chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
         end
     end
 
     # Construct the Chebyshev-to-Taylor transformation matrix
-    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order - 1)
+    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
 
     # Transform Chebyshev coefficients to Taylor coefficients
     taylorcoefs = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)

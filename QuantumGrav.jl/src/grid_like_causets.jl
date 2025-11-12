@@ -300,10 +300,10 @@ function create_grid_causet_2D_polynomial_manifold(
     gamma_deg::Float64 = 60.0,
     rotate_deg = nothing,
     origin = (0.0, 0.0),
-)::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T<:Number}
+)::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T},Matrix{T}} where {T<:Number}
 
     size ≥ 2 || throw(ArgumentError("size must be ≥ 2, is $(size)"))
-    order ≥ 1 || throw(ArgumentError("order must be ≥ 1, is $(order)"))
+    order ≥ 0 || throw(ArgumentError("order must be ≥ 0, is $(order)"))
     r > 1 || throw(ArgumentError("r must be > 1, is $(r)"))
 
     grid = generate_grid_2d(
@@ -317,8 +317,8 @@ function create_grid_causet_2D_polynomial_manifold(
     )
 
     # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order x order)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order, order)
+    # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
+    chebyshev_coefs = zeros(Float64, order + 1, order + 1)
     for i = 1:order
         for j = 1:order
             chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
@@ -326,7 +326,7 @@ function create_grid_causet_2D_polynomial_manifold(
     end
 
     # Construct the Chebyshev-to-Taylor transformation matrix
-    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order - 1)
+    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
 
     # Transform Chebyshev coefficients to Taylor coefficients
     taylorcoefs = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)
@@ -345,5 +345,6 @@ function create_grid_causet_2D_polynomial_manifold(
 
     return CausalSets.BitArrayCauset(polym, pseudosprinkling),
     true,
-    type.(stack(collect.(pseudosprinkling), dims = 1))
+    type.(stack(collect.(pseudosprinkling), dims = 1)),
+    type.(chebyshev_coefs)
 end

@@ -853,7 +853,7 @@ end
     @test length(sprinkling) <= npoints
     @test length(branch_points[1]) == 3
     @test length(branch_points[2]) == 2
-    @test size(coefs) == (order, order)
+    @test size(coefs) == (order + 1, order + 1)
     @test cset.atom_count == npoints
 end
 
@@ -892,7 +892,7 @@ end
         order,
         r,
     )
-    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, 1, rng, 0, r)
+    @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(10, 5, 1, rng, -1, r)
     @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(
         10,
         5,

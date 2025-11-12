@@ -2095,8 +2095,8 @@ function make_branched_manifold_cset(
         throw(ArgumentError("n_finite_cuts must be larger than 0, is $n_finite_cuts"))
     end
 
-    if order <= 0
-        throw(ArgumentError("order must be greater than 0, got $order"))
+    if order <= -1
+        throw(ArgumentError("order must be greater than -1, got $order"))
     end
 
     if r <= 1
@@ -2116,8 +2116,8 @@ function make_branched_manifold_cset(
     end
 
     # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order x order)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order, order)
+    # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
+    chebyshev_coefs = zeros(Float64, order + 1, order + 1)
     for i = 1:order
         for j = 1:order
             chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
@@ -2125,7 +2125,7 @@ function make_branched_manifold_cset(
     end
 
     # Construct the Chebyshev-to-Taylor transformation matrix
-    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order - 1)
+    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
 
     # Transform Chebyshev coefficients to Taylor coefficients
     taylorcoefs = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)
