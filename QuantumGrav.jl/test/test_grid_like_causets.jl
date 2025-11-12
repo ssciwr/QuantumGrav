@@ -193,7 +193,7 @@ end
     size = 30
     order = 3
     r = 2.0
-    cset, converged, coords = QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+    cset, converged, coords, chebyshev_coefs = QuantumGrav.create_grid_causet_2D_polynomial_manifold(
         size,
         "square",
         rng,
@@ -207,6 +207,7 @@ end
     @test cset.atom_count == size
     @test converged == true
     @test length(coords) == 2 * size
+    @test length(chebyshev_coefs) == (order + 1)^2
 end
 
 @testitem "grid_input_errors" tags=[:cset, :errors] begin
@@ -227,7 +228,7 @@ end
         10,
         "square",
         rng,
-        0,
+        -1,
         2.0;
         a = 1.0,
     )
