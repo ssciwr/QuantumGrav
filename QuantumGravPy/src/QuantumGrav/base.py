@@ -3,10 +3,8 @@ from typing import Any, Dict
 
 
 class Configurable(ABC):
-    """Abstract base class that defines a class to be working with configuration files
-
-    Args:
-        ABC (_type_): _description_
+    """Abstract base class for objects that can be configured via configuration files.
+    Subclasses must implement methods to verify, serialize, and instantiate from configuration dictionaries.
     """
 
     @classmethod
@@ -37,7 +35,7 @@ class Configurable(ABC):
         """Instantiate the caller class from a config
 
         Args:
-            config (dict[str, Any]): config to intantiate the caller class from
+            config (dict[str, Any]): config to instantiate the caller class from
 
         Returns:
             Configurable: A new instance of the class

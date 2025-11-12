@@ -240,11 +240,11 @@ def test_import_and_get():
     assert result is global_mean_pool
 
     # Test invalid module path
-    with pytest.raises(ValueError, match="Importing module .* unsuccessful"):
+    with pytest.raises(KeyError, match="Importing module .* unsuccessful"):
         QG.utils.import_and_get("nonexistent.module.Class")
 
     # Test invalid object name
-    with pytest.raises(ValueError, match="Could not load name .* from"):
+    with pytest.raises(KeyError, match="Could not load name .* from"):
         QG.utils.import_and_get("torch.nn.NonExistentClass")
 
 

@@ -6,7 +6,6 @@ from copy import deepcopy
 from . import base
 
 
-# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
 class DefaultEarlyStopping(base.Configurable):
     """Early stopping based on a validation metric."""
 
@@ -32,16 +31,16 @@ class DefaultEarlyStopping(base.Configurable):
                         },
                         "grace_period": {
                             "type": "integer",
-                            "description": "The number of epochs with no improvement after which training will be stopped.",
+                            "description": "The number of initial epochs to wait before patience counting begins, even if no improvement is found.",
                             "minimum": 0,
                         },
                         "init_best_score": {
                             "type": "number",
-                            "description": "The initial best score for the task.",
+                            "description": "The initial best score for the task.For 'min' mode, this should typically be a large positive value (e.g., float('inf')). For 'max' mode, this should typically be a large negative value (e.g., float('-inf')).",
                         },
                         "mode": {
                             "type": "string",
-                            "description": "Whether finding a better model min or max comparison based",
+                            "description": "Whether to use 'min' (minimize) or 'max' (maximize) when determining if a model has improved.",
                             "enum": ["min", "max"],
                         },
                     },
@@ -70,7 +69,6 @@ class DefaultEarlyStopping(base.Configurable):
         "additionalProperties": False,
     }
 
-    # put this into the package
     def __init__(
         self,
         tasks: dict[str | int, Any],
@@ -80,9 +78,9 @@ class DefaultEarlyStopping(base.Configurable):
         """Instantiate a new DefaultEarlyStopping.
 
         Args:
-            tasks (dict[str  |  int, Any]): dict of task definitions
+            tasks (dict[str | int, Any]): dict of task definitions
             patience (int): how long to wait until early stopping is triggered if no better model can be found.
-            mode (str | Callable[[dict[str  |  int, Any]], bool], optional): Mode for aggregating evaluations. 'all', 'any', or a callable. Defaults to "any".
+            mode (str, optional): Mode for aggregating evaluations. 'all', 'any'. Defaults to "any".
         """
         self.tasks = tasks
         for _, task in tasks.items():
@@ -143,13 +141,13 @@ class DefaultEarlyStopping(base.Configurable):
         if task["mode"] == "min":
             return task["best_score"] - task["delta"] > value
         elif task["mode"] == "max":
-            return task["best_score"] - task["delta"] < value
+            return task["best_score"] + task["delta"] < value
         else:
             raise ValueError("Unknown value for mode in task. must be 'max' or 'min'.")
 
     def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
         """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
-        patience is reset and 'found_better' is set to True. Otherwise, if the number of datapoints in 'data' is greater than self.window, the patience is decremented.
+        patience is reset and 'found_better' is set to True. Otherwise, if no improvement is found, the patience is decremented according to the grace period logic.
 
         Args:
             data (pd.DataFrame | pd.Series): Recorded evaluation metrics in a pandas structure.
@@ -157,19 +155,22 @@ class DefaultEarlyStopping(base.Configurable):
         Returns:
             bool: True if early stopping criteria are met, False otherwise.
         """
+        if len(data) == 0:
+            raise ValueError("Cannot compute early stopping on empty data")
+
         for t in self.tasks.values():
             t["found_better"] = False
         ds = {}  # dict to hold current metric values
 
         # go over all registered metrics and check if the model performs better on any of them
-        # then aggregrate the result with 'found_better_model'.
+        # then aggregate the result with 'found_better_model'.
         for k in self.tasks.keys():
             # smooth data if desired - prevents oscillations
             d = data[self.tasks[k]["metric"]]
 
             better = self._evaluate_task(self.tasks[k], d.iloc[-1])
 
-            if better and len(data) >= 1:
+            if better:
                 self.logger.debug(
                     f"    Better model found for task {k}: {d.iloc[-1]:.8f}, current best: {self.tasks[k]['best_score']:.8f}"
                 )
