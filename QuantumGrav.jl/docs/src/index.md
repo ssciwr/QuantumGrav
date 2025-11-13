@@ -33,14 +33,91 @@ csetfactory = QG.CsetFactory(config)
 Once an instance of this struct is created, you can construct a new cset via: 
 
 ```julia 
-import Random 
-rng = Random.Xoshiro()
 cset = csetfactory((
     "random", # a cset type as described above
     1000, # number of events in the cset
 ))
 ```
 This will return a causal set of the requested size and kind of the type `CausalSets.BitArrayCauset`. 
+
+This package uses the zarr format for storing data to file. From a constructed cset, a multitude of observables can be derived. 
+These can be stored in a dictionary that then can be written directly into a zarr file. Secondly, a helper function is provided to copy the config and the source code used to generate the observables to the same directory as the data and creates a Zarr `DirectoryStore` there. This helps with reproducibility and documentation of different data generation runs. The created Zarr file will contain the pid of the generating process and the date and time in `yyyy-mm-dd_HH-MM-SS` format.
+
+We first define a function that takes a Causal Set factory and builds a dictionary of computed observables: 
+
+```julia 
+import QuantumGrav as QG 
+import Random 
+import Zarr 
+
+function make_cset_data(csetfactory)
+    cset = csetfactory(
+        "random", # a cset type as described above
+        1000, # number of events in the cset
+    )
+
+    return Dict(
+        "observable1" => make_observable1(cset) # assume the `make_observable1` would be user defined
+        "observable2" => make_observable2(cset)
+    )
+end
+```
+
+Then we load the config and call the `prepare_dataproduction` function to set everything up. The second argument will serve as an anchor to determine which source code files shall be copied over. In this case, it will be the file where the `make_cset_data` function is defined. If you add other functions, their respective sourcecode files will be copied as well.
+
+```julia 
+config = _YAML.load_file(joinpath("path", "to", "configfile.yaml")) # load from yaml file. 
+
+filepath, file = QG.prepare_dataproduction(
+    config,
+    [make_cset_data];
+    nameaddition = "random_data", # will create a folder starting with 'random_data' and ending with '.zarr'
+)
+
+# make the factory
+factory = QG.CsetFactory(config)
+```
+
+Finally, we create our data. This can also be parallelized with `Threads.@threads`, `Distributed.@distributed`, `Distributed.pmap` or in other ways. 
+
+```julia 
+for i in 1:num_csets
+    data = Dict("cset_$i"=> make_cset_data(factory))
+    QG.dict_to_zarr(file, data)
+end
+```
+The whole procedure will result in a directory `output/random_data_{pid}_{yyyy-mm-dd_HH-MM-SS}.zarr`, which contains 
+directories `cset_{i}` and therein the respective observables.
+
+The resulting directory structure will look like this:
+
+```
+output/
+└── random_data_12345_2025-11-13_14-30-45.zarr/
+    ├── .zattrs                    # Zarr metadata
+    ├── .zgroup                    # Zarr group marker
+    ├── config.yaml                # Copy of configuration used
+    ├── make_cset_data.jl          # Source code snapshot   
+    ├── ...                        # other sourcecode files 
+    ├── cset_1/
+    │   ├── .zgroup
+    │   ├── observable1/           # Arrays stored as Zarr arrays
+    │   │   ├── .zarray
+    │   │   └── ...
+    │   └── observable2/
+    │       ├── .zarray
+    │       └── ...
+    ├── cset_2/
+    │   ├── .zgroup
+    │   ├── observable1/
+    │   └── observable2/
+    │
+    ├── ...                        # more csets 
+    └── cset_N/
+        ├── .zgroup
+        ├── observable1/
+        └── observable2/
+```
 
 ## Configuration
 The causal set factories each come with a specific configuration dictionary that is validated by JSON schemas. Each cset type requires specific distribution parameters that control the stochastic generation process.
