@@ -120,6 +120,7 @@
         ),
         "seed" => 42,
         "num_datapoints" => 5,
+        "cset_type" => "polynomial",
         "csetsize_distr_args" => [10, 20],
         "csetsize_distr" => "DiscreteUniform",
         "output" => "./",
@@ -179,7 +180,7 @@ end
     rng = Random.Xoshiro(1234)
     csetfactory = QuantumGrav.CsetFactory(cfg)
 
-    cset = csetfactory("random", 12, rng)
+    cset = csetfactory("random", 12)
 
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == 12

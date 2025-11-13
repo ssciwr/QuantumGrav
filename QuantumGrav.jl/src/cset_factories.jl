@@ -21,29 +21,29 @@ distributions = build_distr(config, "connectivity_distribution")
 """
 function build_distr(cfg::Dict, name::String)::Distributions.Distribution
 
-    distribution_type::Union{Nothing,Type} = nothing
+  distribution_type::Union{Nothing,Type} = nothing
 
-    distr::Union{Nothing,Distributions.Distribution} = nothing
+  distr::Union{Nothing,Distributions.Distribution} = nothing
 
-    try
-        distribution_type = getfield(Distributions, Symbol(cfg[name]))
-    catch e
-        throw(ArgumentError("Distribution $(name) could not be retrieved $(e)"))
-    end
+  try
+    distribution_type = getfield(Distributions, Symbol(cfg[name]))
+  catch e
+    throw(ArgumentError("Distribution $(name) could not be retrieved $(e)"))
+  end
 
-    kwargs = get(cfg, name*"_kwargs", Dict())
+  kwargs = get(cfg, name * "_kwargs", Dict())
 
-    if !(kwargs isa Dict{Symbol,Any})
-        kwargs = Dict(Symbol(k) => v for (k, v) in kwargs)
-    end
+  if !(kwargs isa Dict{Symbol,Any})
+    kwargs = Dict(Symbol(k) => v for (k, v) in kwargs)
+  end
 
-    try
-        distr = distribution_type(cfg[name*"_args"]...; kwargs...)
-    catch e
-        throw(ArgumentError("Distribution $(name) could not be built $(e)"))
-    end
+  try
+    distr = distribution_type(cfg[name*"_args"]...; kwargs...)
+  catch e
+    throw(ArgumentError("Distribution $(name) could not be built $(e)"))
+  end
 
-    return distr
+  return distr
 end
 
 """
@@ -56,8 +56,8 @@ end
 - `r_distribution::Distributions.Distribution`: distribution of exponential decay exponents
 """
 struct PolynomialCsetMaker
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
+  order_distribution::Distributions.Distribution
+  r_distribution::Distributions.Distribution
 end
 
 const PolynomialCsetMaker_schema = JSONSchema.Schema("""{
@@ -103,12 +103,12 @@ const PolynomialCsetMaker_schema = JSONSchema.Schema("""{
 - config::Dict: configuration dictionary
 """
 function PolynomialCsetMaker(config)
-    validate_config(PolynomialCsetMaker_schema, config)
+  validate_config(PolynomialCsetMaker_schema, config)
 
-    order_distribution = build_distr(config, "order_distribution")
-    r_distribution = build_distr(config, "r_distribution")
+  order_distribution = build_distr(config, "order_distribution")
+  r_distribution = build_distr(config, "r_distribution")
 
-    return PolynomialCsetMaker(order_distribution, r_distribution)
+  return PolynomialCsetMaker(order_distribution, r_distribution)
 end
 
 """
@@ -124,14 +124,14 @@ end
 - `config`: configuration dictionary
 """
 function (m::PolynomialCsetMaker)(
-    n,
-    rng;
-    config::Union{Dict,Nothing} = nothing,
+  n,
+  rng;
+  config::Union{Dict,Nothing}=nothing,
 )::CausalSets.BitArrayCauset
-    o = rand(rng, m.order_distribution)
-    r = rand(rng, m.r_distribution)
-    cset, _, __ = make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
-    return cset
+  o = rand(rng, m.order_distribution)
+  r = rand(rng, m.r_distribution)
+  cset, _, __ = make_polynomial_manifold_cset(n, rng, o, r; d=2, type=Float32)
+  return cset
 end
 
 """
@@ -145,56 +145,56 @@ end
 - `layer_distribution::Distributions.Distribution`: distribution of layer counts
 """
 struct LayeredCsetMaker
-    connectivity_distribution::Distributions.Distribution
-    stddev_distribution::Distributions.Distribution
-    layer_distribution::Distributions.Distribution
+  connectivity_distribution::Distributions.Distribution
+  stddev_distribution::Distributions.Distribution
+  layer_distribution::Distributions.Distribution
 end
 
 const LayeredCsetMaker_schema = JSONSchema.Schema(
-    """{
-      "\$schema": "http://json-schema.org/draft-06/schema#",
-      "title": "Layered csetmaker config",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "connectivity_distribution": { "type": "string" },
-        "connectivity_distribution_args": {
-          "type": "array",
-          "items": { "type": "number" }
-        },
-        "connectivity_distribution_kwargs": {
-          "type": "object",
-          "additionalProperties": true
-        },
-        "stddev_distribution": { "type": "string", "default": "Normal" },
-        "stddev_distribution_args": {
-          "type": "array",
-          "items": { "type": "number" }
-        },
-        "stddev_distribution_kwargs": {
-          "type": "object",
-          "additionalProperties": true
-        },
-        "layer_distribution": { "type": "string", "default": "DiscreteUniform" },
-        "layer_distribution_args": {
-          "type": "array",
-          "items": { "type": "integer" }
-        },
-        "layer_distribution_kwargs": {
-          "type": "object",
-          "additionalProperties": true
-        }
+  """{
+    "\$schema": "http://json-schema.org/draft-06/schema#",
+    "title": "Layered csetmaker config",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "connectivity_distribution": { "type": "string" },
+      "connectivity_distribution_args": {
+        "type": "array",
+        "items": { "type": "number" }
       },
-      "required": [
-        "connectivity_distribution",
-        "connectivity_distribution_args",
-        "stddev_distribution",
-        "stddev_distribution_args",
-        "layer_distribution",
-        "layer_distribution_args"
-      ]
+      "connectivity_distribution_kwargs": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "stddev_distribution": { "type": "string", "default": "Normal" },
+      "stddev_distribution_args": {
+        "type": "array",
+        "items": { "type": "number" }
+      },
+      "stddev_distribution_kwargs": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "layer_distribution": { "type": "string", "default": "DiscreteUniform" },
+      "layer_distribution_args": {
+        "type": "array",
+        "items": { "type": "integer" }
+      },
+      "layer_distribution_kwargs": {
+        "type": "object",
+        "additionalProperties": true
       }
-    """,
+    },
+    "required": [
+      "connectivity_distribution",
+      "connectivity_distribution_args",
+      "stddev_distribution",
+      "stddev_distribution_args",
+      "layer_distribution",
+      "layer_distribution_args"
+    ]
+    }
+  """,
 )
 
 """
@@ -206,12 +206,12 @@ const LayeredCsetMaker_schema = JSONSchema.Schema(
     - config::Dict: configuration dictionary
 """
 function LayeredCsetMaker(config::Dict)
-    validate_config(LayeredCsetMaker_schema, config)
+  validate_config(LayeredCsetMaker_schema, config)
 
-    cdistr = build_distr(config, "connectivity_distribution")
-    stddev_distr = build_distr(config, "stddev_distribution")
-    ldistr = build_distr(config, "layer_distribution")
-    return LayeredCsetMaker(cdistr, stddev_distr, ldistr)
+  cdistr = build_distr(config, "connectivity_distribution")
+  stddev_distr = build_distr(config, "stddev_distribution")
+  ldistr = build_distr(config, "layer_distribution")
+  return LayeredCsetMaker(cdistr, stddev_distr, ldistr)
 end
 
 """
@@ -227,25 +227,25 @@ end
 - `config`: configuration dictionary
 """
 function (lm::LayeredCsetMaker)(
-    n::Int64,
-    rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+  n::Int64,
+  rng::Random.AbstractRNG;
+  config::Union{Dict,Nothing}=nothing,
 )::CausalSets.BitArrayCauset
-    connectivity_goal = rand(rng, lm.connectivity_distribution)
-    layers = rand(rng, lm.layer_distribution)
-    layers = Int(ceil(layers))
+  connectivity_goal = rand(rng, lm.connectivity_distribution)
+  layers = rand(rng, lm.layer_distribution)
+  layers = Int(ceil(layers))
 
-    s = rand(rng, lm.stddev_distribution)
+  s = rand(rng, lm.stddev_distribution)
 
-    cset, _ = create_random_layered_causet(
-        n,
-        layers;
-        p = connectivity_goal,
-        rng = rng,
-        standard_deviation = s,
-    )
+  cset, _ = create_random_layered_causet(
+    n,
+    layers;
+    p=connectivity_goal,
+    rng=rng,
+    standard_deviation=s,
+  )
 
-    return cset
+  return cset
 end
 
 """
@@ -257,11 +257,11 @@ end
 - `cdistr::Distributions.Distribution`: distribution of connectivity goals
 """
 struct RandomCsetMaker
-    connectivity_distribution::Distributions.Distribution
-    max_iter::Int64
-    num_tries::Int64
-    abs_tol::Union{Float64,Nothing}
-    rel_tol::Union{Float64,Nothing}
+  connectivity_distribution::Distributions.Distribution
+  max_iter::Int64
+  num_tries::Int64
+  abs_tol::Union{Float64,Nothing}
+  rel_tol::Union{Float64,Nothing}
 end
 
 const RandomCsetMaker_schema = JSONSchema.Schema("""{
@@ -304,25 +304,25 @@ const RandomCsetMaker_schema = JSONSchema.Schema("""{
 - config::Dict: configuration dictionary
 """
 function RandomCsetMaker(config::Dict)
-    validate_config(RandomCsetMaker_schema, config)
+  validate_config(RandomCsetMaker_schema, config)
 
-    cdistr = build_distr(config, "connectivity_distribution")
+  cdistr = build_distr(config, "connectivity_distribution")
 
-    if config["max_iter"] < 1
-        throw(ArgumentError("Error, max_iter must be >= 1, is $(config["max_iter"])."))
-    end
+  if config["max_iter"] < 1
+    throw(ArgumentError("Error, max_iter must be >= 1, is $(config["max_iter"])."))
+  end
 
-    if config["num_tries"] < 1
-        throw(ArgumentError("Error, num_tries must be >= 1, is $(config["num_tries"])."))
-    end
+  if config["num_tries"] < 1
+    throw(ArgumentError("Error, num_tries must be >= 1, is $(config["num_tries"])."))
+  end
 
-    return RandomCsetMaker(
-        cdistr,
-        config["max_iter"],
-        config["num_tries"],
-        config["abs_tol"],
-        config["rel_tol"],
-    )
+  return RandomCsetMaker(
+    cdistr,
+    config["max_iter"],
+    config["num_tries"],
+    config["abs_tol"],
+    config["rel_tol"],
+  )
 end
 
 """
@@ -338,48 +338,48 @@ end
 - `config`: configuration dictionary
 """
 function (rcm::RandomCsetMaker)(
-    n::Int64,
-    rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+  n::Int64,
+  rng::Random.AbstractRNG;
+  config::Union{Dict,Nothing}=nothing,
 )::CausalSets.BitArrayCauset
 
-    connectivity_goal = rand(rng, rcm.connectivity_distribution)
+  connectivity_goal = rand(rng, rcm.connectivity_distribution)
 
-    converged = false
+  converged = false
 
-    cset = nothing
+  cset = nothing
 
-    tries = 1
+  tries = 1
 
-    while converged == false && tries <= rcm.num_tries
-        cset_try, converged = sample_bitarray_causet_by_connectivity(
-            n,
-            connectivity_goal,
-            rcm.max_iter,
-            rng;
-            abs_tol = rcm.abs_tol,
-            rel_tol = rcm.rel_tol,
-        )
+  while converged == false && tries <= rcm.num_tries
+    cset_try, converged = sample_bitarray_causet_by_connectivity(
+      n,
+      connectivity_goal,
+      rcm.max_iter,
+      rng;
+      abs_tol=rcm.abs_tol,
+      rel_tol=rcm.rel_tol,
+    )
 
-        if converged
-            cset = cset_try
-        else
-            cset = nothing
-        end
-
-        tries += 1
-
+    if converged
+      cset = cset_try
+    else
+      cset = nothing
     end
 
-    if cset === nothing
-        throw(
-            ErrorException(
-                "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $(tries-1) tries.",
-            ),
-        )
-    end
+    tries += 1
 
-    return cset
+  end
+
+  if cset === nothing
+    throw(
+      ErrorException(
+        "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $(tries-1) tries.",
+      ),
+    )
+  end
+
+  return cset
 end
 
 """
@@ -393,9 +393,9 @@ end
 - `flip_distribution::Distributions.Distribution`: distribution of flip values
 """
 struct DestroyedCsetMaker
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    flip_distribution::Distributions.Distribution
+  order_distribution::Distributions.Distribution
+  r_distribution::Distributions.Distribution
+  flip_distribution::Distributions.Distribution
 end
 
 const DestroyedCsetMaker_schema = JSONSchema.Schema("""{
@@ -449,15 +449,15 @@ const DestroyedCsetMaker_schema = JSONSchema.Schema("""{
 Create a new `destroyed` causal set maker object from the config dictionary.
 """
 function DestroyedCsetMaker(config::Dict)
-    validate_config(DestroyedCsetMaker_schema, config)
+  validate_config(DestroyedCsetMaker_schema, config)
 
-    order_distribution = build_distr(config, "order_distribution")
+  order_distribution = build_distr(config, "order_distribution")
 
-    r_distribution = build_distr(config, "r_distribution")
+  r_distribution = build_distr(config, "r_distribution")
 
-    flip_distribution = build_distr(config, "flip_distribution")
+  flip_distribution = build_distr(config, "flip_distribution")
 
-    return DestroyedCsetMaker(order_distribution, r_distribution, flip_distribution)
+  return DestroyedCsetMaker(order_distribution, r_distribution, flip_distribution)
 end
 
 """
@@ -474,19 +474,19 @@ Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 
 """
 function (dcm::DestroyedCsetMaker)(
-    n::Int64,
-    rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+  n::Int64,
+  rng::Random.AbstractRNG;
+  config::Union{Dict,Nothing}=nothing,
 )::CausalSets.BitArrayCauset
 
-    o = rand(rng, dcm.order_distribution)
+  o = rand(rng, dcm.order_distribution)
 
-    r = rand(rng, dcm.r_distribution)
+  r = rand(rng, dcm.r_distribution)
 
-    f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
+  f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
 
-    cset = destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
-    return cset
+  cset = destroy_manifold_cset(n, f, rng, o, r; d=2, type=Float32)[1]
+  return cset
 end
 
 
@@ -503,11 +503,11 @@ end
     - grid_lookup::Dict: TODO
 """
 struct GridCsetMakerPolynomial
-    grid_distribution::Distributions.Distribution
-    rotate_distribution::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    grid_lookup::Dict
+  grid_distribution::Distributions.Distribution
+  rotate_distribution::Distributions.Distribution
+  order_distribution::Distributions.Distribution
+  r_distribution::Distributions.Distribution
+  grid_lookup::Dict
 end
 
 const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
@@ -684,32 +684,32 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
     Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 """
 function GridCsetMakerPolynomial(config::Dict)
-    validate_config(GridCsetMakerPolynomial_schema, config)
+  validate_config(GridCsetMakerPolynomial_schema, config)
 
-    grid_distribution = build_distr(config, "grid_distribution")
+  grid_distribution = build_distr(config, "grid_distribution")
 
-    rotate_distribution = build_distr(config, "rotate_distribution")
+  rotate_distribution = build_distr(config, "rotate_distribution")
 
-    order_distribution = build_distr(config, "order_distribution")
+  order_distribution = build_distr(config, "order_distribution")
 
-    r_distribution = build_distr(config, "r_distribution")
+  r_distribution = build_distr(config, "r_distribution")
 
-    grid_lookup = Dict(
-        1 => "quadratic",
-        2 => "rectangular",
-        3 => "rhombic",
-        4 => "hexagonal",
-        5 => "triangular",
-        6 => "oblique",
-    )
+  grid_lookup = Dict(
+    1 => "quadratic",
+    2 => "rectangular",
+    3 => "rhombic",
+    4 => "hexagonal",
+    5 => "triangular",
+    6 => "oblique",
+  )
 
-    return GridCsetMakerPolynomial(
-        grid_distribution,
-        rotate_distribution,
-        order_distribution,
-        r_distribution,
-        grid_lookup,
-    )
+  return GridCsetMakerPolynomial(
+    grid_distribution,
+    rotate_distribution,
+    order_distribution,
+    r_distribution,
+    grid_lookup,
+  )
 end
 
 """
@@ -727,43 +727,43 @@ end
 
 """
 function (gcm::GridCsetMakerPolynomial)(
-    n::Int64,
-    rng::Random.AbstractRNG,
-    config::Dict;
-    grid::Union{String,Nothing} = nothing,
+  n::Int64,
+  rng::Random.AbstractRNG,
+  config::Dict;
+  grid::Union{String,Nothing}=nothing,
 )
 
-    if isnothing(grid)
-        grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
-    end
+  if isnothing(grid)
+    grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
+  end
 
-    o = rand(rng, gcm.order_distribution)
-    r = rand(rng, gcm.r_distribution)
-    rotate_angle_deg = rand(rng, gcm.rotate_distribution)
+  o = rand(rng, gcm.order_distribution)
+  r = rand(rng, gcm.r_distribution)
+  rotate_angle_deg = rand(rng, gcm.rotate_distribution)
 
-    gamma_deg =
-        grid == "oblique" ?
-        rand(rng, build_distr(config[grid], "oblique_angle_distribution")) : 60.0
+  gamma_deg =
+    grid == "oblique" ?
+    rand(rng, build_distr(config[grid], "oblique_angle_distribution")) : 60.0
 
-    b =
-        grid == "quadratic" ? 1.0 :
-        rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
+  b =
+    grid == "quadratic" ? 1.0 :
+    rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
 
-    cset, _, __ = create_grid_causet_2D_polynomial_manifold(
-        n,
-        grid,
-        rng,
-        o,
-        r;
-        type = Float32,
-        a = 1.0,
-        b = b,
-        gamma_deg = gamma_deg,
-        rotate_deg = rotate_angle_deg,
-        origin = (0.0, 0.0),
-    )
+  cset, _, __ = create_grid_causet_2D_polynomial_manifold(
+    n,
+    grid,
+    rng,
+    o,
+    r;
+    type=Float32,
+    a=1.0,
+    b=b,
+    gamma_deg=gamma_deg,
+    rotate_deg=rotate_angle_deg,
+    origin=(0.0, 0.0),
+  )
 
-    return cset
+  return cset
 end
 
 
@@ -780,11 +780,11 @@ A callable struct to produce complex topology csets with various causality-cutti
 - `tol::Float64`: Floating point comparison tolerance
 """
 struct ComplexTopCsetMaker
-    vertical_cut_distribution::Distributions.Distribution
-    finite_cut_distribution::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    tol::Float64
+  vertical_cut_distribution::Distributions.Distribution
+  finite_cut_distribution::Distributions.Distribution
+  order_distribution::Distributions.Distribution
+  r_distribution::Distributions.Distribution
+  tol::Float64
 end
 
 const ComplexTopCsetMaker_schema = JSONSchema.Schema("""{
@@ -851,21 +851,21 @@ const ComplexTopCsetMaker_schema = JSONSchema.Schema("""{
     Create a new `ComplexTopCsetMaker` object from the config dictionary.
 """
 function ComplexTopCsetMaker(config::Dict)
-    validate_config(ComplexTopCsetMaker_schema, config)
+  validate_config(ComplexTopCsetMaker_schema, config)
 
-    vertical_cut_distr = build_distr(config, "vertical_cut_distribution")
-    finite_cut_distr = build_distr(config, "finite_cut_distribution")
-    order_distr = build_distr(config, "order_distribution")
-    r_distr = build_distr(config, "r_distribution")
-    tol = config["tol"]
+  vertical_cut_distr = build_distr(config, "vertical_cut_distribution")
+  finite_cut_distr = build_distr(config, "finite_cut_distribution")
+  order_distr = build_distr(config, "order_distribution")
+  r_distr = build_distr(config, "r_distribution")
+  tol = config["tol"]
 
-    return ComplexTopCsetMaker(
-        vertical_cut_distr,
-        finite_cut_distr,
-        order_distr,
-        r_distr,
-        tol,
-    )
+  return ComplexTopCsetMaker(
+    vertical_cut_distr,
+    finite_cut_distr,
+    order_distr,
+    r_distr,
+    tol,
+  )
 end
 
 """
@@ -882,37 +882,37 @@ end
 - `config`: configuration dictionary
 """
 function (ctm::ComplexTopCsetMaker)(
-    n::Int64,
-    rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+  n::Int64,
+  rng::Random.AbstractRNG;
+  config::Union{Dict,Nothing}=nothing,
 )::CausalSets.BitArrayCauset
 
-    n_vertical_cuts = rand(rng, ctm.vertical_cut_distribution)
-    if n_vertical_cuts isa Float64
-        n_vertical_cuts = convert(Int64, round(n_vertical_cuts))
-    end
+  n_vertical_cuts = rand(rng, ctm.vertical_cut_distribution)
+  if n_vertical_cuts isa Float64
+    n_vertical_cuts = convert(Int64, round(n_vertical_cuts))
+  end
 
-    n_finite_cuts = rand(rng, ctm.finite_cut_distribution)
-    if n_finite_cuts isa Float64
-        n_finite_cuts = convert(Int64, round(n_finite_cuts))
-    end
+  n_finite_cuts = rand(rng, ctm.finite_cut_distribution)
+  if n_finite_cuts isa Float64
+    n_finite_cuts = convert(Int64, round(n_finite_cuts))
+  end
 
-    order = rand(rng, ctm.order_distribution)
-    r = rand(rng, ctm.r_distribution)
+  order = rand(rng, ctm.order_distribution)
+  r = rand(rng, ctm.r_distribution)
 
-    cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
-        make_branched_manifold_cset(
-            n,
-            n_vertical_cuts,
-            n_finite_cuts,
-            rng,
-            order,
-            r;
-            d = 2,
-            tolerance = ctm.tol,
-        )
+  cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
+    make_branched_manifold_cset(
+      n,
+      n_vertical_cuts,
+      n_finite_cuts,
+      rng,
+      order,
+      r;
+      d=2,
+      tolerance=ctm.tol,
+    )
 
-    return cset
+  return cset
 end
 
 
@@ -929,11 +929,11 @@ end
 - `connectivity_distribution::Distributions.Distribution`: distribution of connectivity values
 """
 struct MergedCsetMaker
-    link_prob_distribution::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
-    n2_rel_distribution::Distributions.Distribution
-    connectivity_distribution::Distributions.Distribution
+  link_prob_distribution::Distributions.Distribution
+  order_distribution::Distributions.Distribution
+  r_distribution::Distributions.Distribution
+  n2_rel_distribution::Distributions.Distribution
+  connectivity_distribution::Distributions.Distribution
 end
 
 const MergedCsetMaker_schema = JSONSchema.Schema("""{
@@ -1009,21 +1009,21 @@ const MergedCsetMaker_schema = JSONSchema.Schema("""{
 Make a new merged causal set maker from a given configuration dictionary.
 """
 function MergedCsetMaker(config::Dict)
-    validate_config(MergedCsetMaker_schema, config)
+  validate_config(MergedCsetMaker_schema, config)
 
-    order_distr = build_distr(config, "order_distribution")
-    r_distr = build_distr(config, "r_distribution")
-    link_prob_distr = build_distr(config, "link_prob_distribution")
-    n2_rel_distr = build_distr(config, "n2_rel_distribution")
-    connectivity_distr = build_distr(config, "connectivity_distribution")
+  order_distr = build_distr(config, "order_distribution")
+  r_distr = build_distr(config, "r_distribution")
+  link_prob_distr = build_distr(config, "link_prob_distribution")
+  n2_rel_distr = build_distr(config, "n2_rel_distribution")
+  connectivity_distr = build_distr(config, "connectivity_distribution")
 
-    return MergedCsetMaker(
-        link_prob_distr,
-        order_distr,
-        r_distr,
-        n2_rel_distr,
-        connectivity_distr,
-    )
+  return MergedCsetMaker(
+    link_prob_distr,
+    order_distr,
+    r_distr,
+    n2_rel_distr,
+    connectivity_distr,
+  )
 end
 
 """
@@ -1040,21 +1040,21 @@ end
 - `config`: configuration dictionary
 """
 function (mcm::MergedCsetMaker)(
-    n::Int64,
-    rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+  n::Int64,
+  rng::Random.AbstractRNG;
+  config::Union{Dict,Nothing}=nothing,
 )::CausalSets.BitArrayCauset
 
-    o = rand(rng, mcm.order_distribution)
-    r = rand(rng, mcm.r_distribution)
-    n2rel = rand(rng, mcm.n2_rel_distribution)
-    l = rand(rng, mcm.link_prob_distribution)
-    p = rand(rng, mcm.connectivity_distribution)
+  o = rand(rng, mcm.order_distribution)
+  r = rand(rng, mcm.r_distribution)
+  n2rel = rand(rng, mcm.n2_rel_distribution)
+  l = rand(rng, mcm.link_prob_distribution)
+  p = rand(rng, mcm.connectivity_distribution)
 
-    cset, success, sprinkling =
-        insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
+  cset, success, sprinkling =
+    insert_KR_into_manifoldlike(n, o, r, l; rng=rng, n2_rel=n2rel, p=p)
 
-    return cset
+  return cset
 end
 
 csetfactory_schema = JSONSchema.Schema("""
@@ -1062,7 +1062,7 @@ csetfactory_schema = JSONSchema.Schema("""
                                       "\$schema": "http://json-schema.org/draft-06/schema#",
                                       "title": "QuantumGrav Cset Factory Config",
                                       "type": "object",
-                                      "additionalProperties": true,
+                                      "additionalProperties": false,
                                       "properties": {
                                         "polynomial": {
                                           "type": "object",
@@ -1163,10 +1163,10 @@ and provides access to specialized factory functions for different cset types.
 - `cset_makers::Dict`: dict to hold all the different cset factory methods
 """
 struct CsetFactory
-    npoint_distribution::Distributions.Distribution
-    conf::Dict
-    rng::Random.AbstractRNG
-    cset_makers::Dict
+  npoint_distribution::Distributions.Distribution
+  conf::Dict
+  rng::Random.AbstractRNG
+  cset_makers::Dict
 end
 
 """
@@ -1175,26 +1175,26 @@ end
 Create a new CsetFactory instance that bundles all the different cset factories into one object
 """
 function CsetFactory(config::Dict)
-    validate_config(csetfactory_schema, config)
+  validate_config(csetfactory_schema, config)
 
-    npoint_distribution = build_distr(config, "csetsize_distr")
-    rng = Random.Xoshiro(config["seed"])
-    cset_makers = Dict(
-        "random" => RandomCsetMaker(Dict(config["random"])),
-        "complex_topology" =>
-            ComplexTopCsetMaker(Dict(config["complex_topology"])),
-        "merged" => MergedCsetMaker(Dict(config["merged"])),
-        "merged_ambiguous" =>
-            MergedCsetMaker(get(config, "merged_ambiguous", config["merged"])),
-        "polynomial" => PolynomialCsetMaker(Dict(config["polynomial"])),
-        "layered" => LayeredCsetMaker(Dict(config["layered"])),
-        "grid" => GridCsetMakerPolynomial(Dict(config["grid"])),
-        "destroyed" => DestroyedCsetMaker(Dict(config["destroyed"])),
-        "destroyed_ambiguous" => DestroyedCsetMaker(
-            Dict(get(config, "destroyed_ambiguous", config["destroyed"])),
-        ),
-    )
-    return CsetFactory(npoint_distribution, config, rng, cset_makers)
+  npoint_distribution = build_distr(config, "csetsize_distr")
+  rng = Random.Xoshiro(config["seed"])
+  cset_makers = Dict(
+    "random" => RandomCsetMaker(Dict(config["random"])),
+    "complex_topology" =>
+      ComplexTopCsetMaker(Dict(config["complex_topology"])),
+    "merged" => MergedCsetMaker(Dict(config["merged"])),
+    "merged_ambiguous" =>
+      MergedCsetMaker(get(config, "merged_ambiguous", config["merged"])),
+    "polynomial" => PolynomialCsetMaker(Dict(config["polynomial"])),
+    "layered" => LayeredCsetMaker(Dict(config["layered"])),
+    "grid" => GridCsetMakerPolynomial(Dict(config["grid"])),
+    "destroyed" => DestroyedCsetMaker(Dict(config["destroyed"])),
+    "destroyed_ambiguous" => DestroyedCsetMaker(
+      Dict(get(config, "destroyed_ambiguous", config["destroyed"])),
+    ),
+  )
+  return CsetFactory(npoint_distribution, config, rng, cset_makers)
 end
 
 
@@ -1207,15 +1207,13 @@ Create a new cset, accessing the specialized factory functors held by the caller
 - `csetname`: name of cset to create.
 - `n`: number of events in the cset to create
 - `rng`: rng to use for any stochastic part of the cset creation
-- `config`: config that defines cset parameters (optional). Defaults to nothing
+- `config`: config that defines cset parameters (optional). When nothing, the internally stored config will be used. Defaults to nothing
 """
 function (cf::CsetFactory)(
-    csetname::String,
-    n::Int64,
-    rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+  csetname::String,
+  n::Int64,
 )
-    return cf.cset_makers[csetname](n, rng; config = config)
+  return cf.cset_makers[csetname](n, cf.rng; config=cf.conf)
 end
 
 """
@@ -1224,13 +1222,13 @@ end
 Encode known cset types into numeric scheme.
 """
 encode_csettype = Dict(
-    "polynomial" => 1,
-    "layered" => 2,
-    "random" => 3,
-    "grid" => 4,
-    "destroyed" => 5,
-    "destroyed_ambiguous" => 6,
-    "merged" => 7,
-    "merged_ambiguous" => 8,
-    "complex_topology" => 9,
+  "polynomial" => 1,
+  "layered" => 2,
+  "random" => 3,
+  "grid" => 4,
+  "destroyed" => 5,
+  "destroyed_ambiguous" => 6,
+  "merged" => 7,
+  "merged_ambiguous" => 8,
+  "complex_topology" => 9,
 )
