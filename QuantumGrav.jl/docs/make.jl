@@ -13,7 +13,6 @@ using QuantumGrav
 makedocs(
     sitename = "QuantumGrav.jl",
     repo = "ssciwr/QuantumGrav",
-    sitename = "julia",
     format = Documenter.HTML(
         prettyurls = true,
         # repolink should point to the repository root for the project
