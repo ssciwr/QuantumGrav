@@ -153,6 +153,8 @@ def register_evaluation_function(name: str, func: Callable | type) -> None:
         name (str): name of the function
         func (Callable | type): function to register
     """
+    if name in evaluation_funcs:
+        raise ValueError(f"Evaluation function '{name}' is already registered.")
     evaluation_funcs[name] = func
 
 
@@ -371,14 +373,18 @@ def verify_config_node(cfg) -> bool:
     return True
 
 
-def import_and_get(importpath: str) -> type | None:
+def import_and_get(importpath: str) -> Any:
     """Import a module and get an object from it.
 
     Args:
         importpath (str): The import path of the object to get.
 
     Returns:
-        type | None: The object from the module.
+        Any: The name as imported from the module.
+
+    Raises:
+        KeyError: When the module indicated by the path is not found
+        KeyError: When the object name indidcated by the path is not found in the module
     """
     parts = importpath.split(".")
     module_name = ".".join(parts[:-1])
@@ -387,14 +393,11 @@ def import_and_get(importpath: str) -> type | None:
     try:
         module = importlib.import_module(module_name)
     except Exception as e:
-        raise ValueError(f"Importing module {module_name} unsuccessful") from e
-    tpe = None
+        raise KeyError(f"Importing module {module_name} unsuccessful") from e
     try:
-        tpe = getattr(module, object_name)
+        return getattr(module, object_name)
     except Exception as e:
-        raise ValueError(f"Could not load name {object_name} from {module_name}") from e
-
-    return tpe
+        raise KeyError(f"Could not load name {object_name} from {module_name}") from e
 
 
 def assign_at_path(cfg: dict, path: Sequence[Any], value: Any) -> None:

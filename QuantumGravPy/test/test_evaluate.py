@@ -3,6 +3,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import torch
 import logging
+import numpy as np
 import pytest
 from jsonschema import ValidationError
 import copy

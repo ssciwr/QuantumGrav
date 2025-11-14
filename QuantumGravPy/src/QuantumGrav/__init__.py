@@ -19,6 +19,7 @@ from .utils import (
     list_registered_graph_features_aggregations,
     list_registered_pooling_aggregations,
     register_evaluation_function,
+    get_evaluation_function,
     list_evaluation_functions,
     assign_at_path,
     get_at_path,
@@ -64,6 +65,7 @@ __all__ = [
     "list_registered_graph_features_aggregations",
     "list_registered_pooling_aggregations",
     "register_evaluation_function",
+    "get_evaluation_function",
     "list_evaluation_functions",
     # nested config helpers
     "assign_at_path",
