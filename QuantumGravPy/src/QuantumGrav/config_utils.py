@@ -1,14 +1,15 @@
 import yaml
 import copy
 import importlib
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
+import numpy as np
 
 from . import utils
 
 
 def sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !sweep yaml tag, which in a yaml file can look like this:
     tagname: !sweep
         values: [a,b,c...]
@@ -17,7 +18,7 @@ def sweep_constructor(
         node (yaml.nodes.MappingNode): the current !sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
+        Dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
     """
     values = loader.construct_sequence(node.value[0][1])
     return {"type": "sweep", "values": values}
@@ -25,7 +26,7 @@ def sweep_constructor(
 
 def coupled_sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !coupled-sweep yaml tag which is designed to tie a sequence of values
     to a !sweep tag such that they proceed in lockstep like a 'zip' operation. Example:
     tagname: !sweep
@@ -38,7 +39,7 @@ def coupled_sweep_constructor(
         node (yaml.nodes.MappingNode): the current !coupled-sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
+        Dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
     """
     tokens = node.value[0][1].value.split(".")
     sweep_target = []
@@ -55,26 +56,135 @@ def coupled_sweep_constructor(
     return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
 
+def arange_inclusive(
+    start: int | float, stop: int | float, step: int | float
+) -> np.ndarray:
+    """Return a numpy array from start to stop (inclusive),
+    with the given step, working for both int and float.
+
+    Args:
+        start (int | float): Start value
+        stop (int | float): Stop value (inclusive)
+        step (int | float): Step size
+
+    Returns:
+        np.ndarray: Numpy array of values from start to stop (inclusive)
+            with the given step.
+    """
+    if step == 0:
+        raise ValueError("step must not be zero")
+
+    # Compute number of steps (round to avoid float precision errors)
+    # +1 to include stop
+    num = int(round((stop - start) / step)) + 1
+
+    # Generate linearly spaced values (always includes stop)
+    values = np.linspace(start, start + (num - 1) * step, num)
+
+    # Adjust last value to exactly match stop when it's very close
+    if abs(values[-1] - stop) < abs(step) * 1e-9:
+        values[-1] = stop
+
+    # If all inputs were ints, cast result back to int
+    if all(isinstance(x, int) for x in (start, stop, step)):
+        values = values.astype(int)
+
+    return values
+
+
 def range_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !range tag:
     tagname: !range
       start: 0
       stop: 10
       step: 2
 
+      or
+
+    tagname: !range
+      start: 1.0e-05
+      stop: 0.1
+      log: true
+      size: 5
+
+    In the latter case, sample value in the log domain.
+    The 'step' or 'log' field is optional.
+    If there is no `size` specified for `log`, use 5 as default value.
+
+    The end value is inclusive when step is given to make it consistent with Optuna sampling.
+
     Args:
         loader (yaml.SafeLoader): loader that loads the yaml file
         node (yaml.nodes.MappingNode): the current !range node to process
 
     Returns:
-        dict[str, Any]: dict of the form: {"type": "range", "values": range(start, end, step)}
+        Dict[str, Any]: dict of the form: {"type": "range",
+                                            "values": values as np.array,
+                                            "tune_values": Tuple[start, end, step or log]}
     """
-    start = int(node.value[0][1].value)
-    end = int(node.value[1][1].value)
-    step = int(node.value[2][1].value) if len(node.value) > 2 else 1
-    return {"type": "range", "values": range(start, end, step)}
+    # using PyYAML's mapping constructor to ensure value types are correct
+    mapping = loader.construct_mapping(node, deep=True)
+    start = mapping.get(
+        node.value[0][0].value
+    )  # use indices to access keys in case key names change
+    end = mapping.get(node.value[1][0].value)
+    step_or_log = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
+
+    # prepare values
+    if isinstance(step_or_log, bool):
+        size = mapping.get(node.value[3][0].value) if len(node.value) > 3 else 5
+        # in case start or end are given as 1e-5 etc., convert to float
+        start = float(start)
+        end = float(end)
+        if step_or_log:  # log = true
+            values = np.exp(np.random.uniform(np.log(start), np.log(end), size=size))
+        else:  # log = false
+            values = np.random.uniform(start, end, size=size)
+
+    elif isinstance(step_or_log, (int, float)):
+        values = arange_inclusive(start, end, step_or_log)
+
+    else:  # no step or log specified
+        default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
+        values = arange_inclusive(start, end, default_step)
+        step_or_log = default_step
+
+    return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
+
+
+def reference_constructor(
+    loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
+) -> Dict[str, Any]:
+    """Constructor for the !reference tag:
+
+    referred_tag:...
+    tagname: !reference
+      target: path.to.referred_tag
+
+    This tag is used where value of the referred tag is not fixed at config load time,
+    but might be changed later on. This always points to the current value of the referred tag.
+
+    Args:
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !reference node to process
+
+    Returns:
+        Dict[str, Any]: dict of the form: {"type": "reference", "target": [path, to, referred_tag]}
+    """
+    tokens = node.value[0][1].value.split(".")
+    reference_target = []
+    for token in tokens:
+        split_token = token.split("[")
+        if len(split_token) > 1:
+            index = int(split_token[1][:-1])
+            reference_target.append(split_token[0])
+            reference_target.append(index)
+        else:
+            reference_target.append(token)
+
+    return {"type": "reference", "target": reference_target}
 
 
 def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> Any:
@@ -130,6 +240,7 @@ def get_loader():
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
     loader.add_constructor("!pyobject", object_constructor)
+    loader.add_constructor("!reference", reference_constructor)
     return loader
 
 

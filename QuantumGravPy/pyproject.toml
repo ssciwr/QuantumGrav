@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/QuantumGrav", "src/QGTune"]
+packages = ["src/QuantumGrav"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

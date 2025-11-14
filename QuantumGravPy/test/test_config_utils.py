@@ -2,47 +2,7 @@ import QuantumGrav as QG
 import pytest
 import yaml
 import torch_geometric
-
-
-@pytest.fixture(scope="session")
-def yaml_text():
-    yaml_text = """
-        model:
-            name: test_model
-            layers: !sweep
-                values: [1, 2]
-
-            type: !pyobject QuantumGrav.GNNBlock
-            convtype: !pyobject torch_geometric.nn.SAGEConv
-            bs: !coupled-sweep
-                target: model.layers
-                values: [16, 32]
-            lr: !sweep
-                values: [0.1, 0.01, 0.001]
-            foo:
-                -
-                    x: 3
-                    y: 5
-                -
-                    x: !sweep
-                        values: [1, 2]
-                    y: 2
-            bar:
-                - x: !coupled-sweep
-                    target: model.foo[1].x
-                    values: [-1, -2]
-            baz:
-                - x: !coupled-sweep
-                    target: model.foo[1].x
-                    values: [-10, -20]
-
-        trainer:
-            epochs: !range
-                start: 1
-                stop: 6
-                step: 2
-        """
-    return yaml_text
+import numpy as np
 
 
 @pytest.fixture(scope="session")
@@ -70,6 +30,23 @@ def yaml_text_nonsweep():
             epochs: 2
         """
     return yaml_text
+
+
+def test_arrange_inclusive():
+    values = QG.config_utils.arange_inclusive(1, 5, 1)
+    assert np.array_equal(values, np.array([1, 2, 3, 4, 5]))
+
+    values = QG.config_utils.arange_inclusive(0, 1, 0.2)
+    assert np.allclose(values, np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
+
+    values = QG.config_utils.arange_inclusive(5, 2, -1)
+    assert np.array_equal(values, np.array([5, 4, 3, 2]))
+
+    values = QG.config_utils.arange_inclusive(0.5, 0.1, -0.2)
+    assert np.allclose(values, np.array([0.5, 0.3, 0.1]))
+
+    values = QG.config_utils.arange_inclusive(1, 6, 2)
+    assert np.array_equal(values, np.array([1, 3, 5]))
 
 
 def test_read_yaml(yaml_text):
@@ -106,6 +83,27 @@ def test_read_yaml(yaml_text):
     assert isinstance(rn, dict)
     assert rn["type"] == "range"
     assert list(rn["values"]) == [1, 3, 5]
+    assert rn["tune_values"] == (1, 6, 2)
+
+    rn_lr = cfg["trainer"]["lr"]
+    assert isinstance(rn_lr, dict)
+    assert rn_lr["type"] == "range"
+    assert len(rn_lr["values"]) == 4
+    assert all(isinstance(v, float) for v in rn_lr["values"])
+    assert rn_lr["values"][0] >= 1e-5 and rn_lr["values"][-1] <= 1e-2
+    assert rn_lr["tune_values"] == (1e-5, 1e-2, True)
+
+    rn_drop_rate = cfg["trainer"]["drop_rate"]
+    assert isinstance(rn_drop_rate, dict)
+    assert rn_drop_rate["type"] == "range"
+    assert np.allclose(rn_drop_rate["values"], [0.1, 0.3, 0.5])
+    assert np.allclose(rn_drop_rate["tune_values"], (0.1, 0.5, 0.2))
+
+    # reference node
+    ref = cfg["trainer"]["foo_ref"]
+    assert isinstance(ref, dict)
+    assert ref["type"] == "reference"
+    assert ref["target"] == ["model", "foo", 1, "x"]
 
     # type nodes
     tn = cfg["model"]["type"]
