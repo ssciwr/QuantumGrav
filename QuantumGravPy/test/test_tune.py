@@ -172,7 +172,7 @@ def test_is_categorical_suggestion():
     assert tune.is_categorical_suggestion([True, False]) is True
 
 
-def testis_float_suggestion():
+def test_is_float_suggestion():
     assert tune.is_float_suggestion(1) is False
     assert tune.is_float_suggestion("something") is False
     assert tune.is_float_suggestion((1.0, 2.0, 0.1)) is True
