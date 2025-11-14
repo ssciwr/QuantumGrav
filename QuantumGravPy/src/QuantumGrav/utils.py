@@ -11,22 +11,6 @@ def cat1(
     return torch.cat(tensors, dim=1)
 
 
-gnn_layers: dict[str, type[torch.nn.Module]] = {
-    "gcn": tgnn.conv.GCNConv,
-    "gat": tgnn.conv.GATConv,
-    "sage": tgnn.conv.SAGEConv,
-    "gconv": tgnn.conv.GraphConv,
-    "gatconv2": tgnn.conv.GATv2Conv,
-}
-
-gnn_layers_names: dict[type[torch.nn.Module], str] = {
-    tgnn.conv.GCNConv: "gcn",
-    tgnn.conv.GATConv: "gat",
-    tgnn.conv.SAGEConv: "sage",
-    tgnn.conv.GraphConv: "gconv",
-    tgnn.conv.GATv2Conv: "gatconv2",
-}
-
 normalizer_layers: dict[str, type[torch.nn.Module]] = {
     "identity": torch.nn.Identity,
     "batch_norm": torch.nn.BatchNorm1d,
@@ -104,11 +88,6 @@ def list_registered_pooling_layers() -> list[str]:
     return list(pooling_layers.keys())
 
 
-def list_registered_gnn_layers() -> list[str]:
-    """List all registered GNN layers."""
-    return list(gnn_layers.keys())
-
-
 def list_registered_normalizers() -> list[str]:
     """List all registered normalizer layers."""
     return list(normalizer_layers.keys())
@@ -183,19 +162,6 @@ def register_pooling_layer(
         raise ValueError(f"Pooling layer '{pooling_layer_name}' is already registered.")
     pooling_layers[pooling_layer_name] = pooling_layer
     pooling_layers_names[pooling_layer] = pooling_layer_name
-
-
-def register_gnn_layer(gnn_layer_name: str, gnn_layer: type[torch.nn.Module]) -> None:
-    """Register a GNN layer with the module
-
-    Args:
-        gnn_layer_name (str): The name of the GNN layer.
-        gnn_layer (type[torch.nn.Module]): The GNN layer to register.
-    """
-    if gnn_layer_name in gnn_layers:
-        raise ValueError(f"GNN layer '{gnn_layer_name}' is already registered.")
-    gnn_layers[gnn_layer_name] = gnn_layer
-    gnn_layers_names[gnn_layer] = gnn_layer_name
 
 
 def register_normalizer(
@@ -284,17 +250,6 @@ def get_registered_pooling_layer(name: str) -> type[torch.nn.Module] | Callable 
         type[torch.nn.Module] | Callable | None: The registered pooling layer named `name`, or None if not found.
     """
     return pooling_layers[name] if name in pooling_layers else None
-
-
-def get_registered_gnn_layer(name: str) -> type[torch.nn.Module] | None:
-    """Get a registered GNN layer by name.
-    Args:
-        name (str): The name of the GNN layer.
-
-    Returns:
-        type[torch.nn.Module] | None: The registered GNN layer named `name`, or None if not found.
-    """
-    return gnn_layers[name] if name in gnn_layers else None
 
 
 def get_registered_normalizer(name: str) -> type[torch.nn.Module] | None:
