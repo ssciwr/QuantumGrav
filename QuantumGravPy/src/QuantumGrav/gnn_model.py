@@ -1,6 +1,5 @@
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, Dict
 from pathlib import Path
-from inspect import isclass
 import torch
 from . import utils
 from . import linear_sequential as QGLS
@@ -31,95 +30,94 @@ class GNNModel(torch.nn.Module):
     # this is more in line with the other parts of the system and also with how the configs work
     def __init__(
         self,
-        encoder: Sequence[QGGNN.GNNBlock],
-        downstream_tasks: Sequence[torch.nn.Module],
-        pooling_layers: Sequence[torch.nn.Module] | None = None,
-        aggregate_pooling: torch.nn.Module | Callable | None = None,
-        graph_features_net: torch.nn.Module | None = None,
-        aggregate_graph_features: torch.nn.Module | Callable | None = None,
+        encoder_name: type[torch.nn.Module],
+        encoder_args: Sequence[Any],
+        encoder_kwargs: Dict[str, Any],
+        downstream_tasks: Dict[str, Any],
+        pooling_layers: Sequence[Dict[str, Any]] | None = None,
+        aggregate_pooling_name: type[torch.nn.Module] | None = None,
+        aggregate_pooling_args: Sequence[Any] | None = None,
+        aggregate_pooling_kwargs: Dict[str, Any] | None = None,
+        graph_features_net_name: type[torch.nn.Module] | None = None,
+        graph_features_net_args: Sequence[Any] | None = None,
+        graph_features_net_kwargs: Dict[str, Any] | None = None,
+        aggregate_graph_features_name: type[torch.nn.Module] | None = None,
+        aggregate_graph_features_args: Sequence[Any] | None = None,
+        aggregate_graph_features_kwargs: Dict[str, Any] | None = None,
         active_tasks: list[int] | None = None,
     ):
-        """Initialize the GNNModel.
-
-        Args:
-            encoder (GCNBackbone): GCN backbone network.
-            downstream_tasks (Sequence[torch.nn.Module]): Downstream task blocks. These are assumed to be independent of each other.
-            pooling_layers (Sequence[torch.nn.Module]): Pooling layers. Defaults to None.
-            aggregate_pooling (torch.nn.Module | Callable | None): Aggregation of pooling layer output. Defaults to None.
-            graph_features_net (torch.nn.Module, optional): Graph features network. Defaults to None.
-            aggregate_graph_features (torch.nn.Module | Callable | None): Aggregation of graph features. Defaults to None.
-        """
         super().__init__()
 
         # encoder is a sequence of GNN blocks. There must be at least one
-        self.encoder = torch.nn.ModuleList(encoder)
+        self.encoder = encoder_name(*encoder_args, **encoder_kwargs)
 
-        if len(self.encoder) == 0:
-            raise ValueError("At least one GNN block must be provided.")
-
-        # set up downstream tasks. These are independent of each other, but there must be one at least
-        self.downstream_tasks = torch.nn.ModuleList(downstream_tasks)
-
-        if len(self.downstream_tasks) == 0:
+        if len(downstream_tasks) == 0:
             raise ValueError("At least one downstream task must be provided.")
+
+        dtasks = {
+            key: defdict["name"](*defdict["args"], **defdict["kwargs"])
+            for key, defdict in downstream_tasks.items()
+        }
+
+        self.downstream_tasks = torch.ModuleDict(dtasks)
 
         if active_tasks is None:
             raise ValueError("active_tasks must be provided.")
         else:
             self.active_tasks = active_tasks
 
-        # set up pooling layers and their aggregation
-        if pooling_layers is not None:
-            if len(pooling_layers) == 0:
-                raise ValueError("At least one pooling layer must be provided.")
+        # # set up pooling layers and their aggregation
+        # if pooling_layers is not None:
+        #     if len(pooling_layers) == 0:
+        #         raise ValueError("At least one pooling layer must be provided.")
 
-            self.pooling_layers = torch.nn.ModuleList(
-                [
-                    p
-                    if isclass(type(p)) and issubclass(type(p), torch.nn.Module)
-                    else ModuleWrapper(p)
-                    for p in pooling_layers
-                ]
-            )
-        else:
-            self.pooling_layers = None
+        #     self.pooling_layers = torch.nn.ModuleList(
+        #         [
+        #             p
+        #             if isclass(type(p)) and issubclass(type(p), torch.nn.Module)
+        #             else ModuleWrapper(p)
+        #             for p in pooling_layers
+        #         ]
+        #     )
+        # else:
+        #     self.pooling_layers = None
 
-        # aggregate pooling layer
-        self.aggregate_pooling = aggregate_pooling
+        # # aggregate pooling layer
+        # self.aggregate_pooling = aggregate_pooling
 
-        if aggregate_pooling is not None:
-            if not isclass(aggregate_pooling) or not issubclass(
-                aggregate_pooling, torch.nn.Module
-            ):
-                self.aggregate_pooling = ModuleWrapper(aggregate_pooling)
+        # if aggregate_pooling is not None:
+        #     if not isclass(aggregate_pooling) or not issubclass(
+        #         aggregate_pooling, torch.nn.Module
+        #     ):
+        #         self.aggregate_pooling = ModuleWrapper(aggregate_pooling)
 
-        pooling_funcs = [self.aggregate_pooling, self.pooling_layers]
-        if any([p is not None for p in pooling_funcs]) and not all(
-            p is not None for p in pooling_funcs
-        ):
-            raise ValueError(
-                "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
-            )
+        # pooling_funcs = [self.aggregate_pooling, self.pooling_layers]
+        # if any([p is not None for p in pooling_funcs]) and not all(
+        #     p is not None for p in pooling_funcs
+        # ):
+        #     raise ValueError(
+        #         "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
+        #     )
 
-        # set up graph features processing if provided
-        self.graph_features_net = graph_features_net
+        # # set up graph features processing if provided
+        # self.graph_features_net = graph_features_net
 
-        self.aggregate_graph_features = aggregate_graph_features
+        # self.aggregate_graph_features = aggregate_graph_features
 
-        if aggregate_graph_features is not None:
-            if not isclass(aggregate_graph_features) or not issubclass(
-                aggregate_graph_features, torch.nn.Module
-            ):
-                self.aggregate_graph_features = ModuleWrapper(aggregate_graph_features)
+        # if aggregate_graph_features is not None:
+        #     if not isclass(aggregate_graph_features) or not issubclass(
+        #         aggregate_graph_features, torch.nn.Module
+        #     ):
+        #         self.aggregate_graph_features = ModuleWrapper(aggregate_graph_features)
 
-        graph_processors = [self.graph_features_net, self.aggregate_graph_features]
+        # graph_processors = [self.graph_features_net, self.aggregate_graph_features]
 
-        if any([g is not None for g in graph_processors]) and not all(
-            g is not None for g in graph_processors
-        ):
-            raise ValueError(
-                "If graph features are to be used, both a graph features network and an aggregation method must be provided."
-            )
+        # if any([g is not None for g in graph_processors]) and not all(
+        #     g is not None for g in graph_processors
+        # ):
+        #     raise ValueError(
+        #         "If graph features are to be used, both a graph features network and an aggregation method must be provided."
+        #     )
 
     def set_task_active(self, i: int) -> None:
         """Set a downstream task as active.
