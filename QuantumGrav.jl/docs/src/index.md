@@ -1,54 +1,54 @@
 # QuantumGrav.jl
 
-## Getting Started 
+## Getting Started
 This package provides functionality to generate csets of different types. Currently, it only supports 2D causal sets in general.
 The package builds on [CausalSets.jl](https://www.thphys.uni-heidelberg.de/~hollmeier/causalsets/).
 
 Currently supported are:
-- simply connected manifold like causal sets based on analytical manifolds 
-- manifold like csets with complex, branched connections 
-- random: Causal sets with randomly selected links 
+- simply connected manifold like causal sets based on analytical manifolds
+- manifold like csets with complex, branched connections
+- random: Causal sets with randomly selected links
 - layered: Causal sets in which events are ordered in layers along the time dimension.
-- merged: A merger of a random and manifold like causal set 
-- destroyed: A manifold like causal set with some edges being filpped 
+- merged: A merger of a random and manifold like causal set
+- destroyed: A manifold like causal set with some edges being filpped
 - grid like: Causal sets in which events are ordered in a grid like fashion according to a certain scheme, which can be one of 'quadratic', 'rectangular', 'rhombic', 'hexagonal', 'oblique'
 
-You currently have to install the package from the github repository directly: 
+You currently have to install the package from the github repository directly:
 ```julia
-import Pkg 
+import Pkg
 Pkg.add(url = "https://github.com/ssciwr/QuantumGrav.git", subdir="QuantumGrav.jl")
 ```
 
-##  Usage 
+##  Usage
 The main entry point for cset generation is the `CsetFactory` struct. This is constructed from a configuration dictionary that can be read from disk.
-The configuration can be stored in any kind of file that results in a nested dictionary as described below, but YAML is the most common and typically prefered format. 
+The configuration can be stored in any kind of file that results in a nested dictionary as described below, but YAML is the most common and typically prefered format.
 
-```julia 
-import QuantumGrav as QG 
+```julia
+import QuantumGrav as QG
 import YAML
-config = _YAML.load_file(joinpath("path", "to", "configfile.yaml")) # load from yaml file. 
+config = _YAML.load_file(joinpath("path", "to", "configfile.yaml")) # load from yaml file.
 csetfactory = QG.CsetFactory(config)
 ```
 
-Once an instance of this struct is created, you can construct a new cset via: 
+Once an instance of this struct is created, you can construct a new cset via:
 
-```julia 
+```julia
 cset = csetfactory((
     "random", # a cset type as described above
     1000, # number of events in the cset
 ))
 ```
-This will return a causal set of the requested size and kind of the type `CausalSets.BitArrayCauset`. 
+This will return a causal set of the requested size and kind of the type `CausalSets.BitArrayCauset`.
 
-This package uses the zarr format for storing data to file. From a constructed cset, a multitude of observables can be derived. 
+This package uses the zarr format for storing data to file. From a constructed cset, a multitude of observables can be derived.
 These can be stored in a dictionary that then can be written directly into a zarr file. Secondly, a helper function is provided to copy the config and the source code used to generate the observables to the same directory as the data and creates a Zarr `DirectoryStore` there. This helps with reproducibility and documentation of different data generation runs. The created Zarr file will contain the pid of the generating process and the date and time in `yyyy-mm-dd_HH-MM-SS` format.
 
-We first define a function that takes a Causal Set factory and builds a dictionary of computed observables: 
+We first define a function that takes a Causal Set factory and builds a dictionary of computed observables:
 
-```julia 
-import QuantumGrav as QG 
-import Random 
-import Zarr 
+```julia
+import QuantumGrav as QG
+import Random
+import Zarr
 
 function make_cset_data(csetfactory)
     cset = csetfactory(
@@ -65,8 +65,8 @@ end
 
 Then we load the config and call the `prepare_dataproduction` function to set everything up. The second argument will serve as an anchor to determine which source code files shall be copied over. In this case, it will be the file where the `make_cset_data` function is defined. If you add other functions, their respective sourcecode files will be copied as well.
 
-```julia 
-config = _YAML.load_file(joinpath("path", "to", "configfile.yaml")) # load from yaml file. 
+```julia
+config = _YAML.load_file(joinpath("path", "to", "configfile.yaml")) # load from yaml file.
 
 filepath, file = QG.prepare_dataproduction(
     config,
@@ -78,15 +78,15 @@ filepath, file = QG.prepare_dataproduction(
 factory = QG.CsetFactory(config)
 ```
 
-Finally, we create our data. This can also be parallelized with `Threads.@threads`, `Distributed.@distributed`, `Distributed.pmap` or in other ways. 
+Finally, we create our data. This can also be parallelized with `Threads.@threads`, `Distributed.@distributed`, `Distributed.pmap` or in other ways.
 
-```julia 
+```julia
 for i in 1:num_csets
     data = Dict("cset_$i"=> make_cset_data(factory))
     QG.dict_to_zarr(file, data)
 end
 ```
-The whole procedure will result in a directory `output/random_data_{pid}_{yyyy-mm-dd_HH-MM-SS}.zarr`, which contains 
+The whole procedure will result in a directory `output/random_data_{pid}_{yyyy-mm-dd_HH-MM-SS}.zarr`, which contains
 directories `cset_{i}` and therein the respective observables.
 
 The resulting directory structure will look like this:
@@ -97,8 +97,8 @@ output/
     ├── .zattrs                    # Zarr metadata
     ├── .zgroup                    # Zarr group marker
     ├── config.yaml                # Copy of configuration used
-    ├── make_cset_data.jl          # Source code snapshot   
-    ├── ...                        # other sourcecode files 
+    ├── make_cset_data.jl          # Source code snapshot
+    ├── ...                        # other sourcecode files
     ├── cset_1/
     │   ├── .zgroup
     │   ├── observable1/           # Arrays stored as Zarr arrays
@@ -112,7 +112,7 @@ output/
     │   ├── observable1/
     │   └── observable2/
     │
-    ├── ...                        # more csets 
+    ├── ...                        # more csets
     └── cset_N/
         ├── .zgroup
         ├── observable1/
@@ -251,7 +251,54 @@ Required fields (similar to polynomial, plus grid-specific):
 - **`rotate_distribution_kwargs`** (object, optional): Distribution keyword arguments
 - **`order_distribution`**, **`r_distribution`**: Same as polynomial configuration
 
-Grid types: 'quadratic', 'rectangular', 'rhombic', 'hexagonal', 'oblique'
+Grid types: 'quadratic', 'rectangular', 'rhombic', 'hexagonal', 'oblique'. Each grid type has their own parameters.
+
+**Example**
+```julia
+config["grid"] = Dict(
+        "grid_distribution" => "DiscreteUniform",
+        "grid_distribution_args" => [1, 6],
+        "grid_distribution_kwargs" => Dict(),
+        "rotate_distribution" => "Uniform",
+        "rotate_distribution_args" => [0.0, 180.0],
+        "rotate_distribution_kwargs" => Dict(),
+        "order_distribution" => "DiscreteUniform",
+        "order_distribution_args" => [2, 8],
+        "order_distribution_kwargs" => Dict(),
+        "r_distribution" => "Uniform",
+        "r_distribution_args" => [4.0, 8.0],
+        "r_distribution_kwargs" => Dict(),
+        "quadratic" => Dict(), # nothing needed here
+        "rectangular" => Dict(
+            "segment_ratio_distribution" => "Beta",
+            "segment_ratio_distribution_args" => [2.0, 1.2],
+            "segment_ratio_distribution_kwargs" => Dict(),
+        ),
+        "rhombic" => Dict(
+            "segment_ratio_distribution" => "Uniform",
+            "segment_ratio_distribution_args" => [0.5, 5.5],
+            "segment_ratio_distribution_kwargs" => Dict(),
+        ),
+        "hexagonal" => Dict(
+            "segment_ratio_distribution" => "Normal",
+            "segment_ratio_distribution_args" => [2.0, 0.5],
+            "segment_ratio_distribution_kwargs" => Dict(),
+        ),
+        "triangular" => Dict(
+            "segment_ratio_distribution" => "Normal",
+            "segment_ratio_distribution_args" => [3.3, 1.2],
+            "segment_ratio_distribution_kwargs" => Dict(),
+        ),
+        "oblique" => Dict(
+            "segment_ratio_distribution" => "Logistic",
+            "segment_ratio_distribution_args" => [2.0, 1.0],
+            "segment_ratio_distribution_kwargs" => Dict(),
+            "oblique_angle_distribution" => "Normal",
+            "oblique_angle_distribution_args" => [45.0, 15.0],
+            "oblique_angle_distribution_kwargs" => Dict(),
+        ),
+    )
+```
 
 ### Merged Configuration (`merged`)
 
@@ -266,6 +313,27 @@ Required fields:
 - **`connectivity_distribution`** (string): Distribution for connectivity of inserted random component
 - **`connectivity_distribution_args`** (array of numbers): Distribution arguments
 - **`connectivity_distribution_kwargs`** (object, optional): Distribution keyword arguments
+
+**Example**
+```julia
+config["merged"] = Dict(
+            "order_distribution" => "DiscreteUniform",
+            "order_distribution_args" => [2, 8],
+            "order_distribution_kwargs" => Dict(),
+            "r_distribution" => "Normal",
+            "r_distribution_args" => [4.0, 2.0],
+            "r_distribution_kwargs" => Dict(),
+            "n2_rel_distribution" => "Uniform",
+            "n2_rel_distribution_args" => [0., 1.0],
+            "n2_rel_distribution_kwargs" => Dict(),
+            "connectivity_distribution" => "Beta",
+            "connectivity_distribution_args" => [0.5, 0.1],
+            "connectivity_distribution_kwargs" => Dict(),
+            "link_prob_distribution" => "Normal",
+            "link_prob_distribution_args" => [2.0, 1.5],
+            "link_prob_distribution_kwargs" => Dict(),
+)
+```
 
 ### Complex Topology Configuration (`complex_topology`)
 
@@ -301,23 +369,24 @@ config["complex_topology"] = Dict(
 ### Distribution Specification
 
 All distributions use the pattern:
-- `<name>_distribution`: String name of distribution from `Distributions.jl` (e.g., "Uniform", "Normal", "DiscreteUniform")
+- `<name>_distribution`: String name of a univariate distribution from `Distributions.jl` (e.g., "Uniform", "Normal", "DiscreteUniform")
 - `<name>_distribution_args`: Positional arguments as array (e.g., `[min, max]` for Uniform)
-- `<name>_distribution_kwargs`: Optional keyword arguments as dictionary
+- `<name>_distribution_kwargs`: Optional keyword arguments as dictionary. Usually not needed.
 
 Common distributions:
 - **Uniform(a, b)**: Continuous uniform on [a, b]
 - **Normal(μ, σ)**: Normal with mean μ and std σ
 - **DiscreteUniform(a, b)**: Discrete uniform on {a, a+1, ..., b}
-- **Beta(α, β)**: Beta distribution (useful for probabilities)
 
-## API 
+See the [documentation of Distributions.jl](https://juliastats.org/Distributions.jl/stable/univariate/) for all available distributions and their needed parameters
+
+## API
 
 A Julia package for generating and manipulating causal sets for quantum gravity research.
 
-### Causal Set Generation 
+### Causal Set Generation
 
-##### Manifold-like Causal Sets 
+##### Manifold-like Causal Sets
 
 Generate causal sets by sprinkling points into polynomial manifolds:
 
@@ -325,7 +394,7 @@ Generate causal sets by sprinkling points into polynomial manifolds:
 make_polynomial_manifold_cset
 ```
 
-##### Layered Causal Sets 
+##### Layered Causal Sets
 
 Generate layered causal sets with controlled connectivity between layers:
 
@@ -343,7 +412,7 @@ sample_bitarray_causet_by_connectivity
 random_causet_by_connectivity_distribution
 ```
 
-##### Grid-like Causal Sets 
+##### Grid-like Causal Sets
 
 Generate regular grid structures in causal sets:
 
@@ -354,7 +423,7 @@ create_grid_causet_2D
 create_grid_causet_2D_polynomial_manifold
 ```
 
-##### Branched Manifold Causal Sets 
+##### Branched Manifold Causal Sets
 
 Generate causal sets with complex topological features:
 
@@ -373,7 +442,7 @@ insert_cset
 insert_KR_into_manifoldlike
 ```
 
-##### Destroyed Causal Sets 
+##### Destroyed Causal Sets
 
 Destroy manifold-like structure through random edge flips:
 
@@ -417,7 +486,7 @@ get_git_info!
 dict_to_zarr
 ```
 
-### Graph Utilities 
+### Graph Utilities
 
 Low-level graph operations:
 
@@ -432,4 +501,4 @@ transitive_reduction!
 ```@docs
 make_pseudosprinkling
 validate_config
-``` 
+```
