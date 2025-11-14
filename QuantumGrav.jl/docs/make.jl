@@ -13,13 +13,13 @@ using QuantumGrav
 makedocs(
     sitename = "QuantumGrav.jl",
     repo = "ssciwr/QuantumGrav",
+    sitename = "julia",
     format = Documenter.HTML(
         prettyurls = true,
         # repolink should point to the repository root for the project
         repolink = "https://github.com/ssciwr/QuantumGrav",
         # edit_link can be a branch name or full edit URL base; keep simple here
         # edit_link = "main",
-        sitename = "julia",
     ),
 )
 
