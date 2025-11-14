@@ -1,4 +1,4 @@
-name: docs 
+name: docs
 on:
   push:
     branches:
@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
 jobs:
-  deploy:
+  build_and_deploy_python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,11 +19,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.12
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV 
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - uses: actions/cache@v4
         with:
           key: mkdocs-material-${{ env.cache_id }}
-          path: ~/.cache 
+          path: ~/.cache
           restore-keys: |
             mkdocs-material-
 
@@ -32,4 +32,31 @@ jobs:
         run: pip install -r docs/requirements.txt
       - name: Deploy documentation
         working-directory: ./QuantumGravPy
-        run: mkdocs gh-deploy --force
+        run: mkdocs gh-deploy --force # TODO: need to replace this with something allowing Julia to work
+  build_and_deploy_julia:
+    runs-on: ubuntu-latest
+    permissions:
+        actions: write
+        contents: write
+        pull-requests: read
+        statuses: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+            version: 1
+      - uses: julia-actions/cache@v2
+      - name: Install deps
+        shell: julia --color=yes --project=docs {0}
+        run: |
+          using Pkg
+          Pkg.develop(PackageSpec(path=pwd()))
+          Pkg.instantiate()
+      - name: Build and deploy
+        shell: export JULIA_DEBUG=Documenter
+        run: julia --color=yes --project=docs docs/make.jl # TODO: need to replace this with somthing that does not replace the python docs
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
+
+
+
