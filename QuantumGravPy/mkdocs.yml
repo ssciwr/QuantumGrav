@@ -1,4 +1,5 @@
 site_name: QuantumGrav Documentation
+site_dir: python
 nav:
   - Home: index.md
   - Getting Started: getting_started.md
@@ -8,7 +9,7 @@ nav:
   - Hyperparameter Tuning: hparam_tuning.md
   - API documentation: api.md
   - License: license.md
-theme: 
+theme:
   name: material
   features:
     - announce.dismiss
@@ -28,14 +29,14 @@ theme:
   icon:
     admonition:
       note: material/pencil-circle
-plugins: 
+plugins:
   - search
-  - mkdocs-jupyter: 
+  - mkdocs-jupyter:
       ignore_h1_titles: True
   - mkdocstrings:
-      handlers: 
+      handlers:
         python:
-          paths: [src] 
+          paths: [src]
 
 markdown_extensions:
   - pymdownx.highlight:

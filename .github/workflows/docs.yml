@@ -1,8 +1,8 @@
 name: docs
 on:
   push:
-    branches:
-      - main
+    # branches:
+    #   - main
   workflow_dispatch:
 
 permissions:
@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Configure Git Credentials
         run: |
           git config user.name github-actions[bot]
@@ -32,7 +34,7 @@ jobs:
         run: pip install -r docs/requirements.txt
       - name: Deploy documentation
         working-directory: ./QuantumGravPy
-        run: mkdocs gh-deploy --force # TODO: need to replace this with something allowing Julia to work
+        run: mkdocs gh-deploy
   build_and_deploy_julia:
     runs-on: ubuntu-latest
     permissions:
@@ -42,19 +44,22 @@ jobs:
         statuses: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: julia-actions/setup-julia@v2
         with:
             version: 1
       - uses: julia-actions/cache@v2
       - name: Install deps
+        working-directory: ./QuantumGrav.jl
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
       - name: Build and deploy
-        shell: export JULIA_DEBUG=Documenter
-        run: julia --color=yes --project=docs docs/make.jl # TODO: need to replace this with somthing that does not replace the python docs
+        working-directory: ./QuantumGrav.jl
+        run: julia --color=yes --project=docs docs/make.jl
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
 
