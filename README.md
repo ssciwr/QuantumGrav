@@ -1,5 +1,5 @@
 [![test](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml/badge.svg)](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml)
-[![Docs — Python package for modelling](https://img.shields.io/badge/docs-python-blue?logo=python)](https://ssciwr.github.io/QuantumGrav/python/)
+[![Docs — Python package for modelling](https://img.shields.io/badge/docs-python-blue?logo=python)](https://ssciwr.github.io/QuantumGrav/)
 [![Docs — Julia package for data generation](https://img.shields.io/badge/docs-julia-purple?logo=julia)](https://ssciwr.github.io/QuantumGrav/julia/)
 
 # QuantumGrav

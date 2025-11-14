@@ -35,7 +35,7 @@ jobs:
         run: pip install -r docs/requirements.txt
       - name: Deploy documentation
         working-directory: ./QuantumGravPy
-        run: mkdocs gh-deploy --site-dir python
+        run: mkdocs gh-deploy
 
   build_and_deploy_julia:
     runs-on: ubuntu-latest
