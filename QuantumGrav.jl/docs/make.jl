@@ -31,4 +31,5 @@ deploydocs(
     branch = "gh-pages",
     forcepush = false,   # do not clobber other content on gh-pages
     dirname = "julia",
+    devbranch = "write-julia-documentation",
 )
