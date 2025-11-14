@@ -1,9 +1,9 @@
-from typing import Any, Callable, Sequence, Dict
+from typing import Any, Callable, Mapping, Sequence, Dict, Tuple
 from pathlib import Path
 import torch
 from . import utils
-from . import linear_sequential as QGLS
-from . import gnn_block as QGGNN
+from . import sequential_model as QGGNN
+from .base import BaseModel
 
 
 class ModuleWrapper(torch.nn.Module):
@@ -20,20 +20,20 @@ class ModuleWrapper(torch.nn.Module):
         return self.fn
 
 
-class GNNModel(torch.nn.Module):
+class GNNModel(BaseModel):
     """Torch module for the full GCN model, which consists of a GCN backbone, a set of downstream tasks, and a pooling layer, augmented with optional graph features network.
     Args:
         torch.nn.Module: base class
     """
 
-    # FIXME: change this such that all elements are build internally, and only types are passed in
-    # this is more in line with the other parts of the system and also with how the configs work
     def __init__(
         self,
         encoder_name: type[torch.nn.Module],
         encoder_args: Sequence[Any],
         encoder_kwargs: Dict[str, Any],
-        downstream_tasks: Dict[str, Any],
+        downstream_tasks: Dict[
+            Any, Tuple[type[torch.nn.Module], Sequence[Any], Dict[str, Any]]
+        ],
         pooling_layers: Sequence[Dict[str, Any]] | None = None,
         aggregate_pooling_name: type[torch.nn.Module] | None = None,
         aggregate_pooling_args: Sequence[Any] | None = None,
@@ -44,130 +44,143 @@ class GNNModel(torch.nn.Module):
         aggregate_graph_features_name: type[torch.nn.Module] | None = None,
         aggregate_graph_features_args: Sequence[Any] | None = None,
         aggregate_graph_features_kwargs: Dict[str, Any] | None = None,
-        active_tasks: list[int] | None = None,
+        active_tasks: Dict[Any, bool] | None = None,
     ):
+        """_summary_
+
+        Args:
+            encoder_name (type[torch.nn.Module]): _description_
+            encoder_args (Sequence[Any]): _description_
+            encoder_kwargs (Dict[str, Any]): _description_
+            downstream_tasks (Dict[ Any, Tuple[type[torch.nn.Module], Sequence[Any], Dict[str, Any]] ]): _description_
+            pooling_layers (Sequence[Dict[str, Any]] | None, optional): _description_. Defaults to None.
+            aggregate_pooling_name (type[torch.nn.Module] | None, optional): _description_. Defaults to None.
+            aggregate_pooling_args (Sequence[Any] | None, optional): _description_. Defaults to None.
+            aggregate_pooling_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
+            graph_features_net_name (type[torch.nn.Module] | None, optional): _description_. Defaults to None.
+            graph_features_net_args (Sequence[Any] | None, optional): _description_. Defaults to None.
+            graph_features_net_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
+            aggregate_graph_features_name (type[torch.nn.Module] | None, optional): _description_. Defaults to None.
+            aggregate_graph_features_args (Sequence[Any] | None, optional): _description_. Defaults to None.
+            aggregate_graph_features_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
+            active_tasks (Dict[Any, bool] | None, optional): _description_. Defaults to None.
+
+        Raises:
+            ValueError: _description_
+        """
         super().__init__()
 
-        # encoder is a sequence of GNN blocks. There must be at least one
-        self.encoder = encoder_name(*encoder_args, **encoder_kwargs)
-
-        if len(downstream_tasks) == 0:
-            raise ValueError("At least one downstream task must be provided.")
-
-        dtasks = {
-            key: defdict["name"](*defdict["args"], **defdict["kwargs"])
-            for key, defdict in downstream_tasks.items()
+        # FIXME: Some parts here can be modules or functions, so have to be wrapped in the ModuleWrapper 
+        # store stuff that will become the config for to_config
+        self.encoder_specs = {
+            "type": encoder_name,
+            "args": encoder_args,
+            "kwargs": encoder_kwargs,
         }
+        self.downstream_tasks_specs = downstream_tasks
+        self.pooling_layers_specs = pooling_layers
+        self.aggregate_pooling_specs = {
+            "type": aggregate_pooling_name,
+            "args": aggregate_pooling_args,
+            "kwargs": aggregate_pooling_kwargs,
+        }
+        self.graph_features_net_specs = {
+            "type": graph_features_net_name,
+            "args": graph_features_net_args,
+            "kwargs": graph_features_net_kwargs,
+        }
+        self.aggregate_graph_features_specs = {
+            "type": aggregate_graph_features_name,
+            "args": aggregate_graph_features_args,
+            "kwargs": aggregate_graph_features_kwargs,
+        }
+        self.active_tasks_specs = active_tasks
 
-        self.downstream_tasks = torch.ModuleDict(dtasks)
+        # set up encoder
+        self.encoder: torch.nn.Module = encoder_name(*encoder_args, **encoder_kwargs)
 
-        if active_tasks is None:
-            raise ValueError("active_tasks must be provided.")
-        else:
-            self.active_tasks = active_tasks
+        # set up pooling layers
+        if pooling_layers is not None:
+            if len(pooling_layers) == 0:
+                raise ValueError("At least one pooling layer must be provided.")
 
-        # # set up pooling layers and their aggregation
-        # if pooling_layers is not None:
-        #     if len(pooling_layers) == 0:
-        #         raise ValueError("At least one pooling layer must be provided.")
+            self.pooling_layers = torch.nn.ModuleList(
+                [
+                    p["type"](*p.get("args", []), **p.get("kwargs", {}))
+                    for p in pooling_layers
+                ]
+            )
 
-        #     self.pooling_layers = torch.nn.ModuleList(
-        #         [
-        #             p
-        #             if isclass(type(p)) and issubclass(type(p), torch.nn.Module)
-        #             else ModuleWrapper(p)
-        #             for p in pooling_layers
-        #         ]
-        #     )
-        # else:
-        #     self.pooling_layers = None
+        # FIXME: types can be functions, so have to be wrapped in the ModuleWrapper
+        # set up aggregation of pooling layers
+        if aggregate_pooling_name is not None:
+            self.aggregate_pooling: torch.nn.Module = aggregate_pooling_name(
+                *(aggregate_pooling_args if aggregate_pooling_args else []),
+                **(aggregate_pooling_kwargs if aggregate_pooling_kwargs else {}),
+            )
 
-        # # aggregate pooling layer
-        # self.aggregate_pooling = aggregate_pooling
+        # set up graph_features network if it's provided
+        if graph_features_net_name is not None:
+            self.graph_features_net: torch.nn.Module = graph_features_net_name(
+                *(graph_features_net_args if graph_features_net_args else []),
+                **(graph_features_net_kwargs if graph_features_net_kwargs else {}),
+            )
 
-        # if aggregate_pooling is not None:
-        #     if not isclass(aggregate_pooling) or not issubclass(
-        #         aggregate_pooling, torch.nn.Module
-        #     ):
-        #         self.aggregate_pooling = ModuleWrapper(aggregate_pooling)
+        # set up aggregation of graph features
+        if aggregate_graph_features_name is not None:
+            self.aggregate_graph_features: torch.nn.Module = (
+                aggregate_graph_features_name(
+                    *(
+                        aggregate_graph_features_args
+                        if aggregate_graph_features_args
+                        else []
+                    ),
+                    **(
+                        aggregate_graph_features_kwargs
+                        if aggregate_graph_features_kwargs
+                        else {}
+                    ),
+                )
+            )
 
-        # pooling_funcs = [self.aggregate_pooling, self.pooling_layers]
-        # if any([p is not None for p in pooling_funcs]) and not all(
-        #     p is not None for p in pooling_funcs
-        # ):
-        #     raise ValueError(
-        #         "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
-        #     )
+        self.downstream_tasks = torch.nn.ModuleDict(
+            {
+                key: taskspecs[0](*taskspecs[1], **taskspecs[2])
+                for key, taskspecs in downstream_tasks.items()
+            }
+        )
 
-        # # set up graph features processing if provided
-        # self.graph_features_net = graph_features_net
+        self.active_tasks: Dict[Any, bool] = (
+            active_tasks
+            if active_tasks is not None
+            else {i: True for i in range(len(downstream_tasks))}
+        )
 
-        # self.aggregate_graph_features = aggregate_graph_features
-
-        # if aggregate_graph_features is not None:
-        #     if not isclass(aggregate_graph_features) or not issubclass(
-        #         aggregate_graph_features, torch.nn.Module
-        #     ):
-        #         self.aggregate_graph_features = ModuleWrapper(aggregate_graph_features)
-
-        # graph_processors = [self.graph_features_net, self.aggregate_graph_features]
-
-        # if any([g is not None for g in graph_processors]) and not all(
-        #     g is not None for g in graph_processors
-        # ):
-        #     raise ValueError(
-        #         "If graph features are to be used, both a graph features network and an aggregation method must be provided."
-        #     )
-
-    def set_task_active(self, i: int) -> None:
+    def set_task_active(self, key: Any) -> None:
         """Set a downstream task as active.
 
         Args:
-            i (int): Index of the downstream task to activate.
+            key (Any): Index of the downstream task to activate.
         """
 
-        if i < 0 or i >= len(self.active_tasks):
+        if key not in self.active_tasks:
             raise ValueError("Invalid task index.")
 
-        self.active_tasks[i] = True
+        self.active_tasks[key] = True
 
-    def set_task_inactive(self, i: int) -> None:
+    def set_task_inactive(self, key: Any) -> None:
         """Set a downstream task as inactive.
 
         Args:
-            i (int): Index of the downstream task to deactivate.
+            i (Any): Index of the downstream task to deactivate.
         """
 
-        if i < 0 or i >= len(self.active_tasks):
+        if key not in self.active_tasks:
             raise ValueError("Invalid task index.")
 
-        self.active_tasks[i] = False
+        self.active_tasks[key] = False
 
-    def eval_encoder(
-        self,
-        x: torch.Tensor,
-        edge_index: torch.Tensor,
-        gcn_kwargs: dict[Any, Any] | None = None,
-    ) -> torch.Tensor:
-        """Evaluate the GCN network on the input data.
-
-        Args:
-            x (torch.Tensor): Input node features.
-            edge_index (torch.Tensor): Graph connectivity information.
-            gcn_kwargs (dict[Any, Any], optional): Additional arguments for the GCN. Defaults to None.
-
-        Returns:
-            torch.Tensor: Output of the GCN network.
-        """
-        # Apply each GCN layer to the input features
-        features = x
-        for gnn_layer in self.encoder:
-            features = gnn_layer(
-                features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
-            )
-        return features
-
-    def get_embeddings(
+    def get_graph_embeddings(
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
@@ -186,9 +199,7 @@ class GNNModel(torch.nn.Module):
             torch.Tensor: Embedding vector for the graph features.
         """
         # apply the GCN backbone to the node features
-        embeddings = self.eval_encoder(
-            x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
-        )
+        embeddings = self.encoder(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
 
         # pool everything together into a single graph representation
         if self.pooling_layers is not None and self.aggregate_pooling is not None:
@@ -203,44 +214,38 @@ class GNNModel(torch.nn.Module):
     def compute_downstream_tasks(
         self,
         x: torch.Tensor,
-        downstream_task_args: Sequence[tuple | list] | None = None,
-        downstream_task_kwargs: Sequence[dict] | None = None,
+        downstream_task_args_kwargs: Dict[
+            Any, Dict[str, Sequence[Any] | Dict[str, Any]]
+        ]
+        | None = None,
     ) -> dict[int, torch.Tensor]:
-        """Compute the outputs of the downstream tasks. Only the active tasks will be computed.
+        """_summary_
 
         Args:
-            x (torch.Tensor): Input embeddings tensor
-            downstream_task_args (Sequence[tuple | list] | None, optional): Arguments for downstream tasks. Defaults to None.
-            downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
+            x (torch.Tensor): _description_
+            downstream_task_args_kwargs (Dict[ Any, Dict[Any, Sequence[Any]  |  Dict[str, Any]] ] | None, optional): _description_. Defaults to None.
 
         Returns:
-            dict[int, torch.Tensor]: Outputs of the downstream tasks.
+            dict[int, torch.Tensor]: _description_
         """
 
         output = {}
+        if downstream_task_args_kwargs is None:
+            task_ak: Dict[Any, Dict[str, Sequence[Any] | Dict[str, Any]]] = {}
+        else:
+            task_ak = downstream_task_args_kwargs
 
-        for i in range(len(self.downstream_tasks)):
-            if self.active_tasks[i]:
-                task = self.downstream_tasks[i]
-
-                task_args = []
-                task_kwargs = {}
-                if (
-                    downstream_task_args is not None
-                    and i < len(downstream_task_args)
-                    and downstream_task_args[i]
-                ):
-                    task_args = downstream_task_args[i]
-
-                if (
-                    downstream_task_kwargs is not None
-                    and i < len(downstream_task_kwargs)
-                    and downstream_task_kwargs[i]
-                ):
-                    task_kwargs = downstream_task_kwargs[i]
-
+        for key, task in self.downstream_tasks.items():
+            if self.active_tasks[key]:
+                current = task_ak.get(key, {})
+                task_args: Sequence[Any] = (
+                    current.get("args", []) if "args" in current else []
+                )
+                task_kwargs: Dict[str, Any] = (
+                    current.get("kwargs", {}) if "kwargs" in current else {}
+                )
                 res = task(x, *task_args, **task_kwargs)
-                output[i] = res
+                output[key] = res
 
         return output
 
@@ -248,81 +253,58 @@ class GNNModel(torch.nn.Module):
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
-        batch: torch.Tensor,
-        graph_features: torch.Tensor | None = None,
-        downstream_task_args: Sequence[tuple | list] | None = None,
-        downstream_task_kwargs: Sequence[dict] | None = None,
-        embedding_kwargs: dict[Any, Any] | None = None,
-    ) -> dict[int, torch.Tensor]:
-        """Forward run of the gnn model with optional graph features.
-        # First execute the graph-neural network backbone, then process the graph features, and finally apply the downstream tasks.
+        batch: torch.Tensor | None = None,
+        gcn_args: Sequence[Any] | None = None,
+        gcn_kwargs: Dict[str, Any] | None = None,
+        graph_features_args: Sequence[Any] | None = None,
+        graph_features_kwargs: Dict[str, Any] | None = None,
+        downstream_task_args_kwargs: Dict[
+            Any, Dict[str, Sequence[Any] | Dict[str, Any]]
+        ]
+        | None = None,
+    ) -> torch.Tensor | Mapping[int, torch.Tensor]:
+        """_summary_
 
         Args:
-            x (torch.Tensor): Input node features.
-            edge_index (torch.Tensor): Graph connectivity information.
-            batch (torch.Tensor): Batch vector for pooling.
-            graph_features (torch.Tensor | None, optional): Additional graph features. Defaults to None.
-            downstream_task_args (Sequence[tuple] | None, optional): Arguments for downstream tasks. Defaults to None.
-            downstream_task_kwargs (Sequence[dict] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
-            embedding_kwargs (dict[Any, Any] | None, optional): Additional arguments for the GCN. Defaults to None.
+            x (torch.Tensor): _description_
+            edge_index (torch.Tensor): _description_
+            batch (torch.Tensor | None, optional): _description_. Defaults to None.
+            gcn_args (Sequence[Any] | None, optional): _description_. Defaults to None.
+            gcn_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
+            graph_features_args (Sequence[Any] | None, optional): _description_. Defaults to None.
+            graph_features_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
+            downstream_task_args_kwargs (Dict[ Any, Dict[str, Sequence[Any]  |  Dict[str, Any]] ] | None, optional): _description_. Defaults to None.
 
         Returns:
-            Sequence[torch.Tensor]: Raw output of downstream tasks.
+            torch.Tensor | Mapping[int, torch.Tensor]: _description_
         """
-        # apply the GCN backbone to the node features
+        # FIXME: this will probably not work, make sure that args/kwargs shit works as it should
 
-        embeddings = self.get_embeddings(
-            x, edge_index, batch, gcn_kwargs=embedding_kwargs
+        # apply the GCN backbone to the node features
+        embeddings = self.get_graph_embeddings(
+            x,
+            edge_index,
+            *(gcn_args if gcn_args else []),
+            **(gcn_kwargs if gcn_kwargs else {}),
         )
 
         # If we have graph features, we need to process them and concatenate them with the node features
-        if graph_features is not None and self.graph_features_net is not None:
-            graph_features = self.graph_features_net(graph_features)
-
-        if self.aggregate_graph_features is not None and graph_features is not None:
-            embeddings = self.aggregate_graph_features(embeddings, graph_features)
+        if self.graph_features_net:
+            graph_features = self.graph_features_net(
+                *(graph_features_args if graph_features_args else []),
+                **(graph_features_kwargs if graph_features_kwargs else {}),
+            )
+            embeddings = self.aggregate_graph_features(
+                embeddings,
+                graph_features,
+                **(graph_features_kwargs if graph_features_kwargs else {}),
+            )
 
         # downstream tasks are given out as is, no softmax or other assumptions
         return self.compute_downstream_tasks(
             embeddings,
-            downstream_task_args=downstream_task_args,
-            downstream_task_kwargs=downstream_task_kwargs,
+            downstream_task_args_kwargs=downstream_task_args_kwargs,
         )
-
-    @classmethod
-    def _cfg_helper(
-        cls, cfg: dict[str, Any], utility_function: Callable, throw_message: str
-    ) -> torch.nn.Module | Callable:
-        """Helper function to create a module or callable from a config.
-
-        Args:
-            cfg (dict[str, Any]): config node. must contain type, args, kwargs
-            utility_function (Callable): utility function to create the module or callable
-            throw_message (str): message to throw in case of error
-
-        Raises:
-            ValueError: if the config node is invalid
-            ValueError: if the utility function could not find the specified type
-
-        Returns:
-            torch.nn.Module | Callable: created module or callable
-        """
-        if not utils.verify_config_node(cfg):
-            raise ValueError(throw_message)
-        f = utility_function(cfg["type"])
-
-        if f is None:
-            raise ValueError(
-                f"Utility function '{utility_function.__name__}' could not find '{cfg['type']}'"
-            )
-
-        if isinstance(f, type):
-            return f(
-                cfg["args"] if "args" in cfg else [],
-                **(cfg["kwargs"] if "kwargs" in cfg else {}),
-            )
-        else:
-            return f
 
     @classmethod
     def from_config(cls, config: dict) -> "GNNModel":
@@ -334,151 +316,77 @@ class GNNModel(torch.nn.Module):
         Returns:
             GNNModel: An instance of GNNModel.
         """
-
-        # create encoder
-        encoder = [QGGNN.GNNBlock.from_config(cfg) for cfg in config["encoder"]]
-
-        # create downstream tasks
-        downstream_tasks = [
-            QGLS.LinearSequential.from_config(cfg) for cfg in config["downstream_tasks"]
-        ]  # TODO: generalize this!
-
-        # make pooling layers
-        pooling_layers_cfg = config.get("pooling_layers", None)
-
-        if pooling_layers_cfg is not None:
-            pooling_layers = []
-            for pool_cfg in pooling_layers_cfg:
-                pooling_layer = cls._cfg_helper(
-                    pool_cfg,
-                    utils.get_registered_pooling_layer,
-                    f"The config for a pooling layer is invalid: {pool_cfg}",
-                )
-                pooling_layers.append(pooling_layer)
-        else:
-            pooling_layers = None
-
-        # graph aggregation pooling
-        aggregate_pooling_cfg = config.get("aggregate_pooling", None)
-        if aggregate_pooling_cfg is not None:
-            aggregate_pooling = cls._cfg_helper(
-                config["aggregate_pooling"],
-                utils.get_pooling_aggregation,
-                f"The config for 'aggregate_pooling' is invalid: {config['aggregate_pooling']}",
-            )
-        else:
-            aggregate_pooling = None
-
-        # make graph features network and aggregations
-        if "graph_features_net" in config and config["graph_features_net"] is not None:
-            graph_features_net = QGLS.LinearSequential.from_config(
-                config["graph_features_net"]
-            )
-        else:
-            graph_features_net = None
-
-        if graph_features_net is not None:
-            aggregate_graph_features = cls._cfg_helper(
-                config["aggregate_graph_features"],
-                utils.get_graph_features_aggregation,
-                f"The config for 'aggregate_graph_features' is invalid: {config['aggregate_graph_features']}",
-            )
-        else:
-            aggregate_graph_features = None
-
-        active_tasks = [cfg.get("active", False) for cfg in config["downstream_tasks"]]
-
         # return the model
         return cls(
-            encoder=encoder,
-            downstream_tasks=downstream_tasks,
-            pooling_layers=pooling_layers,
-            graph_features_net=graph_features_net,
-            aggregate_graph_features=aggregate_graph_features,
-            aggregate_pooling=aggregate_pooling,
-            active_tasks=active_tasks,
+            config["encoder"]["type"],
+            config["encoder"]["args"],
+            config["encoder"]["kwargs"],
+            downstream_tasks={
+                key: (
+                    task_cfg["type"],
+                    task_cfg.get("args", []),
+                    task_cfg.get("kwargs", {}),
+                )
+                for (key, task_cfg) in config["downstream_tasks"].items()
+            },
+            pooling_layers=config.get("pooling_layers", None),
+            aggregate_pooling_name=config["aggregate_pooling"]["type"],
+            aggregate_pooling_args=config["aggregate_pooling"].get("args", None),
+            aggregate_pooling_kwargs=config["aggregate_pooling"].get("kwargs", None),
+            graph_features_net_name=config["graph_features_net"].get("type", None),
+            graph_features_net_args=config["graph_features_net"].get("args", None),
+            graph_features_net_kwargs=config["graph_features_net"].get("kwargs", None),
+            aggregate_graph_features_name=config["aggregate_graph_features"].get(
+                "type", None
+            ),
+            aggregate_graph_features_args=config["aggregate_graph_features"].get(
+                "args", None
+            ),
+            aggregate_graph_features_kwargs=config["aggregate_graph_features"].get(
+                "kwargs", None
+            ),
+            active_tasks=config.get("active_tasks", None),
         )
 
-    def to_config(self) -> dict[str, Any]:
+    def to_config(self) -> Dict[str, Any]:
         """Serialize the model to a config
 
         Returns:
-            dict[str, Any]: _description_
+            Dict[str, Any]: _description_
         """
-        pooling_layer_names = None
-        if self.pooling_layers is not None:
-            pooling_layer_names = []
-            for layer in self.pooling_layers:
-                if isinstance(layer, ModuleWrapper):
-                    pooling_layer_names.append(
-                        {
-                            "type": utils.pooling_layers_names[layer.get_fn()],
-                            "args": [],
-                            "kwargs": {},
-                        }
-                    )
-                else:
-                    pooling_layer_names.append(
-                        {
-                            "type": utils.pooling_layers_names[layer],
-                            "args": [],
-                            "kwargs": {},
-                        }
-                    )
-
-        aggregate_graph_features_names = None
-        if self.aggregate_graph_features is not None:
-            if isinstance(self.aggregate_graph_features, ModuleWrapper):
-                aggregate_graph_features_names = {
-                    "type": utils.graph_features_aggregations_names[
-                        self.aggregate_graph_features.get_fn()
-                    ],
-                    "args": [],
-                    "kwargs": {},
+        config: Dict[str, Any] = {
+            "encoder": {
+                "type": self.encoder_specs["type"],
+                "args": self.encoder_specs["args"],
+                "kwargs": self.encoder_specs["kwargs"],
+            },
+            "downstream_tasks": {
+                key: {
+                    "type": taskspecs[0],
+                    "args": taskspecs[1],
+                    "kwargs": taskspecs[2],
                 }
-            else:
-                aggregate_graph_features_names = {
-                    "type": utils.graph_features_aggregations_names[
-                        self.aggregate_graph_features
-                    ],
-                    "args": [],
-                    "kwargs": {},
-                }
-
-        aggregate_pooling_names = None
-        if self.aggregate_pooling is not None:
-            if isinstance(self.aggregate_pooling, ModuleWrapper):
-                aggregate_pooling_names = {
-                    "type": utils.pooling_aggregations_names[
-                        self.aggregate_pooling.get_fn()
-                    ],
-                    "args": [],
-                    "kwargs": {},
-                }
-            else:
-                aggregate_pooling_names = {
-                    "type": utils.pooling_aggregations_names[self.aggregate_pooling],
-                    "args": [],
-                    "kwargs": {},
-                }
-
-        # downstream_task_configs
-
-        downstream_task_configs = [task.to_config() for task in self.downstream_tasks]
-        for i in range(len(self.downstream_tasks)):
-            downstream_task_configs[i]["active"] = self.active_tasks[i]
-
-        config = {
-            "encoder": [encoder_layer.to_config() for encoder_layer in self.encoder],
-            "downstream_tasks": downstream_task_configs,
-            "pooling_layers": pooling_layer_names,
-            "graph_features_net": self.graph_features_net.to_config()
-            if self.graph_features_net
-            else None,
-            "aggregate_graph_features": aggregate_graph_features_names,
-            "aggregate_pooling": aggregate_pooling_names,
-            "active_tasks": self.active_tasks,
+                for (key, taskspecs) in self.downstream_tasks.items()
+            },
         }
+
+        config["pooling_layers"] = self.pooling_layers_specs
+        config["aggregate_pooling"] = {
+            "type": self.aggregate_pooling_specs["type"],
+            "args": self.aggregate_pooling_specs["args"],
+            "kwargs": self.aggregate_pooling_specs["kwargs"],
+        }
+        config["graph_features_net"] = {
+            "type": self.graph_features_net_specs["type"],
+            "args": self.graph_features_net_specs["args"],
+            "kwargs": self.graph_features_net_specs["kwargs"],
+        }
+        config["aggregate_graph_features"] = {
+            "type": self.aggregate_graph_features_specs["type"],
+            "args": self.aggregate_graph_features_specs["args"],
+            "kwargs": self.aggregate_graph_features_specs["kwargs"],
+        }
+        config["active_tasks"] = self.active_tasks_specs
 
         return config
 

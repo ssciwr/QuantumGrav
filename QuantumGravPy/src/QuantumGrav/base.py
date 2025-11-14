@@ -1,5 +1,7 @@
 from abc import abstractmethod, ABC
-from typing import Any, Dict
+from typing import Any, Collection, Dict, Mapping
+
+import torch
 
 
 class Configurable(ABC):
@@ -39,5 +41,48 @@ class Configurable(ABC):
 
         Returns:
             Configurable: A new instance of the class
+        """
+        pass  # must be implemented in subclass
+
+
+class BaseModel(torch.nn.Module, Configurable):
+    """Abstract base class for QuantumGrav models.
+    Subclasses must implement methods to verify, serialize, and instantiate from configuration dictionaries.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    @abstractmethod
+    def forward(self, *args, **kwargs) -> torch.Tensor | Mapping[int, torch.Tensor] | Collection[torch.Tensor]:
+        """Abstract forward method for the model.
+
+        Returns:
+            torch.Tensor: output tensor of the model
+        """
+        pass  # must be implemented in subclass
+
+    @abstractmethod
+    def save(self, path: str) -> None:
+        """Save the model's state to file.
+
+        Args:
+            path (str): path to save the model to.
+        """
+
+        pass
+
+    @abstractmethod
+    @classmethod
+    def load(
+        cls, path: str, device: torch.device = torch.device("cpu")
+    ) -> "BaseModel":
+        """Load a mode instance from file
+
+        Args:
+            path (str): Path to the file to load.
+            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
+        Returns:
+            BaseModel: A BaseModel instance initialized from the data loaded from the file.
         """
         pass  # must be implemented in subclass
