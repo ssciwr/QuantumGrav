@@ -3,12 +3,12 @@ from torch_geometric.data import Data, Dataset
 import torch
 
 # data handling
-import h5py
 import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Sequence, Collection
+from typing import Any
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -21,10 +21,7 @@ class QGDataset(QGDatasetBase, Dataset):
         self,
         input: list[str | Path],
         output: str | Path,
-        mode: str = "hdf5",
-        reader: Callable[
-            [h5py.File | zarr.Group, torch.dtype, torch.dtype, bool], list[Data]
-        ]
+        reader: Callable[[zarr.Group, torch.dtype, torch.dtype, bool], list[Data]]
         | None = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
@@ -32,17 +29,16 @@ class QGDataset(QGDatasetBase, Dataset):
         chunksize: int = 1000,
         n_processes: int = 1,
         # dataset properties
-        transform: Callable[[Data | Collection], Data] | None = None,
-        pre_transform: Callable[[Data | Collection], Data] | None = None,
-        pre_filter: Callable[[Data | Collection], bool] | None = None,
+        transform: Callable[[Data | Collection[Any]], Data] | None = None,
+        pre_transform: Callable[[Data | Collection[Any]], Data] | None = None,
+        pre_filter: Callable[[Data | Collection[Any]], bool] | None = None,
     ):
         """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk.
 
         Args:
-            input (list[str  |  Path] | Callable[[Any], dict]): List of input hdf5 file paths.
+            input (list[str  |  Path] | Callable[[Any], dict]): List of input zarr file paths.
             output (str | Path): Output directory where processed data will be stored.
-            mode (str): File storage mode. 'zarr' or 'hdf5'
-            reader (Callable[[h5py.File | zarr.Group, int], list[Data]] | None, optional): Function to read data from the hdf5 file. Defaults to None.
+            reader (Callable[[zarr.Group, int], list[Data]] | None, optional): Function to read data from the zarr file. Defaults to None.
             float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
             int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
             validate_data (bool, optional): Whether to validate the data. Defaults to True.
@@ -57,7 +53,6 @@ class QGDataset(QGDatasetBase, Dataset):
             self,
             input,
             output,
-            mode=mode,
             reader=reader,
             float_type=float_type,
             int_type=int_type,
@@ -96,16 +91,13 @@ class QGDataset(QGDatasetBase, Dataset):
         # process data files
         k = 0  # index to create the filenames for the processed data
         for file in self.input:
-            if self.mode == "hdf5":
-                raw_file = h5py.File(str(Path(file).resolve().absolute()), "r")
-                num_chunks = raw_file["num_causal_sets"][()] // self.chunksize
+            N = self._get_num_samples_per_file(Path(file).resolve().absolute())
 
-            else:
-                N = self._get_num_samples_per_file(Path(file).resolve().absolute())
-                num_chunks = N // self.chunksize
-                raw_file = zarr.storage.LocalStore(
-                    str(Path(file).resolve().absolute()), read_only=True
-                )
+            num_chunks = N // self.chunksize
+
+            raw_file = zarr.storage.LocalStore(
+                str(Path(file).resolve().absolute()), read_only=True
+            )
 
             for i in range(0, num_chunks * self.chunksize, self.chunksize):
                 data = self.process_chunk(
@@ -144,7 +136,7 @@ class QGDataset(QGDatasetBase, Dataset):
             datapoint = self.transform(datapoint)
         return datapoint
 
-    def __getitem__(self, idx: int | Collection[int]) -> Data | Collection[Data]:
+    def __getitem__(self, idx: int | Sequence[int]) -> Data | Sequence[Data]:
         if isinstance(idx, int):
             return self.get(idx)
         else:
