@@ -1,12 +1,13 @@
 import pytest
 import juliacall as jcall
 from pathlib import Path
-import h5py
 import zarr
-import torch
 import numpy as np
+
 import QuantumGrav as QG
 
+
+import torch
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
@@ -139,47 +140,12 @@ def create_data(tmp_path_factory, julia_paths):
 
 
 @pytest.fixture
-def create_data_hdf5(create_data):
-    path, datafiles, tmpdir, jl_generator = create_data
-
-    for i in range(3):
-        data = jl_generator(5)
-        # Save the data to an HDF5 file
-        hdf5_file = tmpdir / f"test_data_{i}.h5"
-
-        with h5py.File(hdf5_file, "w") as f:
-            f.create_dataset("adjacency_matrix", (len(data), 15, 15), dtype="float32")
-            f.create_dataset("link_matrix", (len(data), 15, 15), dtype="float32")
-            f.create_dataset("max_pathlen_future", (len(data), 15), dtype="float32")
-            f.create_dataset("max_pathlen_past", (len(data), 15), dtype="float32")
-            f.create_dataset("dimension", (len(data),), dtype="int32")
-            f.create_dataset("atomcount", (len(data),), dtype="int32")
-
-        with h5py.File(hdf5_file, "a") as f:
-            for j, d in enumerate(data):
-                adj = d["adjacency_matrix"].to_numpy()
-                link = d["link_matrix"].to_numpy()
-                max_path_f = d["max_pathlen_future"].to_numpy()
-                max_path_p = d["max_pathlen_past"].to_numpy()
-                f["adjacency_matrix"][j, 0 : adj.shape[0], 0 : adj.shape[1]] = adj
-                f["link_matrix"][j, 0 : link.shape[0], 0 : link.shape[1]] = link
-                f["max_pathlen_future"][j, 0 : max_path_f.shape[0]] = max_path_f
-                f["max_pathlen_past"][j, 0 : max_path_p.shape[0]] = max_path_p
-                f["dimension"][j] = d["dimension"]
-                f["atomcount"][j] = d["atomcount"]
-            f["num_causal_sets"] = len(data)
-
-            datafiles.append(hdf5_file)
-    return tmpdir, datafiles
-
-
-@pytest.fixture
 def create_data_zarr_basic(create_data):
     path, datafiles, tmpdir, jl_generator = create_data
 
     for i in range(3):
         data = jl_generator(5)
-        # Save the data to an HDF5 file
+        # Save the data to an zarr file
         zarr_file = tmpdir / f"test_data_{i}.zarr"
 
         store = zarr.storage.LocalStore(zarr_file, read_only=False)
@@ -260,9 +226,7 @@ def create_data_zarr(create_data_zarr_basic):
 
 @pytest.fixture
 def read_data():
-    def reader(
-        f: h5py.File | zarr.Group, idx: int, float_dtype, int_dtype, validate
-    ) -> Data:
+    def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
         adj_raw = f["adjacency_matrix"][idx, :, :]
         adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
         edge_index, edge_weight = dense_to_sparse(adj_matrix)
@@ -350,8 +314,8 @@ def pooling_layer():
 
 
 @pytest.fixture
-def make_dataset(create_data_hdf5, read_data):
-    datadir, datafiles = create_data_hdf5
+def make_dataset(create_data_zarr, read_data):
+    datadir, datafiles = create_data_zarr
 
     dataset = QG.QGDataset(
         input=datafiles,
@@ -370,8 +334,8 @@ def make_dataset(create_data_hdf5, read_data):
 
 
 @pytest.fixture
-def make_dataloader(create_data_hdf5, make_dataset):
-    _, __ = create_data_hdf5
+def make_dataloader(create_data_zarr, make_dataset):
+    _, __ = create_data_zarr
 
     dataset = make_dataset
     dataloader = DataLoader(

@@ -6,6 +6,7 @@ This project is dedicated to providing tools for creating causal sets as used in
 
 - A Python package called `QuantumGravPy` which is based on [`pytorch-geometric`](https://pytorch-geometric.readthedocs.io/en/latest/) and [`zarr`](https://zarr.readthedocs.io/en/stable/). This package  is thus responsible for the data preprocessing, and model training. This package is based on a configuration-code separation in which you will define your model using YAML files and only supply code where the predefined abstractions do not suffice.
 
+
 Start with the [Getting started](./getting_started.md) page to get up and running.
 
 For the Python package `QuantumGravPy`, the [`Datasets and Preprocessing`](./datasets_and_preprocessing.md) section will show you how to use the supplied dataset classes for processing your raw data. Next, you should learn about the model architecture used in this package in [`Graph Neural Network models`](./models.md).

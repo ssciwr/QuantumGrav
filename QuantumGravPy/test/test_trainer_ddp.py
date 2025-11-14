@@ -5,10 +5,11 @@ from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 
 import QuantumGrav as QG
+
 import numpy as np
 from copy import deepcopy
 import os
-import h5py
+import zarr
 from datetime import datetime
 from pathlib import Path
 
@@ -113,7 +114,7 @@ def compute_loss(x: dict[int, torch.Tensor], data: Data, trainer) -> torch.Tenso
     return all_losses
 
 
-def reader(f: h5py.File, idx: int, float_dtype, int_dtype, validate) -> Data:
+def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
     adj_raw = f["adjacency_matrix"][idx, :, :]
     adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
     edge_index, edge_weight = dense_to_sparse(adj_matrix)
