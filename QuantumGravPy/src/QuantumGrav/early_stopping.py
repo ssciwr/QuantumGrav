@@ -71,7 +71,7 @@ class DefaultEarlyStopping(base.Configurable):
 
     def __init__(
         self,
-        tasks: dict[str | int, Any],
+        tasks: Dict[str | int, Any],
         patience: int,
         mode: str = "any",
     ):
@@ -119,11 +119,13 @@ class DefaultEarlyStopping(base.Configurable):
             for task in self.tasks.values():
                 task["found_better"] = False
                 task["current_grace_period"] = task["grace_period"]
+                task["best_score"] = task["init_best_score"]
         else:
             task = self.tasks.get(index)
             if task is not None:
                 task["found_better"] = False
                 task["current_grace_period"] = task["grace_period"]
+                task["best_score"] = task["init_best_score"]
 
     def _evaluate_task(self, task: dict[str, Any], value: Any) -> bool:
         """Evaluate task

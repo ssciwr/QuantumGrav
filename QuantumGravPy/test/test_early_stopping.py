@@ -86,6 +86,49 @@ def test_default_early_stopping_check_any_grace_period_decreased(early_stoppingi
         assert task["found_better"] == (key == 1)
 
 
+def test_default_early_stopping_reset(early_stoppinginput):
+    """Test the reset function"""
+    early_stopping = QG.DefaultEarlyStopping(
+        tasks=early_stoppinginput["tasks"],
+        mode="any",
+        patience=early_stoppinginput["patience"],
+    )
+    early_stopping.tasks[0]["best_score"] = 12.0
+    early_stopping.tasks[1]["best_score"] = 12.0
+    early_stopping.tasks[0]["current_grace_period"] = 3
+    early_stopping.tasks[1]["current_grace_period"] = 5
+    early_stopping.tasks[0]["found_better"] = True
+    early_stopping.tasks[1]["found_better"] = False
+
+    # reset 1
+    early_stopping.reset(1)
+
+    assert early_stopping.tasks[0]["best_score"] == 12.0
+    assert early_stopping.tasks[0]["current_grace_period"] == 3
+    assert early_stopping.tasks[0]["found_better"]
+
+    assert early_stopping.tasks[1]["best_score"] == -1000000.0
+    assert early_stopping.tasks[1]["current_grace_period"] == 10
+    assert early_stopping.tasks[1]["found_better"] is False
+
+    # reset all
+    early_stopping.tasks[0]["best_score"] = 12.0
+    early_stopping.tasks[1]["best_score"] = 12.0
+    early_stopping.tasks[0]["current_grace_period"] = 3
+    early_stopping.tasks[1]["current_grace_period"] = 5
+    early_stopping.tasks[0]["found_better"] = True
+    early_stopping.tasks[1]["found_better"] = False
+
+    early_stopping.reset("all")
+    assert early_stopping.tasks[0]["best_score"] == 1000000.0
+    assert early_stopping.tasks[0]["current_grace_period"] == 8
+    assert early_stopping.tasks[0]["found_better"] is False
+
+    assert early_stopping.tasks[1]["best_score"] == -1000000.0
+    assert early_stopping.tasks[1]["current_grace_period"] == 10
+    assert early_stopping.tasks[1]["found_better"] is False
+
+
 def test_default_early_stopping_patience_decreased_any_patience_decreased(
     early_stoppinginput,
 ):
