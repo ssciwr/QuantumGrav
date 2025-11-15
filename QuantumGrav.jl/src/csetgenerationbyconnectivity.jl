@@ -69,6 +69,7 @@ end
            (1 - tx) * ty * z12 +
            tx * ty * z22
 end
+
 """ 
 Sample a causet with given connectivity using a Markov Chain Monte Carlo method with adaptive number of edge flips.
 
@@ -85,7 +86,6 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - A bitarray causet sampled according to the connectivity goal.
 - A boolean indicating whether the sampling was successful.
 """
-
 function sample_bitarray_causet_by_connectivity(size::Int64,
                                                 connectivity_goal::Float64,
                                                 markov_steps::Int64,

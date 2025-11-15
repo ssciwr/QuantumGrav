@@ -1,6 +1,6 @@
 [![test](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml/badge.svg)](https://github.com/ssciwr/QuantumGrav/actions/workflows/ci.yml)
-[![Docs(Currently only Python)](https://img.shields.io/badge/docs-latest-blue?logo=read-the-docs)](https://ssciwr.github.io/QuantumGrav/)
-
+[![Docs — Python package for modelling](https://img.shields.io/badge/docs-python-blue?logo=python)](https://ssciwr.github.io/QuantumGrav/)
+[![Docs — Julia package for data generation](https://img.shields.io/badge/docs-julia-purple?logo=julia)](https://ssciwr.github.io/QuantumGrav/julia/)
 
 # QuantumGrav
 Quantum gravity project experimental repo.
@@ -30,6 +30,7 @@ add /path/to/QuantumGrav/QuantumGrav.jl
 ```
 This is only necessary as long as QuantumGrav.jl is not in the official package repository of julia.
 
+
 ### Python
 For the python installation instructions, see the [documentation](https://ssciwr.github.io/QuantumGrav/getting_started/)
 
@@ -56,6 +57,15 @@ This will track the changes you made automatically.
 using TestItemRunner
 @run_package_tests
 ```
+
+5. For building the documentation locally
+- Go o the `docs` directory in the QuantumGrav.jl subdirectory
+- run `julia --color=yes --project make.jl`
+- if you want to have debug output, set the `JULIA_DEBUG` environment variable to `Documenter`:
+```bash
+export JULIA_DEBUG=Documenter
+```
+and then run the above command again to get all the debug output.
 
 This runs the tests defined under `QuantumGrav.jl/test` using the activated environment.
 

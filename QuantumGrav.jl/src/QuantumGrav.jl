@@ -59,5 +59,7 @@ export make_adj,
     ComplexTopCsetMaker,
     CsetFactory,
     encode_csettype,# data saving
-    dict_to_zarr
+    dict_to_zarr, 
+    validate_config, 
+    make_pseudosprinkling
 end # module QuantumGrav
