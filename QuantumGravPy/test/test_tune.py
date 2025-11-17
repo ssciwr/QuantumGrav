@@ -455,25 +455,6 @@ def test_create_study_unsupported(get_tune_config):
         tune.create_study(get_tune_config)
 
 
-def test_convert_to_pyobject_tags(get_best_config):
-    config_with_tags = tune.convert_to_pyobject_tags(get_best_config)
-
-    # check if the types are converted to pyobject tags
-    assert (
-        config_with_tags["model"]["type"] == "!pyobject QuantumGrav.gnn_block.GNNBlock"
-    )
-    assert (
-        config_with_tags["model"]["convtype"]
-        == "!pyobject torch_geometric.nn.conv.sage_conv.SAGEConv"
-    )
-
-    # check if other values remain unchanged
-    assert config_with_tags["model"]["name"] == "test_model"
-    assert config_with_tags["model"]["layers"] == 2
-    assert config_with_tags["model"]["bs"] == 32
-    assert config_with_tags["trainer"]["epochs"] == 5
-
-
 @pytest.mark.filterwarnings("ignore::UserWarning")  # Optuna warning about (1, 6, 2)
 def test_save_best_config(
     get_config_file,
@@ -493,6 +474,6 @@ def test_save_best_config(
         best_config = yaml.safe_load(f)  # use safe_load to keep pyobject tags unchanged
 
     # convert class in mock best config to pyobject tags for comparison
-    expected_config = tune.convert_to_pyobject_tags(get_best_config)
+    expected_config = cfg.convert_to_pyobject_tags(get_best_config)
 
     assert best_config == expected_config

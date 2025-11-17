@@ -443,55 +443,6 @@ def create_study(tuning_config: Dict[str, Any]) -> optuna.study.Study:
     return study
 
 
-def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert specific values in the configuration dictionary to `pyobject` YAML tags.
-    This is useful for saving the best configuration back to a YAML file,
-    and make sure that these tags are converted back to the original structures
-    when the YAML file is loaded again.
-
-    `pyobject` tags can only be applied to values that are not of built-in types.
-
-    Args:
-        config (Dict[str, Any]): The configuration dictionary.
-
-    Returns:
-        Dict[str, Any]: The configuration dictionary with converted custom tags.
-    """
-    # determine items to iterate over
-    if isinstance(config, dict):
-        items = config.items()
-        new_config = {}
-    elif isinstance(config, list):
-        items = enumerate(config)
-        new_config = [None] * len(config)
-    else:
-        return config
-
-    for key, value in items:
-        is_dict = isinstance(value, dict)
-        is_list = isinstance(value, list)
-
-        # recursive cases
-        if is_dict or is_list:
-            new_value = convert_to_pyobject_tags(value)
-            new_config[key] = new_value
-
-        # base cases
-        else:
-            # convert only non-built-in types to pyobject tags
-            if not isinstance(value, (bool, str, float, int, list, dict)):
-                # convert to !pyobject name_of_class
-                module = value.__module__
-                class_name = value.__name__
-                full_class_name = f"{module}.{class_name}"
-                pyobject_tag = f"!pyobject {full_class_name}"
-                new_config[key] = pyobject_tag
-            else:
-                new_config[key] = value
-
-    return new_config
-
-
 def save_best_config(
     config_file: Path,
     best_trial: optuna.trial.FrozenTrial,
@@ -547,7 +498,7 @@ def save_best_config(
     )
 
     # convert specific values to pyobject tags
-    best_config = convert_to_pyobject_tags(best_config)
+    best_config = QG.config_utils.convert_to_pyobject_tags(best_config)
 
     with open(output_file, "w") as file:
         yaml.safe_dump(best_config, file)

@@ -139,6 +139,35 @@ def test_read_yaml_throws():
         yaml.load(broken_yaml_text, Loader=loader)
 
 
+def test_convert_to_pyobject_tags():
+    config = {
+        "model": {
+            "type": QG.gnn_block.GNNBlock,
+            "convtype": torch_geometric.nn.conv.sage_conv.SAGEConv,
+            "name": "test_model",
+            "layers": 2,
+            "bs": 32,
+        },
+        "trainer": {"epochs": 5},
+    }
+    config_with_tags = QG.config_utils.convert_to_pyobject_tags(config)
+
+    # check if the types are converted to pyobject tags
+    assert (
+        config_with_tags["model"]["type"] == "!pyobject QuantumGrav.gnn_block.GNNBlock"
+    )
+    assert (
+        config_with_tags["model"]["convtype"]
+        == "!pyobject torch_geometric.nn.conv.sage_conv.SAGEConv"
+    )
+
+    # check if other values remain unchanged
+    assert config_with_tags["model"]["name"] == "test_model"
+    assert config_with_tags["model"]["layers"] == 2
+    assert config_with_tags["model"]["bs"] == 32
+    assert config_with_tags["trainer"]["epochs"] == 5
+
+
 def test_initialize_config_handler_nonsweep(yaml_text_nonsweep):
     loader = QG.config_utils.get_loader()
     cfg = yaml.load(yaml_text_nonsweep, Loader=loader)

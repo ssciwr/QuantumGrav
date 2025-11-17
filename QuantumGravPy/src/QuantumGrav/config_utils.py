@@ -244,6 +244,55 @@ def get_loader():
     return loader
 
 
+def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert specific values in the configuration dictionary to `pyobject` YAML tags.
+    This is useful for saving the best configuration back to a YAML file,
+    and make sure that these tags are converted back to the original structures
+    when the YAML file is loaded again.
+
+    `pyobject` tags can only be applied to values that are not of built-in types.
+
+    Args:
+        config (Dict[str, Any]): The configuration dictionary.
+
+    Returns:
+        Dict[str, Any]: The configuration dictionary with converted custom tags.
+    """
+    # determine items to iterate over
+    if isinstance(config, dict):
+        items = config.items()
+        new_config = {}
+    elif isinstance(config, list):
+        items = enumerate(config)
+        new_config = [None] * len(config)
+    else:
+        return config
+
+    for key, value in items:
+        is_dict = isinstance(value, dict)
+        is_list = isinstance(value, list)
+
+        # recursive cases
+        if is_dict or is_list:
+            new_value = convert_to_pyobject_tags(value)
+            new_config[key] = new_value
+
+        # base cases
+        else:
+            # convert only non-built-in types to pyobject tags
+            if not isinstance(value, (bool, str, float, int, list, dict)):
+                # convert to !pyobject name_of_class
+                module = value.__module__
+                class_name = value.__name__
+                full_class_name = f"{module}.{class_name}"
+                pyobject_tag = f"!pyobject {full_class_name}"
+                new_config[key] = pyobject_tag
+            else:
+                new_config[key] = value
+
+    return new_config
+
+
 class ConfigHandler:
     """A class for handling the splitting of a configuration file with !sweep and !coupled-sweep
     nodes into a set of different config files according to the cartesian product of
