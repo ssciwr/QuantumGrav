@@ -56,7 +56,7 @@ def coupled_sweep_constructor(
     return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
 
-def arange_inclusive(
+def range_inclusive(
     start: int | float, stop: int | float, step: int | float
 ) -> np.ndarray:
     """Return a numpy array from start to stop (inclusive),
@@ -144,11 +144,11 @@ def range_constructor(
             values = np.random.uniform(start, end, size=size)
 
     elif isinstance(step_or_log, (int, float)):
-        values = arange_inclusive(start, end, step_or_log)
+        values = range_inclusive(start, end, step_or_log)
 
     else:  # no step or log specified
         default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
-        values = arange_inclusive(start, end, default_step)
+        values = range_inclusive(start, end, default_step)
         step_or_log = default_step
 
     return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
