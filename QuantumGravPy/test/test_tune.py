@@ -23,6 +23,7 @@ def get_mock_best_trial_params():
         "model.foo.1.x": 1,
         "trainer.epochs": 5,
         "trainer.lr": 0.001,
+        "trainer.lr_2": 0.5,
         "trainer.drop_rate": 0.3,
     }
 
@@ -64,6 +65,7 @@ def get_suggestions_with_best_trial():
         "trainer": {
             "epochs": 5,
             "lr": 0.001,
+            "lr_2": 0.5,
             "drop_rate": 0.3,
             "foo_ref": {
                 "type": "reference",
@@ -119,6 +121,7 @@ def get_best_config():
         "trainer": {
             "epochs": 5,
             "lr": 0.001,
+            "lr_2": 0.5,
             "drop_rate": 0.3,
             "foo_ref": 1,
         },
@@ -199,7 +202,7 @@ def test_get_value_of_ref(get_config):
 
     ref_path = ["trainer", "lr", "type"]
     current = tune.get_value_of_ref(get_config, ref_path)
-    assert current == "range"
+    assert current == "random_uniform"
 
     ref_path = ["model", "baz", -1, "x", "type"]
     current = tune.get_value_of_ref(get_config, ref_path)
@@ -391,7 +394,7 @@ def test_load_yaml_valid(get_config_file):
     assert "model" in config
     assert "trainer" in config
     assert config["model"]["name"] == "test_model"
-    assert config["trainer"]["lr"]["type"] == "range"
+    assert config["trainer"]["lr"]["type"] == "random_uniform"
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")  # Optuna warning about (1, 6, 2)

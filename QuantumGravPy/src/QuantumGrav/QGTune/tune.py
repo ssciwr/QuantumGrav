@@ -134,15 +134,16 @@ def convert_to_suggestion(
     is_sweep = isinstance(node, dict) and node.get("type") == "sweep"
     is_coupled_sweep = isinstance(node, dict) and node.get("type") == "coupled-sweep"
     is_range = isinstance(node, dict) and node.get("type") == "range"
+    is_random_uniform = isinstance(node, dict) and node.get("type") == "random_uniform"
 
-    if is_range:
+    if is_range or is_random_uniform:
         node_values = node.get("tune_values")
     elif is_sweep or is_coupled_sweep:
         node_values = node.get("values")
 
     if is_sweep and is_categorical_suggestion(node_values):
         return trial.suggest_categorical(param_name, node_values)
-    elif is_range and is_float_suggestion(node_values):
+    elif (is_range or is_random_uniform) and is_float_suggestion(node_values):
         start, stop, step_or_log = node_values
         if isinstance(step_or_log, bool):
             return trial.suggest_float(
