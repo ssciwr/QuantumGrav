@@ -68,11 +68,15 @@ class QGDatasetBase:
 
         # get the number of samples in the dataset
         self._num_samples = 0
-
+        num_samples_per_file = []
         for filepath in self.input:
             if not Path(filepath).exists():
                 raise FileNotFoundError(f"Input file {filepath} does not exist.")
-            self._num_samples += self._get_num_samples_per_file(filepath)
+            n = self._get_num_samples_per_file(filepath)
+            num_samples_per_file.append(n)
+            self._num_samples += n
+
+        self._num_samples_per_file = torch.tensor(num_samples_per_file)
 
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():

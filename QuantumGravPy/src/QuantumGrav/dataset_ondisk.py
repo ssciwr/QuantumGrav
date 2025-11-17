@@ -8,7 +8,7 @@ import zarr
 # system imports and quality of life tools
 from pathlib import Path
 from collections.abc import Callable, Sequence, Collection
-from typing import Any
+from typing import Any, Tuple
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -21,7 +21,9 @@ class QGDataset(QGDatasetBase, Dataset):
         self,
         input: list[str | Path],
         output: str | Path,
-        reader: Callable[[zarr.Group, torch.dtype, torch.dtype, bool], list[Data]]
+        reader: Callable[
+            [zarr.Group, int, torch.dtype, torch.dtype, bool], Collection[Any]
+        ]
         | None = None,
         float_type: torch.dtype = torch.float32,
         int_type: torch.dtype = torch.int64,
@@ -121,6 +123,22 @@ class QGDataset(QGDatasetBase, Dataset):
 
             raw_file.close()
 
+    def map_index(self, idx: int) -> Tuple[str | Path, int]:
+        final_file: Path | str | None = None
+
+        for size, dfile in zip(self._num_samples_per_file, self.input):
+            final_file = dfile
+            if idx < size:
+                break
+            else:
+                idx -= size
+
+        if final_file is None:
+            raise RuntimeError(
+                "Error, index could not be found in the supplied data files"
+            )
+        return final_file, idx
+
     def get(self, idx: int) -> Data:
         """Get a single data sample by index."""
         if self._num_samples is None:
@@ -129,14 +147,31 @@ class QGDataset(QGDatasetBase, Dataset):
         # if idx < 0 or idx >= self._num_samples:
         #     raise IndexError("Index out of bounds.")
         # Load the data from the processed files
-        datapoint = torch.load(
-            Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
-        )
-        if self.transform is not None:
-            datapoint = self.transform(datapoint)
+        if Path(self.processed_dir).exists():
+            datapoint = torch.load(
+                Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
+            )
+            if self.transform is not None:
+                datapoint = self.transform(datapoint)
+        else:
+            # README: this is somewhat slow for the datastructure we have
+            dfile, idx = self.map_index(idx)
+
+            store = zarr.storage.LocalStore(dfile, read_only=True)
+            rootgroup = zarr.open_group(store.root)
+            datapoint = self.data_reader(
+                rootgroup,
+                idx,
+                self.float_type,
+                self.int_type,
+                self.validate_data,
+            )
+
         return datapoint
 
-    def __getitem__(self, idx: int | Sequence[int]) -> Data | Sequence[Data]:
+    def __getitem__(
+        self, idx: int | Sequence[int]
+    ) -> Data | Sequence[Data] | Collection[Any]:
         if isinstance(idx, int):
             return self.get(idx)
         else:
@@ -148,4 +183,7 @@ class QGDataset(QGDatasetBase, Dataset):
         Returns:
             int: The number of samples in the dataset.
         """
-        return len(self.processed_file_names)
+        if Path(self.processed_dir).exists():
+            return len(self.processed_file_names)
+        else:
+            return self._num_samples
