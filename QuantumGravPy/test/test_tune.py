@@ -411,16 +411,48 @@ def test_create_study(get_tune_config):
     study = tune.create_study(get_tune_config)
     assert study.direction == optuna.study.StudyDirection.MINIMIZE
     assert study.study_name == "test_study"
+    assert study._storage is not None
+    assert isinstance(study._storage, optuna.storages.InMemoryStorage)
 
 
 def test_create_study_with_storage(get_tune_config, tmp_path):
     storage_path = tmp_path / "optuna_study.log"
-    get_tune_config["storage"] = storage_path
+    get_tune_config["storage"] = str(storage_path)
     study = tune.create_study(get_tune_config)
     assert study.direction == optuna.study.StudyDirection.MINIMIZE
     assert study.study_name == "test_study"
     assert study._storage is not None
     assert isinstance(study._storage, optuna.storages.JournalStorage)
+
+
+def test_create_study_invalid_config():
+    invalid_config = {
+        "study_name": "test_study",
+        "storage": None,
+    }  # missing "direction" key
+    with pytest.raises(ValueError):
+        tune.create_study(invalid_config)
+
+
+def test_create_study_invalid_direction(get_tune_config):
+    get_tune_config["direction"] = "invalid_direction"
+    with pytest.raises(ValueError):
+        tune.create_study(get_tune_config)
+
+
+def test_create_study_sqlite(get_tune_config, tmp_path):
+    get_tune_config["storage"] = f"sqlite:///{tmp_path}/test_study.db"
+    study = tune.create_study(get_tune_config)
+    assert study.direction == optuna.study.StudyDirection.MINIMIZE
+    assert study.study_name == "test_study"
+    assert study._storage is not None
+    assert isinstance(study._storage._backend, optuna.storages.RDBStorage)
+
+
+def test_create_study_unsupported(get_tune_config):
+    get_tune_config["storage"] = "unsupported_storage_format"
+    with pytest.raises(ValueError):
+        tune.create_study(get_tune_config)
 
 
 def test_convert_to_pyobject_tags(get_best_config):

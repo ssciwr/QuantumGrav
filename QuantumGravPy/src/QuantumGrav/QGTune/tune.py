@@ -6,6 +6,7 @@ from typing import Any, List, Dict, Tuple
 import copy
 import sys
 import QuantumGrav as QG
+import jsonschema
 
 
 def is_flat_list(value: Any) -> bool:
@@ -368,10 +369,32 @@ def create_study(tuning_config: Dict[str, Any]) -> optuna.study.Study:
 
     Args:
         tuning_config (Dict[str, Any]): The configuration dictionary for tuning settings.
+            The config should contain:
+            - storage (str | None): The storage URL or file path. If None, in-memory storage is used.
+            - study_name (str): The name of the study.
+            - direction (str): The optimization direction, either "minimize" or "maximize".
 
     Returns:
         optuna.study.Study: The created Optuna study.
     """
+    # as the tune config is quite simple,
+    # the jsonschema for this config is put directly here
+    tune_schema = {
+        "type": "object",
+        "properties": {
+            "storage": {"type": ["string", "null"]},
+            "study_name": {"type": "string"},
+            "direction": {"type": "string", "enum": ["minimize", "maximize"]},
+        },
+        "required": ["study_name", "direction"],
+        "additionalProperties": True,
+    }
+
+    try:
+        jsonschema.validate(instance=tuning_config, schema=tune_schema)
+    except jsonschema.ValidationError:
+        raise ValueError("Tuning config does not conform to the required schema.")
+
     storage = tuning_config.get("storage")
     study_name = tuning_config.get("study_name")
     direction = tuning_config.get("direction", "minimize")
@@ -379,16 +402,28 @@ def create_study(tuning_config: Dict[str, Any]) -> optuna.study.Study:
     # create storage object if storage is provided
     optuna_storage = None
     if storage is not None:
-        lock_obj = None
+        if isinstance(storage, str) and storage.endswith(".log"):
+            # use JournalStorage for .log files
+            lock_obj = None
 
-        if sys.platform.startswith("win"):
-            lock_obj = optuna.storages.journal.JournalFileOpenLock(str(storage))
+            if sys.platform.startswith("win"):
+                lock_obj = optuna.storages.journal.JournalFileOpenLock(str(storage))
 
-        backend = optuna.storages.journal.JournalFileBackend(
-            str(storage), lock_obj=lock_obj
-        )
+            backend = optuna.storages.journal.JournalFileBackend(
+                str(storage), lock_obj=lock_obj
+            )
 
-        optuna_storage = optuna.storages.JournalStorage(backend)
+            optuna_storage = optuna.storages.JournalStorage(backend)
+        elif isinstance(storage, str) and (
+            storage.startswith("sqlite://") or storage.startswith("mysql://")
+        ):
+            # use RDBStorage for database URLs
+            optuna_storage = optuna.storages.RDBStorage(url=storage)
+        else:
+            raise ValueError(
+                f"Unsupported storage format: {storage}. "
+                "Supported formats are Journal .log files, SQLite and MySQL database URLs."
+            )
 
     study = optuna.create_study(
         study_name=study_name,
