@@ -5,6 +5,7 @@ from torch_geometric.nn.sequential import Sequential
 # quality of life
 from typing import Any, Sequence, Tuple, Dict
 from pathlib import Path
+import jsonschema
 
 from .base import BaseModel
 
@@ -14,11 +15,52 @@ class SequentialModel(BaseModel):
     and a residual connection. The gnn-layer is applied first, followed by the normalizer and activation function. The result is then projected from the input dimensions to the output dimensions using a linear layer and added to the original input (residual connection). Finally, dropout is applied for regularization.
     """
 
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Sequential model configuration",
+        "type": "object",
+        "properties": {
+            "input_sig": {
+                "type": "string",
+                "description": "Signature of the model's forward method as required by torch_geometric.nn.sequential.Sequential",
+            },
+            "layer_specs": {
+                "type": "array",
+                "items": [
+                    {
+                        "type": "string",
+                        "description": "Signature of the torch.nn.Module layer's forward method",
+                    },
+                    {
+                        "type": "string",
+                        "description": "name of the torch.nn.Module layer",
+                    },
+                    {
+                        "type": "array",
+                        "description": "Positional arguments",
+                        "items": {},
+                    },
+                    {
+                        "type": "object",
+                        "description": "Keyword arguments",
+                        "additionalProperties": True,
+                    },
+                ],
+                "additionalItems": True,  # allows extra elements beyond the first 3
+            },
+        },
+        "required": [
+            "input_sig",
+            "layer_specs",
+        ],
+        "additionalProperties": False,
+    }
+
     def __init__(
         self,
         input_sig: str,
         layer_specs: Sequence[
-            Tuple[str, type[torch.nn.Module], Sequence[Any], dict[str, Any]]
+            Tuple[str, type[torch.nn.Module], Sequence[Any], Dict[str, Any]]
         ],
     ):
         """Build a new SequentialModel which stacks layers sequentially.
@@ -64,6 +106,11 @@ class SequentialModel(BaseModel):
         """
 
         return self.layers(x, edge_index, **kwargs)
+
+    @classmethod
+    def verify_config(cls, config: Dict[str, Any]) -> bool:
+        jsonschema.validate(config, schema=cls.schema)
+        return True
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "SequentialModel":
