@@ -516,11 +516,16 @@ def yaml_text():
                 stop: 6
                 step: 2
 
-            lr: !range
+            lr: !random_uniform
                 start: 1e-5
                 stop: 1e-2
                 log: true
                 size: 4
+
+            lr_2: !random_uniform
+                start: 0.1
+                stop: 1.0
+                log: false
 
             drop_rate: !range
                 start: 0.1

@@ -85,13 +85,21 @@ def test_read_yaml(yaml_text):
     assert list(rn["values"]) == [1, 3, 5]
     assert rn["tune_values"] == (1, 6, 2)
 
-    rn_lr = cfg["trainer"]["lr"]
-    assert isinstance(rn_lr, dict)
-    assert rn_lr["type"] == "range"
-    assert len(rn_lr["values"]) == 4
-    assert all(isinstance(v, float) for v in rn_lr["values"])
-    assert rn_lr["values"][0] >= 1e-5 and rn_lr["values"][-1] <= 1e-2
-    assert rn_lr["tune_values"] == (1e-5, 1e-2, True)
+    rd_lr = cfg["trainer"]["lr"]
+    assert isinstance(rd_lr, dict)
+    assert rd_lr["type"] == "random_uniform"
+    assert len(rd_lr["values"]) == 4
+    assert all(isinstance(v, float) for v in rd_lr["values"])
+    assert rd_lr["values"][0] >= 1e-5 and rd_lr["values"][-1] <= 1e-2
+    assert rd_lr["tune_values"] == (1e-5, 1e-2, True)
+
+    rd_lr_2 = cfg["trainer"]["lr_2"]
+    assert isinstance(rd_lr_2, dict)
+    assert rd_lr_2["type"] == "random_uniform"
+    assert len(rd_lr_2["values"]) == 5
+    assert all(isinstance(v, float) for v in rd_lr_2["values"])
+    assert rd_lr_2["values"][0] >= 0.1 and rd_lr_2["values"][-1] <= 1.0
+    assert rd_lr_2["tune_values"] == (0.1, 1.0, False)
 
     rn_drop_rate = cfg["trainer"]["drop_rate"]
     assert isinstance(rn_drop_rate, dict)

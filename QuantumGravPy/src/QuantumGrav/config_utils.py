@@ -104,16 +104,11 @@ def range_constructor(
       or
 
     tagname: !range
-      start: 1.0e-05
-      stop: 0.1
-      log: true
-      size: 5
+      start: 0.2
+      stop: 0.8
+      step: 0.2
 
-    In the latter case, sample value in the log domain.
-    The 'step' or 'log' field is optional.
-    If there is no `size` specified for `log`, use 5 as default value.
-
-    The end value is inclusive when step is given to make it consistent with Optuna sampling.
+    The end value is inclusive to make it consistent with Optuna sampling.
 
     Args:
         loader (yaml.SafeLoader): loader that loads the yaml file
@@ -122,7 +117,7 @@ def range_constructor(
     Returns:
         Dict[str, Any]: dict of the form: {"type": "range",
                                             "values": values as np.array,
-                                            "tune_values": Tuple[start, end, step or log]}
+                                            "tune_values": Tuple[start, end, step]}
     """
     # using PyYAML's mapping constructor to ensure value types are correct
     mapping = loader.construct_mapping(node, deep=True)
@@ -130,28 +125,66 @@ def range_constructor(
         node.value[0][0].value
     )  # use indices to access keys in case key names change
     end = mapping.get(node.value[1][0].value)
-    step_or_log = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
+    step = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
 
     # prepare values
-    if isinstance(step_or_log, bool):
-        size = mapping.get(node.value[3][0].value) if len(node.value) > 3 else 5
-        # in case start or end are given as 1e-5 etc., convert to float
-        start = float(start)
-        end = float(end)
-        if step_or_log:  # log = true
-            values = np.exp(np.random.uniform(np.log(start), np.log(end), size=size))
-        else:  # log = false
-            values = np.random.uniform(start, end, size=size)
-
-    elif isinstance(step_or_log, (int, float)):
-        values = range_inclusive(start, end, step_or_log)
+    if isinstance(step, (int, float)):
+        values = range_inclusive(start, end, step)
 
     else:  # no step or log specified
         default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
         values = range_inclusive(start, end, default_step)
-        step_or_log = default_step
+        step = default_step
 
-    return {"type": "range", "values": values, "tune_values": (start, end, step_or_log)}
+    return {"type": "range", "values": values, "tune_values": (start, end, step)}
+
+
+def random_uniform_constructor(
+    loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
+) -> Dict[str, Any]:
+    """Constructor for the !random_uniform tag:
+    tagname: !random_uniform
+      start: 1.0e-05
+      stop: 0.1
+      log: true
+      size: 5
+
+    Sample `size` values uniformly between `start` and `stop`.
+    If log is true, sample in the log domain.
+    Otherwise, sample in the linear domain.
+
+    Note: The `size` field is optional and defaults to 5 if omitted.
+        The number of generated values may differ from those sampled by Optuna
+        because Optuna's sampling count depends on the number of trials
+        and the pruning strategy,
+        both of which are unknown when the configuration is loaded.
+
+    Args:
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !random_uniform node to process
+
+    Returns:
+        Dict[str, Any]: dict of the form: {"type": "random_uniform",
+                                            "values": values as np.array,
+                                            "tune_values": Tuple[start, end, log]}
+    """
+    # using PyYAML's mapping constructor to ensure value types are correct
+    mapping = loader.construct_mapping(node, deep=True)
+    start = float(mapping.get(node.value[0][0].value))
+    end = float(mapping.get(node.value[1][0].value))
+    log = mapping.get(node.value[2][0].value)
+    size = mapping.get(node.value[3][0].value) if len(node.value) > 3 else 5
+
+    if log:  # log = true
+        values = np.exp(np.random.uniform(np.log(start), np.log(end), size=size))
+    else:  # log = false
+        values = np.random.uniform(start, end, size=size)
+
+    return {
+        "type": "random_uniform",
+        "values": values,
+        "tune_values": (start, end, log),
+    }
 
 
 def reference_constructor(
@@ -239,6 +272,7 @@ def get_loader():
     loader.add_constructor("!sweep", sweep_constructor)
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
+    loader.add_constructor("!random_uniform", random_uniform_constructor)
     loader.add_constructor("!pyobject", object_constructor)
     loader.add_constructor("!reference", reference_constructor)
     return loader
