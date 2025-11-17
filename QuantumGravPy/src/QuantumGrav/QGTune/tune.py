@@ -7,6 +7,11 @@ import copy
 import sys
 import QuantumGrav as QG
 import jsonschema
+import logging
+
+
+# set up logging
+logging.basicConfig(level=logging.INFO)
 
 
 def is_flat_list(value: Any) -> bool:
@@ -434,7 +439,7 @@ def create_study(tuning_config: Dict[str, Any]) -> optuna.study.Study:
             n_startup_trials=2, n_warmup_steps=5, interval_steps=5
         ),
     )
-    print(f"Study {study_name} was created and saved to {storage}.")
+    logging.info(f"Study {study_name} was created and saved to {storage}.")
     return study
 
 
@@ -547,4 +552,4 @@ def save_best_config(
     with open(output_file, "w") as file:
         yaml.safe_dump(best_config, file)
 
-    print(f"Best configuration saved to {output_file}.")
+    logging.info(f"Best configuration saved to {output_file}.")
