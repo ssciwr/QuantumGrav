@@ -93,7 +93,7 @@ class SequentialModel(BaseModel):
         self.layers = Sequential(input_signature, layers)
 
     def forward(
-        self, x: torch.Tensor, edge_index: torch.Tensor, **kwargs
+        self, x: torch.Tensor, edge_index: torch.Tensor, *args, **kwargs
     ) -> torch.Tensor:
         """Forward pass for the GNNBlock.
         First apply the graph convolution layer, then normalize and apply the activation function.
@@ -101,14 +101,14 @@ class SequentialModel(BaseModel):
         Args:
             x (torch.Tensor): The input node features.
             edge_index (torch.Tensor): The graph connectivity information.
-            edge_weight (torch.Tensor, optional): The edge weights. Defaults to None.
-            kwargs (dict[Any, Any], optional): Additional keyword arguments for the GNN layer. Defaults to None.
+            *args: Additional positional arguments for the model.
+            **kwargs: Additional keyword arguments for the model.
 
         Returns:
             torch.Tensor: The output node features.
         """
 
-        return self.layers(x, edge_index, **kwargs)
+        return self.layers(x, edge_index, *args, **kwargs)
 
     @classmethod
     def verify_config(cls, config: Dict[str, Any]) -> bool:

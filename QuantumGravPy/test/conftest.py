@@ -278,36 +278,36 @@ def read_data():
 # models
 
 
-@pytest.fixture
-def gnn_block():
-    # TODO: fix this
-    return QG.GNNBlock(
-        in_dim=16,
-        out_dim=32,
-        dropout=0.3,
-        gnn_layer_type=torch_geometric.nn.conv.GCNConv,
-        normalizer=torch.nn.BatchNorm1d,
-        activation=torch.nn.ReLU,
-        gnn_layer_args=[],
-        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
-        norm_args=[
-            32,
-        ],
-        norm_kwargs={"eps": 1e-5, "momentum": 0.2},
-        projection_args=[16, 32],
-        projection_kwargs={"bias": False},
-    )
+# @pytest.fixture
+# def gnn_block():
+#     # TODO: fix this
+#     return QG.GNNBlock(
+#         in_dim=16,
+#         out_dim=32,
+#         dropout=0.3,
+#         gnn_layer_type=torch_geometric.nn.conv.GCNConv,
+#         normalizer=torch.nn.BatchNorm1d,
+#         activation=torch.nn.ReLU,
+#         gnn_layer_args=[],
+#         gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
+#         norm_args=[
+#             32,
+#         ],
+#         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
+#         projection_args=[16, 32],
+#         projection_kwargs={"bias": False},
+#     )
 
 
-@pytest.fixture
-def classifier_block():
-    # TODO: Remove this
-    return QG.LinearSequential(
-        dims=[(32, 24), (24, 12), (12, 3)],
-        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
-        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
-        activation_kwargs=[{"inplace": False}, {}, {}],
-    )
+# @pytest.fixture
+# def classifier_block():
+#     # TODO: Remove this
+#     return QG.LinearSequential(
+#         dims=[(32, 24), (24, 12), (12, 3)],
+#         activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+#         linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
+#         activation_kwargs=[{"inplace": False}, {}, {}],
+#     )
 
 
 @pytest.fixture
@@ -354,102 +354,68 @@ def model_config_eval():
     return {
         "encoder_type": QG.SequentialModel,
         "encoder_args": [
-            "x, edge_index -> x3",
+            "x, edge_index",
             [
-                (
+                [
                     "x, edge_index -> x1",
-                    "torch_geometric.nn.conv.GCNConv",
+                    torch_geometric.nn.conv.GCNConv,
                     [
                         2,
                         8,
                     ],
                     {"improved": True, "cached": False, "add_self_loops": True},
-                ),
-                (
+                ],
+                [
                     "x1 -> x2",
-                    "torch_geometric.nn.norm.Batchnorm",
+                    torch_geometric.nn.norm.BatchNorm,
                     [
                         8,
                     ],
                     {"eps": 2e-5, "momentum": 0.2},
-                ),
-                (
+                ],
+                [
                     "x2 -> x3",
-                    "torch.nn.ReLU",
+                    torch.nn.ReLU,
                     [],
                     {
                         "inplace": False,
                     },
-                ),
-                (
+                ],
+                [
                     "x2, edge_index -> x3",
-                    "torch_geometric.nn.conv.GCNConv",
+                    torch_geometric.nn.conv.GCNConv,
                     [
                         8,
                         12,
                     ],
                     {"improved": True, "cached": False, "add_self_loops": True},
-                ),
+                ],
             ],
         ],
         "encoder_kwargs": {},
         "pooling_layers": [
-            ("torch_geometric.nn.aggr.MeanAggregation", [], {}),
+            [torch_geometric.nn.global_mean_pool, [], {}],
         ],
         "downstream_tasks": {
-            0: [
-                (
-                    "torch_geometric.nn.sequential.Sequential",
-                    [
-                        "x, edge_index -> x_",
-                        (
-                            "x, edge_index -> x1",
-                            "torch_geometric.nn.dense.Linear",
-                            [8, 12],
-                            {
-                                "bias": True,
-                            },
-                            "x1 -> x2",
-                            "torch.nn.ReLU",
-                            [],
-                            {
-                                "inplace": False,
-                            },
-                            "x2, edge_index -> x3",
-                            "torch_geometric.nn.dense.Linear",
-                            [12, 20],
-                            {
-                                "bias": True,
-                            },
-                            "x3 -> x4",
-                            "torch.nn.ReLU",
-                            [],
-                            {
-                                "inplace": False,
-                            },
-                            "x4, edge_index -> x5",
-                            "torch_geometric.nn.dense.Linear",
-                            [20, 8],
-                            {
-                                "bias": True,
-                            },
-                        ),
-                    ],
-                    {},
-                ),
+            "0": [
+                torch_geometric.nn.dense.Linear,
+                [12, 2],
+                {
+                    "bias": True,
+                },
             ],
         },
-        "aggregate_pooling_type": "torch.nn.Identity",
+        "aggregate_pooling_type": torch.cat,
         "aggregate_pooling_args": [],
         "aggregate_pooling_kwargs": {},
-        "graph_features_net_type": None,
-        "graph_features_net_args": None,
-        "graph_features_net_kwargs": None,
-        "aggregate_graph_features_type": None,
-        "aggregate_graph_features_args": None,
-        "aggregate_graph_features_kwargs": None,
+        # "graph_features_net_type": None,
+        # "graph_features_net_args": None,
+        # "graph_features_net_kwargs": None,
+        # "aggregate_graph_features_type": None,
+        # "aggregate_graph_features_args": None,
+        # "aggregate_graph_features_kwargs": None,
         "active_tasks": {
-            0: True,
+            "0": True,
         },
     }
 

@@ -30,7 +30,13 @@ def test_default_evaluator_creation(gnn_model_eval):
     evaluator = QG.DefaultEvaluator(
         device=device,
         criterion=compute_loss,
-        apply_model=lambda data: gnn_model_eval(data, data.edge_index, data.batch),
+        apply_model=lambda data: gnn_model_eval(
+            data,
+            data.edge_index,
+            encoder_args=[
+                data.batch,
+            ],
+        ),
     )
 
     assert evaluator.device == device
@@ -45,7 +51,9 @@ def test_default_evaluator_evaluate(make_dataloader, gnn_model_eval):
     evaluator = QG.DefaultEvaluator(
         device=device,
         criterion=compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        apply_model=lambda model, data: model(
+            data.x, data.edge_index, batch=data.batch
+        )["0"],
     )
     losses = evaluator.evaluate(model, dataloader)
     assert len(losses) == len(dataloader)
@@ -57,7 +65,9 @@ def test_default_evaluator_report(caplog):
     evaluator = QG.DefaultEvaluator(
         device=device,
         criterion=compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        apply_model=lambda model, data: model(
+            data.x, data.edge_index, batch=data.batch
+        )["0"],
     )
     assert len(evaluator.data) == 0
     losses = np.random.rand(100)
@@ -91,7 +101,9 @@ def test_default_tester_test(make_dataloader, gnn_model_eval):
     tester = QG.DefaultTester(
         device=device,
         criterion=compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
+        apply_model=lambda model, data: model(
+            data.x, data.edge_index, batch=data.batch
+        )["0"],
     )
     testdata = tester.test(gnn_model_eval, dataloader)
     assert len(testdata) == len(dataloader)

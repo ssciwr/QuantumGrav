@@ -1,7 +1,9 @@
 from typing import Any, Callable, Mapping, Sequence, Dict, Tuple
 from pathlib import Path
-import torch
+from inspect import isclass
 import jsonschema
+
+import torch
 
 from .base import BaseModel
 
@@ -32,7 +34,6 @@ class GNNModel(BaseModel):
         "type": "object",
         "properties": {
             "encoder_type": {
-                "type": "string",
                 "description": "name of the encoder model",
             },
             "encoder_args": {
@@ -50,11 +51,10 @@ class GNNModel(BaseModel):
                 "description": "Dictionary of downstream tasks",
                 "additionalProperties": {
                     "type": "array",
-                    "minItems": 3,
+                    "minItems": 1,
                     "maxItems": 3,
                     "items": [
                         {
-                            "type": "string",
                             "description": "Module type name",
                         },
                         {
@@ -75,12 +75,11 @@ class GNNModel(BaseModel):
             "pooling_layers": {
                 "type": "array",
                 "items": {
-                    "type": "object",
-                    "minItems": 3,
+                    "type": "array",
+                    "minItems": 1,
                     "maxItems": 3,
                     "items": [
                         {
-                            "type": "string",
                             "description": "Module type name",
                         },
                         {
@@ -99,7 +98,6 @@ class GNNModel(BaseModel):
                 },
             },
             "aggregate_pooling_type": {
-                "type": "string",
                 "description": "class- or function name of the aggregate pooling layer",
             },
             "aggregate_pooling_args": {
@@ -113,7 +111,6 @@ class GNNModel(BaseModel):
                 "additionalProperties": True,
             },
             "graph_features_net_type": {
-                "type": "string",
                 "description": "class name of the graph features net",
             },
             "graph_features_net_args": {
@@ -127,7 +124,6 @@ class GNNModel(BaseModel):
                 "additionalProperties": True,
             },
             "aggregate_graph_features_type": {
-                "type": "string",
                 "description": "class or function name of the graph feature aggregation",
             },
             "aggregate_graph_features_args": {
@@ -164,7 +160,7 @@ class GNNModel(BaseModel):
         encoder_args: Sequence[Any],
         encoder_kwargs: Dict[str, Any],
         downstream_tasks: Dict[
-            Any, Tuple[type[torch.nn.Module], Sequence[Any], Dict[str, Any]]
+            str, Tuple[type[torch.nn.Module], Sequence[Any], Dict[str, Any]]
         ],
         pooling_layers: Sequence[
             Tuple[type[torch.nn.Module] | Callable, Sequence[Any], Dict[str, Any]]
@@ -252,14 +248,21 @@ class GNNModel(BaseModel):
 
             self.pooling_layers = torch.nn.ModuleList(
                 [
-                    p["type"](*p.get("args", []), **p.get("kwargs", {}))
-                    for p in pooling_layers
+                    ModuleWrapper(ptype)
+                    if callable(ptype)
+                    else ptype(
+                        *(args if args is not None else []),
+                        **(kwargs if kwargs is not None else {}),
+                    )
+                    for (ptype, args, kwargs) in pooling_layers
                 ]
             )
 
         # set up aggregation of pooling layers
         if aggregate_pooling_type is not None:
-            if issubclass(aggregate_pooling_type, torch.nn.Module):
+            if isclass(aggregate_pooling_type) and issubclass(
+                aggregate_pooling_type, torch.nn.Module
+            ):
                 self.aggregate_pooling: torch.nn.Module = aggregate_pooling_type(
                     *(aggregate_pooling_args if aggregate_pooling_args else []),
                     **(aggregate_pooling_kwargs if aggregate_pooling_kwargs else {}),
@@ -272,6 +275,8 @@ class GNNModel(BaseModel):
                 raise TypeError(
                     "Error, aggregate_pooling_type must be a callable or a subclass of torch.nn.Module"
                 )
+        else:
+            self.aggregate_pooling = None
 
         # set up graph_features network if it's provided
         if graph_features_net_type is not None:
@@ -279,10 +284,14 @@ class GNNModel(BaseModel):
                 *(graph_features_net_args if graph_features_net_args else []),
                 **(graph_features_net_kwargs if graph_features_net_kwargs else {}),
             )
+        else:
+            self.graph_features_net = None
 
         # set up aggregation of graph features
         if aggregate_graph_features_type is not None:
-            if issubclass(aggregate_graph_features_type, torch.nn.Module):
+            if isclass(aggregate_graph_features_type) and issubclass(
+                aggregate_graph_features_type, torch.nn.Module
+            ):
                 self.aggregate_graph_features: torch.nn.Module = (
                     aggregate_graph_features_type(
                         *(
@@ -305,11 +314,16 @@ class GNNModel(BaseModel):
                 raise TypeError(
                     "Error, aggregate_graph_features_type must be a callable or a subclass of torch.nn.Module"
                 )
+        else:
+            self.aggregate_graph_features = None
 
         # set up downstream tasks
         self.downstream_tasks = torch.nn.ModuleDict(
             {
-                key: taskspecs[0](*taskspecs[1], **taskspecs[2])
+                key: taskspecs[0](
+                    *(taskspecs[1] if taskspecs[1] else []),
+                    **(taskspecs[2] if taskspecs[2] else {}),
+                )
                 for key, taskspecs in downstream_tasks.items()
             }
         )
@@ -317,7 +331,7 @@ class GNNModel(BaseModel):
         self.active_tasks: Dict[Any, bool] = (
             active_tasks
             if active_tasks is not None
-            else {i: True for i in range(len(downstream_tasks))}
+            else {key: True for key in downstream_tasks.keys()}
         )
 
     def set_task_active(self, key: Any) -> None:
@@ -348,127 +362,88 @@ class GNNModel(BaseModel):
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
-        batch: torch.Tensor | None = None,
-        gcn_kwargs: dict | None = None,
+        edge_weight: torch.Tensor,
+        batch: torch.Tensor | None,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
         """Get embeddings from the GCN model.
 
         Args:
             x (torch.Tensor): Input node features.
             edge_index (torch.Tensor): Graph connectivity information.
-            batch (torch.Tensor): Batch vector for pooling.
-            gcn_kwargs (dict, optional): Additional arguments for the GCN. Defaults to None.
+            batch (torch.Tensor | None): batch indicator tensor
+            *args: additional args for the encoder
+            **kwargs: additional kwargs for the encoder
 
         Returns:
             torch.Tensor: Embedding vector for the graph features.
         """
-        # apply the GCN backbone to the node features
-        embeddings = self.encoder(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
+        embeddings = self.encoder(x, edge_index, edge_weight, **kwargs)
 
-        # pool everything together into a single graph representation
+        # Pool to graph-level if pooling is configured
         if self.pooling_layers is not None and self.aggregate_pooling is not None:
-            pooled_embeddings = [
-                pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
-            ]
+            if batch is None:
+                batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
 
-            return self.aggregate_pooling(pooled_embeddings)
-        else:
-            return embeddings
+            pooled = [pool(embeddings, batch) for pool in self.pooling_layers]
+            embeddings = self.aggregate_pooling(pooled)
 
-    def compute_downstream_tasks(
-        self,
-        x: torch.Tensor,
-        downstream_task_args_kwargs: Dict[
-            Any, Dict[str, Sequence[Any] | Dict[str, Any]]
-        ]
-        | None = None,
-    ) -> Mapping[int, torch.Tensor]:
-        """Compute the output of the active downstream tasks
-
-        Args:
-            x (torch.Tensor): Input tensor
-            downstream_task_args_kwargs (Dict[ Any, Dict[str, Sequence[Any] | Dict[str, Any]] ] | None, optional): keyword arguments for each task. Optional. Defaults to None.
-
-        Returns:
-            Mapping[int, torch.Tensor]: dictionary of downstream task outputs
-        """
-        output = {}
-        if downstream_task_args_kwargs is None:
-            task_ak: Dict[Any, Dict[str, Sequence[Any] | Dict[str, Any]]] = {}
-        else:
-            task_ak = downstream_task_args_kwargs
-
-        for key, task in self.downstream_tasks.items():
-            if self.active_tasks[key]:
-                current = task_ak.get(key, {})
-                task_args: Sequence[Any] = (
-                    current.get("args", []) if "args" in current else []
-                )
-                task_kwargs: Dict[str, Any] = (
-                    current.get("kwargs", {}) if "kwargs" in current else {}
-                )
-                res = task(x, *task_args, **task_kwargs)
-                output[key] = res
-
-        return output
+        return embeddings
 
     def forward(
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
+        edge_weight: torch.Tensor | None = None,
         batch: torch.Tensor | None = None,
-        encoder_args: Sequence[Any] | None = None,
-        encoder_kwargs: Dict[str, Any] | None = None,
-        graph_features_args: Sequence[Any] | None = None,
-        graph_features_kwargs: Dict[str, Any] | None = None,
-        downstream_task_args_kwargs: Dict[
-            Any, Dict[str, Sequence[Any] | Dict[str, Any]]
-        ]
-        | None = None,
+        graph_features: torch.Tensor | None = None,
+        **kwargs,
     ) -> Mapping[int, torch.Tensor]:
-        """Compute the full model output.
+        """Compute the full model output
 
         Args:
-            x (torch.Tensor): Input features
-            edge_index (torch.Tensor): graph edge index
-            batch (torch.Tensor | None, optional): Batch indicator vector. Defaults to None.
-            encoder_args (Sequence[Any] | None, optional): Additional args for the encoder. Defaults to None.
-            encoder_kwargs (Dict[str, Any] | None, optional): Additional kwargs for the encoder. Defaults to None.
-            graph_features_args (Sequence[Any] | None, optional): Additional args for the graph features net if present. Defaults to None.
-            graph_features_kwargs (Dict[str, Any] | None, optional): Additional kwargs for the graph features net if present. Defaults to None.
-            downstream_task_args_kwargs (Dict[ Any, Dict[str, Sequence[Any] | Dict[str, Any]] ] | None, optional): _description_. Defaults to None.
+            x (torch.Tensor): _description_
+            edge_index (torch.Tensor): _description_
+            batch (torch.Tensor | None, optional): _description_. Defaults to None.
+            graph_features (torch.Tensor | None, optional): _description_. Defaults to None.
+            kwargs: further kwargs. can contain some or all of:
+            {
+                "encoder_args": [arg1, arg2],
+                "encoder_kwargs": {
+                    "kwarg1": kwargvalue1,
+                    "kwarg2": kwargvalue2,
+                },
 
+            }
         Returns:
-            torch.Tensor | Mapping[int, torch.Tensor]: _description_
+            Mapping[int, torch.Tensor]: _description_
         """
-        # FIXME: this will probably not work, make sure that args/kwargs shit works as it should
 
-        # apply the GCN backbone to the node features
         embeddings = self.get_graph_embeddings(
             x,
             edge_index,
+            edge_weight,
             batch,
-            *(encoder_args if encoder_args else []),
-            **(encoder_kwargs if encoder_kwargs else {}),
+            *(kwargs.get("encoder_args", [])),
+            **(kwargs.get("encoder_kwargs", {})),
         )
 
-        # If we have graph features, we need to process them and concatenate them with the node features
-        if self.graph_features_net:
-            graph_features = self.graph_features_net(
-                *(graph_features_args if graph_features_args else []),
-                **(graph_features_kwargs if graph_features_kwargs else {}),
-            )
-            embeddings = self.aggregate_graph_features(
-                embeddings,
-                graph_features,
-                **(graph_features_kwargs if graph_features_kwargs else {}),
-            )
+        if self.graph_features_net is not None:
+            embeddings = self.graph_features_net(embeddings, graph_features)
 
-        # downstream tasks are given out as is, no softmax or other assumptions
-        return self.compute_downstream_tasks(
-            embeddings,
-            downstream_task_args_kwargs=downstream_task_args_kwargs,
-        )
+        # Compute downstream tasks - pass batch to tasks that might need it
+        output = {}
+        for key, task in self.downstream_tasks.items():
+            if self.active_tasks[key]:
+                # Tasks get embeddings and can use batch from kwargs if needed
+                output[key] = task(
+                    embeddings,
+                    *kwargs.get("downstream_args", {}).get(key, []),
+                    **kwargs.get("downstream_kwargs", {}).get(key, {}),
+                )
+
+        return output
 
     @classmethod
     def verify_config(cls, config: Dict[str, Any]) -> bool:
@@ -498,32 +473,25 @@ class GNNModel(BaseModel):
 
         # return the model
         return cls(
-            config["encoder"]["type"],
-            config["encoder"]["args"],
-            config["encoder"]["kwargs"],
-            downstream_tasks={
-                key: (
-                    task_cfg["type"],
-                    task_cfg.get("args", []),
-                    task_cfg.get("kwargs", {}),
-                )
-                for (key, task_cfg) in config["downstream_tasks"].items()
-            },
+            config["encoder_type"],
+            config["encoder_args"],
+            config["encoder_kwargs"],
+            downstream_tasks=config["downstream_tasks"],
             pooling_layers=config.get("pooling_layers", None),
-            aggregate_pooling_type=config["aggregate_pooling"]["type"],
-            aggregate_pooling_args=config["aggregate_pooling"].get("args", None),
-            aggregate_pooling_kwargs=config["aggregate_pooling"].get("kwargs", None),
-            graph_features_net_type=config["graph_features_net"].get("type", None),
-            graph_features_net_args=config["graph_features_net"].get("args", None),
-            graph_features_net_kwargs=config["graph_features_net"].get("kwargs", None),
-            aggregate_graph_features_type=config["aggregate_graph_features"].get(
-                "type", None
+            aggregate_pooling_type=config.get("aggregate_pooling_type", None),
+            aggregate_pooling_args=config.get("aggregate_pooling_args", None),
+            aggregate_pooling_kwargs=config.get("aggregate_pooling_kwargs", None),
+            graph_features_net_type=config.get("graph_features_net_type", None),
+            graph_features_net_args=config.get("graph_features_net_args", None),
+            graph_features_net_kwargs=config.get("graph_features_net_kwargs", None),
+            aggregate_graph_features_type=config.get(
+                "aggregate_graph_features_type", None
             ),
-            aggregate_graph_features_args=config["aggregate_graph_features"].get(
-                "args", None
+            aggregate_graph_features_args=config.get(
+                "aggregate_graph_features_args", None
             ),
-            aggregate_graph_features_kwargs=config["aggregate_graph_features"].get(
-                "kwargs", None
+            aggregate_graph_features_kwargs=config.get(
+                "aggregate_graph_features_kwargs", None
             ),
             active_tasks=config.get("active_tasks", None),
         )
