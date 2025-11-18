@@ -642,14 +642,13 @@
 <p>A Julia package called <code>QuantumGrav.jl</code> which is build on top of <a href="https://www.thphys.uni-heidelberg.de/~hollmeier/causalsets/"><code>CausalSets.jl</code></a>, which creates a causal sets of a different varieties (manifold-like, random non-manifold like, non-causal-set DAGs). For now, manifold-like causal sets are restricted to 2D. This package also provides functions for deriving a set of quantities from the graph-level properties of the produced causal sets. It also allows for storing the data in  <code>Zarr</code> files.</p>
 </li>
 <li>
-<p>A Python package called <code>QuantumGravPy</code> which is based on <a href="https://pytorch-geometric.readthedocs.io/en/latest/"><code>pytorch-geometric</code></a>, <a href="https://www.h5py.org/"><code>h5py</code></a> and <a href="https://zarr.readthedocs.io/en/stable/"><code>zarr</code></a>. This package  is thus responsible for the data preprocessing, and model training. This package is based on a configuration-code separation in which you will define your model using YAML files and only supply code where the supplied abstractions do not suffice.</p>
+<p>A Python package called <code>QuantumGravPy</code> which is based on <a href="https://pytorch-geometric.readthedocs.io/en/latest/"><code>pytorch-geometric</code></a> and <a href="https://zarr.readthedocs.io/en/stable/"><code>zarr</code></a>. This package  is thus responsible for the data preprocessing, and model training. This package is based on a configuration-code separation in which you will define your model using YAML files and only supply code where the predefined abstractions do not suffice.</p>
 </li>
 </ul>
 <p>Start with the <a href="getting_started/">Getting started</a> page to get up and running.</p>
 <p>For the Python package <code>QuantumGravPy</code>, the <a href="datasets_and_preprocessing/"><code>Datasets and Preprocessing</code></a> section will show you how to use the supplied dataset classes for processing your raw data. Next, you should learn about the model architecture used in this package in <a href="models/"><code>Graph Neural Network models</code></a>.
 To learn how to train a model, check out the <a href="training_a_model/"><code>Model training</code></a> section.
 Finally, the <a href="api/"><code>API documentation</code></a> will tell you everything you need to know about the source code of the package.</p>
-<p>For the Julia package <code>QuantumGrav.jl</code>, TODO:</p>
 <p>Note that the two packages are designed to function in unison, with the Julia package producing data that the python package consumes.</p>
 
 
