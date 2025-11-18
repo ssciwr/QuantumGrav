@@ -1,14 +1,15 @@
 import yaml
 import copy
 import importlib
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
+import numpy as np
 
 from . import utils
 
 
 def sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !sweep yaml tag, which in a yaml file can look like this:
     tagname: !sweep
         values: [a,b,c...]
@@ -17,7 +18,7 @@ def sweep_constructor(
         node (yaml.nodes.MappingNode): the current !sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
+        Dict[str, Any]: dictionary of the form {type:sweep, values: [v1,v2,v3,...]}
     """
     values = loader.construct_sequence(node.value[0][1])
     return {"type": "sweep", "values": values}
@@ -25,7 +26,7 @@ def sweep_constructor(
 
 def coupled_sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !coupled-sweep yaml tag which is designed to tie a sequence of values
     to a !sweep tag such that they proceed in lockstep like a 'zip' operation. Example:
     tagname: !sweep
@@ -38,7 +39,7 @@ def coupled_sweep_constructor(
         node (yaml.nodes.MappingNode): the current !coupled-sweep node to process
 
     Returns:
-        dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
+        Dict[str, Any]: dictionary of the form {keys:'type', type: 'coupled-sweep', values: [v1,v2,v3,...], target: [path, to, target]}
     """
     tokens = node.value[0][1].value.split(".")
     sweep_target = []
@@ -55,26 +56,168 @@ def coupled_sweep_constructor(
     return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
 
+def range_inclusive(
+    start: int | float, stop: int | float, step: int | float
+) -> np.ndarray:
+    """Return a numpy array from start to stop (inclusive),
+    with the given step, working for both int and float.
+
+    Args:
+        start (int | float): Start value
+        stop (int | float): Stop value (inclusive)
+        step (int | float): Step size
+
+    Returns:
+        np.ndarray: Numpy array of values from start to stop (inclusive)
+            with the given step.
+    """
+    if step == 0:
+        raise ValueError("step must not be zero")
+
+    # Compute number of steps (round to avoid float precision errors)
+    # +1 to include stop
+    num = int(round((stop - start) / step)) + 1
+
+    # Generate linearly spaced values (always includes stop)
+    values = np.linspace(start, start + (num - 1) * step, num)
+
+    # Adjust last value to exactly match stop when it's very close
+    if abs(values[-1] - stop) < abs(step) * 1e-9:
+        values[-1] = stop
+
+    # If all inputs were ints, cast result back to int
+    if all(isinstance(x, int) for x in (start, stop, step)):
+        values = values.astype(int)
+
+    return values
+
+
 def range_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Constructor for the !range tag:
     tagname: !range
       start: 0
       stop: 10
       step: 2
 
+      or
+
+    tagname: !range
+      start: 0.2
+      stop: 0.8
+      step: 0.2
+
+    The end value is inclusive to make it consistent with Optuna sampling.
+
     Args:
         loader (yaml.SafeLoader): loader that loads the yaml file
         node (yaml.nodes.MappingNode): the current !range node to process
 
     Returns:
-        dict[str, Any]: dict of the form: {"type": "range", "values": range(start, end, step)}
+        Dict[str, Any]: dict of the form: {"type": "range",
+                                            "values": values as np.array,
+                                            "tune_values": Tuple[start, end, step]}
     """
-    start = int(node.value[0][1].value)
-    end = int(node.value[1][1].value)
-    step = int(node.value[2][1].value) if len(node.value) > 2 else 1
-    return {"type": "range", "values": range(start, end, step)}
+    # using PyYAML's mapping constructor to ensure value types are correct
+    mapping = loader.construct_mapping(node, deep=True)
+    start = mapping.get(
+        node.value[0][0].value
+    )  # use indices to access keys in case key names change
+    end = mapping.get(node.value[1][0].value)
+    step = mapping.get(node.value[2][0].value) if len(node.value) > 2 else None
+
+    # prepare values
+    if isinstance(step, (int, float)):
+        values = range_inclusive(start, end, step)
+
+    else:  # no step or log specified
+        default_step = 1 if isinstance(start, int) and isinstance(end, int) else 0.1
+        values = range_inclusive(start, end, default_step)
+        step = default_step
+
+    return {"type": "range", "values": values, "tune_values": (start, end, step)}
+
+
+def random_uniform_constructor(
+    loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
+) -> Dict[str, Any]:
+    """Constructor for the !random_uniform tag:
+    tagname: !random_uniform
+      start: 1.0e-05
+      stop: 0.1
+      log: true
+      size: 5
+
+    Sample `size` values uniformly between `start` and `stop`.
+    If log is true, sample in the log domain.
+    Otherwise, sample in the linear domain.
+
+    Note: The `size` field is optional and defaults to 5 if omitted.
+        The number of generated values may differ from those sampled by Optuna
+        because Optuna's sampling count depends on the number of trials
+        and the pruning strategy,
+        both of which are unknown when the configuration is loaded.
+
+    Args:
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !random_uniform node to process
+
+    Returns:
+        Dict[str, Any]: dict of the form: {"type": "random_uniform",
+                                            "values": values as np.array,
+                                            "tune_values": Tuple[start, end, log]}
+    """
+    # using PyYAML's mapping constructor to ensure value types are correct
+    mapping = loader.construct_mapping(node, deep=True)
+    start = float(mapping.get(node.value[0][0].value))
+    end = float(mapping.get(node.value[1][0].value))
+    log = mapping.get(node.value[2][0].value)
+    size = mapping.get(node.value[3][0].value) if len(node.value) > 3 else 5
+
+    if log:  # log = true
+        values = np.exp(np.random.uniform(np.log(start), np.log(end), size=size))
+    else:  # log = false
+        values = np.random.uniform(start, end, size=size)
+
+    return {
+        "type": "random_uniform",
+        "values": values,
+        "tune_values": (start, end, log),
+    }
+
+
+def reference_constructor(
+    loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
+) -> Dict[str, Any]:
+    """Constructor for the !reference tag:
+
+    referred_tag:...
+    tagname: !reference
+      target: path.to.referred_tag
+
+    This tag is used where value of the referred tag is not fixed at config load time,
+    but might be changed later on. This always points to the current value of the referred tag.
+
+    Args:
+        loader (yaml.SafeLoader): loader that loads the yaml file
+        node (yaml.nodes.MappingNode): the current !reference node to process
+
+    Returns:
+        Dict[str, Any]: dict of the form: {"type": "reference", "target": [path, to, referred_tag]}
+    """
+    tokens = node.value[0][1].value.split(".")
+    reference_target = []
+    for token in tokens:
+        split_token = token.split("[")
+        if len(split_token) > 1:
+            index = int(split_token[1][:-1])
+            reference_target.append(split_token[0])
+            reference_target.append(index)
+        else:
+            reference_target.append(token)
+
+    return {"type": "reference", "target": reference_target}
 
 
 def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> Any:
@@ -129,8 +272,59 @@ def get_loader():
     loader.add_constructor("!sweep", sweep_constructor)
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
+    loader.add_constructor("!random_uniform", random_uniform_constructor)
     loader.add_constructor("!pyobject", object_constructor)
+    loader.add_constructor("!reference", reference_constructor)
     return loader
+
+
+def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert specific values in the configuration dictionary to `pyobject` YAML tags.
+    This is useful for saving the best configuration back to a YAML file,
+    and make sure that these tags are converted back to the original structures
+    when the YAML file is loaded again.
+
+    `pyobject` tags can only be applied to values that are not of built-in types.
+
+    Args:
+        config (Dict[str, Any]): The configuration dictionary.
+
+    Returns:
+        Dict[str, Any]: The configuration dictionary with converted custom tags.
+    """
+    # determine items to iterate over
+    if isinstance(config, dict):
+        items = config.items()
+        new_config = {}
+    elif isinstance(config, list):
+        items = enumerate(config)
+        new_config = [None] * len(config)
+    else:
+        return config
+
+    for key, value in items:
+        is_dict = isinstance(value, dict)
+        is_list = isinstance(value, list)
+
+        # recursive cases
+        if is_dict or is_list:
+            new_value = convert_to_pyobject_tags(value)
+            new_config[key] = new_value
+
+        # base cases
+        else:
+            # convert only non-built-in types to pyobject tags
+            if not isinstance(value, (bool, str, float, int, list, dict)):
+                # convert to !pyobject name_of_class
+                module = value.__module__
+                class_name = value.__name__
+                full_class_name = f"{module}.{class_name}"
+                pyobject_tag = f"!pyobject {full_class_name}"
+                new_config[key] = pyobject_tag
+            else:
+                new_config[key] = value
+
+    return new_config
 
 
 class ConfigHandler:

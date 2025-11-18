@@ -28,11 +28,15 @@ def basic_transform():
 
         max_path_future = torch.tensor(
             raw["max_pathlen_future"], dtype=torch.float32
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(
+            1
+        )  # make this a (num_nodes, 1) tensor
 
         max_path_past = torch.tensor(
             raw["max_pathlen_past"], dtype=torch.float32
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(
+            1
+        )  # make this a (num_nodes, 1) tensor
 
         node_features.extend([max_path_future, max_path_past])
 
@@ -236,11 +240,15 @@ def read_data():
         # Path lengths
         max_path_future = torch.tensor(
             f["max_pathlen_future"][idx, :], dtype=float_dtype
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(
+            1
+        )  # make this a (num_nodes, 1) tensor
 
         max_path_past = torch.tensor(
             f["max_pathlen_past"][idx, :], dtype=float_dtype
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(
+            1
+        )  # make this a (num_nodes, 1) tensor
         node_features.extend([max_path_future, max_path_past])
 
         x = torch.cat(node_features, dim=1)
@@ -432,3 +440,63 @@ def gnn_model_eval(model_config_eval):
     )
     model.eval()
     return model
+
+
+@pytest.fixture(scope="session")
+def yaml_text():
+    yaml_text = """
+        model:
+            name: test_model
+            layers: !sweep
+                values: [1, 2]
+
+            type: !pyobject QuantumGrav.GNNBlock
+            convtype: !pyobject torch_geometric.nn.SAGEConv
+            bs: !coupled-sweep
+                target: model.layers
+                values: [16, 32]
+            lr: !sweep
+                values: [0.1, 0.01, 0.001]
+            foo:
+                -
+                    x: 3
+                    y: 5
+                -
+                    x: !sweep
+                        values: [1, 2]
+                    y: 2
+            bar:
+                - x: !coupled-sweep
+                    target: model.foo[1].x
+                    values: [-1, -2]
+            baz:
+                - x: !coupled-sweep
+                    target: model.foo[1].x
+                    values: [-10, -20]
+
+        trainer:
+            epochs: !range
+                start: 1
+                stop: 6
+                step: 2
+
+            lr: !random_uniform
+                start: 1e-5
+                stop: 1e-2
+                log: true
+                size: 4
+
+            lr_2: !random_uniform
+                start: 0.1
+                stop: 1.0
+                log: false
+
+            drop_rate: !range
+                start: 0.1
+                stop: 0.5
+                step: 0.2
+
+            foo_ref: !reference
+                target: model.foo[1].x
+        """
+    return yaml_text
