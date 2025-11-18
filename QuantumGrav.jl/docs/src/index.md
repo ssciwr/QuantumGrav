@@ -10,7 +10,7 @@ Currently supported are:
 - random: Causal sets with randomly selected links
 - layered: Causal sets in which events are ordered in layers along the time dimension.
 - merged: A merger of a random and manifold like causal set
-- destroyed: A manifold like causal set with some edges being filpped
+- destroyed: A manifold like causal set with some edges being flipped, which makes it a non-manifold like causal set.
 - grid like: Causal sets in which events are ordered in a grid like fashion according to a certain scheme, which can be one of 'quadratic', 'rectangular', 'rhombic', 'hexagonal', 'oblique'
 
 You currently have to install the package from the github repository directly:
@@ -68,7 +68,7 @@ Then we load the config and call the `prepare_dataproduction` function to set ev
 ```julia
 config = _YAML.load_file(joinpath("path", "to", "configfile.yaml")) # load from yaml file.
 
-filepath, file = QG.prepare_dataproduction(
+path_to_store, zarr_store = QG.prepare_dataproduction(
     config,
     [make_cset_data];
     nameaddition = "random_data", # will create a folder starting with 'random_data' and ending with '.zarr'
