@@ -1,7 +1,6 @@
 import QuantumGrav as QG
 import pytest
 import torch
-from torch_geometric.nn.conv import GCNConv
 from torch_geometric.nn import global_mean_pool
 
 
@@ -9,7 +8,7 @@ def test_register_pooling_layer():
     """Test the registration of pooling layers."""
     layer = torch.nn.MaxPool1d(2)
     QG.register_pooling_layer("test_pooling", layer)
-    assert "test_pooling" in QG.sequential_model.utils.pooling_layers
+    assert "test_pooling" in QG.utils.pooling_layers
 
     with pytest.raises(ValueError):
         QG.register_pooling_layer("test_pooling", layer)
@@ -35,21 +34,11 @@ def test_list_registered_pooling_layers():
     assert len(layers) > 0  # Ensure there are some registered layers
 
 
-def test_register_gnn_layer():
-    """Test the registration of GNN layers."""
-    layer = torch.nn.Linear
-    QG.register_gnn_layer("test_layer", layer)
-    assert "test_layer" in QG.sequential_model.utils.gnn_layers
-
-    with pytest.raises(ValueError):
-        QG.register_gnn_layer("test_layer", layer)
-
-
 def test_register_activation():
     """Test the registration of activation layers."""
     activation = torch.nn.ReLU
     QG.register_activation("test_activation", activation)
-    assert "test_activation" in QG.sequential_model.utils.activation_layers
+    assert "test_activation" in QG.utils.activation_layers
 
     with pytest.raises(ValueError):
         QG.register_activation("test_activation", activation)
@@ -59,20 +48,10 @@ def test_register_normalizer():
     """Test the registration of normalizer layers."""
     normalizer = torch.nn.BatchNorm1d
     QG.register_normalizer("test_normalizer", normalizer)
-    assert "test_normalizer" in QG.sequential_model.utils.normalizer_layers
-    assert torch.nn.BatchNorm1d in QG.sequential_model.utils.normalizer_layers_names
+    assert "test_normalizer" in QG.utils.normalizer_layers
+    assert torch.nn.BatchNorm1d in QG.utils.normalizer_layers_names
     with pytest.raises(ValueError):
         QG.register_normalizer("test_normalizer", normalizer)
-
-
-def test_get_registered_gnn_layer():
-    """Test retrieval of registered GNN layers."""
-    layer = QG.get_registered_gnn_layer("gcn")
-    assert layer is not None
-    assert layer == GCNConv
-
-    not_registered_layer = QG.get_registered_gnn_layer("non_existent")
-    assert not_registered_layer is None
 
 
 def test_get_registered_normalizer():
@@ -303,16 +282,6 @@ def test_list_evaluation_functions():
     assert len(funcs) >= initial_count + 2
 
 
-def test_list_registered_gnn_layers():
-    """Test listing of registered GNN layers."""
-    layers = QG.list_registered_gnn_layers()
-    assert isinstance(layers, list)
-    assert "gcn" in layers
-    assert "gat" in layers
-    assert "sage" in layers
-    assert len(layers) > 0
-
-
 def test_list_registered_normalizers():
     """Test listing of registered normalizer layers."""
     normalizers = QG.list_registered_normalizers()
@@ -340,7 +309,7 @@ def test_register_graph_features_aggregation():
         return torch.mean(torch.stack(tensors), dim=0)
 
     QG.register_graph_features_aggregation("test_agg", custom_agg)
-    assert "test_agg" in QG.sequential_model.utils.graph_features_aggregations
+    assert "test_agg" in QG.utils.graph_features_aggregations
 
     with pytest.raises(ValueError):
         QG.register_graph_features_aggregation("test_agg", custom_agg)
@@ -353,7 +322,7 @@ def test_register_pooling_aggregation():
         return torch.sum(torch.stack(tensors), dim=0)
 
     QG.register_pooling_aggregation("test_pool_agg", custom_pool_agg)
-    assert "test_pool_agg" in QG.sequential_model.utils.pooling_aggregations
+    assert "test_pool_agg" in QG.utils.pooling_aggregations
 
     with pytest.raises(ValueError):
         QG.register_pooling_aggregation("test_pool_agg", custom_pool_agg)

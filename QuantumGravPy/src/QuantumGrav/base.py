@@ -54,7 +54,9 @@ class BaseModel(torch.nn.Module, Configurable):
         super().__init__()
 
     @abstractmethod
-    def forward(self, *args, **kwargs) -> torch.Tensor | Mapping[int, torch.Tensor] | Collection[torch.Tensor]:
+    def forward(
+        self, *args, **kwargs
+    ) -> torch.Tensor | Mapping[int, torch.Tensor] | Collection[torch.Tensor]:
         """Abstract forward method for the model.
 
         Returns:
@@ -74,9 +76,7 @@ class BaseModel(torch.nn.Module, Configurable):
 
     @classmethod
     @abstractmethod
-    def load(
-        cls, path: str, device: torch.device = torch.device("cpu")
-    ) -> "BaseModel":
+    def load(cls, path: str, device: torch.device = torch.device("cpu")) -> "BaseModel":
         """Load a mode instance from file
 
         Args:

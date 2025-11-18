@@ -31,7 +31,7 @@ class GNNModel(BaseModel):
         "title": "GNNModel Configuration",
         "type": "object",
         "properties": {
-            "encoder_name": {
+            "encoder_type": {
                 "type": "string",
                 "description": "name of the encoder model",
             },
@@ -98,7 +98,7 @@ class GNNModel(BaseModel):
                     "required": ["type"],
                 },
             },
-            "aggregate_pooling_name": {
+            "aggregate_pooling_type": {
                 "type": "string",
                 "description": "class- or function name of the aggregate pooling layer",
             },
@@ -112,7 +112,7 @@ class GNNModel(BaseModel):
                 "description": "keyword arguments for the pooling aggregation",
                 "additionalProperties": True,
             },
-            "graph_features_net_name": {
+            "graph_features_net_type": {
                 "type": "string",
                 "description": "class name of the graph features net",
             },
@@ -126,7 +126,7 @@ class GNNModel(BaseModel):
                 "description": "keyword arguments for the graph features net",
                 "additionalProperties": True,
             },
-            "aggregate_graph_features_name": {
+            "aggregate_graph_features_type": {
                 "type": "string",
                 "description": "class or function name of the graph feature aggregation",
             },
@@ -147,12 +147,12 @@ class GNNModel(BaseModel):
             },
         },
         "required": [
-            "encoder_name",
+            "encoder_type",
             "encoder_args",
             "encoder_kwargs",
             "downstream_tasks",
             "pooling_layers",
-            "aggregate_pooling_name",
+            "aggregate_pooling_type",
             "active_tasks",
         ],
         "additionalProperties": False,
@@ -160,7 +160,7 @@ class GNNModel(BaseModel):
 
     def __init__(
         self,
-        encoder_name: type[torch.nn.Module],
+        encoder_type: type[torch.nn.Module],
         encoder_args: Sequence[Any],
         encoder_kwargs: Dict[str, Any],
         downstream_tasks: Dict[
@@ -170,13 +170,13 @@ class GNNModel(BaseModel):
             Tuple[type[torch.nn.Module] | Callable, Sequence[Any], Dict[str, Any]]
         ]
         | None = None,
-        aggregate_pooling_name: type[torch.nn.Module] | None = None,
+        aggregate_pooling_type: type[torch.nn.Module] | None = None,
         aggregate_pooling_args: Sequence[Any] | None = None,
         aggregate_pooling_kwargs: Dict[str, Any] | None = None,
-        graph_features_net_name: type[torch.nn.Module] | None = None,
+        graph_features_net_type: type[torch.nn.Module] | None = None,
         graph_features_net_args: Sequence[Any] | None = None,
         graph_features_net_kwargs: Dict[str, Any] | None = None,
-        aggregate_graph_features_name: type[torch.nn.Module] | None = None,
+        aggregate_graph_features_type: type[torch.nn.Module] | None = None,
         aggregate_graph_features_args: Sequence[Any] | None = None,
         aggregate_graph_features_kwargs: Dict[str, Any] | None = None,
         active_tasks: Dict[Any, bool] | None = None,
@@ -185,7 +185,7 @@ class GNNModel(BaseModel):
         or deactivated with the passed 'active_tasks'.
 
         Args:
-            encoder_name (type[torch.nn.Module]): Type name of the encoder name
+            encoder_type (type[torch.nn.Module]): Type name of the encoder name
             encoder_args (Sequence[Any]): Positional arguments of the encoder
             encoder_kwargs (Dict[str, Any]): Keyword arguments of the encoder
             downstream_tasks (Dict[ Any, Tuple[type[torch.nn.Module], Sequence[Any], Dict[str, Any]] ]): Dictionary of torch module subclass name and accompanying args and kwargs for its instantiation that represents the downstream tasks. Each tuple element must look like this:
@@ -197,20 +197,20 @@ class GNNModel(BaseModel):
                 - second: (Sequence[Any]): Positional arguments to pass to the pooling layer constructor.
                 - third: (dict[str, Any]): Keyword arguments to pass to the pooling layer constructor.
             Defaults to None.
-            aggregate_pooling_name (type[torch.nn.Module] | None, optional): torch subclass name or callable for aggregating the pooling layers' outputs. Defaults to None.
+            aggregate_pooling_type (type[torch.nn.Module] | None, optional): torch subclass name or callable for aggregating the pooling layers' outputs. Defaults to None.
             aggregate_pooling_args (Sequence[Any] | None, optional): Positional arguments for the pooling layer aggregation. Defaults to None.
             aggregate_pooling_kwargs (Dict[str, Any] | None, optional): Keyword arguments for the pooling layer aggregation. Defaults to None.
-            graph_features_net_name (type[torch.nn.Module] | None, optional): Name of the graph features net. Defaults to None.
+            graph_features_net_type (type[torch.nn.Module] | None, optional): Name of the graph features net. Defaults to None.
             graph_features_net_args (Sequence[Any] | None, optional): Positional arguments for the graph features. Defaults to None.
             graph_features_net_kwargs (Dict[str, Any] | None, optional): Keyword arguments for the graph features net. Defaults to None.
-            aggregate_graph_features_name (type[torch.nn.Module] | None, optional): Name of the class for callable used to merge graph features with graph embeddings from the encoder and pooling layers. Defaults to None.
+            aggregate_graph_features_type (type[torch.nn.Module] | None, optional): Name of the class for callable used to merge graph features with graph embeddings from the encoder and pooling layers. Defaults to None.
             aggregate_graph_features_args (Sequence[Any] | None, optional): Positional arguments of the graph feature aggregation. Defaults to None.
             aggregate_graph_features_kwargs (Dict[str, Any] | None, optional): Keyword arguments of the graph feature aggregations.. Defaults to None.
             active_tasks (Dict[Any, bool] | None, optional): Dictionary indicating which tasks should be active after instantiation. Defaults to None.
 
         Raises:
-            TypeError: When aggregate_pooling_name is not a torch module or callable
-            TypeError: When aggregate_graph_features_name is not a torch module or callable
+            TypeError: When aggregate_pooling_type is not a torch module or callable
+            TypeError: When aggregate_graph_features_type is not a torch module or callable
 
         Returns:
             GNNModel: A new GNNModel instance
@@ -219,31 +219,31 @@ class GNNModel(BaseModel):
 
         # store stuff that will become the config for to_config
         self.encoder_specs = {
-            "type": encoder_name,
+            "type": encoder_type,
             "args": encoder_args,
             "kwargs": encoder_kwargs,
         }
         self.downstream_tasks_specs = downstream_tasks
         self.pooling_layers_specs = pooling_layers
         self.aggregate_pooling_specs = {
-            "type": aggregate_pooling_name,
+            "type": aggregate_pooling_type,
             "args": aggregate_pooling_args,
             "kwargs": aggregate_pooling_kwargs,
         }
         self.graph_features_net_specs = {
-            "type": graph_features_net_name,
+            "type": graph_features_net_type,
             "args": graph_features_net_args,
             "kwargs": graph_features_net_kwargs,
         }
         self.aggregate_graph_features_specs = {
-            "type": aggregate_graph_features_name,
+            "type": aggregate_graph_features_type,
             "args": aggregate_graph_features_args,
             "kwargs": aggregate_graph_features_kwargs,
         }
         self.active_tasks_specs = active_tasks
 
         # set up encoder
-        self.encoder: torch.nn.Module = encoder_name(*encoder_args, **encoder_kwargs)
+        self.encoder: torch.nn.Module = encoder_type(*encoder_args, **encoder_kwargs)
 
         # set up pooling layers
         if pooling_layers is not None:
@@ -258,33 +258,33 @@ class GNNModel(BaseModel):
             )
 
         # set up aggregation of pooling layers
-        if aggregate_pooling_name is not None:
-            if issubclass(aggregate_pooling_name, torch.nn.Module):
-                self.aggregate_pooling: torch.nn.Module = aggregate_pooling_name(
+        if aggregate_pooling_type is not None:
+            if issubclass(aggregate_pooling_type, torch.nn.Module):
+                self.aggregate_pooling: torch.nn.Module = aggregate_pooling_type(
                     *(aggregate_pooling_args if aggregate_pooling_args else []),
                     **(aggregate_pooling_kwargs if aggregate_pooling_kwargs else {}),
                 )
-            elif callable(aggregate_pooling_name):
+            elif callable(aggregate_pooling_type):
                 self.aggregate_pooling: torch.nn.Module = ModuleWrapper(
-                    aggregate_pooling_name
+                    aggregate_pooling_type
                 )
             else:
                 raise TypeError(
-                    "Error, aggregate_pooling_name must be a callable or a subclass of torch.nn.Module"
+                    "Error, aggregate_pooling_type must be a callable or a subclass of torch.nn.Module"
                 )
 
         # set up graph_features network if it's provided
-        if graph_features_net_name is not None:
-            self.graph_features_net: torch.nn.Module = graph_features_net_name(
+        if graph_features_net_type is not None:
+            self.graph_features_net: torch.nn.Module = graph_features_net_type(
                 *(graph_features_net_args if graph_features_net_args else []),
                 **(graph_features_net_kwargs if graph_features_net_kwargs else {}),
             )
 
         # set up aggregation of graph features
-        if aggregate_graph_features_name is not None:
-            if issubclass(aggregate_graph_features_name, torch.nn.Module):
+        if aggregate_graph_features_type is not None:
+            if issubclass(aggregate_graph_features_type, torch.nn.Module):
                 self.aggregate_graph_features: torch.nn.Module = (
-                    aggregate_graph_features_name(
+                    aggregate_graph_features_type(
                         *(
                             aggregate_graph_features_args
                             if aggregate_graph_features_args
@@ -297,13 +297,13 @@ class GNNModel(BaseModel):
                         ),
                     )
                 )
-            elif callable(aggregate_graph_features_name):
+            elif callable(aggregate_graph_features_type):
                 self.aggregate_graph_features: torch.nn.Module = ModuleWrapper(
-                    aggregate_graph_features_name
+                    aggregate_graph_features_type
                 )
             else:
                 raise TypeError(
-                    "Error, aggregate_graph_features_name must be a callable or a subclass of torch.nn.Module"
+                    "Error, aggregate_graph_features_type must be a callable or a subclass of torch.nn.Module"
                 )
 
         # set up downstream tasks
@@ -510,13 +510,13 @@ class GNNModel(BaseModel):
                 for (key, task_cfg) in config["downstream_tasks"].items()
             },
             pooling_layers=config.get("pooling_layers", None),
-            aggregate_pooling_name=config["aggregate_pooling"]["type"],
+            aggregate_pooling_type=config["aggregate_pooling"]["type"],
             aggregate_pooling_args=config["aggregate_pooling"].get("args", None),
             aggregate_pooling_kwargs=config["aggregate_pooling"].get("kwargs", None),
-            graph_features_net_name=config["graph_features_net"].get("type", None),
+            graph_features_net_type=config["graph_features_net"].get("type", None),
             graph_features_net_args=config["graph_features_net"].get("args", None),
             graph_features_net_kwargs=config["graph_features_net"].get("kwargs", None),
-            aggregate_graph_features_name=config["aggregate_graph_features"].get(
+            aggregate_graph_features_type=config["aggregate_graph_features"].get(
                 "type", None
             ),
             aggregate_graph_features_args=config["aggregate_graph_features"].get(

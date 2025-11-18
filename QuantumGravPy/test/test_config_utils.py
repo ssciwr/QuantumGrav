@@ -12,7 +12,7 @@ def yaml_text():
             layers: !sweep
                 values: [1, 2]
 
-            type: !pyobject QuantumGrav.GNNBlock
+            type: !pyobject QuantumGrav.SequentialModel
             convtype: !pyobject torch_geometric.nn.SAGEConv
             bs: !coupled-sweep
                 target: model.layers
@@ -51,7 +51,7 @@ def yaml_text_nonsweep():
         model:
             name: test_model
             layers: 1
-            type: !pyobject QuantumGrav.GNNBlock
+            type: !pyobject QuantumGrav.SequentialModel
             convtype: !pyobject torch_geometric.nn.SAGEConv
             bs: 16
             lr: 0.1
@@ -109,7 +109,7 @@ def test_read_yaml(yaml_text):
 
     # type nodes
     tn = cfg["model"]["type"]
-    assert tn == QG.GNNBlock
+    assert tn == QG.SequentialModel
 
     tn = cfg["model"]["convtype"]
     assert tn == torch_geometric.nn.SAGEConv
