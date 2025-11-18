@@ -3,8 +3,25 @@
 The `QuantumGrav` Python package lets users customize hyperparameters when building, training, validating, and testing GNN models. Choosing the right values is crucial for model performance.
 
 To accelerate this process, we developed two ways to handle possible values of hyperparameters:
+
 * Using custom YAML tags to generate a list of configs based on the cartesian product of possible values of hyperparameters, then run training on each config.
+    * Pros: Fully deterministic, exhaustive, simple, transparent
+    * Cons: Explodes combinatorially, no guided search
+    * Useful if:
+        * Our search space is small.
+        * We need absolute transparency and determinism.
+        * We are debugging or doing systematic experiments.
+        * We want full coverage of combinations.
+        * We avoid extra dependencies or complexity.
 * Using [Optuna](https://optuna.readthedocs.io/en/stable/index.html) to create hyperparameter search space on a config file then automatically find optimal hyperparameter values for specific objectives (e.g. minimizing loss or maximizing accuracy).
+    * Pros: Support of intelligent search and pruning algorithms, visualization (when using with database), scalable running
+    * Cons: Stochastic sampling, less exhaustive, more complex as we need to integrate the training loop into Optuna's objective function
+    * Useful if:
+        * The search space is moderately large or huge.
+        * We want efficient, guided optimization.
+        * We need early stopping for poor configs.
+        * We run on clusters or need parallel trials.
+        * We want good results with limited compute budget.
 
 ## Config handling with custom YAML tags
 
@@ -37,13 +54,18 @@ We developed the following custom YAML tags to specify possible values of hyperp
         start: 0.1
         stop: 0.5
         step: 0.2
-    lr: !range # float range in log domain
+    
+    ```
+    **Note: The stop value is included.**
+
+* `!random_uniform` tag: This tag generates a set of float values uniformly sampled from a specified range. We can define the `size` (the number of values to produce); if not provided, it defaults to 5. When `log=True`, values are sampled in the log domain; otherwise, they are sampled linearly.
+    ```yaml
+    lr: !random_uniform # float values in log domain
         start: 1e-5
         stop: 1e-2
         log: true
         size: 7
     ```
-    **Note**: The stop value is included. For a `float` range in the log domain, we should specify size (number of values to generate); if omitted, the default is 5. If `log=False`, the range would be linear.
 
 * `!reference` tag: In some cases, a hyperparameter must share the same value as another. For instance, the input dimension of one layer and the output dimension of the previous layer. The `!reference` tag handles such cases:
     ```yaml
@@ -63,6 +85,10 @@ We developed the following custom YAML tags to specify possible values of hyperp
         conv_layer: !pyobject torch_geometric.nn.conv.sage_conv.SAGEConv
     ```
 
+### ConfigHandler class
+
+TODO: brief explanation.
+
 ## Optimization with Optuna
 
 The second option for finding optimal hyperparameter values is to use Optuna together with the custom YAML tag.
@@ -73,7 +99,7 @@ We developed a subpackage `QGTune` to convert a config file with custom YAML tag
 * Create an Optuna study from a tuning config file (preferably YAML file)
 * Save the best config with optimal hyperparameter values back to a YAML file.
 
-### Define Optuna search space with QGTune
+### Define an Optuna search space using QGTune
 
 #### Optuna suggestion with custom YAML tag
 
@@ -83,7 +109,7 @@ Optuna use [optuna.trial.Trial](https://optuna.readthedocs.io/en/stable/referenc
 * `suggest_float()`: suggest a value within a range for a floating point parameter, in linear or log domain
 * `suggest_int()`: suggest a value within a range for an integer parameter
 
-The first suggestion function corresponds to the `!sweep` tag described above, while the other two functions relate to the `!range` tag for `float` and `int` values, respectively.
+The first suggestion function corresponds to the `!sweep` tag described above, while `suggest_int()` maps to the `!range` tag (when `start`, `stop`, and `step` are all integers). Float suggestions are handled through the `!range` and `!random_uniform` tags.
 
 For example, the following configuration:
 
@@ -164,6 +190,7 @@ We present here an example to demonstrate the functionality of `QGTune`.
 #### Example explanation
 
 In this example, we would:
+
 * create sample configuration files for tuning and model/trainer settings
 * define a small model based on [Optuna's PyTorch example](https://github.com/optuna/optuna-examples/blob/main/pytorch/pytorch_simple.py).
 * load dat from [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist) dataset. 
@@ -283,7 +310,7 @@ def create_config_file(file_path: Path) -> Path:
                 values: [16, 32]
             optimizer: !sweep
                 values: ["Adam", "SGD"]
-            lr: !range
+            lr: !random_uniform
                 start: 1e-5
                 stop: 1e-2
                 log: true
