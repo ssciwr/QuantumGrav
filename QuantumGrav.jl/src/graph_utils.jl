@@ -14,7 +14,7 @@ Creates an adjacency matrix from a causet's future relations.
 - `SparseMatrixCSC{T}`: Sparse adjacency matrix representing the causal structure
 
 # Notes
-Converts the causet's future_relations to a sparse matrix format by 
+Converts the causet's future_relations to a sparse matrix format by
 horizontally concatenating, transposing, and converting to the specified type.
 """
 function make_adj(

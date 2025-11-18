@@ -18,6 +18,9 @@ from .utils import (
     list_registered_gnn_layers,
     list_registered_graph_features_aggregations,
     list_registered_pooling_aggregations,
+    register_evaluation_function,
+    get_evaluation_function,
+    list_evaluation_functions,
     assign_at_path,
     get_at_path,
 )
@@ -27,16 +30,17 @@ from .gnn_block import GNNBlock
 from .evaluate import (
     DefaultEvaluator,
     DefaultTester,
-    DefaultEarlyStopping,
     DefaultValidator,
 )
-from .config_utils import (
-    ConfigHandler
-)
+
+from .config_utils import ConfigHandler, get_loader
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .linear_sequential import LinearSequential
+from .early_stopping import DefaultEarlyStopping
+
+from .load_zarr import zarr_to_dict
 
 __all__ = [
     # julia interface
@@ -62,6 +66,9 @@ __all__ = [
     "list_registered_gnn_layers",
     "list_registered_graph_features_aggregations",
     "list_registered_pooling_aggregations",
+    "register_evaluation_function",
+    "get_evaluation_function",
+    "list_evaluation_functions",
     # nested config helpers
     "assign_at_path",
     "get_at_path",
@@ -80,5 +87,8 @@ __all__ = [
     "DefaultTester",
     "DefaultEarlyStopping",
     # config handler
-    "ConfigHandler"
+    "get_loader",
+    "ConfigHandler",
+    # zarr loading
+    "zarr_to_dict",
 ]
