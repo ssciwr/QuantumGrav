@@ -29,7 +29,7 @@ from .evaluate import (
     DefaultTester,
     DefaultValidator,
 )
-
+from .skip_layer import SkipConnection
 from .config_utils import ConfigHandler, get_loader
 
 from .train import Trainer
@@ -68,6 +68,7 @@ __all__ = [
     # models
     "SequentialModel",
     "GNNModel",
+    "SkipConnection",
     # training
     "Trainer",
     "TrainerDDP",

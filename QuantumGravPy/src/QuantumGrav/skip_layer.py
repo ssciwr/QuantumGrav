@@ -1,9 +1,9 @@
 import torch
 import torch_geometric
 
+
 class SkipConnection(torch.nn.Module):
-    """A skip connection wrapped in a torch.nn.Module.
-    """
+    """A skip connection wrapped in a torch.nn.Module."""
 
     def __init__(
         self,
@@ -21,7 +21,7 @@ class SkipConnection(torch.nn.Module):
             weight_initializer (str | None, optional): weight initializer. Defaults to None.
             bias_initializer (str | None, optional): bias initializer. Defaults to None.
         """
-        super(SkipConnection, self).__init__()
+        super().__init__()
 
         if in_channels != out_channels:
             self.proj = torch_geometric.nn.dense.Linear(
