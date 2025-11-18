@@ -24,13 +24,13 @@ def input():
     }
 
 
-def test_default_evaluator_creation(gnn_model_eval):
+def test_default_evaluator_creation(gnn_model):
     """Test the DefaultEvaluator class."""
     device = torch.device("cpu")
     evaluator = QG.DefaultEvaluator(
         device=device,
         criterion=compute_loss,
-        apply_model=lambda data: gnn_model_eval(
+        apply_model=lambda data: gnn_model(
             data,
             data.edge_index,
             encoder_args=[
@@ -44,10 +44,10 @@ def test_default_evaluator_creation(gnn_model_eval):
     assert evaluator.apply_model is not None
 
 
-def test_default_evaluator_evaluate(make_dataloader, gnn_model_eval):
+def test_default_evaluator_evaluate(make_dataloader, gnn_model):
     dataloader = make_dataloader
     device = torch.device("cpu")
-    model = gnn_model_eval.to(device)
+    model = gnn_model.to(device)
     evaluator = QG.DefaultEvaluator(
         device=device,
         criterion=compute_loss,
@@ -95,7 +95,7 @@ def test_default_tester_creation():
     assert tester.apply_model is None
 
 
-def test_default_tester_test(make_dataloader, gnn_model_eval):
+def test_default_tester_test(make_dataloader, gnn_model):
     dataloader = make_dataloader
     device = torch.device("cpu")
     tester = QG.DefaultTester(
@@ -105,7 +105,7 @@ def test_default_tester_test(make_dataloader, gnn_model_eval):
             data.x, data.edge_index, batch=data.batch
         )["0"],
     )
-    testdata = tester.test(gnn_model_eval, dataloader)
+    testdata = tester.test(gnn_model, dataloader)
     assert len(testdata) == len(dataloader)
     assert torch.Tensor(testdata).dtype == torch.float32
 

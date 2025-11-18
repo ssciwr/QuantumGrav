@@ -372,6 +372,7 @@ class GNNModel(BaseModel):
         Args:
             x (torch.Tensor): Input node features.
             edge_index (torch.Tensor): Graph connectivity information.
+            edge_weight (torch.Tensor): Edge weights.
             batch (torch.Tensor | None): batch indicator tensor
             *args: additional args for the encoder
             **kwargs: additional kwargs for the encoder

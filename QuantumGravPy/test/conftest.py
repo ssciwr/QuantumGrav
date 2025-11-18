@@ -278,43 +278,6 @@ def read_data():
 # models
 
 
-# @pytest.fixture
-# def gnn_block():
-#     # TODO: fix this
-#     return QG.GNNBlock(
-#         in_dim=16,
-#         out_dim=32,
-#         dropout=0.3,
-#         gnn_layer_type=torch_geometric.nn.conv.GCNConv,
-#         normalizer=torch.nn.BatchNorm1d,
-#         activation=torch.nn.ReLU,
-#         gnn_layer_args=[],
-#         gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
-#         norm_args=[
-#             32,
-#         ],
-#         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
-#         projection_args=[16, 32],
-#         projection_kwargs={"bias": False},
-#     )
-
-
-# @pytest.fixture
-# def classifier_block():
-#     # TODO: Remove this
-#     return QG.LinearSequential(
-#         dims=[(32, 24), (24, 12), (12, 3)],
-#         activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
-#         linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
-#         activation_kwargs=[{"inplace": False}, {}, {}],
-#     )
-
-
-@pytest.fixture
-def pooling_layer():
-    return torch_geometric.nn.global_mean_pool
-
-
 @pytest.fixture
 def make_dataset(create_data_zarr, read_data):
     datadir, datafiles = create_data_zarr
@@ -350,7 +313,86 @@ def make_dataloader(create_data_zarr, make_dataset):
 
 
 @pytest.fixture
-def model_config_eval():
+def model_config():
+    return {
+        "encoder_type": QG.SequentialModel,
+        "encoder_args": [
+            "x, edge_index",
+            [
+                [
+                    "x, edge_index -> x1",
+                    torch_geometric.nn.conv.GCNConv,
+                    [
+                        2,
+                        8,
+                    ],
+                    {"improved": True, "cached": False, "add_self_loops": True},
+                ],
+                [
+                    "x1 -> x2",
+                    torch_geometric.nn.norm.BatchNorm,
+                    [
+                        8,
+                    ],
+                    {"eps": 2e-5, "momentum": 0.2},
+                ],
+                [
+                    "x2 -> x3",
+                    torch.nn.ReLU,
+                    [],
+                    {
+                        "inplace": False,
+                    },
+                ],
+                [
+                    "x2, edge_index -> x3",
+                    torch_geometric.nn.conv.GCNConv,
+                    [
+                        8,
+                        12,
+                    ],
+                    {"improved": True, "cached": False, "add_self_loops": True},
+                ],
+            ],
+        ],
+        "encoder_kwargs": {},
+        "pooling_layers": [
+            [torch_geometric.nn.global_mean_pool, [], {}],
+            [torch_geometric.nn.global_add_pool, [], {}],
+        ],
+        "downstream_tasks": {
+            "0": [
+                torch_geometric.nn.dense.Linear,
+                [24, 2],
+                {
+                    "bias": True,
+                },
+            ],
+            "1": [
+                torch_geometric.nn.dense.Linear,
+                [24, 8],
+                {
+                    "bias": True,
+                },
+            ],
+        },
+        "aggregate_pooling_type": torch.cat,
+        "aggregate_pooling_args": [],
+        "aggregate_pooling_kwargs": {},
+        # "graph_features_net_type": None,
+        # "graph_features_net_args": None,
+        # "graph_features_net_kwargs": None,
+        # "aggregate_graph_features_type": None,
+        # "aggregate_graph_features_args": None,
+        # "aggregate_graph_features_kwargs": None,
+        "active_tasks": {
+            "0": True,
+        },
+    }
+
+
+@pytest.fixture
+def model_config_graphfeatures():
     return {
         "encoder_type": QG.SequentialModel,
         "encoder_args": [
@@ -408,12 +450,12 @@ def model_config_eval():
         "aggregate_pooling_type": torch.cat,
         "aggregate_pooling_args": [],
         "aggregate_pooling_kwargs": {},
-        # "graph_features_net_type": None,
-        # "graph_features_net_args": None,
-        # "graph_features_net_kwargs": None,
-        # "aggregate_graph_features_type": None,
-        # "aggregate_graph_features_args": None,
-        # "aggregate_graph_features_kwargs": None,
+        "graph_features_net_type": torch_geometric.nn.dense.Linear,
+        "graph_features_net_args": [10, 12],
+        "graph_features_net_kwargs": {},
+        "aggregate_graph_features_type": torch.add,
+        "aggregate_graph_features_args": [],
+        "aggregate_graph_features_kwargs": {},
         "active_tasks": {
             "0": True,
         },
@@ -421,11 +463,22 @@ def model_config_eval():
 
 
 @pytest.fixture
-def gnn_model_eval(model_config_eval):
+def gnn_model(model_config):
     """Fixture to create a GNNModel for evaluation."""
 
     model = QG.GNNModel.from_config(
-        model_config_eval,
+        model_config,
+    )
+    model.eval()
+    return model
+
+
+@pytest.fixture
+def gnn_model_graphfeatures(model_config_graphfeatures):
+    """Fixture to create a GNNModel with graph features for evaluation."""
+
+    model = QG.GNNModel.from_config(
+        model_config_graphfeatures,
     )
     model.eval()
     return model

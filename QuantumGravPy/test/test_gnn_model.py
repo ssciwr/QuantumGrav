@@ -1,246 +1,31 @@
 import QuantumGrav as QG
 import torch
+import torch_geometric
 import pytest
-from functools import partial
-import copy
-
-
-def cat_graph_features(*features, dim=1):
-    return torch.cat(features, dim=dim)
-
-
-QG.utils.register_graph_features_aggregation("cat_graph_features", cat_graph_features)
-
-
-@pytest.fixture
-def gnn_model(gnn_block, classifier_block, pooling_layer):
-    return QG.GNNModel(
-        encoder=[
-            gnn_block,
-        ],
-        downstream_tasks=[classifier_block, copy.deepcopy(classifier_block)],
-        pooling_layers=[pooling_layer, pooling_layer],
-        aggregate_pooling=torch.cat,
-        active_tasks=[True, True],
-    )
-
-
-@pytest.fixture
-def graph_features_net():
-    return QG.LinearSequential(
-        dims=[(10, 32), (32, 24), (24, 32)],
-        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
-        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
-        activation_kwargs=[{"inplace": False}, {"inplace": False}, {"inplace": False}],
-    )
-
-
-@pytest.fixture
-def classifier_block_graphfeatures():
-    return QG.LinearSequential(
-        dims=[(64, 24), (24, 12), (12, 3)],
-        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
-        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
-        activation_kwargs=[{"inplace": False}, {}, {}],
-    )
-
-
-@pytest.fixture
-def gnn_model_with_graph_features(
-    gnn_block, classifier_block_graphfeatures, pooling_layer, graph_features_net
-):
-    return QG.GNNModel(
-        encoder=[
-            gnn_block,
-        ],
-        downstream_tasks=[
-            classifier_block_graphfeatures,
-            classifier_block_graphfeatures,
-        ],
-        pooling_layers=[pooling_layer],
-        aggregate_graph_features=cat_graph_features,
-        graph_features_net=graph_features_net,
-        aggregate_pooling=torch.cat,
-        active_tasks=[True, True],
-    )
-
-
-@pytest.fixture
-def classifier_block_graphfeatures_no_pooling():
-    return QG.LinearSequential(
-        dims=[(32, 24), (24, 12), (12, 3)],
-        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.ReLU],
-        linear_kwargs=[{}, {}, {}],
-        activation_kwargs=[{"inplace": False}, {"inplace": False}, {"inplace": False}],
-    )
-
-
-@pytest.fixture
-def gnn_model_with_graph_features_no_pooling(
-    gnn_block, classifier_block_graphfeatures_no_pooling, graph_features_net
-):
-    return QG.GNNModel(
-        encoder=[
-            gnn_block,
-        ],
-        downstream_tasks=[
-            classifier_block_graphfeatures_no_pooling,
-            classifier_block_graphfeatures_no_pooling,
-        ],
-        aggregate_graph_features=partial(cat_graph_features, dim=0),
-        graph_features_net=graph_features_net,
-        active_tasks=[True, True],
-    )
-
-
-@pytest.fixture
-def gnn_model_config():
-    config = {
-        "active_tasks": [
-            1,
-        ],
-        "encoder": [
-            {
-                "in_dim": 16,
-                "out_dim": 32,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
-                "norm_args": [
-                    32,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [16, 32],
-                "projection_kwargs": {"bias": False},
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-            {
-                "in_dim": 32,
-                "out_dim": 16,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
-                "norm_args": [
-                    16,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [32, 16],
-                "projection_kwargs": {"bias": False},
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-        ],
-        "downstream_tasks": [
-            {
-                "dims": [(16, 24), (24, 18), (18, 3)],
-                "activations": ["relu", "relu", "identity"],
-                "linear_kwargs": [
-                    {"bias": True},
-                    {"bias": True},
-                    {"bias": False},
-                ],
-                "activation_kwargs": [{"inplace": False}, {"inplace": False}, {}],
-                "active": False,
-            },
-            {
-                "dims": [(16, 24), (24, 18), (18, 3)],
-                "activations": ["relu", "relu", "identity"],
-                "linear_kwargs": [
-                    {
-                        "bias": True,
-                    },
-                    {"bias": True},
-                    {"bias": False},
-                ],
-                "activation_kwargs": [{"inplace": False}, {"inplace": False}, {}],
-                "active": True,
-            },
-        ],
-        "pooling_layers": [
-            {
-                "type": "mean",
-                "args": [],
-                "kwargs": {},
-            },
-        ],
-        "aggregate_pooling": {
-            "type": "cat1",
-            "args": [],
-            "kwargs": {},
-        },
-        "aggregate_graph_features": {
-            "type": "cat1",
-            "args": [],
-            "kwargs": {},
-        },
-        "graph_features_net": {
-            "dims": [(10, 24), (24, 8), (8, 32)],
-            "activations": ["relu", "relu", "sigmoid"],
-            "linear_kwargs": [{}, {}, {}],
-            "activation_kwargs": [
-                {"inplace": False},
-                {"inplace": False},
-                {},
-            ],
-        },
-    }
-    return config
+from jsonschema import ValidationError
 
 
 def test_gnn_model_creation(gnn_model):
     """Test the creation of GNNModel with required components."""
 
-    assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
-    assert len(gnn_model.encoder) == 1  # Assuming one GNN block
-    assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
-    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
-    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
+    assert isinstance(gnn_model.encoder, QG.SequentialModel)
+    assert len(gnn_model.encoder.layers) == 4
+    assert isinstance(gnn_model.downstream_tasks["0"], torch_geometric.nn.dense.Linear)
+    assert isinstance(gnn_model.downstream_tasks["1"], torch_geometric.nn.dense.Linear)
 
     assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.ModuleWrapper)
     assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.ModuleWrapper)
     assert isinstance(gnn_model.aggregate_pooling, QG.gnn_model.ModuleWrapper)
-
-    # assert sizes and properties of the components
-    assert gnn_model.encoder[0].in_dim == 16
-    assert gnn_model.encoder[0].out_dim == 32
     assert len(gnn_model.downstream_tasks) == 2
 
 
-def test_gnn_model_creation_pooling_aggregations_inconsistent(gnn_model_config):
+def test_gnn_model_creation_pooling_aggregations_inconsistent(model_config):
     """Test the creation of GNNModel with missing aggregation function."""
 
-    gnn_model_config["pooling_layers"] = None
+    model_config["pooling_layers"] = None
 
-    with pytest.raises(ValueError):
-        QG.GNNModel.from_config(gnn_model_config)
-
-
-def test_gnn_model_creation_pooling_no_aggregations(gnn_model_config):
-    """Test the creation of GNNModel with missing aggregation function."""
-
-    gnn_model_config["pooling_layers"] = None
-    gnn_model_config["aggregate_pooling"] = None
-
-    gnn_model = QG.GNNModel.from_config(gnn_model_config)
-
-    assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
-    assert len(gnn_model.encoder) == 2  # Assuming one GNN block
-    assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
-    assert isinstance(gnn_model.encoder[1], QG.GNNBlock)
-    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
-    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
-
-    assert gnn_model.pooling_layers is None
-    assert gnn_model.aggregate_pooling is None
+    with pytest.raises(ValidationError):
+        QG.GNNModel.from_config(model_config)
 
 
 def test_gnn_model_get_embeddings(gnn_model):
@@ -252,12 +37,12 @@ def test_gnn_model_get_embeddings(gnn_model):
     )  # Simple edge index
     batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
     gnn_model.eval()  # Set model to evaluation mode
-    output = gnn_model.get_embeddings(x, edge_index, batch)
+    output = gnn_model.get_graph_embeddings(x, edge_index, None, batch)
     assert gnn_model.training is False  # Ensure model is in eval mode
     assert isinstance(output, torch.Tensor)
     assert output.shape == (4, 32)  # concatenated over pooling layers
 
-    output_single = gnn_model.get_embeddings(x, edge_index)  # no batch -> single graph
+    output_single = gnn_model.get_graph_embeddings(x, edge_index, None, None)  # no batch -> single graph
     assert isinstance(output_single, torch.Tensor)
     assert output_single.shape == (2, 32)  # concatenated over pooling layers
 
