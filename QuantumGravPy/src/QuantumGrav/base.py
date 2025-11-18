@@ -72,8 +72,8 @@ class BaseModel(torch.nn.Module, Configurable):
 
         pass
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def load(
         cls, path: str, device: torch.device = torch.device("cpu")
     ) -> "BaseModel":

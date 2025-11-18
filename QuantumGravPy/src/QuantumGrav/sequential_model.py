@@ -20,37 +20,40 @@ class SequentialModel(BaseModel):
         "title": "Sequential model configuration",
         "type": "object",
         "properties": {
-            "input_sig": {
+            "input_signature": {
                 "type": "string",
                 "description": "Signature of the model's forward method as required by torch_geometric.nn.sequential.Sequential",
             },
             "layer_specs": {
                 "type": "array",
-                "items": [
-                    {
-                        "type": "string",
-                        "description": "Signature of the torch.nn.Module layer's forward method",
-                    },
-                    {
-                        "type": "string",
-                        "description": "name of the torch.nn.Module layer",
-                    },
-                    {
-                        "type": "array",
-                        "description": "Positional arguments",
-                        "items": {},
-                    },
-                    {
-                        "type": "object",
-                        "description": "Keyword arguments",
-                        "additionalProperties": True,
-                    },
-                ],
-                "additionalItems": True,  # allows extra elements beyond the first 3
+                "description": "Array of layer specifications, each containing (signature, layer_name, args, kwargs)",
+                "items": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": [
+                        {
+                            "oneOf": [{"type": "string"}, {"type": "null"}],
+                            "description": "Signature of the torch.nn.Module layer's forward method (can be null)",
+                        },
+                        {
+                            "description": "name of the torch.nn.Module layer or class object",
+                        },
+                        {
+                            "type": "array",
+                            "description": "Positional arguments",
+                        },
+                        {
+                            "type": "object",
+                            "description": "Keyword arguments",
+                            "additionalProperties": True,
+                        },
+                    ],
+                },
             },
         },
         "required": [
-            "input_sig",
+            "input_signature",
             "layer_specs",
         ],
         "additionalProperties": False,
@@ -58,7 +61,7 @@ class SequentialModel(BaseModel):
 
     def __init__(
         self,
-        input_sig: str,
+        input_signature: str,
         layer_specs: Sequence[
             Tuple[str, type[torch.nn.Module], Sequence[Any], Dict[str, Any]]
         ],
@@ -66,7 +69,7 @@ class SequentialModel(BaseModel):
         """Build a new SequentialModel which stacks layers sequentially.
 
         Args:
-            input_sig (str): Input signature for the Sequential model. See torch_geometric.nn.sequential.Sequential for details.
+            input_signature (str): Input signature for the Sequential model. See torch_geometric.nn.sequential.Sequential for details.
             layer_specs (Sequence[ Tuple[str, type[torch.nn.Module], Sequence[Any], dict[str, Any]] ]): Specifications for each layer in the Sequential model.
             This is of the form
             (signature, layer_type, layer_args, layer_kwargs) where:
@@ -77,8 +80,8 @@ class SequentialModel(BaseModel):
         """
         super().__init__()
 
-        self.layerspecs = layer_specs
-        self.input_sig = input_sig
+        self.layerspecs = [list(spec) for spec in layer_specs]
+        self.input_signature = input_signature
 
         layers = [
             (layer_type(*layer_args, **layer_kwargs), sig)
@@ -87,7 +90,7 @@ class SequentialModel(BaseModel):
             for (sig, layer_type, layer_args, layer_kwargs) in layer_specs
         ]
 
-        self.layers = Sequential(input_sig, layers)
+        self.layers = Sequential(input_signature, layers)
 
     def forward(
         self, x: torch.Tensor, edge_index: torch.Tensor, **kwargs
@@ -115,7 +118,12 @@ class SequentialModel(BaseModel):
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "SequentialModel":
         """Create a SequentialModel from a configuration dictionary.
-        When the config does not have 'dropout', it defaults to 0.3.
+
+        The config should contain:
+        - 'input_signature': str - the input signature for the Sequential model
+        - 'layer_specs': list of [signature, layer_type, args, kwargs] tuples
+          where signature can be str or None, layer_type is a torch.nn.Module class,
+          args is a list, and kwargs is a dict.
 
         Args:
             config (dict[str, Any]): Configuration dictionary containing the parameters for the SequentialModel.
@@ -123,39 +131,18 @@ class SequentialModel(BaseModel):
         Returns:
             SequentialModel: An instance of SequentialModel initialized with the provided configuration.
         """
-        input_sig = config["input_sig"]
-        layer_specs = []
-        for key in sorted(config.keys()):
-            if key.startswith("layer_"):
-                layer_cfg = config[key]
-                layer_type = layer_cfg["type"]
-                layer_args = layer_cfg.get("args", [])
-                layer_kwargs = layer_cfg.get("kwargs", {})
-                signature = layer_cfg.get("signature", None)
-                layer_specs.append((signature, layer_type, layer_args, layer_kwargs))
+        cls.verify_config(config)
 
-        return cls(input_sig=input_sig, layer_specs=layer_specs)
+        input_signature = config["input_signature"]
+        layer_specs = config["layer_specs"]
+
+        return cls(input_signature=input_signature, layer_specs=layer_specs)
 
     def to_config(self) -> Dict[str, Any]:
         """Convert the SequentialModel instance to a configuration dictionary."""
-        config: Dict[str, Any] = {
-            f"layer_{i}": {
-                "type": layer_type.__name__,
-                "args": layer_args,
-                "kwargs": layer_kwargs,
-                "signature": sig,
-            }
-            if sig
-            else {
-                "type": layer_type.__name__,
-                "args": layer_args,
-                "kwargs": layer_kwargs,
-            }
-            for (i, (sig, layer_type, layer_args, layer_kwargs)) in enumerate(
-                self.layerspecs
-            )
-        }
-        config["input_sig"] = self.input_sig
+        config = {}
+        config["layer_specs"] = self.layerspecs
+        config["input_signature"] = self.input_signature
         return config
 
     def save(self, path: str | Path) -> None:
