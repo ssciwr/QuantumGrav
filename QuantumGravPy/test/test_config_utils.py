@@ -2,47 +2,7 @@ import QuantumGrav as QG
 import pytest
 import yaml
 import torch_geometric
-
-
-@pytest.fixture(scope="session")
-def yaml_text():
-    yaml_text = """
-        model:
-            name: test_model
-            layers: !sweep
-                values: [1, 2]
-
-            type: !pyobject QuantumGrav.GNNBlock
-            convtype: !pyobject torch_geometric.nn.SAGEConv
-            bs: !coupled-sweep
-                target: model.layers
-                values: [16, 32]
-            lr: !sweep
-                values: [0.1, 0.01, 0.001]
-            foo:
-                -
-                    x: 3
-                    y: 5
-                -
-                    x: !sweep
-                        values: [1, 2]
-                    y: 2
-            bar:
-                - x: !coupled-sweep
-                    target: model.foo[1].x
-                    values: [-1, -2]
-            baz:
-                - x: !coupled-sweep
-                    target: model.foo[1].x
-                    values: [-10, -20]
-
-        trainer:
-            epochs: !range
-                start: 1
-                stop: 6
-                step: 2
-        """
-    return yaml_text
+import numpy as np
 
 
 @pytest.fixture(scope="session")
@@ -70,6 +30,23 @@ def yaml_text_nonsweep():
             epochs: 2
         """
     return yaml_text
+
+
+def test_range_inclusive():
+    values = QG.config_utils.range_inclusive(1, 5, 1)
+    assert np.array_equal(values, np.array([1, 2, 3, 4, 5]))
+
+    values = QG.config_utils.range_inclusive(0, 1, 0.2)
+    assert np.allclose(values, np.array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
+
+    values = QG.config_utils.range_inclusive(5, 2, -1)
+    assert np.array_equal(values, np.array([5, 4, 3, 2]))
+
+    values = QG.config_utils.range_inclusive(0.5, 0.1, -0.2)
+    assert np.allclose(values, np.array([0.5, 0.3, 0.1]))
+
+    values = QG.config_utils.range_inclusive(1, 6, 2)
+    assert np.array_equal(values, np.array([1, 3, 5]))
 
 
 def test_read_yaml(yaml_text):
@@ -106,6 +83,35 @@ def test_read_yaml(yaml_text):
     assert isinstance(rn, dict)
     assert rn["type"] == "range"
     assert list(rn["values"]) == [1, 3, 5]
+    assert rn["tune_values"] == (1, 6, 2)
+
+    rd_lr = cfg["trainer"]["lr"]
+    assert isinstance(rd_lr, dict)
+    assert rd_lr["type"] == "random_uniform"
+    assert len(rd_lr["values"]) == 4
+    assert all(isinstance(v, float) for v in rd_lr["values"])
+    assert rd_lr["values"][0] >= 1e-5 and rd_lr["values"][-1] <= 1e-2
+    assert rd_lr["tune_values"] == (1e-5, 1e-2, True)
+
+    rd_lr_2 = cfg["trainer"]["lr_2"]
+    assert isinstance(rd_lr_2, dict)
+    assert rd_lr_2["type"] == "random_uniform"
+    assert len(rd_lr_2["values"]) == 5
+    assert all(isinstance(v, float) for v in rd_lr_2["values"])
+    assert rd_lr_2["values"][0] >= 0.1 and rd_lr_2["values"][-1] <= 1.0
+    assert rd_lr_2["tune_values"] == (0.1, 1.0, False)
+
+    rn_drop_rate = cfg["trainer"]["drop_rate"]
+    assert isinstance(rn_drop_rate, dict)
+    assert rn_drop_rate["type"] == "range"
+    assert np.allclose(rn_drop_rate["values"], [0.1, 0.3, 0.5])
+    assert np.allclose(rn_drop_rate["tune_values"], (0.1, 0.5, 0.2))
+
+    # reference node
+    ref = cfg["trainer"]["foo_ref"]
+    assert isinstance(ref, dict)
+    assert ref["type"] == "reference"
+    assert ref["target"] == ["model", "foo", 1, "x"]
 
     # type nodes
     tn = cfg["model"]["type"]
@@ -139,6 +145,35 @@ def test_read_yaml_throws():
         """
     with pytest.raises(ValueError, match="Importing module DoesNotExist unsuccessful"):
         yaml.load(broken_yaml_text, Loader=loader)
+
+
+def test_convert_to_pyobject_tags():
+    config = {
+        "model": {
+            "type": QG.gnn_block.GNNBlock,
+            "convtype": torch_geometric.nn.conv.sage_conv.SAGEConv,
+            "name": "test_model",
+            "layers": 2,
+            "bs": 32,
+        },
+        "trainer": {"epochs": 5},
+    }
+    config_with_tags = QG.config_utils.convert_to_pyobject_tags(config)
+
+    # check if the types are converted to pyobject tags
+    assert (
+        config_with_tags["model"]["type"] == "!pyobject QuantumGrav.gnn_block.GNNBlock"
+    )
+    assert (
+        config_with_tags["model"]["convtype"]
+        == "!pyobject torch_geometric.nn.conv.sage_conv.SAGEConv"
+    )
+
+    # check if other values remain unchanged
+    assert config_with_tags["model"]["name"] == "test_model"
+    assert config_with_tags["model"]["layers"] == 2
+    assert config_with_tags["model"]["bs"] == 32
+    assert config_with_tags["trainer"]["epochs"] == 5
 
 
 def test_initialize_config_handler_nonsweep(yaml_text_nonsweep):

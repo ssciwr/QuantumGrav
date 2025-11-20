@@ -55,7 +55,7 @@ function get_git_info!(config::Dict{String,Any})
 end
 
 """
-    prepare_dataproduction(config::Dict{String, Any}, funcs_to_copy::Vector{Any})
+    prepare_dataproduction(config::Dict{String, Any}, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
 
 Prepare the data production process from the config dict supplied.
 - create a target directory
@@ -67,8 +67,14 @@ Prepare the data production process from the config dict supplied.
 # Arguments
 config::Dict{String, Any} Config file defining the data generation system
 funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained
+
+# Returns
+Tuple{String, Zarr.DirectoryStore} The path to the output file and the output file itself.
 """
-function prepare_dataproduction(config::Dict{String,Any}, funcs_to_copy::Vector)
+function prepare_dataproduction(
+    config::Dict{String,Any},
+    funcs_to_copy::Vector,
+)::Tuple{String,Zarr.DirectoryStore}
     # consistency checks
     for key in ["num_datapoints", "output", "seed"]
         if !haskey(config, key)
