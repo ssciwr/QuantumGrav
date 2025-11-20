@@ -7,6 +7,7 @@ import zarr
 
 # system imports and quality of life tools
 from pathlib import Path
+
 from collections.abc import Callable, Sequence, Collection
 from typing import Any, Tuple
 
@@ -35,7 +36,7 @@ class QGDataset(QGDatasetBase, Dataset):
         pre_transform: Callable[[Data | Collection[Any]], Data] | None = None,
         pre_filter: Callable[[Data | Collection[Any]], bool] | None = None,
     ):
-        """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk.
+        """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. When there is no pre_transform and no pre_filter is given, the system will not create a `processesd` directory.
 
         Args:
             input (list[str  |  Path] | Callable[[Any], dict]): List of input zarr file paths.
@@ -50,7 +51,7 @@ class QGDataset(QGDatasetBase, Dataset):
             pre_transform (Callable[[Data], Data] | None, optional): Function to pre-transform the data. Defaults to None.
             pre_filter (Callable[[Data], bool] | None, optional): Function to pre-filter the data. Defaults to None.
         """
-
+        preprocess = pre_transform is not None or pre_filter is not None
         QGDatasetBase.__init__(
             self,
             input,
@@ -61,6 +62,7 @@ class QGDataset(QGDatasetBase, Dataset):
             validate_data=validate_data,
             chunksize=chunksize,
             n_processes=n_processes,
+            preprocess=preprocess,
         )
 
         Dataset.__init__(
@@ -70,6 +72,8 @@ class QGDataset(QGDatasetBase, Dataset):
             pre_transform=pre_transform,
             pre_filter=pre_filter,
         )
+
+        self.stores = {}
 
     def write_data(self, data: list[Data], idx: int) -> int:
         """Write the processed data to disk using `torch.save`. This is a default implementation that can be overridden by subclasses, and is intended to be used in the data loading pipeline. Thus, is not intended to be called directly.
@@ -92,6 +96,9 @@ class QGDataset(QGDatasetBase, Dataset):
         """Process the dataset from the read rawdata into its final form."""
         # process data files
         k = 0  # index to create the filenames for the processed data
+        if self.pre_filter is None and self.pre_transform is None:
+            return
+
         for file in self.input:
             N = self._get_num_samples_per_file(Path(file).resolve().absolute())
 
@@ -123,19 +130,61 @@ class QGDataset(QGDatasetBase, Dataset):
 
             raw_file.close()
 
+    def _get_store_group(
+        self, file: Path | str
+    ) -> Tuple[zarr.storage.LocalStore, zarr.Group]:
+        """Get a requested open store and add it to an internal cache if not open yet.
+
+        Args:
+            file (Path | str): filepath to store
+
+        Returns:
+            Tuple[zarr.storage.LocalStore, zarr.Group]: tuple containing the opened store and its root group
+        """
+        if file not in self.stores:
+            store = zarr.storage.LocalStore(file, read_only=True)
+            rootgroup = zarr.open_group(store.root)
+            self.stores[file] = (store, rootgroup)
+
+        return self.stores[file]
+
+    def close(self) -> None:
+        "Close all open zarr stores"
+        for store, _ in self.stores.values():
+            store.close()
+        self.stores.clear()
+
+    def __del__(self):
+        "Cleanup on deletion"
+        self.close()
+
     def map_index(self, idx: int) -> Tuple[str | Path, int]:
+        """_summary_
+
+        Args:
+            idx (int): _description_
+
+        Raises:
+            RuntimeError: _description_
+
+        Returns:
+            Tuple[str | Path, int]: _description_
+        """
+        # if idx >= self._num_samples:
+        #     raise IndexError(f"Error: tried to retrieve datapoint {idx} of {self._num_samples}")
+        original_index = idx
         final_file: Path | str | None = None
 
         for size, dfile in zip(self._num_samples_per_file, self.input):
-            final_file = dfile
             if idx < size:
+                final_file = dfile
                 break
             else:
                 idx -= size
 
         if final_file is None:
             raise RuntimeError(
-                "Error, index could not be found in the supplied data files"
+                f"Error, index {original_index} could not be found in the supplied data files of size {self._num_samples_per_file} with total size {self._num_samples}"
             )
         return final_file, idx
 
@@ -144,21 +193,17 @@ class QGDataset(QGDatasetBase, Dataset):
         if self._num_samples is None:
             raise ValueError("Dataset has not been processed yet.")
 
-        # if idx < 0 or idx >= self._num_samples:
-        #     raise IndexError("Index out of bounds.")
         # Load the data from the processed files
-        if Path(self.processed_dir).exists():
+        if self.preprocess:
             datapoint = torch.load(
                 Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
             )
             if self.transform is not None:
                 datapoint = self.transform(datapoint)
         else:
-            # README: this is somewhat slow for the datastructure we have
+            # TODO: this is inefficient, but it's the only robust way I could find
             dfile, idx = self.map_index(idx)
-
-            store = zarr.storage.LocalStore(dfile, read_only=True)
-            rootgroup = zarr.open_group(store.root)
+            _, rootgroup = self._get_store_group(dfile)
             datapoint = self.data_reader(
                 rootgroup,
                 idx,
@@ -172,6 +217,14 @@ class QGDataset(QGDatasetBase, Dataset):
     def __getitem__(
         self, idx: int | Sequence[int]
     ) -> Data | Sequence[Data] | Collection[Any]:
+        """_summary_
+
+        Args:
+            idx (int | Sequence[int]): _description_
+
+        Returns:
+            Data | Sequence[Data] | Collection[Any]: _description_
+        """
         if isinstance(idx, int):
             return self.get(idx)
         else:
@@ -183,7 +236,7 @@ class QGDataset(QGDatasetBase, Dataset):
         Returns:
             int: The number of samples in the dataset.
         """
-        if Path(self.processed_dir).exists():
+        if self.preprocess:
             return len(self.processed_file_names)
         else:
             return self._num_samples
