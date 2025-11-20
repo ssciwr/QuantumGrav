@@ -14,15 +14,50 @@ end
     D = QuantumGrav.chebyshev_derivation_matrix(order, 1)
     @test size(D) == (order+1, order+1) # order starts counting at 0
 
-    # Test second-derivative matrix equals square of first-derivative matrix
+    # Test second-derivative matrix equals square of first-derivative matrix -- test trivial now
     @test QuantumGrav.chebyshev_derivation_matrix(order, 1) *
           QuantumGrav.chebyshev_derivation_matrix(order, 1) ==
           QuantumGrav.chebyshev_derivation_matrix(order, 2)
 
-    # Test fourth-derivative matrix equals square of second-derivative matrix
+    # Test fourth-derivative matrix equals square of second-derivative matrix -- test trivial now
     @test QuantumGrav.chebyshev_derivation_matrix(order, 2) *
           QuantumGrav.chebyshev_derivation_matrix(order, 2) ==
           QuantumGrav.chebyshev_derivation_matrix(order, 4)
+
+    # Test new implementation without factorials equals earlier implementation for 1st to 5th derivative
+    function old_chebyshev_derivation_matrix(
+                                    max_cheb_order::Int64,
+                                    derivative_order::Int64
+                                    )::Array{Float64, 2}
+
+        transformation_matrix = zeros(max_cheb_order + 1, max_cheb_order + 1)
+
+        for n in 0 : max_cheb_order
+
+            for k in mod(n-derivative_order, 2) : 2 : n - derivative_order
+                prefac = k == 0 ? 0.5 : 1
+
+                transformation_matrix[k+1, n+1] += 2^derivative_order * n * prefac * 
+                                                    binomial(Int64((n + derivative_order - k) / 2 - 1), Int64((n - derivative_order - k) / 2)) * 
+                                                    factorial(Int64((n + derivative_order + k) / 2 - 1)) / 
+                                                    factorial(Int64((n - derivative_order + k) / 2))
+            end
+        end
+
+        return transformation_matrix
+    end
+    
+    @test QuantumGrav.chebyshev_derivation_matrix(order, 1) ==
+          old_chebyshev_derivation_matrix(order, 1)
+    @test QuantumGrav.chebyshev_derivation_matrix(order, 2) ==
+          old_chebyshev_derivation_matrix(order, 2)
+    @test QuantumGrav.chebyshev_derivation_matrix(order, 3) ==
+          old_chebyshev_derivation_matrix(order, 3)
+    @test QuantumGrav.chebyshev_derivation_matrix(order, 4) ==
+          old_chebyshev_derivation_matrix(order, 4)
+    @test QuantumGrav.chebyshev_derivation_matrix(order, 5) ==
+          old_chebyshev_derivation_matrix(order, 5)
+    
 end
 
 @testitem "test_chebyshev_derivation_matrix throws" tags = [:curvatureonmanifold, :throws] setup =
