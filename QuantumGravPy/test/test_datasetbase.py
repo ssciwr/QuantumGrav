@@ -18,6 +18,7 @@ def test_dataset_base_creation(create_data_zarr, tmp_path):
         validate_data=True,
         n_processes=4,
         chunksize=300,
+        preprocess=True,
     )
 
     assert dataset.input == datafiles
@@ -39,6 +40,23 @@ def test_dataset_base_creation(create_data_zarr, tmp_path):
     assert dataset.metadata["validate_data"] is True
     assert dataset.metadata["n_processes"] == 4
     assert dataset.metadata["chunksize"] == 300
+
+
+def test_dataset_base_creation_nonprocess(create_data_zarr, tmp_path):
+    _, datafiles = create_data_zarr
+    dataset_nonprocess = QG.dataset_base.QGDatasetBase(
+        input=datafiles,
+        output=tmp_path,
+        reader=lambda file: [],
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=4,
+        chunksize=300,
+        preprocess=False,
+    )
+    assert Path(dataset_nonprocess.processed_dir).exists() is False
+    assert (Path(dataset_nonprocess.processed_dir) / "metadata.yaml").exists() is False
 
 
 def test_dataset_base_creation_fails_bad_datafile(create_data_zarr, tmp_path):
