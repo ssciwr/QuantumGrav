@@ -60,7 +60,24 @@ jobs:
           Pkg.instantiate()
       - name: Build and deploy
         working-directory: ./QuantumGrav.jl
-        run: julia --color=yes --project=docs docs/make.jl
+        run: |
+          set +e  # Don't exit on error immediately
+          julia --color=yes --project=docs docs/make.jl 2>&1 | tee deploy.log
+          JULIA_EXIT=$?
+
+          # Check if deployment was skipped
+          if grep -F "Deploying: ✘" deploy.log; then
+            echo "ERROR: Documenter deployment was skipped!"
+            exit 1
+          fi
+
+          # Check Julia's exit code
+          if [ $JULIA_EXIT -ne 0 ]; then
+            echo "ERROR: Julia exited with error code $JULIA_EXIT"
+            exit $JULIA_EXIT
+          fi
+
+          echo "Deployment successful"
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
 
