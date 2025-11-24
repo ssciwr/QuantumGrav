@@ -17,7 +17,7 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 Zarr = "0a941bbe-ad1d-11e8-39d9-ab76183a1d99"
 
 [sources]
-CausalSets = {url = "https://codeberg.org/cyclopentane/CausalSets.jl"}
+CausalSets = {rev = "main", url = "https://codeberg.org/cyclopentane/CausalSets.jl"}
 
 [compat]
 CausalSets = "1.0.1"

@@ -1,9 +1,9 @@
 """
-    default_chunks(data::AbstractArray)
+    default_chunks(data::Union{AbstractArray, String})
 
 Default chunking strategy for Zarr arrays. Chunks of size 128 along each dimension, or smaller if the dimension size is less than 128.
 """
-function default_chunks(data::AbstractArray)
+function default_chunks(data::Union{AbstractArray,String})
     if eltype(data) === String
         element_type_size = 1
     else
