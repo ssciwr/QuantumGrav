@@ -58,8 +58,8 @@ function make_polynomial_manifold_cset(
     # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
     # it has to be a (order x order)-matrix because we describe a function of two variables
     chebyshev_coefs = zeros(Float64, order+1, order+1)
-    for i = 1:order+1
-        for j = 1:order+1
+    for i = 1:(order+1)
+        for j = 1:(order+1)
             chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
         end
     end

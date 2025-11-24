@@ -163,14 +163,14 @@ Translates and rescales the given grid so that it fits maximally inside the rect
 - Transformed grid that fits symmetrically and maximally into the given box.
 """
 function center_and_rescale_grid_to_box(
-    grid::Vector{CausalSets.Coordinates{2}}, 
-    box::Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}
-    )::Vector{CausalSets.Coordinates{2}}
+    grid::Vector{CausalSets.Coordinates{2}},
+    box::Tuple{CausalSets.Coordinates{2},CausalSets.Coordinates{2}},
+)::Vector{CausalSets.Coordinates{2}}
 
     # Extract box info
     (lower, upper) = box
     box_center = ((lower[1] + upper[1]) / 2, (lower[2] + upper[2]) / 2)
-    box_width  = upper[1] - lower[1]
+    box_width = upper[1] - lower[1]
     box_height = upper[2] - lower[2]
 
     # Compute grid bounding box
@@ -178,7 +178,7 @@ function center_and_rescale_grid_to_box(
     xs = last.(grid)
     min_t, max_t = extrema(ts)
     min_x, max_x = extrema(xs)
-    grid_width  = max_x - min_x
+    grid_width = max_x - min_x
     grid_height = max_t - min_t
 
     # Determine scaling factor
@@ -341,7 +341,7 @@ function create_grid_causet_2D_polynomial_manifold(
     grid = sort_grid_by_time_from_manifold(polym, grid)
 
     # Rescale and translate grid so it fits into Chebyshev domain
-    pseudosprinkling = center_and_rescale_grid_to_box(grid, ((-1., -1.),(1., 1.)))
+    pseudosprinkling = center_and_rescale_grid_to_box(grid, ((-1.0, -1.0), (1.0, 1.0)))
 
     return CausalSets.BitArrayCauset(polym, pseudosprinkling),
     true,

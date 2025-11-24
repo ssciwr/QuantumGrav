@@ -133,13 +133,19 @@ function (m::PolynomialCsetMaker)(
     n,
     rng;
     config::Union{Dict,Nothing} = nothing,
-    derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
-    derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
+    derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
+    derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
     o = rand(rng, m.order_distribution)
     r = rand(rng, m.r_distribution)
-    cset, sprinkling, chebyshev_coefs = make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
-    curvature_matrix = Ricci_scalar_2D_of_sprinkling(Float64.(chebyshev_coefs), Vector{CausalSets.Coordinates{2}}(sprinkling); derivation_matrix1 = derivation_matrix1, derivation_matrix2 = derivation_matrix2)
+    cset, sprinkling, chebyshev_coefs =
+        make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
+    curvature_matrix = Ricci_scalar_2D_of_sprinkling(
+        Float64.(chebyshev_coefs),
+        Vector{CausalSets.Coordinates{2}}(sprinkling);
+        derivation_matrix1 = derivation_matrix1,
+        derivation_matrix2 = derivation_matrix2,
+    )
     return cset, curvature_matrix
 end
 
@@ -753,9 +759,9 @@ function (gcm::GridCsetMakerPolynomial)(
     rng::Random.AbstractRNG,
     config::Dict;
     grid::Union{String,Nothing} = nothing,
-    derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
-    derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
-)::Tuple{CausalSets.BitArrayCauset,Vector{Float64}, String}
+    derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
+    derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
+)::Tuple{CausalSets.BitArrayCauset,Vector{Float64},String}
 
     if isnothing(grid)
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
@@ -786,10 +792,16 @@ function (gcm::GridCsetMakerPolynomial)(
         rotate_deg = rotate_angle_deg,
         origin = (0.0, 0.0),
     )
-    
-    trans_pseudosprinkling = [(Float64(x), Float64(y)) for (x, y) in eachrow(Float64.(pseudosprinkling))]
 
-    curvature_matrix = Ricci_scalar_2D_of_sprinkling(Float64.(chebyshev_coefs), trans_pseudosprinkling; derivation_matrix1 = derivation_matrix1, derivation_matrix2 = derivation_matrix2)
+    trans_pseudosprinkling =
+        [(Float64(x), Float64(y)) for (x, y) in eachrow(Float64.(pseudosprinkling))]
+
+    curvature_matrix = Ricci_scalar_2D_of_sprinkling(
+        Float64.(chebyshev_coefs),
+        trans_pseudosprinkling;
+        derivation_matrix1 = derivation_matrix1,
+        derivation_matrix2 = derivation_matrix2,
+    )
 
     return cset, curvature_matrix, grid
 end
@@ -916,8 +928,8 @@ function (ctm::ComplexTopCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
     config::Union{Dict{String,Any},Nothing} = nothing,
-    derivation_matrix1::Union{Nothing, Array{Float64, 2}}=nothing,
-    derivation_matrix2::Union{Nothing, Array{Float64, 2}}=nothing,
+    derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
+    derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
 
     n_vertical_cuts = rand(rng, ctm.vertical_cut_distribution)
@@ -932,7 +944,7 @@ function (ctm::ComplexTopCsetMaker)(
 
     order = rand(rng, ctm.order_distribution)
     r = rand(rng, ctm.r_distribution)
-  
+
     cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
         make_branched_manifold_cset(
             n,
@@ -945,7 +957,12 @@ function (ctm::ComplexTopCsetMaker)(
             tolerance = ctm.tol,
         )
 
-    curvature_matrix = Ricci_scalar_2D_of_sprinkling(Float64.(chebyshev_coefs), Vector{CausalSets.Coordinates{2}}(branched_sprinkling); derivation_matrix1 = derivation_matrix1, derivation_matrix2 = derivation_matrix2)
+    curvature_matrix = Ricci_scalar_2D_of_sprinkling(
+        Float64.(chebyshev_coefs),
+        Vector{CausalSets.Coordinates{2}}(branched_sprinkling);
+        derivation_matrix1 = derivation_matrix1,
+        derivation_matrix2 = derivation_matrix2,
+    )
 
     return cset, curvature_matrix
 end
@@ -1220,8 +1237,7 @@ function CsetFactory(config::Dict)
     rng = Random.Xoshiro(config["seed"])
     cset_makers = Dict(
         "random" => RandomCsetMaker(config["random"]),
-        "complex_topology" =>
-            ComplexTopCsetMaker(config["complex_topology"]),
+        "complex_topology" => ComplexTopCsetMaker(config["complex_topology"]),
         "merged" => MergedCsetMaker(config["merged"]),
         "merged_ambiguous" =>
             MergedCsetMaker(get(config, "merged_ambiguous", config["merged"])),
@@ -1229,9 +1245,8 @@ function CsetFactory(config::Dict)
         "layered" => LayeredCsetMaker(config["layered"]),
         "grid" => GridCsetMakerPolynomial(config["grid"]),
         "destroyed" => DestroyedCsetMaker(config["destroyed"]),
-        "destroyed_ambiguous" => DestroyedCsetMaker(
-            get(config, "destroyed_ambiguous", config["destroyed"]),
-        ),
+        "destroyed_ambiguous" =>
+            DestroyedCsetMaker(get(config, "destroyed_ambiguous", config["destroyed"])),
     )
     return CsetFactory(npoint_distribution, config, rng, cset_makers)
 end

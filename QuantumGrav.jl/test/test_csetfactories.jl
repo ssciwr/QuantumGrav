@@ -40,7 +40,7 @@
             "r_distribution_args" => [4.0, 2.0],
             "r_distribution_kwargs" => Dict(),
             "n2_rel_distribution" => "Uniform",
-            "n2_rel_distribution_args" => [0., 1.0],
+            "n2_rel_distribution_args" => [0.0, 1.0],
             "n2_rel_distribution_kwargs" => Dict(),
             "connectivity_distribution" => "Beta",
             "connectivity_distribution_args" => [0.5, 0.1],
@@ -72,7 +72,7 @@
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
             "flip_distribution" => "Uniform",
-            "flip_distribution_args" => [0., 1.0],
+            "flip_distribution_args" => [0.0, 1.0],
             "flip_distribution_kwargs" => Dict(),
         ),
         "grid" => Dict(
@@ -307,7 +307,7 @@ end
     cset, layers = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
-    @test layers >= 2 
+    @test layers >= 2
 end
 
 @testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
@@ -588,7 +588,8 @@ end
         csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
         # Produce a cset for this grid type
-        cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
+        cset, curvature_matrix, grid_type_out =
+            csetmaker(25, rng, cfg["grid"]; grid = grid_type)
         @test isnothing(cset) === false
         @test cset.atom_count == 25
         @test grid_type == grid_type_out

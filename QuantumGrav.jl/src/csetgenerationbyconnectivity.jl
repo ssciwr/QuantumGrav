@@ -19,22 +19,24 @@ struct FlipParamDeterminer
 end
 
 function FlipParamDeterminer()
-    grid_connectivity_goal = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.91, 0.95,
-                              0.99]  # connectivity_goal grid (ascending)
+    grid_connectivity_goal =
+        [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.91, 0.95, 0.99]  # connectivity_goal grid (ascending)
     grid_size = [128, 256, 512, 1024, 2048, 4096]  # size grid (ascending)
-    grid_flip_param = [0.05 0.04 0.025 0.015 0.013 0.012;
-                       0.03 0.035 0.026 0.016 0.013 0.007;
-                       0.02 0.03 0.023 0.012 0.01 0.005;
-                       0.025 0.02 0.024 0.015 0.01 0.006;
-                       0.025 0.025 0.025 0.02 0.014 0.008;
-                       0.03 0.035 0.03 0.025 0.015 0.008;
-                       0.06 0.04 0.04 0.027 0.016 0.009;
-                       0.1 0.07 0.05 0.032 0.019 0.01;
-                       0.17 0.1 0.065 0.042 0.025 0.014;
-                       0.27 0.18 0.11 0.07 0.04 0.025;
-                       0.28 0.19 0.125 0.075 0.045 0.027;
-                       0.45 0.32 0.19 0.11 0.07 0.047;
-                       1.2 0.7 0.45 0.3 0.3 0.2]
+    grid_flip_param = [
+        0.05 0.04 0.025 0.015 0.013 0.012;
+        0.03 0.035 0.026 0.016 0.013 0.007;
+        0.02 0.03 0.023 0.012 0.01 0.005;
+        0.025 0.02 0.024 0.015 0.01 0.006;
+        0.025 0.025 0.025 0.02 0.014 0.008;
+        0.03 0.035 0.03 0.025 0.015 0.008;
+        0.06 0.04 0.04 0.027 0.016 0.009;
+        0.1 0.07 0.05 0.032 0.019 0.01;
+        0.17 0.1 0.065 0.042 0.025 0.014;
+        0.27 0.18 0.11 0.07 0.04 0.025;
+        0.28 0.19 0.125 0.075 0.045 0.027;
+        0.45 0.32 0.19 0.11 0.07 0.047;
+        1.2 0.7 0.45 0.3 0.3 0.2
+    ]
     return FlipParamDeterminer(grid_connectivity_goal, grid_size, grid_flip_param)
 end
 
@@ -47,9 +49,11 @@ end
     x = clamp(connectivity_goal, c.grid_connectivity_goal[1], c.grid_connectivity_goal[end])
     y = clamp(Float64(size), c.grid_size[1], c.grid_size[end])
 
-    i = clamp(searchsortedlast(c.grid_connectivity_goal, x),
-              1,
-              length(c.grid_connectivity_goal) - 1)
+    i = clamp(
+        searchsortedlast(c.grid_connectivity_goal, x),
+        1,
+        length(c.grid_connectivity_goal) - 1,
+    )
     j = clamp(searchsortedlast(c.grid_size, y), 1, length(c.grid_size) - 1)
 
     x1 = c.grid_connectivity_goal[i]
@@ -86,20 +90,23 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - A bitarray causet sampled according to the connectivity goal.
 - A boolean indicating whether the sampling was successful.
 """
-function sample_bitarray_causet_by_connectivity(size::Int64,
-                                                connectivity_goal::Float64,
-                                                markov_steps::Int64,
-                                                rng::Random.AbstractRNG;
-                                                rel_tol::Union{Float64,Nothing}=nothing,
-                                                abs_tol::Union{Float64,Nothing}=nothing,
-                                                acceptance::Float64=5e5,)::Tuple{CausalSets.BitArrayCauset,
-                                                                                 Bool}
+function sample_bitarray_causet_by_connectivity(
+    size::Int64,
+    connectivity_goal::Float64,
+    markov_steps::Int64,
+    rng::Random.AbstractRNG;
+    rel_tol::Union{Float64,Nothing} = nothing,
+    abs_tol::Union{Float64,Nothing} = nothing,
+    acceptance::Float64 = 5e5,
+)::Tuple{CausalSets.BitArrayCauset,Bool}
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
     end
 
     if connectivity_goal > 1 || connectivity_goal < 1e-9 # use small number here -> everything below is considered zero
-        throw(ArgumentError("connectivity_goal has to be in (0,1], is $(connectivity_goal)"))
+        throw(
+            ArgumentError("connectivity_goal has to be in (0,1], is $(connectivity_goal)"),
+        )
     end
 
     if markov_steps < 1
@@ -111,7 +118,11 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
     end
 
     if abs_tol !== nothing && rel_tol !== nothing
-        throw(ArgumentError("Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)"))
+        throw(
+            ArgumentError(
+                "Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)",
+            ),
+        )
     end
 
     if !isnothing(rel_tol) && rel_tol < 0
@@ -138,20 +149,24 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
 
     step = 1
     while step < markov_steps
-        flips_per_step = Int64(ceil(flip_param *
-                                    abs(prev_connectivity - connectivity_goal) *
-                                    size *
-                                    (size - 1) / 2))
+        flips_per_step = Int64(
+            ceil(
+                flip_param *
+                abs(prev_connectivity - connectivity_goal) *
+                size *
+                (size - 1) / 2,
+            ),
+        )
 
         # Randomly select edges to flip
-        i = [rand(rng, 1:(size - 1)) for flip in 1:flips_per_step]
-        j = [rand(rng, (i[flip] + 1):size) for flip in 1:flips_per_step]
+        i = [rand(rng, 1:(size-1)) for flip = 1:flips_per_step]
+        j = [rand(rng, (i[flip]+1):size) for flip = 1:flips_per_step]
 
         # Store previous edge states for possible rollback
-        prev_edges = [graph.edges[i[flip]][j[flip]] for flip in 1:flips_per_step]
+        prev_edges = [graph.edges[i[flip]][j[flip]] for flip = 1:flips_per_step]
 
         # Flip selected edges
-        for flip in 1:flips_per_step
+        for flip = 1:flips_per_step
             graph.edges[i[flip]][j[flip]] = !prev_edges[flip]
         end
 
@@ -182,7 +197,7 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
             prev_connectivity = new_connectivity
         else
             # Reject the modification: revert flipped edges
-            for flip in 1:flips_per_step
+            for flip = 1:flips_per_step
                 graph.edges[i[flip]][j[flip]] = prev_edges[flip]
             end
         end
@@ -192,7 +207,7 @@ function sample_bitarray_causet_by_connectivity(size::Int64,
     @warn "Relative precision $(rel_tol) or absolute precision $(abs_tol) not reached after $(markov_steps) steps. Final connectivity error: $(abs(prev_connectivity - connectivity_goal))"
 
     # Return the sampled causet
-    return CausalSets.to_bitarray_causet(tcg), false                          
+    return CausalSets.to_bitarray_causet(tcg), false
 end
 
 """
@@ -217,21 +232,26 @@ samples a causet using Markov Chain Monte Carlo with adaptive edge flips to appr
   - `CausalSets.BitArrayCauset`: The sampled causet as a bitarray.
   - `Bool`: A boolean indicating whether the sampling was successful within the tolerance.
 """
-function random_causet_by_connectivity_distribution(size::Int64,
-                                                dist::Distributions.Distribution,
-                                                markov_steps::Int64,
-                                                rng::Random.AbstractRNG;
-                                                rel_tol::Union{Float64,Nothing}=nothing,
-                                                abs_tol::Union{Float64,Nothing}=nothing,
-                                                acceptance::Float64=5e5,)::Tuple{CausalSets.BitArrayCauset,
-                                                                                 Bool}
+function random_causet_by_connectivity_distribution(
+    size::Int64,
+    dist::Distributions.Distribution,
+    markov_steps::Int64,
+    rng::Random.AbstractRNG;
+    rel_tol::Union{Float64,Nothing} = nothing,
+    abs_tol::Union{Float64,Nothing} = nothing,
+    acceptance::Float64 = 5e5,
+)::Tuple{CausalSets.BitArrayCauset,Bool}
     if size < 1
         throw(ArgumentError("size must be larger than 0, is $(size)"))
     end
 
     a, b = Distributions.extrema(dist)
     if a < 0.0 || b > 1.0
-        throw(ArgumentError("Distribution support [$a,$b] is not fully contained in [0,1]. Use Distributions.truncated to truncate."))
+        throw(
+            ArgumentError(
+                "Distribution support [$a,$b] is not fully contained in [0,1]. Use Distributions.truncated to truncate.",
+            ),
+        )
     end
 
     if markov_steps < 1
@@ -243,7 +263,11 @@ function random_causet_by_connectivity_distribution(size::Int64,
     end
 
     if abs_tol !== nothing && rel_tol !== nothing
-        throw(ArgumentError("Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)"))
+        throw(
+            ArgumentError(
+                "Only one of abs_tol or rel_tol can be set, got abs_tol=$(abs_tol) and rel_tol=$(rel_tol)",
+            ),
+        )
     end
 
     if !isnothing(rel_tol) && rel_tol < 0
@@ -255,5 +279,13 @@ function random_causet_by_connectivity_distribution(size::Int64,
     end
 
     connectivity_goal = rand(rng, dist)
-    return sample_bitarray_causet_by_connectivity(size, connectivity_goal, markov_steps, rng; rel_tol = rel_tol, abs_tol = abs_tol, acceptance = acceptance)
+    return sample_bitarray_causet_by_connectivity(
+        size,
+        connectivity_goal,
+        markov_steps,
+        rng;
+        rel_tol = rel_tol,
+        abs_tol = abs_tol,
+        acceptance = acceptance,
+    )
 end
