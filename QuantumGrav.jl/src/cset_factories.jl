@@ -1268,7 +1268,7 @@ Create a new cset, accessing the specialized factory functors held by the caller
 - `config`: config that defines cset parameters (optional). Defaults to nothing
 """
 function (cf::CsetFactory)(csetname::String, n::Int64, rng::Random.AbstractRNG;)
-    cset_return = cf.cset_makers[csetname](n, rng; config = cf.config[csetname])
+    cset_return = cf.cset_makers[csetname](n, rng; config = cf.conf[csetname])
 
     # make the csetfactory return a cset and additional args or a dummy thereof always.
     if cset_return isa Tuple

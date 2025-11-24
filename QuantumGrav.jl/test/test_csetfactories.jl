@@ -226,7 +226,7 @@ end
     @test cset.atom_count == n
     @test layers isa Int
 
-    cset, curvature_matrix, grid = csetfactory("grid", n, rng; config = cfg["grid"])
+    cset, curvature_matrix, grid = csetfactory("grid", n, rng)
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == n
     @test curvature_matrix isa Vector{Float64}
