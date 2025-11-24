@@ -1122,7 +1122,7 @@ csetfactory_schema = JSONSchema.Schema("""
         	  "\$schema": "http://json-schema.org/draft-06/schema#",
         	  "title": "QuantumGrav Cset Factory Config",
         	  "type": "object",
-        	  "additionalProperties": true,
+        	  "additionalProperties": false,
         	  "properties": {
         		"polynomial": {
         		  "type": "object",
