@@ -25,11 +25,11 @@ function copy_sourcecode(funcs_to_copy::Vector, targetpath::String)
 end
 
 """
-	get_git_info!(config::Dict{String, Any})
+	get_git_info!(config::Dict{Any, Any})
 Get git info (branch, source, tree_hash) of the QuantumGrav package
 
 # Arguments
-config::Dict{String, Any} Config dictionary to put the git data into
+config::Dict{Any, Any} Config dictionary to put the git data into
 """
 function get_git_info!(config::Dict{String,Any})
     pkg_id = Base.identify_package("QuantumGrav")
@@ -55,7 +55,7 @@ function get_git_info!(config::Dict{String,Any})
 end
 
 """
-	prepare_dataproduction(config::Dict{String, Any}, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
+	prepare_dataproduction(config::Dict{Any, Any}, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
 
 Prepare the data production process from the config dict supplied.
 - create a target directory
