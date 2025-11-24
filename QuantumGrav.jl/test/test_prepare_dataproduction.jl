@@ -38,12 +38,16 @@ end
         @test length(filter(x -> occursin(".zarr", x), readdir(targetpath))) == 0
 
         funcs = [CausalSets.cardinality_of, QuantumGrav.make_adj]
-        QuantumGrav.prepare_dataproduction(config, funcs)
+        QuantumGrav.prepare_dataproduction(config, funcs; name = "testdata")
 
         @test haskey(config, "QuantumGrav")
+        zarr_files = filter(x -> occursin(".zarr", x), readdir(targetpath))
         @test length(filter(x -> occursin(".jl", x), readdir(targetpath))) == 2
         @test length(filter(x -> occursin(".yaml", x), readdir(targetpath))) == 1
-        @test length(filter(x -> occursin(".zarr", x), readdir(targetpath))) == 1
+        @test length(zarr_files) == 1
+        @test occursin("testdata", zarr_files[1])
+
+
     end
 end
 
