@@ -1,6 +1,6 @@
 
 """
-    copy_sourcecode(funcs_to_copy::Vector{Any}, targetpath::String)
+	copy_sourcecode(funcs_to_copy::Vector{Any}, targetpath::String)
 
 Copy the sourcecode files of the functions in the arguments to a targetpath.
 
@@ -25,7 +25,7 @@ function copy_sourcecode(funcs_to_copy::Vector, targetpath::String)
 end
 
 """
-    get_git_info!(config::Dict{String, Any})
+	get_git_info!(config::Dict{String, Any})
 Get git info (branch, source, tree_hash) of the QuantumGrav package
 
 # Arguments
@@ -55,7 +55,7 @@ function get_git_info!(config::Dict{String,Any})
 end
 
 """
-    prepare_dataproduction(config::Dict{String, Any}, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
+	prepare_dataproduction(config::Dict{String, Any}, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
 
 Prepare the data production process from the config dict supplied.
 - create a target directory
@@ -68,12 +68,16 @@ Prepare the data production process from the config dict supplied.
 config::Dict{String, Any} Config file defining the data generation system
 funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained
 
+# Keyword arguments
+name::String Name of the zarr store to be created. Will be followed by
+
 # Returns
 Tuple{String, Zarr.DirectoryStore} The path to the output file and the output file itself.
 """
 function prepare_dataproduction(
     config::Dict{String,Any},
-    funcs_to_copy::Vector,
+    funcs_to_copy::Vector;
+    name::String = "data",
 )::Tuple{String,Zarr.DirectoryStore}
     # consistency checks
     for key in ["num_datapoints", "output", "seed"]
@@ -104,16 +108,12 @@ function prepare_dataproduction(
 
     # write the config file to target
     YAML.write_file(
-        joinpath(
-            abspath(expanduser(config["output"])),
-            "config_$(getpid())_$(datetime).yaml",
-        ),
+        joinpath(abspath(expanduser(config["output"])), "config_$(datetime).yaml"),
         config,
     )
 
     # create the output file
-    filepath =
-        joinpath(abspath(expanduser(config["output"])), "data_$(getpid())_$(datetime).zarr")
+    filepath = joinpath(abspath(expanduser(config["output"])), "$(name)_$(datetime).zarr")
 
     file = Zarr.DirectoryStore(filepath)
 
