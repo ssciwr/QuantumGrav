@@ -1,10 +1,10 @@
 """
-	build_distr(cfg::Dict, name::String)
+	build_distr(cfg::AbstractDict, name::String)
 
 Build a new Distributions.jl univariate distribution from a config dictionary.
 
 # Arguments:
-- cfg::Dict config dict
+- cfg::AbstractDict config dict
 - name::String key in the dict referring to the type, args, kwargs needed
 
 # Example:
@@ -19,7 +19,7 @@ distributions = build_distr(config, "connectivity_distribution")
 ```
 
 """
-function build_distr(cfg::Dict, name::String)::Distributions.Distribution
+function build_distr(cfg::AbstractDict, name::String)::Distributions.Distribution
 
     distribution_type::Union{Nothing,Type} = nothing
 
@@ -100,7 +100,7 @@ const PolynomialCsetMaker_schema = JSONSchema.Schema("""{
 	Creates a causal set maker for a polynomial manifold.
 
 # Arguments:
-- config::Dict: configuration dictionary
+- config::AbstractDict: configuration dictionary
 """
 function PolynomialCsetMaker(config)
     validate_config(PolynomialCsetMaker_schema, config)
@@ -213,14 +213,14 @@ const LayeredCsetMaker_schema = JSONSchema.Schema(
 )
 
 """
-	LayeredCsetMaker(config::Dict)
+	LayeredCsetMaker(config::AbstractDict)
 
 	Creates a causal set maker for a layered causal set.
 
 # Arguments:
-	- config::Dict: configuration dictionary
+	- config::AbstractDict: configuration dictionary
 """
-function LayeredCsetMaker(config::Dict)
+function LayeredCsetMaker(config::AbstractDict)
     validate_config(LayeredCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
@@ -230,7 +230,7 @@ function LayeredCsetMaker(config::Dict)
 end
 
 """
-	lm::LayeredCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	lm::LayeredCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 	Creates a new layered causal set with the parameters stored in the calling `LayeredCsetMaker` object lm.
 
@@ -315,14 +315,14 @@ const RandomCsetMaker_schema = JSONSchema.Schema("""{
              """)
 
 """
-	RandomCsetMaker(config::Dict)
+	RandomCsetMaker(config::AbstractDict)
 
 	Creates a causal set maker for a random causal set.
 
 # Fields:
-- config::Dict: configuration dictionary
+- config::AbstractDict: configuration dictionary
 """
-function RandomCsetMaker(config::Dict)
+function RandomCsetMaker(config::AbstractDict)
     validate_config(RandomCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
@@ -462,11 +462,11 @@ const DestroyedCsetMaker_schema = JSONSchema.Schema("""{
              """)
 
 """
-	DestroyedCsetMaker(config::Dict)
+	DestroyedCsetMaker(config::AbstractDict)
 
 Create a new `destroyed` causal set maker object from the config dictionary.
 """
-function DestroyedCsetMaker(config::Dict)
+function DestroyedCsetMaker(config::AbstractDict)
     validate_config(DestroyedCsetMaker_schema, config)
 
     order_distribution = build_distr(config, "order_distribution")
@@ -479,7 +479,7 @@ function DestroyedCsetMaker(config::Dict)
 end
 
 """
-	dcm::DestroyedCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	dcm::DestroyedCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 
@@ -498,7 +498,7 @@ Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 function (dcm::DestroyedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
     o = rand(rng, dcm.order_distribution)
@@ -518,11 +518,11 @@ end
 	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 
 # Fields:
-	- grid_distribution::Distributions.Distribution: TODO
-	- rotate_distribution::Distributions.Distribution: TODO
-	- order_distribution::Distributions.Distribution: TODO
-	- r_distribution::Distributions.Distribution: TODO
-	- grid_lookup::Dict: TODO
+	- grid_distribution::Distributions.Distribution: Random distribution to draw grid from
+	- rotate_distribution::Distributions.Distribution: Random distribution to draw rotation angle from
+	- order_distribution::Distributions.Distribution: Random distribution to draw order from
+	- r_distribution::Distributions.Distribution: Random distribution to draw exponent for Chebyshev expansionfrom
+	- grid_lookup::AbstractDict: grid lookup table by name
 """
 struct GridCsetMakerPolynomial
     grid_distribution::Distributions.Distribution
@@ -735,7 +735,7 @@ function GridCsetMakerPolynomial(config::Dict)
 end
 
 """
-	gcm::GridCsetMakerPolynomial(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	gcm::GridCsetMakerPolynomial(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 	Create a new `grid` causal set using a `GridCsetMakerPolynomial` object.
 
@@ -890,11 +890,11 @@ const ComplexTopCsetMaker_schema = JSONSchema.Schema("""{
               """)
 
 """
-	ComplexTopCsetMaker(config::Dict)
+	ComplexTopCsetMaker(config::AbstractDict)
 
 	Create a new `ComplexTopCsetMaker` object from the config dictionary.
 """
-function ComplexTopCsetMaker(config::Dict)
+function ComplexTopCsetMaker(config::AbstractDict)
     validate_config(ComplexTopCsetMaker_schema, config)
 
     vertical_cut_distr = build_distr(config, "vertical_cut_distribution")
@@ -913,7 +913,7 @@ function ComplexTopCsetMaker(config::Dict)
 end
 
 """
-	ctm::ComplexTopCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	ctm::ComplexTopCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 	Create a new causal set using a `ComplexTopCsetMaker` object.
 
@@ -931,7 +931,7 @@ end
 function (ctm::ComplexTopCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
     derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
@@ -1060,11 +1060,11 @@ const MergedCsetMaker_schema = JSONSchema.Schema("""{
              """)
 
 """
-	MergedCsetMaker(config::Dict)
+	MergedCsetMaker(config::AbstractDict)
 
 Make a new merged causal set maker from a given configuration dictionary.
 """
-function MergedCsetMaker(config::Dict)
+function MergedCsetMaker(config::AbstractDict)
     validate_config(MergedCsetMaker_schema, config)
 
     order_distr = build_distr(config, "order_distribution")
@@ -1083,7 +1083,7 @@ function MergedCsetMaker(config::Dict)
 end
 
 """
-	mcm::MergedCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	mcm::MergedCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 	Creates a merged causal set maker for a random causal set.
 
@@ -1102,7 +1102,7 @@ end
 function (mcm::MergedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
     o = rand(rng, mcm.order_distribution)
@@ -1218,23 +1218,23 @@ and provides access to specialized factory functions for different cset types.
 
 # Fields:
 - `npoint_distribution::Distributions.Distribution`: Distribution object for drawing number of elements in a cset
-- `conf::Dict`: config dictionary
+- `conf::AbstractDict`: config dictionary
 - `rng::Random.AbstractRNG`: random number generator to use
-- `cset_makers::Dict`: dict to hold all the different cset factory methods
+- `cset_makers::AbstractDict`: dict to hold all the different cset factory methods
 """
 struct CsetFactory
     npoint_distribution::Distributions.Distribution
-    conf::Dict
+    conf::AbstractDict
     rng::Random.AbstractRNG
-    cset_makers::Dict
+    cset_makers::AbstractDict
 end
 
 """
-	CsetFactory(config::Dict)
+	CsetFactory(config::AbstractDict)
 
 Create a new CsetFactory instance that bundles all the different cset factories into one object
 """
-function CsetFactory(config::Dict)
+function CsetFactory(config::AbstractDict)
     validate_config(csetfactory_schema, config)
 
     npoint_distribution = build_distr(config, "csetsize_distr")
