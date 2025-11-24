@@ -45,7 +45,7 @@
             "connectivity_distribution_args" => [0.5, 0.1],
             "connectivity_distribution_kwargs" => Dict(),
             "link_prob_distribution" => "Normal",
-            "link_prob_distribution_args" => [2.0, 1.5],
+            "link_prob_distribution_args" => [0.1, 0.05],
             "link_prob_distribution_kwargs" => Dict(),
         ),
         "complex_topology" => Dict(
@@ -208,10 +208,41 @@ end
     rng = Random.Xoshiro(1234)
     csetfactory = QuantumGrav.CsetFactory(cfg)
 
-    cset, _ = csetfactory("random", 12, rng)
+    cset, _ = csetfactory("random", 64, rng)
 
     @test cset isa CausalSets.BitArrayCauset
-    @test cset.atom_count == 12
+    @test cset.atom_count == 64
+
+    cset, curvature_matrix = csetfactory("polynomial", 64, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 64
+    @test curvature_matrix isa Vector{Float64}
+
+    cset, layers = csetfactory("layered", 64, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 64
+    @test layers isa Int
+
+    cset, curvature_matrix, grid = csetfactory("grid", 64, rng; config = cfg["grid"])
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 64
+    @test curvature_matrix isa Vector{Float64}
+    @test grid isa String
+
+    cset, curvature_matrix = csetfactory("complex_topology", 64, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count <= 64
+    @test curvature_matrix isa Vector{Float64}
+
+    cset, n2rel = csetfactory("merged", 64, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 64
+    @test n2rel isa Float64
+
+    cset, fraction = csetfactory("destroyed", 64, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 64
+    @test fraction isa Float64
 end
 
 @testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
