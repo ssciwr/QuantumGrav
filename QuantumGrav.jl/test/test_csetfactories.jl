@@ -7,8 +7,8 @@
             "order_distribution" => "DiscreteUniform",
             "order_distribution_args" => [2, 8],
             "order_distribution_kwargs" => Dict(),
-            "r_distribution" => "Normal",
-            "r_distribution_args" => [4.0, 2.0],
+            "r_distribution" => "Uniform",
+            "r_distribution_args" => [2.0, 5.0],
             "r_distribution_kwargs" => Dict(),
         ),
         "random" => Dict(
@@ -201,8 +201,8 @@ end
 
 
 @testitem "test_Csetfactory_call" tags=[:csetfactories] setup = [config] begin
-    using Random: Random
-    using Distributions: Distributions
+    using Random
+    using Distributions
     using CausalSets: CausalSets
 
     rng = Random.Xoshiro(1234)
@@ -246,13 +246,13 @@ end
 end
 
 @testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
     @test Distributions.params(csetmaker.order_distribution) ==
           tuple(cfg["polynomial"]["order_distribution_args"]...)
-    @test csetmaker.r_distribution isa Distributions.Normal
+    @test csetmaker.r_distribution isa Distributions.Uniform
     @test Distributions.params(csetmaker.r_distribution) ==
           tuple(cfg["polynomial"]["r_distribution_args"]...)
 end
@@ -269,7 +269,7 @@ end
 end
 
 @testitem "test_polynomial_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random: Random
+    using Random
 
     csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
     rng = Random.Xoshiro(cfg["seed"])
@@ -280,7 +280,7 @@ end
 end
 
 @testitem "test_random_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.RandomCsetMaker(cfg["random"])
     @test csetmaker.connectivity_distribution isa Distributions.Cauchy
@@ -305,7 +305,7 @@ end
 end
 
 @testitem "test_random_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random: Random
+    using Random
 
     csetmaker = QuantumGrav.RandomCsetMaker(cfg["random"])
     rng = Random.Xoshiro(cfg["seed"])
@@ -315,7 +315,7 @@ end
 end
 
 @testitem "test_layered_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.LayeredCsetMaker(cfg["layered"])
 
@@ -360,7 +360,7 @@ end
 end
 
 @testitem "test_layered_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random: Random
+    using Random
     csetmaker = QuantumGrav.LayeredCsetMaker(cfg["layered"])
     rng = Random.Xoshiro(cfg["seed"])
     cset, layers = csetmaker(25, rng)
@@ -370,7 +370,7 @@ end
 end
 
 @testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.DestroyedCsetMaker(cfg["destroyed"])
 
@@ -417,7 +417,7 @@ end
 end
 
 @testitem "test_destroyed_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random: Random
+    using Random
 
     csetmaker = QuantumGrav.DestroyedCsetMaker(cfg["destroyed"])
     rng = Random.Xoshiro(cfg["seed"])
@@ -428,7 +428,7 @@ end
 end
 
 @testitem "test_merged_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.MergedCsetMaker(cfg["merged"])
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
@@ -497,7 +497,7 @@ end
 end
 
 @testitem "test_merged_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random: Random
+    using Random
     csetmaker = QuantumGrav.MergedCsetMaker(cfg["merged"])
     rng = Random.Xoshiro(cfg["seed"])
     cset, n2_rel = csetmaker(25, rng)
@@ -508,7 +508,7 @@ end
 
 @testitem "test_complex_topology_factory_construction" tags = [:csetfactories] setup =
     [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.ComplexTopCsetMaker(cfg["complex_topology"])
 
@@ -560,7 +560,7 @@ end
 
 @testitem "test_complex_topology_factory_produce_csets" tags = [:csetfactories] setup =
     [config] begin
-    using Random: Random
+    using Random
 
     csetmaker = QuantumGrav.ComplexTopCsetMaker(cfg["complex_topology"])
     rng = Random.Xoshiro(cfg["seed"])
@@ -571,7 +571,7 @@ end
 end
 
 @testitem "test_grid_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
@@ -636,7 +636,7 @@ end
 end
 
 @testitem "test_grid_factory_produce_csets" tags = [:csetfactories] setup = [config] begin
-    using Random: Random
+    using Random
     # Test all grid types: quadratic, rectangular, rhombic, hexagonal, triangular, oblique
     grid_types =
         ["quadratic", "rectangular", "rhombic", "hexagonal", "triangular", "oblique"]
