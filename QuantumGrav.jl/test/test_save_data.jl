@@ -1,7 +1,5 @@
 
 @testitem "test_default_chunks" tags = [:save_data] begin
-    import QuantumGrav
-    import Zarr
 
     data = rand(Float32, 100, 200, 100)
     chunks = QuantumGrav.default_chunks(data)
@@ -24,7 +22,6 @@ end
 
 
 @testitem "test_write_arraylike" tags = [:save_data] begin
-    import QuantumGrav
     import Zarr
 
     if isdir(joinpath(tempdir(), "test.zarr"))
@@ -83,8 +80,9 @@ end
 
 
 @testitem "dict_to_zarr" tags = [:save_data] begin
-    import QuantumGrav
-    import Zarr
+    using QuantumGrav
+    using Zarr
+
     if isdir(joinpath(tempdir(), "dict_test.zarr"))
         rm(joinpath(tempdir(), "dict_test.zarr"), recursive = true)
     end
@@ -98,7 +96,7 @@ end
     data = Dict(
         "d1" => Dict("v1" => rand(Float32, 10, 12, 5), "i1" => rand(Int64, 20, 20)),
         "arr" => ["a", "bc", "c", "defeg"],
-        "str" => "fj;aejfeiafhuaefhauefhafheausfasfeaf",
+        "str" => "some_random_test_string",
     )
 
     QuantumGrav.dict_to_zarr(root, data)
@@ -126,7 +124,7 @@ end
     arr = Zarr.zopen(file, "r"; path = "str")
     @test arr.metadata.shape[] == (1,)
     @test arr.metadata.chunks == (1,)
-    @test arr[:] == ["fj;aejfeiafhuaefhauefhafheausfasfeaf"]
+    @test arr[:] == ["some_random_test_string"]
     rm(joinpath(tempdir(), "dict_test.zarr"), recursive = true)
 
     chunking_strat = Dict(
@@ -163,7 +161,7 @@ end
     arr = Zarr.zopen(file, "r"; path = "str")
     @test arr.metadata.shape[] == (1,)
     @test arr.metadata.chunks == (7,)
-    @test arr[:] == ["fj;aejfeiafhuaefhauefhafheausfasfeaf"]
+    @test arr[:] == ["some_random_test_string"]
     rm(joinpath(tempdir(), "dict_test_customchunk.zarr"), recursive = true)
 
 end

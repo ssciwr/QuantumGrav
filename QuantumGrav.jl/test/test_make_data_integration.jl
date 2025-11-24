@@ -131,7 +131,6 @@ end
         adj = transpose(hcat(cset.future_relations...)) |> Matrix{Int64}
         in_deg = sum(adj, dims = 1)[1, :]
         out_deg = sum(adj, dims = 2)[:, 1]
-        println("adj in data: ", typeof(adj), size(adj))
         return Dict("adj" => adj, "in_degree" => in_deg, "out_degree" => out_deg)
     end
 
@@ -160,7 +159,6 @@ end
     for i in [1, 2, 3]
         cset, _ = csetfactory("polynomial", 64, rng)
         data = make_data(cset)
-        println("calling write data")
         dict_to_zarr(root, Dict("data_$(i)"=>data))
     end
 
@@ -173,16 +171,15 @@ end
         indeg = Zarr.zopen(file, "r"; path = "data_$(i)/in_degree")
         outdeg = Zarr.zopen(file, "r"; path = "data_$(i)/out_degree")
 
-        println("matrix type: ", typeof(adj), ", shape: ", size(adj))
-        @test adj isa Matrix{Int64}
+        @test adj[:, :] isa Matrix{Int64}
         @test adj.metadata.shape[] == (64, 64)
         @test size(adj) == (64, 64)
 
-        @test indeg isa Vector
+        @test indeg[:] isa Vector
         @test indeg.metadata.shape[] == (64,)
         @test size(indeg) == (64,)
 
-        @test outdeg isa Vector
+        @test outdeg[:] isa Vector
         @test outdeg.metadata.shape[] == (64,)
         @test size(outdeg) == (64,)
     end
