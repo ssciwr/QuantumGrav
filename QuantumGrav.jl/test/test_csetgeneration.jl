@@ -44,8 +44,8 @@ end
     @test x_spread > 0.9
     @test y_spread > 0.9
 
-    envelope = [r^(-i - j) for i = 1:order + 1, j = 1:order + 1]
-    for i = 1:order + 1, j = 1:order + 1
+    envelope = [r^(-i - j) for i = 1:(order+1), j = 1:(order+1)]
+    for i = 1:(order+1), j = 1:(order+1)
         @test abs(chebyshev_coefs[i, j]) ≤ 10 * envelope[i, j]
     end
 end
@@ -90,7 +90,7 @@ end
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
 
-    chebyshev_coefs = [r^(-i - j) * randn(rng) for i = 1:order + 1, j = 1:order + 1]
+    chebyshev_coefs = [r^(-i - j) * randn(rng) for i = 1:(order+1), j = 1:(order+1)]
 
     cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
     taylor = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)
@@ -116,8 +116,8 @@ end
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
 
-    chebyshev_coefs = [0.0 for i = 1:order + 1, j = 1:order + 1]
-    for i = 1:order +1, j = 1:i
+    chebyshev_coefs = [0.0 for i = 1:(order+1), j = 1:(order+1)]
+    for i = 1:(order+1), j = 1:i
         val = r^(-i - j) * randn(rng)
         chebyshev_coefs[i, j] = val
         chebyshev_coefs[j, i] = val
