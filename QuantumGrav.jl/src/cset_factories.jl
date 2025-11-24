@@ -1,25 +1,25 @@
 """
-    build_distr(cfg::Dict, name::String)
+	build_distr(cfg::AbstractDict, name::String)
 
 Build a new Distributions.jl univariate distribution from a config dictionary.
 
 # Arguments:
-- cfg::Dict config dict
+- cfg::AbstractDict config dict
 - name::String key in the dict referring to the type, args, kwargs needed
 
 # Example:
 ```julia
 config = Dict("connectivity_distribution" => "Cauchy",
-            "connectivity_distribution_args" => [0.5, 0.2],
-            "connectivity_distribution_kwargs" => Dict(),
-        )
+			"connectivity_distribution_args" => [0.5, 0.2],
+			"connectivity_distribution_kwargs" => Dict(),
+		)
 
 distributions = build_distr(config, "connectivity_distribution")
 
 ```
 
 """
-function build_distr(cfg::Dict, name::String)::Distributions.Distribution
+function build_distr(cfg::AbstractDict, name::String)::Distributions.Distribution
 
     distribution_type::Union{Nothing,Type} = nothing
 
@@ -33,7 +33,7 @@ function build_distr(cfg::Dict, name::String)::Distributions.Distribution
 
     kwargs = get(cfg, name*"_kwargs", Dict())
 
-    if !(kwargs isa Dict{Symbol,Any})
+    if !(kwargs isa AbstractDict{Symbol,Any})
         kwargs = Dict(Symbol(k) => v for (k, v) in kwargs)
     end
 
@@ -47,9 +47,9 @@ function build_distr(cfg::Dict, name::String)::Distributions.Distribution
 end
 
 """
-    PolynomialCsetMaker
+	PolynomialCsetMaker
 
-    Causal set maker for a polynomial manifold.
+	Causal set maker for a polynomial manifold.
 
 # Fields:
 - `order_distribution::Distributions.Distribution`: distribution of polynomial orders
@@ -61,46 +61,46 @@ struct PolynomialCsetMaker
 end
 
 const PolynomialCsetMaker_schema = JSONSchema.Schema("""{
-                                                       "\$schema": "http://json-schema.org/draft-06/schema#",
-                                                       "title": "QuantumGrav Cset Factory Config",
-                                                       "type": "object",
-                                                       "additionalProperties": false,
-                                                       "properties": {
-                                                         "order_distribution": { "type": "string" },
-                                                         "order_distribution_args": {
-                                                           "type": "array",
-                                                           "items": { "type": "integer" }
-                                                         },
-                                                         "order_distribution_kwargs": {
-                                                           "type": "object",
-                                                           "additionalProperties": true
-                                                         },
-                                                         "r_distribution": { "type": "string" },
-                                                         "r_distribution_args": {
-                                                           "type": "array",
-                                                           "items": { "type": "number" }
-                                                         },
-                                                         "r_distribution_kwargs": {
-                                                           "type": "object",
-                                                           "additionalProperties": true
-                                                         }
-                                                       },
-                                                       "required": [
-                                                         "order_distribution",
-                                                         "order_distribution_args",
-                                                         "r_distribution",
-                                                         "r_distribution_args"
-                                                       ]
-                                                     }
-                                                     """)
+                "\$schema": "http://json-schema.org/draft-06/schema#",
+                "title": "QuantumGrav Cset Factory Config",
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+               "order_distribution": { "type": "string" },
+               "order_distribution_args": {
+                 "type": "array",
+                 "items": { "type": "integer" }
+               },
+               "order_distribution_kwargs": {
+                 "type": "object",
+                 "additionalProperties": true
+               },
+               "r_distribution": { "type": "string" },
+               "r_distribution_args": {
+                 "type": "array",
+                 "items": { "type": "number" }
+               },
+               "r_distribution_kwargs": {
+                 "type": "object",
+                 "additionalProperties": true
+               }
+                },
+                "required": [
+               "order_distribution",
+               "order_distribution_args",
+               "r_distribution",
+               "r_distribution_args"
+                ]
+              }
+              """)
 
 """
-    PolynomialCsetMaker(config)
+	PolynomialCsetMaker(config)
 
-    Creates a causal set maker for a polynomial manifold.
+	Creates a causal set maker for a polynomial manifold.
 
 # Arguments:
-- config::Dict: configuration dictionary
+- config::AbstractDict: configuration dictionary
 """
 function PolynomialCsetMaker(config)
     validate_config(PolynomialCsetMaker_schema, config)
@@ -112,9 +112,9 @@ function PolynomialCsetMaker(config)
 end
 
 """
-    m::PolynomialCsetMaker(n, config, rng)
+	m::PolynomialCsetMaker(n, config, rng)
 
-    Creates a new polynomial causal set with the parameters stored in the calling `PolynomialCsetMaker` object m.
+	Creates a new polynomial causal set with the parameters stored in the calling `PolynomialCsetMaker` object m.
 
 # Arguments:
 - `n`: number of elements in the causal set
@@ -132,7 +132,7 @@ end
 function (m::PolynomialCsetMaker)(
     n,
     rng;
-    config::Union{Dict,Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
     derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
@@ -150,9 +150,9 @@ function (m::PolynomialCsetMaker)(
 end
 
 """
-    LayeredCsetMaker
+	LayeredCsetMaker
 
-    Causal set maker for a layered causal set.
+	Causal set maker for a layered causal set.
 
 # Fields:
 - `connectivity_distribution::Distributions.Distribution`: distribution of connectivity goals
@@ -172,55 +172,55 @@ const LayeredCsetMaker_schema = JSONSchema.Schema(
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "connectivity_distribution": { "type": "string" },
-        "connectivity_distribution_args": {
-          "type": "array",
-          "items": { "type": "number" }
-        },
-        "connectivity_distribution_kwargs": {
-          "type": "object",
-          "additionalProperties": true
-        },
-        "stddev_distribution": { "type": "string", "default": "Normal" },
-        "stddev_distribution_args": {
-          "type": "array",
-          "items": { "type": "number" }
-        },
-        "stddev_distribution_kwargs": {
-          "type": "object",
-          "additionalProperties": true
-        },
-        "layer_distribution": { "type": "string", "default": "DiscreteUniform" },
-        "layer_distribution_args": {
-          "type": "array",
-          "items": { "type": "integer" }
-        },
-        "layer_distribution_kwargs": {
-          "type": "object",
-          "additionalProperties": true
-        }
+    	"connectivity_distribution": { "type": "string" },
+    	"connectivity_distribution_args": {
+    	  "type": "array",
+    	  "items": { "type": "number" }
+    	},
+    	"connectivity_distribution_kwargs": {
+    	  "type": "object",
+    	  "additionalProperties": true
+    	},
+    	"stddev_distribution": { "type": "string", "default": "Normal" },
+    	"stddev_distribution_args": {
+    	  "type": "array",
+    	  "items": { "type": "number" }
+    	},
+    	"stddev_distribution_kwargs": {
+    	  "type": "object",
+    	  "additionalProperties": true
+    	},
+    	"layer_distribution": { "type": "string", "default": "DiscreteUniform" },
+    	"layer_distribution_args": {
+    	  "type": "array",
+    	  "items": { "type": "integer" }
+    	},
+    	"layer_distribution_kwargs": {
+    	  "type": "object",
+    	  "additionalProperties": true
+    	}
       },
       "required": [
-        "connectivity_distribution",
-        "connectivity_distribution_args",
-        "stddev_distribution",
-        "stddev_distribution_args",
-        "layer_distribution",
-        "layer_distribution_args"
+    	"connectivity_distribution",
+    	"connectivity_distribution_args",
+    	"stddev_distribution",
+    	"stddev_distribution_args",
+    	"layer_distribution",
+    	"layer_distribution_args"
       ]
       }
     """,
 )
 
 """
-    LayeredCsetMaker(config::Dict)
+	LayeredCsetMaker(config::AbstractDict)
 
-    Creates a causal set maker for a layered causal set.
+	Creates a causal set maker for a layered causal set.
 
 # Arguments:
-    - config::Dict: configuration dictionary
+	- config::AbstractDict: configuration dictionary
 """
-function LayeredCsetMaker(config::Dict)
+function LayeredCsetMaker(config::AbstractDict)
     validate_config(LayeredCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
@@ -230,9 +230,9 @@ function LayeredCsetMaker(config::Dict)
 end
 
 """
-    lm::LayeredCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	lm::LayeredCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
-    Creates a new layered causal set with the parameters stored in the calling `LayeredCsetMaker` object lm.
+	Creates a new layered causal set with the parameters stored in the calling `LayeredCsetMaker` object lm.
 
 # Arguments:
 - `n`: number of elements in the causal set
@@ -248,7 +248,7 @@ end
 function (lm::LayeredCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Int64}
     connectivity_goal = rand(rng, lm.connectivity_distribution)
     layers = rand(rng, lm.layer_distribution)
@@ -268,9 +268,9 @@ function (lm::LayeredCsetMaker)(
 end
 
 """
-    RandomCsetMaker
+	RandomCsetMaker
 
-    Causal set maker for a random causal set.
+	Causal set maker for a random causal set.
 
 # Fields:
 - `cdistr::Distributions.Distribution`: distribution of connectivity goals
@@ -284,45 +284,45 @@ struct RandomCsetMaker
 end
 
 const RandomCsetMaker_schema = JSONSchema.Schema("""{
-                                                   "\$schema": "http://json-schema.org/draft-06/schema#",
-                                                   "title": "Random csetmaker config",
-                                                   "type": "object",
-                                                   "additionalProperties": false,
-                                                   "properties": {
-                                                     "connectivity_distribution": { "type": "string" },
-                                                     "connectivity_distribution_args": {
-                                                       "type": "array",
-                                                       "items": { "type": "number" }
-                                                     },
-                                                     "connectivity_distribution_kwargs": {
-                                                       "type": "object",
-                                                       "additionalProperties": true
-                                                     },
-                                                     "max_iter": { "type": "integer", "minimum": 1 },
-                                                     "num_tries": { "type": "integer", "minimum": 1 },
-                                                     "abs_tol": { "type": ["number", "null"] },
-                                                     "rel_tol": { "type": ["number", "null"] }
-                                                   },
-                                                   "required": [
-                                                     "connectivity_distribution",
-                                                     "connectivity_distribution_args",
-                                                     "max_iter",
-                                                     "num_tries",
-                                                     "abs_tol",
-                                                     "rel_tol"
-                                                   ]
-                                                   }
-                                                 """)
+               "\$schema": "http://json-schema.org/draft-06/schema#",
+               "title": "Random csetmaker config",
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+              "connectivity_distribution": { "type": "string" },
+              "connectivity_distribution_args": {
+                "type": "array",
+                "items": { "type": "number" }
+              },
+              "connectivity_distribution_kwargs": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "max_iter": { "type": "integer", "minimum": 1 },
+              "num_tries": { "type": "integer", "minimum": 1 },
+              "abs_tol": { "type": ["number", "null"] },
+              "rel_tol": { "type": ["number", "null"] }
+               },
+               "required": [
+              "connectivity_distribution",
+              "connectivity_distribution_args",
+              "max_iter",
+              "num_tries",
+              "abs_tol",
+              "rel_tol"
+               ]
+               }
+             """)
 
 """
-    RandomCsetMaker(config::Dict)
+	RandomCsetMaker(config::AbstractDict)
 
-    Creates a causal set maker for a random causal set.
+	Creates a causal set maker for a random causal set.
 
 # Fields:
-- config::Dict: configuration dictionary
+- config::AbstractDict: configuration dictionary
 """
-function RandomCsetMaker(config::Dict)
+function RandomCsetMaker(config::AbstractDict)
     validate_config(RandomCsetMaker_schema, config)
 
     cdistr = build_distr(config, "connectivity_distribution")
@@ -345,9 +345,9 @@ function RandomCsetMaker(config::Dict)
 end
 
 """
-    rcm::RandomCsetMaker(n::Int64, rng::Random.AbstractRNG; config::Union{Dict, Nothing} = nothing)
+	rcm::RandomCsetMaker(n::Int64, rng::Random.AbstractRNG; config::Union{AbstractDict, Nothing} = nothing)
 
-    Creates a new random causal set with the parameters stored in the calling `RandomCsetMaker` object rcm.
+	Creates a new random causal set with the parameters stored in the calling `RandomCsetMaker` object rcm.
 
 # Arguments:
 - `n`: number of elements in the causal set
@@ -359,7 +359,7 @@ end
 function (rcm::RandomCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
     connectivity_goal = rand(rng, rcm.connectivity_distribution)
@@ -401,9 +401,9 @@ function (rcm::RandomCsetMaker)(
 end
 
 """
-    DestroyedCsetMaker
+	DestroyedCsetMaker
 
-    Causal set maker for a destroyed causal set, which has a set of edges flipped in a polynomial causal set.
+	Causal set maker for a destroyed causal set, which has a set of edges flipped in a polynomial causal set.
 
 # Fields:
 - `order_distribution::Distributions.Distribution`: distribution of order values
@@ -417,56 +417,56 @@ struct DestroyedCsetMaker
 end
 
 const DestroyedCsetMaker_schema = JSONSchema.Schema("""{
-                                                      "\$schema": "http://json-schema.org/draft-06/schema#",
-                                                      "title": "Destroyed csetmaker config",
-                                                      "type": "object",
-                                                      "additionalProperties": false,
-                                                      "properties": {
-                                                        "order_distribution": { "type": "string" },
-                                                        "order_distribution_args": {
-                                                          "type": "array",
-                                                          "items": { "type": "integer" }
-                                                        },
-                                                        "order_distribution_kwargs": {
-                                                          "type": "object",
-                                                          "additionalProperties": true
-                                                        },
-                                                        "r_distribution": { "type": "string" },
-                                                        "r_distribution_args": {
-                                                          "type": "array",
-                                                          "items": { "type": "number" }
-                                                        },
-                                                        "r_distribution_kwargs": {
-                                                          "type": "object",
-                                                          "additionalProperties": true
-                                                        },
-                                                        "flip_distribution": { "type": "string" },
-                                                        "flip_distribution_args": {
-                                                          "type": "array",
-                                                          "items": { "type": "number" }
-                                                        },
-                                                        "flip_distribution_kwargs": {
-                                                          "type": "object",
-                                                          "additionalProperties": true
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "order_distribution",
-                                                        "order_distribution_args",
-                                                        "r_distribution",
-                                                        "r_distribution_args",
-                                                        "flip_distribution",
-                                                        "flip_distribution_args"
-                                                      ]
-                                                      }
-                                                    """)
+               "\$schema": "http://json-schema.org/draft-06/schema#",
+               "title": "Destroyed csetmaker config",
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+             	"order_distribution": { "type": "string" },
+             	"order_distribution_args": {
+             	  "type": "array",
+             	  "items": { "type": "integer" }
+             	},
+             	"order_distribution_kwargs": {
+             	  "type": "object",
+             	  "additionalProperties": true
+             	},
+             	"r_distribution": { "type": "string" },
+             	"r_distribution_args": {
+             	  "type": "array",
+             	  "items": { "type": "number" }
+             	},
+             	"r_distribution_kwargs": {
+             	  "type": "object",
+             	  "additionalProperties": true
+             	},
+             	"flip_distribution": { "type": "string" },
+             	"flip_distribution_args": {
+             	  "type": "array",
+             	  "items": { "type": "number" }
+             	},
+             	"flip_distribution_kwargs": {
+             	  "type": "object",
+             	  "additionalProperties": true
+             	}
+               },
+               "required": [
+             	"order_distribution",
+             	"order_distribution_args",
+             	"r_distribution",
+             	"r_distribution_args",
+             	"flip_distribution",
+             	"flip_distribution_args"
+               ]
+               }
+             """)
 
 """
-    DestroyedCsetMaker(config::Dict)
+	DestroyedCsetMaker(config::AbstractDict)
 
 Create a new `destroyed` causal set maker object from the config dictionary.
 """
-function DestroyedCsetMaker(config::Dict)
+function DestroyedCsetMaker(config::AbstractDict)
     validate_config(DestroyedCsetMaker_schema, config)
 
     order_distribution = build_distr(config, "order_distribution")
@@ -479,7 +479,7 @@ function DestroyedCsetMaker(config::Dict)
 end
 
 """
-    dcm::DestroyedCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	dcm::DestroyedCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 
@@ -498,7 +498,7 @@ Create a new `destroyed` causal set using a `DestroyedCsetMaker` object.
 function (dcm::DestroyedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
     o = rand(rng, dcm.order_distribution)
@@ -513,199 +513,199 @@ end
 
 
 """
-    GridCsetMakerPolynomial
+	GridCsetMakerPolynomial
 
-    Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
+	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 
 # Fields:
-    - grid_distribution::Distributions.Distribution: TODO
-    - rotate_distribution::Distributions.Distribution: TODO
-    - order_distribution::Distributions.Distribution: TODO
-    - r_distribution::Distributions.Distribution: TODO
-    - grid_lookup::Dict: TODO
+	- grid_distribution::Distributions.Distribution: TODO
+	- rotate_distribution::Distributions.Distribution: TODO
+	- order_distribution::Distributions.Distribution: TODO
+	- r_distribution::Distributions.Distribution: TODO
+	- grid_lookup::AbstractDict: TODO
 """
 struct GridCsetMakerPolynomial
     grid_distribution::Distributions.Distribution
     rotate_distribution::Distributions.Distribution
     order_distribution::Distributions.Distribution
     r_distribution::Distributions.Distribution
-    grid_lookup::Dict
+    grid_lookup::AbstractDict
 end
 
 const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
-                                                           "\$schema": "http://json-schema.org/draft-06/schema#",
-                                                           "title": "GridCsetMakerPolynomial config",
-                                                           "type": "object",
-                                                           "additionalProperties": false,
-                                                           "properties": {
-                                                             "grid_distribution": { "type": "string" },
-                                                             "grid_distribution_args": {
-                                                               "type": "array",
-                                                               "items": { "type": "integer" }
-                                                             },
-                                                             "grid_distribution_kwargs": {
-                                                               "type": "object",
-                                                               "additionalProperties": true
-                                                             },
-                                                             "rotate_distribution": { "type": "string" },
-                                                             "rotate_distribution_args": {
-                                                               "type": "array",
-                                                               "items": { "type": "number" }
-                                                             },
-                                                             "rotate_distribution_kwargs": {
-                                                               "type": "object",
-                                                               "additionalProperties": true
-                                                             },
-                                                             "order_distribution": { "type": "string" },
-                                                             "order_distribution_args": {
-                                                               "type": "array",
-                                                               "items": { "type": "integer" }
-                                                             },
-                                                             "order_distribution_kwargs": {
-                                                               "type": "object",
-                                                               "additionalProperties": true
-                                                             },
-                                                             "r_distribution": { "type": "string" },
-                                                             "r_distribution_args": {
-                                                               "type": "array",
-                                                               "items": { "type": "number" }
-                                                             },
-                                                             "r_distribution_kwargs": {
-                                                               "type": "object",
-                                                               "additionalProperties": true
-                                                             },
-                                                             "quadratic": {
-                                                               "type": "object",
-                                                               "properties": {},
-                                                               "additionalProperties": false
-                                                             },
-                                                             "rectangular": {
-                                                               "type": "object",
-                                                               "additionalProperties": false,
-                                                               "properties": {
-                                                                 "segment_ratio_distribution": { "type": "string" },
-                                                                 "segment_ratio_distribution_args": {
-                                                                   "type": "array",
-                                                                   "items": { "type": "number" }
-                                                                 },
-                                                                 "segment_ratio_distribution_kwargs": {
-                                                                   "type": "object",
-                                                                   "additionalProperties": true
-                                                                 }
-                                                               },
-                                                               "required": [
-                                                                 "segment_ratio_distribution",
-                                                                 "segment_ratio_distribution_args"
-                                                               ]
-                                                             },
-                                                             "rhombic": {
-                                                               "type": "object",
-                                                               "additionalProperties": false,
-                                                               "properties": {
-                                                                 "segment_ratio_distribution": { "type": "string" },
-                                                                 "segment_ratio_distribution_args": {
-                                                                   "type": "array",
-                                                                   "items": { "type": "number" }
-                                                                 },
-                                                                 "segment_ratio_distribution_kwargs": {
-                                                                   "type": "object",
-                                                                   "additionalProperties": true
-                                                                 }
-                                                               },
-                                                               "required": [
-                                                                 "segment_ratio_distribution",
-                                                                 "segment_ratio_distribution_args"
-                                                               ]
-                                                             },
-                                                             "hexagonal": {
-                                                               "type": "object",
-                                                               "additionalProperties": false,
-                                                               "properties": {
-                                                                 "segment_ratio_distribution": { "type": "string" },
-                                                                 "segment_ratio_distribution_args": {
-                                                                   "type": "array",
-                                                                   "items": { "type": "number" }
-                                                                 },
-                                                                 "segment_ratio_distribution_kwargs": {
-                                                                   "type": "object",
-                                                                   "additionalProperties": true
-                                                                 }
-                                                               },
-                                                               "required": [
-                                                                 "segment_ratio_distribution",
-                                                                 "segment_ratio_distribution_args"
-                                                               ]
-                                                             },
-                                                             "triangular": {
-                                                               "type": "object",
-                                                               "additionalProperties": false,
-                                                               "properties": {
-                                                                 "segment_ratio_distribution": { "type": "string" },
-                                                                 "segment_ratio_distribution_args": {
-                                                                   "type": "array",
-                                                                   "items": { "type": "number" }
-                                                                 },
-                                                                 "segment_ratio_distribution_kwargs": {
-                                                                   "type": "object",
-                                                                   "additionalProperties": true
-                                                                 }
-                                                               },
-                                                               "required": [
-                                                                 "segment_ratio_distribution",
-                                                                 "segment_ratio_distribution_args"
-                                                               ]
-                                                             },
-                                                             "oblique": {
-                                                               "type": "object",
-                                                               "additionalProperties": false,
-                                                               "properties": {
-                                                                 "segment_ratio_distribution": { "type": "string" },
-                                                                 "segment_ratio_distribution_args": {
-                                                                   "type": "array",
-                                                                   "items": { "type": "number" }
-                                                                 },
-                                                                 "segment_ratio_distribution_kwargs": {
-                                                                   "type": "object",
-                                                                   "additionalProperties": true
-                                                                 },
-                                                                 "oblique_angle_distribution": { "type": "string" },
-                                                                 "oblique_angle_distribution_args": {
-                                                                   "type": "array",
-                                                                   "items": { "type": "number" }
-                                                                 },
-                                                                 "oblique_angle_distribution_kwargs": {
-                                                                   "type": "object",
-                                                                   "additionalProperties": true
-                                                                 }
-                                                               },
-                                                               "required": [
-                                                                 "segment_ratio_distribution",
-                                                                 "segment_ratio_distribution_args",
-                                                                 "oblique_angle_distribution",
-                                                                 "oblique_angle_distribution_args"
-                                                               ]
-                                                             }
-                                                           },
-                                                           "required": [
-                                                             "grid_distribution",
-                                                             "grid_distribution_args",
-                                                             "rotate_distribution",
-                                                             "rotate_distribution_args",
-                                                             "order_distribution",
-                                                             "order_distribution_args",
-                                                             "r_distribution",
-                                                             "r_distribution_args"
-                                                           ]
-                                                             }
-                                                         """)
+                 "\$schema": "http://json-schema.org/draft-06/schema#",
+                 "title": "GridCsetMakerPolynomial config",
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                "grid_distribution": { "type": "string" },
+                "grid_distribution_args": {
+                  "type": "array",
+                  "items": { "type": "integer" }
+                },
+                "grid_distribution_kwargs": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "rotate_distribution": { "type": "string" },
+                "rotate_distribution_args": {
+                  "type": "array",
+                  "items": { "type": "number" }
+                },
+                "rotate_distribution_kwargs": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "order_distribution": { "type": "string" },
+                "order_distribution_args": {
+                  "type": "array",
+                  "items": { "type": "integer" }
+                },
+                "order_distribution_kwargs": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "r_distribution": { "type": "string" },
+                "r_distribution_args": {
+                  "type": "array",
+                  "items": { "type": "number" }
+                },
+                "r_distribution_kwargs": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "quadratic": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": false
+                },
+                "rectangular": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+               	 "segment_ratio_distribution": { "type": "string" },
+               	 "segment_ratio_distribution_args": {
+               	   "type": "array",
+               	   "items": { "type": "number" }
+               	 },
+               	 "segment_ratio_distribution_kwargs": {
+               	   "type": "object",
+               	   "additionalProperties": true
+               	 }
+                  },
+                  "required": [
+               	 "segment_ratio_distribution",
+               	 "segment_ratio_distribution_args"
+                  ]
+                },
+                "rhombic": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+               	 "segment_ratio_distribution": { "type": "string" },
+               	 "segment_ratio_distribution_args": {
+               	   "type": "array",
+               	   "items": { "type": "number" }
+               	 },
+               	 "segment_ratio_distribution_kwargs": {
+               	   "type": "object",
+               	   "additionalProperties": true
+               	 }
+                  },
+                  "required": [
+               	 "segment_ratio_distribution",
+               	 "segment_ratio_distribution_args"
+                  ]
+                },
+                "hexagonal": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+               	 "segment_ratio_distribution": { "type": "string" },
+               	 "segment_ratio_distribution_args": {
+               	   "type": "array",
+               	   "items": { "type": "number" }
+               	 },
+               	 "segment_ratio_distribution_kwargs": {
+               	   "type": "object",
+               	   "additionalProperties": true
+               	 }
+                  },
+                  "required": [
+               	 "segment_ratio_distribution",
+               	 "segment_ratio_distribution_args"
+                  ]
+                },
+                "triangular": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+               	 "segment_ratio_distribution": { "type": "string" },
+               	 "segment_ratio_distribution_args": {
+               	   "type": "array",
+               	   "items": { "type": "number" }
+               	 },
+               	 "segment_ratio_distribution_kwargs": {
+               	   "type": "object",
+               	   "additionalProperties": true
+               	 }
+                  },
+                  "required": [
+               	 "segment_ratio_distribution",
+               	 "segment_ratio_distribution_args"
+                  ]
+                },
+                "oblique": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+               	 "segment_ratio_distribution": { "type": "string" },
+               	 "segment_ratio_distribution_args": {
+               	   "type": "array",
+               	   "items": { "type": "number" }
+               	 },
+               	 "segment_ratio_distribution_kwargs": {
+               	   "type": "object",
+               	   "additionalProperties": true
+               	 },
+               	 "oblique_angle_distribution": { "type": "string" },
+               	 "oblique_angle_distribution_args": {
+               	   "type": "array",
+               	   "items": { "type": "number" }
+               	 },
+               	 "oblique_angle_distribution_kwargs": {
+               	   "type": "object",
+               	   "additionalProperties": true
+               	 }
+                  },
+                  "required": [
+               	 "segment_ratio_distribution",
+               	 "segment_ratio_distribution_args",
+               	 "oblique_angle_distribution",
+               	 "oblique_angle_distribution_args"
+                  ]
+                }
+                 },
+                 "required": [
+                "grid_distribution",
+                "grid_distribution_args",
+                "rotate_distribution",
+                "rotate_distribution_args",
+                "order_distribution",
+                "order_distribution_args",
+                "r_distribution",
+                "r_distribution_args"
+                 ]
+                }
+               """)
 
 
 """
-    GridCsetMakerPolynomial(config)
+	GridCsetMakerPolynomial(config)
 
-    Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
+	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 """
-function GridCsetMakerPolynomial(config::Dict)
+function GridCsetMakerPolynomial(config::AbstractDict)
     validate_config(GridCsetMakerPolynomial_schema, config)
 
     grid_distribution = build_distr(config, "grid_distribution")
@@ -735,9 +735,9 @@ function GridCsetMakerPolynomial(config::Dict)
 end
 
 """
-    gcm::GridCsetMakerPolynomial(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	gcm::GridCsetMakerPolynomial(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
-    Create a new `grid` causal set using a `GridCsetMakerPolynomial` object.
+	Create a new `grid` causal set using a `GridCsetMakerPolynomial` object.
 
 # Arguments:
 - `n`: number of elements in the causal set
@@ -756,12 +756,20 @@ end
 """
 function (gcm::GridCsetMakerPolynomial)(
     n::Int64,
-    rng::Random.AbstractRNG,
-    config::Dict;
+    rng::Random.AbstractRNG;
+    config::Union{AbstractDict,Nothing} = nothing,
     grid::Union{String,Nothing} = nothing,
     derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64},String}
+
+    if isnothing(config)
+        throw(
+            ArgumentError(
+                "Error, GridCsetMaker call operator **must** get a config keyword argument supplying the config file",
+            ),
+        )
+    end
 
     if isnothing(grid)
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
@@ -808,7 +816,7 @@ end
 
 
 """
-    ComplexTopCsetMaker
+	ComplexTopCsetMaker
 
 A callable struct to produce complex topology csets with various causality-cutting 'lines' in a 2D manifold
 
@@ -828,69 +836,69 @@ struct ComplexTopCsetMaker
 end
 
 const ComplexTopCsetMaker_schema = JSONSchema.Schema("""{
-                                                       "\$schema": "http://json-schema.org/draft-06/schema#",
-                                                       "title": "Complex Topology csetmaker config",
-                                                       "type": "object",
-                                                       "additionalProperties": false,
-                                                       "properties": {
-                                                         "order_distribution": { "type": "string" },
-                                                         "order_distribution_args": {
-                                                           "type": "array",
-                                                           "items": { "type": "integer" }
-                                                         },
-                                                         "order_distribution_kwargs": {
-                                                           "type": "object",
-                                                           "additionalProperties": true
-                                                         },
-                                                         "r_distribution": { "type": "string" },
-                                                         "r_distribution_args": {
-                                                           "type": "array",
-                                                           "items": { "type": "number" }
-                                                         },
-                                                         "r_distribution_kwargs": {
-                                                           "type": "object",
-                                                           "additionalProperties": true
-                                                         },
-                                                         "vertical_cut_distribution": { "type": "string" },
-                                                         "vertical_cut_distribution_args": {
-                                                           "type": "array",
-                                                           "items": { "type": "number" }
-                                                         },
-                                                         "vertical_cut_distribution_kwargs": {
-                                                           "type": "object",
-                                                           "additionalProperties": true
-                                                         },
-                                                         "finite_cut_distribution": { "type": "string" },
-                                                         "finite_cut_distribution_args": {
-                                                           "type": "array",
-                                                           "items": { "type": "number" }
-                                                         },
-                                                         "finite_cut_distribution_kwargs": {
-                                                           "type": "object",
-                                                           "additionalProperties": true
-                                                         },
-                                                         "tol": { "type": "number" }
-                                                       },
-                                                       "required": [
-                                                         "order_distribution",
-                                                         "order_distribution_args",
-                                                         "r_distribution",
-                                                         "r_distribution_args",
-                                                         "vertical_cut_distribution",
-                                                         "vertical_cut_distribution_args",
-                                                         "finite_cut_distribution",
-                                                         "finite_cut_distribution_args",
-                                                         "tol"
-                                                       ]
-                                                     }
-                                                     """)
+                "\$schema": "http://json-schema.org/draft-06/schema#",
+                "title": "Complex Topology csetmaker config",
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+               "order_distribution": { "type": "string" },
+               "order_distribution_args": {
+                 "type": "array",
+                 "items": { "type": "integer" }
+               },
+               "order_distribution_kwargs": {
+                 "type": "object",
+                 "additionalProperties": true
+               },
+               "r_distribution": { "type": "string" },
+               "r_distribution_args": {
+                 "type": "array",
+                 "items": { "type": "number" }
+               },
+               "r_distribution_kwargs": {
+                 "type": "object",
+                 "additionalProperties": true
+               },
+               "vertical_cut_distribution": { "type": "string" },
+               "vertical_cut_distribution_args": {
+                 "type": "array",
+                 "items": { "type": "number" }
+               },
+               "vertical_cut_distribution_kwargs": {
+                 "type": "object",
+                 "additionalProperties": true
+               },
+               "finite_cut_distribution": { "type": "string" },
+               "finite_cut_distribution_args": {
+                 "type": "array",
+                 "items": { "type": "number" }
+               },
+               "finite_cut_distribution_kwargs": {
+                 "type": "object",
+                 "additionalProperties": true
+               },
+               "tol": { "type": "number" }
+                },
+                "required": [
+               "order_distribution",
+               "order_distribution_args",
+               "r_distribution",
+               "r_distribution_args",
+               "vertical_cut_distribution",
+               "vertical_cut_distribution_args",
+               "finite_cut_distribution",
+               "finite_cut_distribution_args",
+               "tol"
+                ]
+              }
+              """)
 
 """
-    ComplexTopCsetMaker(config::Dict)
+	ComplexTopCsetMaker(config::AbstractDict)
 
-    Create a new `ComplexTopCsetMaker` object from the config dictionary.
+	Create a new `ComplexTopCsetMaker` object from the config dictionary.
 """
-function ComplexTopCsetMaker(config::Dict)
+function ComplexTopCsetMaker(config::AbstractDict)
     validate_config(ComplexTopCsetMaker_schema, config)
 
     vertical_cut_distr = build_distr(config, "vertical_cut_distribution")
@@ -909,9 +917,9 @@ function ComplexTopCsetMaker(config::Dict)
 end
 
 """
-    ctm::ComplexTopCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	ctm::ComplexTopCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
-    Create a new causal set using a `ComplexTopCsetMaker` object.
+	Create a new causal set using a `ComplexTopCsetMaker` object.
 
 # Arguments:
 - `n`: number of elements in the causal set
@@ -927,7 +935,7 @@ end
 function (ctm::ComplexTopCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
     derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
@@ -969,9 +977,9 @@ end
 
 
 """
-    MergedCsetMaker
+	MergedCsetMaker
 
-    Causal set maker from a given configuration dictionary.
+	Causal set maker from a given configuration dictionary.
 
 # Fields:
 - `link_prob_distribution::Distributions.Distribution`: distribution of link probabilities
@@ -989,78 +997,78 @@ struct MergedCsetMaker
 end
 
 const MergedCsetMaker_schema = JSONSchema.Schema("""{
-                                                   "\$schema": "http://json-schema.org/draft-06/schema#",
-                                                   "title": "merged csetmaker config",
-                                                     "type": "object",
-                                                   "additionalProperties": false,
-                                                   "properties": {
-                                                     "order_distribution": { "type": "string" },
-                                                     "order_distribution_args": {
-                                                       "type": "array",
-                                                       "items": { "type": "integer" }
-                                                     },
-                                                     "order_distribution_kwargs": {
-                                                       "type": "object",
-                                                       "additionalProperties": true
-                                                     },
-                                                     "r_distribution": { "type": "string" },
-                                                     "r_distribution_args": {
-                                                       "type": "array",
-                                                       "items": { "type": "number" }
-                                                     },
-                                                     "r_distribution_kwargs": {
-                                                       "type": "object",
-                                                       "additionalProperties": true
-                                                     },
-                                                     "n2_rel_distribution": { "type": "string" },
-                                                     "n2_rel_distribution_args": {
-                                                       "type": "array",
-                                                       "items": { "type": "number" }
-                                                     },
-                                                     "n2_rel_distribution_kwargs": {
-                                                       "type": "object",
-                                                       "additionalProperties": true
-                                                     },
-                                                     "connectivity_distribution": { "type": "string" },
-                                                     "connectivity_distribution_args": {
-                                                       "type": "array",
-                                                       "items": { "type": "number" }
-                                                     },
-                                                     "connectivity_distribution_kwargs": {
-                                                       "type": "object",
-                                                       "additionalProperties": true
-                                                     },
-                                                     "link_prob_distribution": { "type": "string" },
-                                                     "link_prob_distribution_args": {
-                                                       "type": "array",
-                                                       "items": { "type": "number" }
-                                                     },
-                                                     "link_prob_distribution_kwargs": {
-                                                       "type": "object",
-                                                       "additionalProperties": true
-                                                     }
-                                                   },
-                                                   "required": [
-                                                     "order_distribution",
-                                                     "order_distribution_args",
-                                                     "r_distribution",
-                                                     "r_distribution_args",
-                                                     "n2_rel_distribution",
-                                                     "n2_rel_distribution_args",
-                                                     "connectivity_distribution",
-                                                     "connectivity_distribution_args",
-                                                     "link_prob_distribution",
-                                                     "link_prob_distribution_args"
-                                                   ]
-                                                 }
-                                                 """)
+               "\$schema": "http://json-schema.org/draft-06/schema#",
+               "title": "merged csetmaker config",
+              "type": "object",
+               "additionalProperties": false,
+               "properties": {
+              "order_distribution": { "type": "string" },
+              "order_distribution_args": {
+                "type": "array",
+                "items": { "type": "integer" }
+              },
+              "order_distribution_kwargs": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "r_distribution": { "type": "string" },
+              "r_distribution_args": {
+                "type": "array",
+                "items": { "type": "number" }
+              },
+              "r_distribution_kwargs": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "n2_rel_distribution": { "type": "string" },
+              "n2_rel_distribution_args": {
+                "type": "array",
+                "items": { "type": "number" }
+              },
+              "n2_rel_distribution_kwargs": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "connectivity_distribution": { "type": "string" },
+              "connectivity_distribution_args": {
+                "type": "array",
+                "items": { "type": "number" }
+              },
+              "connectivity_distribution_kwargs": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "link_prob_distribution": { "type": "string" },
+              "link_prob_distribution_args": {
+                "type": "array",
+                "items": { "type": "number" }
+              },
+              "link_prob_distribution_kwargs": {
+                "type": "object",
+                "additionalProperties": true
+              }
+               },
+               "required": [
+              "order_distribution",
+              "order_distribution_args",
+              "r_distribution",
+              "r_distribution_args",
+              "n2_rel_distribution",
+              "n2_rel_distribution_args",
+              "connectivity_distribution",
+              "connectivity_distribution_args",
+              "link_prob_distribution",
+              "link_prob_distribution_args"
+               ]
+             }
+             """)
 
 """
-    MergedCsetMaker(config::Dict)
+	MergedCsetMaker(config::AbstractDict)
 
 Make a new merged causal set maker from a given configuration dictionary.
 """
-function MergedCsetMaker(config::Dict)
+function MergedCsetMaker(config::AbstractDict)
     validate_config(MergedCsetMaker_schema, config)
 
     order_distr = build_distr(config, "order_distribution")
@@ -1079,9 +1087,9 @@ function MergedCsetMaker(config::Dict)
 end
 
 """
-    mcm::MergedCsetMaker(n::Int64, config::Dict, rng::Random.AbstractRNG)
+	mcm::MergedCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
-    Creates a merged causal set maker for a random causal set.
+	Creates a merged causal set maker for a random causal set.
 
 # Arguments:
 - `n`: number of elements in the causal set
@@ -1098,7 +1106,7 @@ end
 function (mcm::MergedCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict{String,Any},Nothing} = nothing,
+    config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
     o = rand(rng, mcm.order_distribution)
@@ -1114,99 +1122,99 @@ function (mcm::MergedCsetMaker)(
 end
 
 csetfactory_schema = JSONSchema.Schema("""
-                                    {
-                                      "\$schema": "http://json-schema.org/draft-06/schema#",
-                                      "title": "QuantumGrav Cset Factory Config",
-                                      "type": "object",
-                                      "additionalProperties": true,
-                                      "properties": {
-                                        "polynomial": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "random": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "layered": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "merged": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "merged_ambiguous": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "complex_topology": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "destroyed": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "destroyed_ambiguous": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "grid": {
-                                          "type": "object",
-                                          "properties": {},
-                                          "additionalProperties": true
-                                        },
-                                        "seed": { "type": "integer" },
-                                        "num_datapoints": { "type": "integer", "minimum": 0 },
-                                        "csetsize_distr_args": {
-                                            "type": "array",
-                                            "items": { "type": "integer" }
-                                        },
-                                        "csetsize_distr_kwargs": {
-                                            "type": "object",
-                                            "additionalProperties": true
-                                        },
-                                        "csetsize_distr": {"type": "string"},
-                                        "output": { "type": "string" },
-                                        "cset_type": {
-                                          "oneOf": [
-                                            { "type": "string" },
-                                            {
-                                              "type": "array",
-                                              "items": { "type": "string" }
-                                            }
-                                          ]
-                                        }
-                                      },
-                                      "required": [
-                                        "polynomial",
-                                        "random",
-                                        "layered",
-                                        "merged",
-                                        "complex_topology",
-                                        "destroyed",
-                                        "grid",
-                                        "seed",
-                                        "num_datapoints",
-                                        "csetsize_distr",
-                                        "csetsize_distr_args",
-                                        "cset_type",
-                                        "output"
-                                      ]
-                                    }
-                                """)
+        	{
+        	  "\$schema": "http://json-schema.org/draft-06/schema#",
+        	  "title": "QuantumGrav Cset Factory Config",
+        	  "type": "object",
+        	  "additionalProperties": true,
+        	  "properties": {
+        		"polynomial": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"random": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"layered": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"merged": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"merged_ambiguous": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"complex_topology": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"destroyed": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"destroyed_ambiguous": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"grid": {
+        		  "type": "object",
+        		  "properties": {},
+        		  "additionalProperties": true
+        		},
+        		"seed": { "type": "integer" },
+        		"num_datapoints": { "type": "integer", "minimum": 0 },
+        		"csetsize_distr_args": {
+        			"type": "array",
+        			"items": { "type": "integer" }
+        		},
+        		"csetsize_distr_kwargs": {
+        			"type": "object",
+        			"additionalProperties": true
+        		},
+        		"csetsize_distr": {"type": "string"},
+        		"output": { "type": "string" },
+        		"cset_type": {
+        		  "oneOf": [
+        			{ "type": "string" },
+        			{
+        			  "type": "array",
+        			  "items": { "type": "string" }
+        			}
+        		  ]
+        		}
+        	  },
+        	  "required": [
+        		"polynomial",
+        		"random",
+        		"layered",
+        		"merged",
+        		"complex_topology",
+        		"destroyed",
+        		"grid",
+        		"seed",
+        		"num_datapoints",
+        		"csetsize_distr",
+        		"csetsize_distr_args",
+        		"cset_type",
+        		"output"
+        	  ]
+        	}
+        """)
 
 """
-    CsetFactory
+	CsetFactory
 
 The `CsetFactory` struct serves as a container for generating causal sets (csets).
 It holds the configuration, random number generator, and distribution information required to create csets,
@@ -1214,23 +1222,23 @@ and provides access to specialized factory functions for different cset types.
 
 # Fields:
 - `npoint_distribution::Distributions.Distribution`: Distribution object for drawing number of elements in a cset
-- `conf::Dict`: config dictionary
+- `conf::AbstractDict`: config dictionary
 - `rng::Random.AbstractRNG`: random number generator to use
-- `cset_makers::Dict`: dict to hold all the different cset factory methods
+- `cset_makers::AbstractDict`: dict to hold all the different cset factory methods
 """
 struct CsetFactory
     npoint_distribution::Distributions.Distribution
-    conf::Dict
+    conf::AbstractDict
     rng::Random.AbstractRNG
-    cset_makers::Dict
+    cset_makers::AbstractDict
 end
 
 """
-    CsetFactory(config::Dict)
+	CsetFactory(config::AbstractDict)
 
 Create a new CsetFactory instance that bundles all the different cset factories into one object
 """
-function CsetFactory(config::Dict)
+function CsetFactory(config::AbstractDict)
     validate_config(csetfactory_schema, config)
 
     npoint_distribution = build_distr(config, "csetsize_distr")
@@ -1253,7 +1261,7 @@ end
 
 
 """
-    cf::CsetFactory(csetname::String, n::Int64, rng::Random.AbstractRNG; config::Union{Dict, Nothing} = nothing)
+	cf::CsetFactory(csetname::String, n::Int64, rng::Random.AbstractRNG; config::Union{AbstractDict, Nothing} = nothing)
 
 Create a new cset, accessing the specialized factory functors held by the caller.
 
@@ -1267,13 +1275,19 @@ function (cf::CsetFactory)(
     csetname::String,
     n::Int64,
     rng::Random.AbstractRNG;
-    config::Union{Dict,Nothing} = nothing,
-)
-    return cf.cset_makers[csetname](n, rng; config = config)
+    config::Union{AbstractDict,Nothing} = nothing,
+)::Tuple{CausalSets.BitArrayCauset,Vararg{Any}}
+    cset_and_additional_quantities = cf.cset_makers[csetname](n, rng; config = config)
+
+    if cset_and_additional_quantities isa Tuple
+        return cset_and_additional_quantities
+    else
+        return cset_and_additional_quantities, nothing
+    end
 end
 
 """
-    encode_csettype(config)
+	encode_csettype(config)
 
 Encode known cset types into numeric scheme.
 """

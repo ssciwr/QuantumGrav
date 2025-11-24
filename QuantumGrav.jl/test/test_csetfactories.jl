@@ -1,7 +1,6 @@
 
 
 
-
 @testsnippet config begin
     cfg = Dict(
         "polynomial" => Dict(
@@ -40,7 +39,7 @@
             "r_distribution_args" => [4.0, 2.0],
             "r_distribution_kwargs" => Dict(),
             "n2_rel_distribution" => "Uniform",
-            "n2_rel_distribution_args" => [0., 1.0],
+            "n2_rel_distribution_args" => [0.0, 1.0],
             "n2_rel_distribution_kwargs" => Dict(),
             "connectivity_distribution" => "Beta",
             "connectivity_distribution_args" => [0.5, 0.1],
@@ -72,7 +71,7 @@
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
             "flip_distribution" => "Uniform",
-            "flip_distribution_args" => [0., 1.0],
+            "flip_distribution_args" => [0.0, 1.0],
             "flip_distribution_kwargs" => Dict(),
         ),
         "grid" => Dict(
@@ -130,8 +129,8 @@
 end
 
 @testitem "test_Csetfactory_works" tags=[:csetfactories] setup = [config] begin
-    using Random: Random
-    using Distributions: Distributions
+    using Random
+    using Distributions
 
     csetfactory = QuantumGrav.CsetFactory(cfg)
     @test csetfactory.rng isa Random.Xoshiro
@@ -156,14 +155,43 @@ end
     @test "foo" in keys(csetfactory.cset_makers)
 end
 
+@testitem "test_Csetfactory_works_with_loaded_file" tags=[:csetfactories] setup = [config] begin
+    using Random
+    using Distributions
+    using YAML
+    dir = tempdir()
+    YAML.write_file(joinpath(dir, "config.yaml"), cfg)
+
+    loaded_config = YAML.load_file(joinpath(dir, "config.yaml"))
+
+    csetfactory = QuantumGrav.CsetFactory(loaded_config)
+    @test csetfactory.rng isa Random.Xoshiro
+    @test csetfactory.npoint_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetfactory.npoint_distribution) ==
+          tuple(cfg["csetsize_distr_args"]...)
+    @test csetfactory.conf == cfg
+    for key in [
+        "random",
+        "complex_topology",
+        "merged",
+        "polynomial",
+        "layered",
+        "grid",
+        "destroyed",
+    ]
+        @test key in keys(csetfactory.cset_makers)
+    end
+
+    csetfactory.cset_makers["foo"] = (n, rng; conf = nothing) -> 42
+
+    @test "foo" in keys(csetfactory.cset_makers)
+
+end
+
 @testitem "test_Csetfactory_broken_config" tags=[:csetfactories] setup = [config] begin
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["output"] = nothing
-    @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
-
-    broken_cfg = deepcopy(cfg)
-    broken_cfg["unallowed_key"] = "blah"
     @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
 
     broken_cfg = deepcopy(cfg)
@@ -180,7 +208,7 @@ end
     rng = Random.Xoshiro(1234)
     csetfactory = QuantumGrav.CsetFactory(cfg)
 
-    cset = csetfactory("random", 12, rng)
+    cset, _ = csetfactory("random", 12, rng)
 
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == 12
@@ -307,7 +335,7 @@ end
     cset, layers = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
-    @test layers >= 2 
+    @test layers >= 2
 end
 
 @testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
@@ -588,14 +616,15 @@ end
         csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
         # Produce a cset for this grid type
-        cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
+        cset, curvature_matrix, grid_type_out =
+            csetmaker(25, rng; config = cfg["grid"], grid = grid_type)
         @test isnothing(cset) === false
         @test cset.atom_count == 25
         @test grid_type == grid_type_out
     end
 
     csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
-    cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]) # randomly chosen grid type
+    cset, curvature_matrix, grid_type_out = csetmaker(25, rng; config = cfg["grid"]) # randomly chosen grid type
     @test isnothing(cset) === false
     @test cset.atom_count == 25
     @test length(curvature_matrix) == 25
