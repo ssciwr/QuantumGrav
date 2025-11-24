@@ -202,13 +202,12 @@ function insert_KR_into_manifoldlike(
 )::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
 
     n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
-    
+
     n2 = max(4, round(Int, n2_rel * npoints))  # Ensure at least 4
 
     n1 = max(1, npoints - n2) # Ensure at least 1
 
-    cset1Raw, _, _ =
-        make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
+    cset1Raw, _, _ = make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
 
     cset2Raw, _ = create_random_layered_causet(n2, 3; p = p)
 

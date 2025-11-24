@@ -193,15 +193,16 @@ end
     size = 30
     order = 3
     r = 2.0
-    cset, converged, coords, chebyshev_coefs = QuantumGrav.create_grid_causet_2D_polynomial_manifold(
-        size,
-        "square",
-        rng,
-        order,
-        r;
-        a = 1.0,
-        rotate_deg = 0.0,
-    )
+    cset, converged, coords, chebyshev_coefs =
+        QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+            size,
+            "square",
+            rng,
+            order,
+            r;
+            a = 1.0,
+            rotate_deg = 0.0,
+        )
 
     @test typeof(cset) == CausalSets.BitArrayCauset
     @test cset.atom_count == size

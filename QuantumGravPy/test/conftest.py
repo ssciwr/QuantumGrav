@@ -28,15 +28,11 @@ def basic_transform():
 
         max_path_future = torch.tensor(
             raw["max_pathlen_future"], dtype=torch.float32
-        ).unsqueeze(
-            1
-        )  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
 
         max_path_past = torch.tensor(
             raw["max_pathlen_past"], dtype=torch.float32
-        ).unsqueeze(
-            1
-        )  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
 
         node_features.extend([max_path_future, max_path_past])
 
@@ -240,15 +236,11 @@ def read_data():
         # Path lengths
         max_path_future = torch.tensor(
             f["max_pathlen_future"][idx, :], dtype=float_dtype
-        ).unsqueeze(
-            1
-        )  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
 
         max_path_past = torch.tensor(
             f["max_pathlen_past"][idx, :], dtype=float_dtype
-        ).unsqueeze(
-            1
-        )  # make this a (num_nodes, 1) tensor
+        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
         node_features.extend([max_path_future, max_path_past])
 
         x = torch.cat(node_features, dim=1)
