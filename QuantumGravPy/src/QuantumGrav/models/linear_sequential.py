@@ -1,10 +1,11 @@
-import logging
 import torch
 import torch_geometric
 
-from . import utils
+import logging
 from typing import Any, Sequence
 from pathlib import Path
+
+from .. import utils
 
 
 class LinearSequential(torch.nn.Module):

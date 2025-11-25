@@ -3,8 +3,8 @@ from pathlib import Path
 from inspect import isclass
 import torch
 from . import utils
-from . import linear_sequential as QGLS
-from . import gnn_block as QGGNN
+from .models import linear_sequential as QGLS
+from .models import gnn_block as QGGNN
 
 
 class ModuleWrapper(torch.nn.Module):

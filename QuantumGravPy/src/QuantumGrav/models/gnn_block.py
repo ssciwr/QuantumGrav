@@ -1,7 +1,6 @@
 # torch
 import torch
 import torch_geometric
-from .. import utils
 from . import skipconnection
 from .. import base
 
@@ -31,8 +30,8 @@ class GNNBlock(torch.nn.Module, base.Configurable):
         dropout: float = 0.3,
         with_skip: bool = True,
         gnn_layer_type: type[torch.nn.Module] = torch_geometric.nn.conv.GCNConv,
-        normalizer: type[torch.nn.Module] = torch.nn.Identity,
-        activation: type[torch.nn.Module] = torch.nn.ReLU,
+        normalizer_type: type[torch.nn.Module] = torch.nn.Identity,
+        activation_type: type[torch.nn.Module] = torch.nn.ReLU,
         gnn_layer_args: list[Any] | None = None,
         gnn_layer_kwargs: dict[str, Any] | None = None,
         norm_args: list[Any] | None = None,
@@ -62,7 +61,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             skip_kwargs (dict[str, Any], optional): Additional keyword arguments for the projection layer. Defaults to None.
 
         """
-        super(GNNBlock, self).__init__()
+        super().__init__()
 
         # save parameters
         self.dropout_p = dropout
@@ -82,12 +81,12 @@ class GNNBlock(torch.nn.Module, base.Configurable):
         # initialize layers
         self.dropout = torch.nn.Dropout(p=dropout, inplace=False)
 
-        self.normalizer = normalizer(
+        self.normalizer = normalizer_type(
             *(norm_args if norm_args is not None else []),
             **(norm_kwargs if norm_kwargs is not None else {}),
         )
 
-        self.activation = activation(
+        self.activation = activation_type(
             *(activation_args if activation_args is not None else []),
             **(activation_kwargs if activation_kwargs is not None else {}),
         )
@@ -155,9 +154,10 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             in_dim=config["in_dim"],
             out_dim=config["out_dim"],
             dropout=config.get("dropout", 0.3),
-            gnn_layer_type=utils.gnn_layers[config["gnn_layer_type"]],
-            normalizer=utils.normalizer_layers[config["normalizer"]],
-            activation=utils.activation_layers[config["activation"]],
+            with_skip=config.get("with_skip", True),
+            gnn_layer_type=config["gnn_layer_type"],
+            normalizer=config["normalizer_type"],
+            activation=config["activation_type"],
             gnn_layer_args=config.get("gnn_layer_args", []),
             gnn_layer_kwargs=config.get("gnn_layer_kwargs", {}),
             norm_args=config.get("norm_args", []),
@@ -178,10 +178,10 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             "gnn_layer_type": type(self.conv).__name__,
             "gnn_layer_args": self.gnn_layer_args,
             "gnn_layer_kwargs": self.gnn_layer_kwargs,
-            "normalizer": type(self.normalizer),
+            "normalizer_type": type(self.normalizer).__name__,
             "norm_args": self.norm_args,
             "norm_kwargs": self.norm_kwargs,
-            "activation": type(self.activation),
+            "activation_type": type(self.activation).__name__,
             "activation_args": self.activation_args,
             "activation_kwargs": self.activation_kwargs,
             "skip_args": self.skip_args,
