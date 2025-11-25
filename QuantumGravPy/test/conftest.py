@@ -280,27 +280,27 @@ def read_data():
 
 @pytest.fixture
 def gnn_block():
-    return QG.GNNBlock(
+    return QG.models.GNNBlock(
         in_dim=16,
         out_dim=32,
         dropout=0.3,
         gnn_layer_type=torch_geometric.nn.conv.GCNConv,
-        normalizer=torch.nn.BatchNorm1d,
-        activation=torch.nn.ReLU,
+        normalizer_type=torch.nn.BatchNorm1d,
+        activation_type=torch.nn.ReLU,
         gnn_layer_args=[],
         gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
         norm_args=[
             32,
         ],
         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
-        projection_args=[16, 32],
-        projection_kwargs={"bias": False},
+        skip_args=[16, 32],
+        skip_kwargs={"weight_initializer": "kaiming_uniform"},
     )
 
 
 @pytest.fixture
 def classifier_block():
-    return QG.LinearSequential(
+    return QG.models.LinearSequential(
         dims=[(32, 24), (24, 12), (12, 3)],
         activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
         linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
@@ -442,7 +442,7 @@ def yaml_text():
             layers: !sweep
                 values: [1, 2]
 
-            type: !pyobject QuantumGrav.GNNBlock
+            type: !pyobject QuantumGrav.models.GNNBlock
             convtype: !pyobject torch_geometric.nn.SAGEConv
             bs: !coupled-sweep
                 target: model.layers
