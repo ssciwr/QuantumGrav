@@ -2,19 +2,20 @@
 
 
 """
-	make_adj(c::CausalSets.AbstractCauset, type::Type{T}) -> SparseMatrixCSC{T}
+	 make_adj(c::CausalSets.AbstractCauset; type::Type{M} = SparseArrays.SparseMatrixCSC, eltype::Type{T} = Float32)::AbstractMatrix{T} where {T<:Number,M<:AbstractArray}
 
 Creates an adjacency matrix from a causet's future relations.
 
 # Arguments
 - `c::CausalSets..AbstractCauset`: The causet object containing future relations
-- `type::Type{T}`: Numeric type for the adjacency matrix entries
+- `type::Type{M}`: Array type for the adjacency matrix entries. Must be a subtype of AbstractArray
+- `eltype::Type{T}`: Numeric element type to store the elements. Ignored if you pass in a BitMatrix, which as no element type.
 
 # Returns
-- `SparseMatrixCSC{T}`: Sparse adjacency matrix representing the causal structure
+- `M{T}`: Sparse adjacency matrix representing the causal structure
 
 # Notes
-Converts the causet's future_relations to a sparse matrix format by
+Converts the causet's future_relations to a matrix format by
 horizontally concatenating, transposing, and converting to the specified type.
 """
 function make_adj(
@@ -25,11 +26,13 @@ function make_adj(
     if c.atom_count == 0
         throw(ArgumentError("The causal set must not be empty."))
     end
+
     adj = transpose(hcat(c.future_relations...))
+
     if type <: BitArray # BitArray doesn't have any kind of eltype
         return adj |> type
     else
-        return transpose(hcat(c.future_relations...)) |> type{eltype}
+        return adj |> type{eltype}
     end
 end
 
@@ -75,7 +78,7 @@ function max_pathlen(adj_matrix::AbstractMatrix, topo_order::AbstractVector, sou
 
     # Return max finite distance
     finite_dists = filter(d -> d != -Inf, dist)
-    return isempty(finite_dists) ? 0 : Int32(maximum(finite_dists))
+    return isempty(finite_dists) ? 0 : maximum(finite_dists)
 end
 
 """

@@ -15,7 +15,7 @@
 end
 
 @testitem "test_make_adj" tags = [:graph_utils] setup = [makeData] begin
-    using CausalSets: CausalSets
+    using CausalSets
     using SparseArrays
     using Graphs
     cset, _ = MockData(10)
@@ -36,7 +36,7 @@ end
 end
 
 @testitem "test_max_pathlen" tags = [:graph_utils] setup = [makeData] begin
-    using CausalSets: CausalSets
+    using CausalSets
     using SparseArrays
     using Graphs
     cset, _ = MockData(10)
@@ -57,7 +57,7 @@ end
 end
 
 @testitem "make_transitive_reduction" tags = [:graph_utils] setup = [makeData] begin
-    using CausalSets: CausalSets
+    using CausalSets
     using Graphs
     cset, _ = MockData(25)
 
