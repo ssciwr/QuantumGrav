@@ -40,7 +40,11 @@ from .early_stopping import DefaultEarlyStopping
 
 from .load_zarr import zarr_to_dict
 
+from . import models
+
 __all__ = [
+    # models subpackage
+    "models",
     # julia interface
     "JuliaWorker",
     # datasets
