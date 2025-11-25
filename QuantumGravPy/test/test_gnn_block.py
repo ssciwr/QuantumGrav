@@ -1,8 +1,9 @@
 import QuantumGrav as QG
-import torch
 import pytest
-import torch_geometric.nn as tgnn
 import numpy as np
+
+import torch_geometric
+import torch
 
 
 @pytest.fixture
@@ -12,16 +13,16 @@ def gnn_block_config():
         "in_dim": 16,
         "out_dim": 32,
         "dropout": 0.3,
-        "gnn_layer_type": "gcn",
-        "normalizer": "batch_norm",
-        "activation": "relu",
+        "gnn_layer_type": torch_geometric.nn.conv.GCNConv,
+        "normalizer_type": torch_geometric.nn.norm.BatchNorm,
+        "activation_type": torch.nn.ReLU,
         "norm_args": [
             32,
         ],
         "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-        "projection_args": [16, 32],
-        "projection_kwargs": {
-            "bias": False,
+        "skip_args": [16, 32],
+        "skip_kwargs": {
+            "weight_initializer": "glorot",
         },
         "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
     }
@@ -32,29 +33,29 @@ def test_gnn_block_initialization(gnn_block):
     assert gnn_block.in_dim == 16
     assert gnn_block.out_dim == 32
     assert isinstance(gnn_block.dropout, torch.nn.Dropout)
-    assert isinstance(gnn_block.conv, tgnn.conv.GCNConv)
+    assert isinstance(gnn_block.conv, torch_geometric.nn.conv.GCNConv)
     assert isinstance(gnn_block.normalizer, torch.nn.BatchNorm1d)
     assert isinstance(gnn_block.activation, torch.nn.ReLU)
-    assert isinstance(gnn_block.projection, torch.nn.Linear)
+    assert isinstance(gnn_block.skip, QG.models.SkipConnection)
     assert gnn_block.with_skip is True
 
-    test_gnnblock_flat = QG.GNNBlock(
+    test_gnnblock_flat = QG.models.GNNBlock(
         in_dim=16,
         out_dim=16,
         dropout=0.3,
         with_skip=False,
-        gnn_layer_type=tgnn.conv.GCNConv,
-        normalizer=torch.nn.BatchNorm1d,
-        activation=torch.nn.ReLU,
+        gnn_layer_type=torch_geometric.nn.conv.GCNConv,
+        normalizer_type=torch.nn.BatchNorm1d,
+        activation_type=torch.nn.ReLU,
         gnn_layer_args=[],
-        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
+        gnn_layer_kwargs={},
         norm_args=[
             16,
         ],
         norm_kwargs={"eps": 1e-5, "momentum": 0.2},
     )
-    assert isinstance(test_gnnblock_flat.projection, torch.nn.Identity)
     assert test_gnnblock_flat.with_skip is False
+    assert hasattr(test_gnnblock_flat, "skip") is False
 
 
 def test_gnn_block_properties(gnn_block):
@@ -70,8 +71,8 @@ def test_gnn_block_properties(gnn_block):
     assert not torch.isnan(y_normalized).any()
     assert not torch.isinf(y_normalized).any()
 
-    # run projection
-    y_proj = gnn_block.projection(x)
+    # run skip
+    y_proj = gnn_block.skip(x, y_normalized)
     assert y_proj.shape == (10, 32)
     assert not torch.isnan(y_proj).any()
     assert not torch.isinf(y_proj).any()
@@ -125,46 +126,46 @@ def test_gnn_block_backward(gnn_block):
     y = gnn_block.forward(x, edge_index)
     loss = y.sum()  # simple loss for testing
     loss.backward()
-
     assert not torch.isnan(loss).any()
     assert not torch.isinf(loss).any()
     assert not torch.equal(y, x)  # Ensure output is not equal to input
     assert torch.count_nonzero(y).item() > 0  # Ensure output is not all zeros
-    assert gnn_block.projection.weight.grad is not None
+    assert gnn_block.skip.proj.weight.grad is not None
     assert gnn_block.conv.lin.weight.grad is not None
+    assert gnn_block.conv.bias.grad is not None
+    assert gnn_block.normalizer.bias.grad is not None
     assert gnn_block.normalizer.weight.grad is not None
 
 
 def test_gnn_block_from_config(gnn_block_config):
     "test construction of model from config"
-    gnn_block = QG.GNNBlock.from_config(gnn_block_config)
+    gnn_block = QG.models.GNNBlock.from_config(gnn_block_config)
     assert gnn_block.in_dim == gnn_block_config["in_dim"]
     assert gnn_block.out_dim == gnn_block_config["out_dim"]
     assert gnn_block.dropout_p == gnn_block_config["dropout"]
-    assert isinstance(gnn_block.conv, tgnn.conv.GCNConv)
-    assert isinstance(gnn_block.normalizer, torch.nn.BatchNorm1d)
+    assert isinstance(gnn_block.conv, torch_geometric.nn.conv.GCNConv)
+    assert isinstance(gnn_block.normalizer, torch_geometric.nn.norm.BatchNorm)
     assert isinstance(gnn_block.activation, torch.nn.ReLU)
-    assert isinstance(gnn_block.projection, torch.nn.Linear)
+    assert isinstance(gnn_block.skip, QG.models.SkipConnection)
 
 
 def test_gnn_block_to_config(gnn_block):
     config = gnn_block.to_config()
-
     assert config["in_dim"] == gnn_block.in_dim
     assert config["out_dim"] == gnn_block.out_dim
     assert config["dropout"] == gnn_block.dropout_p
     assert config["with_skip"] == gnn_block.with_skip
-    assert config["gnn_layer_type"] == "gcn"
-    assert config["normalizer"] == "batch_norm"
-    assert config["activation"] == "relu"
+    assert config["gnn_layer_type"] == "torch_geometric.nn.conv.gcn_conv.GCNConv"
+    assert config["normalizer_type"] == "torch.nn.modules.batchnorm.BatchNorm1d"
+    assert config["activation_type"] == "torch.nn.modules.activation.ReLU"
     assert config["gnn_layer_args"] == gnn_block.gnn_layer_args
     assert config["gnn_layer_kwargs"] == gnn_block.gnn_layer_kwargs
     assert config["norm_args"] == gnn_block.norm_args
     assert config["norm_kwargs"] == gnn_block.norm_kwargs
-    assert config["activation_args"] == gnn_block.activation_args
-    assert config["activation_kwargs"] == gnn_block.activation_kwargs
-    assert config["projection_args"] == gnn_block.projection_args
-    assert config["projection_kwargs"] == gnn_block.projection_kwargs
+    assert config["activation_args"] == []
+    assert config["activation_kwargs"] == {}
+    assert config["skip_args"] == gnn_block.skip_args
+    assert config["skip_kwargs"] == gnn_block.skip_kwargs
 
 
 def test_gnn_block_save_load(gnn_block, tmp_path):
@@ -173,7 +174,7 @@ def test_gnn_block_save_load(gnn_block, tmp_path):
     gnn_block.save(tmp_path / "model.pt")
     assert (tmp_path / "model.pt").exists()
 
-    loaded_gnn_block = QG.GNNBlock.load(tmp_path / "model.pt")
+    loaded_gnn_block = QG.models.GNNBlock.load(tmp_path / "model.pt")
     assert loaded_gnn_block.state_dict().keys() == gnn_block.state_dict().keys()
     for k in loaded_gnn_block.state_dict().keys():
         assert torch.equal(loaded_gnn_block.state_dict()[k], gnn_block.state_dict()[k])
