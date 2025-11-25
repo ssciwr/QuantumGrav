@@ -1,4 +1,6 @@
 import torch
+import torch_geometric
+
 import QuantumGrav as QG
 
 
@@ -6,13 +8,13 @@ def test_creation_works():
     skip = QG.models.SkipConnection(
         12, 12, weight_initializer="glorot", bias_initializer="zero"
     )
-    assert hasattr(skip, "proj") is False
+    assert isinstance(skip.proj, torch.nn.Identity)
 
     skip_p = QG.models.SkipConnection(
         12,
         24,
     )
-    assert hasattr(skip_p, "proj") is True
+    assert isinstance(skip_p.proj, torch_geometric.nn.dense.Linear)
 
 
 def test_forward():
@@ -28,7 +30,7 @@ def test_forward():
         24,
     )
     x_res = torch.rand(24)
-    x_s = skip_p.forward(x_res, x)
+    x_s = skip_p.forward(x, x_res)
     assert x_s.shape == (24,)
 
 
@@ -40,7 +42,7 @@ def test_to_config():
     assert cfg["in_channels"] == 12
     assert cfg["out_channels"] == 24
     assert cfg["weight_initializer"] == "uniform"
-    assert cfg["bias_initializer"] == "bias"
+    assert cfg["bias_initializer"] == "zeros"
 
 
 def test_from_config():
@@ -48,7 +50,7 @@ def test_from_config():
         "in_channels": 12,
         "out_channels": 24,
         "weight_initializer": "uniform",
-        "bias_initializer": "bias",
+        "bias_initializer": "zeros",
     }
 
     skip = QG.models.SkipConnection.from_config(cfg)
