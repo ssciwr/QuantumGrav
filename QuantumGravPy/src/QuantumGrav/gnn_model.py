@@ -1,4 +1,4 @@
-from typing import Any, Callable, Sequence, Dict
+from typing import Any, Callable, Sequence, Dict, Tuple
 from pathlib import Path
 from inspect import isclass
 import torch
@@ -132,8 +132,8 @@ class GNNModel(torch.nn.Module):
         encoder_type: type,
         encoder_args: Sequence[Any],
         encoder_kwargs: Dict[str, Any],
-        downstream_tasks: Sequence[Sequence[type, Sequence[Any], Dict[str, Any]]],
-        pooling_layers: Sequence[Sequence[type, Sequence[Any], Dict[str, Any]]]
+        downstream_tasks: Sequence[Tuple[type, Sequence[Any], Dict[str, Any]]],
+        pooling_layers: Sequence[Tuple[type, Sequence[Any], Dict[str, Any]]]
         | None = None,
         aggregate_pooling_type: type | Callable | None = None,
         aggregate_pooling_args: Sequence[Any] | None = None,
