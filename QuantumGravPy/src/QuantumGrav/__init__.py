@@ -26,7 +26,6 @@ from .utils import (
 )
 from .dataset_ondisk import QGDataset
 from .gnn_model import GNNModel
-from .gnn_block import GNNBlock
 from .evaluate import (
     DefaultEvaluator,
     DefaultTester,
@@ -37,7 +36,6 @@ from .config_utils import ConfigHandler, get_loader
 
 from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
-from .linear_sequential import LinearSequential
 from .early_stopping import DefaultEarlyStopping
 
 from .load_zarr import zarr_to_dict
@@ -73,9 +71,7 @@ __all__ = [
     "assign_at_path",
     "get_at_path",
     # models
-    "GNNBlock",
     "GNNModel",
-    "LinearSequential",
     # training
     "Trainer",
     "TrainerDDP",

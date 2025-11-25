@@ -7,7 +7,7 @@ from jsonschema import validate
 from typing import Any, Dict
 
 
-class SkipConnection(torch.Module, base.Configurable):
+class SkipConnection(torch.nn.Module, base.Configurable):
     """A skip connection wrapped in a torch.nn.Module."""
 
     schema = {
