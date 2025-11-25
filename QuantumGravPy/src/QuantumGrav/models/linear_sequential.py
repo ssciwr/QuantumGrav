@@ -176,9 +176,7 @@ class LinearSequential(torch.nn.Module, base.Configurable):
 
             return cls(
                 dims=config["dims"],
-                activations=[
-                    utils.import_and_get(act) for act in config["activations"]
-                ],
+                activations=config["activations"],
                 linear_kwargs=config.get("linear_kwargs", None),
                 activation_kwargs=config.get("activation_kwargs", None),
             )
@@ -239,7 +237,9 @@ class LinearSequential(torch.nn.Module, base.Configurable):
             LinearSequential: An instance of LinearSequential initialized from the loaded data.
         """
         cfg = torch.load(path)
-
+        cfg["config"]["activations"] = [
+            utils.import_and_get(act) for act in cfg["config"]["activations"]
+        ]
         model = cls.from_config(cfg["config"])
         model.load_state_dict(cfg["state_dict"], strict=False)
         model.to(device)
