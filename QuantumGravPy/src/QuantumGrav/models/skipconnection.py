@@ -37,7 +37,7 @@ class SkipConnection(torch.nn.Module, base.Configurable):
             },
         },
         "required": ["in_channels", "out_channels"],
-        "additionalProperties": True,
+        "additionalProperties": False,
     }
 
     def __init__(
