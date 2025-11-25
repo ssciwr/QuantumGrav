@@ -1,8 +1,8 @@
-from typing import Any, Callable, Sequence, Dict, Tuple
+from typing import Any, Callable, Sequence, Dict
 from pathlib import Path
 from inspect import isclass
 import torch
-from . import utils
+import jsonschema
 
 
 class ModuleWrapper(torch.nn.Module):
@@ -20,75 +20,102 @@ class ModuleWrapper(torch.nn.Module):
 
 
 class GNNModel(torch.nn.Module):
-    """Torch module for the full GCN model, which consists of a GCN backbone, a set of downstream tasks, and a pooling layer, augmented with optional graph features network.
-    Args:
-        torch.nn.Module: base class
+    """Complete GNN model architecture with encoder, pooling, and downstream tasks.
+
+    This model combines:
+    - An encoder network (typically GNN layers) to process graph structure
+    - Optional pooling layers to aggregate node features into graph-level representations
+    - Multiple downstream task heads for classification, regression, etc.
+    - Optional graph features network for processing additional graph-level features
+
+    The model supports multi-task learning with selective task activation.
     """
 
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "GNNBlock Configuration",
+        "title": "GNNModel Configuration",
         "type": "object",
         "properties": {
             "encoder_type": {
-                "type": "",
-                "description": "",
+                "description": "Type of the encoder network (Python class or string)",
             },
             "encoder_args": {
-                "type": "",
-                "description": "",
+                "type": "array",
+                "description": "Positional arguments for encoder initialization",
+                "items": {},
             },
             "encoder_kwargs": {
-                "type": "",
-                "description": "",
+                "type": "object",
+                "description": "Keyword arguments for encoder initialization",
             },
             "downstream_tasks": {
-                "type": "",
-                "description": "",
+                "type": "array",
+                "description": "List of downstream tasks, each as [type, args, kwargs]",
+                "items": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": [
+                        {"description": "Task type (class or string)"},
+                        {"type": "array", "description": "Task args", "items": {}},
+                        {"type": "object", "description": "Task kwargs"},
+                    ],
+                },
+                "minItems": 1,
             },
             "pooling_layers": {
-                "type": "",
-                "description": "",
+                "type": "array",
+                "description": "List of pooling layers, each as [type, args, kwargs]",
+                "items": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": [
+                        {"description": "Pooling type (class, callable, or string)"},
+                        {"type": "array", "description": "Pooling args", "items": {}},
+                        {"type": "object", "description": "Pooling kwargs"},
+                    ],
+                },
             },
             "aggregate_pooling_type": {
-                "type": "",
-                "description": "",
+                "description": "Type for aggregating pooling results (class, callable, or string)",
             },
             "aggregate_pooling_args": {
-                "type": "",
-                "description": "",
+                "type": "array",
+                "description": "Arguments for aggregate pooling",
+                "items": {},
             },
             "aggregate_pooling_kwargs": {
-                "type": "",
-                "description": "",
+                "type": "object",
+                "description": "Keyword arguments for aggregate pooling",
             },
             "graph_features_net_type": {
-                "type": "",
-                "description": "",
+                "description": "Type of graph features network (class or string)",
             },
             "graph_features_net_args": {
-                "type": "",
-                "description": "",
+                "type": "array",
+                "description": "Arguments for graph features network",
+                "items": {},
             },
             "graph_features_net_kwargs": {
-                "type": "",
-                "description": "",
+                "type": "object",
+                "description": "Keyword arguments for graph features network",
             },
             "aggregate_graph_features_type": {
-                "type": "",
-                "description": "",
+                "description": "Type for aggregating graph features (class, callable, or string)",
             },
             "aggregate_graph_features_args": {
-                "type": "",
-                "description": "",
+                "type": "array",
+                "description": "Arguments for aggregate graph features",
+                "items": {},
             },
             "aggregate_graph_features_kwargs": {
-                "type": "",
-                "description": "",
+                "type": "object",
+                "description": "Keyword arguments for aggregate graph features",
             },
             "active_tasks": {
-                "type": "",
-                "description": "",
+                "type": "object",
+                "description": "Dictionary mapping task indices/names to boolean active status",
             },
         },
         "required": [
@@ -105,8 +132,8 @@ class GNNModel(torch.nn.Module):
         encoder_type: type,
         encoder_args: Sequence[Any],
         encoder_kwargs: Dict[str, Any],
-        downstream_tasks: Sequence[Tuple[type, Sequence[Any], Dict[str, Any]]],
-        pooling_layers: Sequence[Tuple[type, Sequence[Any], Dict[str, Any]]]
+        downstream_tasks: Sequence[Sequence[type, Sequence[Any], Dict[str, Any]]],
+        pooling_layers: Sequence[Sequence[type, Sequence[Any], Dict[str, Any]]]
         | None = None,
         aggregate_pooling_type: type | Callable | None = None,
         aggregate_pooling_args: Sequence[Any] | None = None,
@@ -119,41 +146,55 @@ class GNNModel(torch.nn.Module):
         aggregate_graph_features_kwargs: Dict[str, Any] | None = None,
         active_tasks: Dict[Any, bool] | None = None,
     ):
-        """_summary_
+        """Initialize GNNModel with encoder, pooling, and downstream task components.
 
         Args:
-            encoder_type (type): _description_
-            encoder_args (Sequence[Any]): _description_
-            encoder_kwargs (Dict[str, Any]): _description_
-            downstream_tasks (Sequence[Tuple[type, Sequence[Any], Dict[str, Any]]]): _description_
-            pooling_layers (Sequence[Tuple[type, Sequence[Any], Dict[str, Any]]] | None, optional): _description_. Defaults to None.
-            aggregate_pooling (type | Callable | None, optional): _description_. Defaults to None.
-            aggregate_pooling_args (Sequence[Any] | None, optional): _description_. Defaults to None.
-            aggregate_pooling_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
-            graph_features_net_type (type | None, optional): _description_. Defaults to None.
-            graph_features_net_args (Sequence[Any] | None, optional): _description_. Defaults to None.
-            graph_features_net_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
-            aggregate_graph_features_type (type | Callable | None, optional): _description_. Defaults to None.
-            aggregate_graph_features_args (Sequence[Any] | None, optional): _description_. Defaults to None.
-            aggregate_graph_features_kwargs (Dict[str, Any] | None, optional): _description_. Defaults to None.
-            active_tasks (list[int] | None, optional): _description_. Defaults to None.
+            encoder_type (type): Class type for the encoder network (e.g., GNN backbone).
+            encoder_args (Sequence[Any]): Positional arguments to pass to encoder_type constructor.
+            encoder_kwargs (Dict[str, Any]): Keyword arguments to pass to encoder_type constructor.
+            downstream_tasks (Sequence[Sequence[type, Sequence[Any], Dict[str, Any]]]): List of downstream tasks,
+                where each task is specified as [task_type, task_args, task_kwargs].
+            pooling_layers (Sequence[Sequence[type, Sequence[Any], Dict[str, Any]]] | None, optional): List of pooling layers,
+                where each layer is specified as [pooling_type, pooling_args, pooling_kwargs]. Defaults to None.
+            aggregate_pooling_type (type | Callable | None, optional): Type or function for aggregating multiple pooling outputs.
+                Required if pooling_layers is provided. Defaults to None.
+            aggregate_pooling_args (Sequence[Any] | None, optional): Positional arguments for aggregate_pooling_type. Defaults to None.
+            aggregate_pooling_kwargs (Dict[str, Any] | None, optional): Keyword arguments for aggregate_pooling_type. Defaults to None.
+            graph_features_net_type (type | None, optional): Network type for processing additional graph-level features. Defaults to None.
+            graph_features_net_args (Sequence[Any] | None, optional): Positional arguments for graph_features_net_type. Defaults to None.
+            graph_features_net_kwargs (Dict[str, Any] | None, optional): Keyword arguments for graph_features_net_type. Defaults to None.
+            aggregate_graph_features_type (type | Callable | None, optional): Type or function for combining embeddings with graph features.
+                Required if graph_features_net_type is provided. Defaults to None.
+            aggregate_graph_features_args (Sequence[Any] | None, optional): Positional arguments for aggregate_graph_features_type. Defaults to None.
+            aggregate_graph_features_kwargs (Dict[str, Any] | None, optional): Keyword arguments for aggregate_graph_features_type. Defaults to None.
+            active_tasks (Dict[Any, bool] | None, optional): Dictionary mapping task indices to active status.
+                If None, all tasks are active by default. Defaults to None.
 
         Raises:
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
+            ValueError: If downstream_tasks is empty (at least one task required).
+            ValueError: If pooling_layers provided without aggregate_pooling_type or vice versa.
+            ValueError: If pooling_layers is empty when provided.
+            ValueError: If graph_features_net_type provided without aggregate_graph_features_type or vice versa.
         """
         super().__init__()
+
+        self.encoder_args = encoder_args
+        self.encoder_kwargs = encoder_kwargs
+        self.downstream_task_specs = downstream_tasks
+        self.pooling_layer_specs = pooling_layers
+        self.aggregate_pooling_args = aggregate_pooling_args
+        self.aggregate_pooling_kwargs = aggregate_pooling_kwargs
+        self.graph_features_net_args = graph_features_net_args
+        self.graph_features_net_kwargs = graph_features_net_kwargs
+        self.aggregate_graph_features_args = aggregate_graph_features_args
+        self.aggregate_graph_features_kwargs = aggregate_graph_features_kwargs
 
         # encoder is a sequence of GNN blocks. There must be at least one
         self.encoder = encoder_type(*encoder_args, **encoder_kwargs)
 
+        # set up downstream tasks. These are independent of each other, but there must be one at least
         if len(downstream_tasks) == 0:
             raise ValueError("At least one downstream task must be provided.")
-        # set up downstream tasks. These are independent of each other, but there must be one at least
 
         self.downstream_tasks = torch.nn.ModuleList(
             [
@@ -264,7 +305,7 @@ class GNNModel(torch.nn.Module):
         self,
         x: torch.Tensor,
         edge_index: torch.Tensor,
-        gcn_kwargs: dict[Any, Any] | None = None,
+        gcn_kwargs: Dict[Any, Any] | None = None,
     ) -> torch.Tensor:
         """Evaluate the GCN network on the input data.
 
@@ -276,13 +317,7 @@ class GNNModel(torch.nn.Module):
         Returns:
             torch.Tensor: Output of the GCN network.
         """
-        # Apply each GCN layer to the input features
-        features = x
-        for gnn_layer in self.encoder:
-            features = gnn_layer(
-                features, edge_index, **(gcn_kwargs if gcn_kwargs else {})
-            )
-        return features
+        return self.encoder(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
 
     def get_embeddings(
         self,
@@ -407,209 +442,101 @@ class GNNModel(torch.nn.Module):
         )
 
     @classmethod
-    def _cfg_helper(
-        cls, cfg: dict[str, Any], utility_function: Callable, throw_message: str
-    ) -> torch.nn.Module | Callable:
-        """Helper function to create a module or callable from a config.
+    def verify_config(cls, config: Dict[Any, Any]) -> bool:
+        """Validate a configuration dictionary against the model's JSON schema.
 
         Args:
-            cfg (dict[str, Any]): config node. must contain type, args, kwargs
-            utility_function (Callable): utility function to create the module or callable
-            throw_message (str): message to throw in case of error
-
-        Raises:
-            ValueError: if the config node is invalid
-            ValueError: if the utility function could not find the specified type
+            config (Dict[Any, Any]): Configuration dictionary to validate.
 
         Returns:
-            torch.nn.Module | Callable: created module or callable
+            bool: True if validation succeeds.
+
+        Raises:
+            jsonschema.ValidationError: If config doesn't match the schema.
         """
-        if not utils.verify_config_node(cfg):
-            raise ValueError(throw_message)
-        f = utility_function(cfg["type"])
-
-        if f is None:
-            raise ValueError(
-                f"Utility function '{utility_function.__name__}' could not find '{cfg['type']}'"
-            )
-
-        if isinstance(f, type):
-            return f(
-                cfg["args"] if "args" in cfg else [],
-                **(cfg["kwargs"] if "kwargs" in cfg else {}),
-            )
-        else:
-            return f
+        jsonschema.validate(config, cls.schema)
+        return True
 
     @classmethod
     def from_config(cls, config: dict) -> "GNNModel":
-        """Create a GNNModel from a configuration dictionary.
+        """Create a GNNModel instance from a configuration dictionary.
 
         Args:
-            config (dict): Configuration dictionary containing parameters for the model.
+            config (dict): Configuration dictionary with keys matching __init__ parameters.
+                Must include: encoder_type, encoder_args, encoder_kwargs, downstream_tasks.
+                Optional: pooling_layers, aggregate_pooling_type, graph_features_net_type, etc.
 
         Returns:
-            GNNModel: An instance of GNNModel.
+            GNNModel: An initialized GNNModel instance.
+
+        Raises:
+            RuntimeError: If model creation fails (wraps underlying exceptions).
+            jsonschema.ValidationError: If config is invalid.
         """
 
-        # create encoder
-        encoder = [QGGNN.GNNBlock.from_config(cfg) for cfg in config["encoder"]]
-
-        # create downstream tasks
-        downstream_tasks = [
-            QGLS.LinearSequential.from_config(cfg) for cfg in config["downstream_tasks"]
-        ]  # TODO: generalize this!
-
-        # make pooling layers
-        pooling_layers_cfg = config.get("pooling_layers", None)
-
-        if pooling_layers_cfg is not None:
-            pooling_layers = []
-            for pool_cfg in pooling_layers_cfg:
-                pooling_layer = cls._cfg_helper(
-                    pool_cfg,
-                    utils.get_registered_pooling_layer,
-                    f"The config for a pooling layer is invalid: {pool_cfg}",
-                )
-                pooling_layers.append(pooling_layer)
-        else:
-            pooling_layers = None
-
-        # graph aggregation pooling
-        aggregate_pooling_cfg = config.get("aggregate_pooling", None)
-        if aggregate_pooling_cfg is not None:
-            aggregate_pooling = cls._cfg_helper(
-                config["aggregate_pooling"],
-                utils.get_pooling_aggregation,
-                f"The config for 'aggregate_pooling' is invalid: {config['aggregate_pooling']}",
+        try:
+            cls.verify_config(config)
+            return cls(
+                config["encoder_type"],
+                config["encoder_args"],
+                config["encoder_kwargs"],
+                config["downstream_tasks"],
+                config["pooling_layers"],
+                config.get("aggregate_pooling_type"),
+                config.get("aggregate_pooling_args"),
+                config.get("aggregate_pooling_kwargs"),
+                config.get("graph_features_net_type"),
+                config.get("graph_features_net_args"),
+                config.get("graph_features_net_kwargs"),
+                config.get("aggregate_graph_features_type"),
+                config.get("aggregate_graph_features_args"),
+                config.get("aggregate_graph_features_kwargs"),
+                config.get("active_tasks"),
             )
-        else:
-            aggregate_pooling = None
+        except Exception as e:
+            raise RuntimeError(
+                f"Error during creation of GNNModel from config {e}"
+            ) from e
 
-        # make graph features network and aggregations
-        if "graph_features_net" in config and config["graph_features_net"] is not None:
-            graph_features_net = QGLS.LinearSequential.from_config(
-                config["graph_features_net"]
-            )
-        else:
-            graph_features_net = None
+    def to_config(self) -> Dict[str, Any]:
+        """Serialize the model architecture to a configuration dictionary.
 
-        if graph_features_net is not None:
-            aggregate_graph_features = cls._cfg_helper(
-                config["aggregate_graph_features"],
-                utils.get_graph_features_aggregation,
-                f"The config for 'aggregate_graph_features' is invalid: {config['aggregate_graph_features']}",
-            )
-        else:
-            aggregate_graph_features = None
-
-        active_tasks = [cfg.get("active", False) for cfg in config["downstream_tasks"]]
-
-        # return the model
-        return cls(
-            encoder=encoder,
-            downstream_tasks=downstream_tasks,
-            pooling_layers=pooling_layers,
-            graph_features_net=graph_features_net,
-            aggregate_graph_features=aggregate_graph_features,
-            aggregate_pooling=aggregate_pooling,
-            active_tasks=active_tasks,
-        )
-
-    def to_config(self) -> dict[str, Any]:
-        """Serialize the model to a config
+        Note: Type objects are converted to fully qualified module paths (strings).
 
         Returns:
-            dict[str, Any]: _description_
+            Dict[str, Any]: Configuration dictionary containing all model parameters
+                needed to reconstruct the model with from_config().
         """
-        pooling_layer_names = None
-        if self.pooling_layers is not None:
-            pooling_layer_names = []
-            for layer in self.pooling_layers:
-                if isinstance(layer, ModuleWrapper):
-                    pooling_layer_names.append(
-                        {
-                            "type": utils.pooling_layers_names[layer.get_fn()],
-                            "args": [],
-                            "kwargs": {},
-                        }
-                    )
-                else:
-                    pooling_layer_names.append(
-                        {
-                            "type": utils.pooling_layers_names[layer],
-                            "args": [],
-                            "kwargs": {},
-                        }
-                    )
 
-        aggregate_graph_features_names = None
-        if self.aggregate_graph_features is not None:
-            if isinstance(self.aggregate_graph_features, ModuleWrapper):
-                aggregate_graph_features_names = {
-                    "type": utils.graph_features_aggregations_names[
-                        self.aggregate_graph_features.get_fn()
-                    ],
-                    "args": [],
-                    "kwargs": {},
-                }
-            else:
-                aggregate_graph_features_names = {
-                    "type": utils.graph_features_aggregations_names[
-                        self.aggregate_graph_features
-                    ],
-                    "args": [],
-                    "kwargs": {},
-                }
-
-        aggregate_pooling_names = None
-        if self.aggregate_pooling is not None:
-            if isinstance(self.aggregate_pooling, ModuleWrapper):
-                aggregate_pooling_names = {
-                    "type": utils.pooling_aggregations_names[
-                        self.aggregate_pooling.get_fn()
-                    ],
-                    "args": [],
-                    "kwargs": {},
-                }
-            else:
-                aggregate_pooling_names = {
-                    "type": utils.pooling_aggregations_names[self.aggregate_pooling],
-                    "args": [],
-                    "kwargs": {},
-                }
-
-        # downstream_task_configs
-
-        downstream_task_configs = [task.to_config() for task in self.downstream_tasks]
-        for i in range(len(self.downstream_tasks)):
-            downstream_task_configs[i]["active"] = self.active_tasks[i]
-
-        config = {
-            "encoder": [encoder_layer.to_config() for encoder_layer in self.encoder],
-            "downstream_tasks": downstream_task_configs,
-            "pooling_layers": pooling_layer_names,
-            "graph_features_net": self.graph_features_net.to_config()
-            if self.graph_features_net
-            else None,
-            "aggregate_graph_features": aggregate_graph_features_names,
-            "aggregate_pooling": aggregate_pooling_names,
-            "active_tasks": self.active_tasks,
+        config: Dict[str, Any] = {
+            "encoder_type": f"{type(self.encoder).__module__}.{type(self.encoder).__name__}",
+            "encoder_args": self.encoder_args,
+            "encoder_kwargs": self.encoder_kwargs,
+            "downstream_tasks": self.downstream_task_specs,
+            "pooling_layers": self.pooling_layer_specs,
+            "aggregate_pooling_type": f"{type(self.aggregate_pooling).__module__}.{type(self.aggregate_pooling).__name__}",
+            "aggregate_pooling_args": self.aggregate_pooling_args,
+            "aggregate_pooling_kwargs": self.aggregate_pooling_kwargs,
+            "graph_features_net_type": f"{type(self.graph_features_net).__module__}.{type(self.graph_features_net).__name__}",
+            "graph_features_net_args": self.graph_features_net_args,
+            "graph_features_net_kwargs": self.graph_features_net_kwargs,
+            "aggregate_graph_features_type": f"{type(self.aggregate_graph_features).__module__}.{type(self.aggregate_graph_features).__name__}",
+            "aggregate_graph_features_args": self.aggregate_graph_features_args,
+            "aggregate_graph_features_kwargs": self.aggregate_graph_features_kwargs,
+            "active_tasks": {key: True for key in self.active_tasks.keys()},
         }
 
         return config
 
     def save(self, path: str | Path) -> None:
-        """Save the model state to file. This saves a dictionary structured like this:
-         'encoder': self.encoder,
-         'downstream_tasks': self.downstream_tasks,
-         'pooling_layers': self.pooling_layers,
-         'graph_features_net': self.graph_features_net,
-         'aggregate_graph_features': self.aggregate_graph_features,
-         'aggregate_pooling': self.aggregate_pooling,
+        """Save the model configuration and state dictionary to file.
+
+        Saves a dictionary with two keys:
+        - 'config': Model architecture configuration (from to_config())
+        - 'model': Model state dictionary (learned parameters)
 
         Args:
-            path (str | Path): Path to save the model to
+            path (str | Path): File path where the model will be saved.
         """
 
         config = self.to_config()
@@ -623,16 +550,16 @@ class GNNModel(torch.nn.Module):
     def load(
         cls, path: str | Path, device: torch.device = torch.device("cpu")
     ) -> "GNNModel":
-        """Load a model from file that has previously been save with the function 'save'.
+        """Load a GNNModel from a file saved with the save() method.
 
         Args:
-            path (str | Path): path to load the model from.
-            device (torch.device): device to put the model to. Defaults to torch.device("cpu")
+            path (str | Path): Path to the saved model file.
+            device (torch.device, optional): Device to load the model onto. Defaults to torch.device("cpu").
+
         Returns:
-            GNNModel: model instance initialized with the sub-models loaded from file.
+            GNNModel: Fully initialized model instance with loaded weights.
         """
         model_dict = torch.load(path, weights_only=False)
         model = cls.from_config(model_dict["config"]).to(device)
         model.load_state_dict(model_dict["model"])
-
         return model

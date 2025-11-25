@@ -105,8 +105,8 @@ def gnn_model_config():
                 "out_dim": 32,
                 "dropout": 0.3,
                 "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
+                "normalizer_type": "batch_norm",
+                "activation_type": "relu",
                 "norm_args": [
                     32,
                 ],
@@ -124,8 +124,8 @@ def gnn_model_config():
                 "out_dim": 16,
                 "dropout": 0.3,
                 "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
+                "normalizer_type": "batch_norm",
+                "activation_type": "relu",
                 "norm_args": [
                     16,
                 ],
@@ -201,9 +201,9 @@ def test_gnn_model_creation(gnn_model):
 
     assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
     assert len(gnn_model.encoder) == 1  # Assuming one GNN block
-    assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
-    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
-    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
+    assert isinstance(gnn_model.encoder[0], QG.models.GNNBlock)
+    assert isinstance(gnn_model.downstream_tasks[0], QG.models.LinearSequential)
+    assert isinstance(gnn_model.downstream_tasks[1], QG.models.LinearSequential)
 
     assert isinstance(gnn_model.pooling_layers[0], QG.gnn_model.ModuleWrapper)
     assert isinstance(gnn_model.pooling_layers[1], QG.gnn_model.ModuleWrapper)
@@ -234,10 +234,10 @@ def test_gnn_model_creation_pooling_no_aggregations(gnn_model_config):
 
     assert isinstance(gnn_model.encoder, torch.nn.ModuleList)
     assert len(gnn_model.encoder) == 2  # Assuming one GNN block
-    assert isinstance(gnn_model.encoder[0], QG.GNNBlock)
-    assert isinstance(gnn_model.encoder[1], QG.GNNBlock)
-    assert isinstance(gnn_model.downstream_tasks[0], QG.LinearSequential)
-    assert isinstance(gnn_model.downstream_tasks[1], QG.LinearSequential)
+    assert isinstance(gnn_model.encoder[0], QG.models.GNNBlock)
+    assert isinstance(gnn_model.encoder[1], QG.models.GNNBlock)
+    assert isinstance(gnn_model.downstream_tasks[0], QG.models.LinearSequential)
+    assert isinstance(gnn_model.downstream_tasks[1], QG.models.LinearSequential)
 
     assert gnn_model.pooling_layers is None
     assert gnn_model.aggregate_pooling is None
