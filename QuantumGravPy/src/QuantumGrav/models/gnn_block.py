@@ -89,7 +89,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             },
         },
         "required": ["in_dim", "out_dim"],
-        "additionalProperties": True,
+        "additionalProperties": False,
     }
 
     def __init__(
