@@ -213,19 +213,6 @@ class GNNBlock(torch.nn.Module, base.Configurable):
         return x_res
 
     @classmethod
-    def verify_config(cls, config: Dict[str, Any]) -> bool:
-        """Verify configuation dictionary
-
-        Args:
-            config (Dict[str, Any]): Config ot validate
-
-        Returns:
-            bool: when validation succeeds
-        """
-        validate(config, cls.schema)
-        return True
-
-    @classmethod
     def from_config(cls, config: dict[str, Any]) -> "GNNBlock":
         """Create a GNNBlock from a configuration dictionary.
         When the config does not have 'dropout', it defaults to 0.3.
@@ -236,9 +223,9 @@ class GNNBlock(torch.nn.Module, base.Configurable):
         Returns:
             GNNBlock: An instance of GNNBlock initialized with the provided configuration.
         """
-        try:
-            cls.verify_config(config)
+        validate(config, cls.schema)
 
+        try:
             return cls(
                 in_dim=config["in_dim"],
                 out_dim=config["out_dim"],

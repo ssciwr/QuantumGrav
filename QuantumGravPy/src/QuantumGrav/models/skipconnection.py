@@ -88,21 +88,6 @@ class SkipConnection(torch.nn.Module, base.Configurable):
         return x + self.proj(x_old)
 
     @classmethod
-    def verify_config(cls, config: Dict[str, Any]) -> bool:
-        """_summary_
-
-        Args:
-            config (Dict[str, Any]): _description_
-
-        Returns:
-            bool: _description_
-        """
-        validate(config, cls.schema)
-
-        # Returns True only if validate does not raise a ValidationError
-        return True
-
-    @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "SkipConnection":
         """Construct a SkipConnection instance from config
 
@@ -115,9 +100,9 @@ class SkipConnection(torch.nn.Module, base.Configurable):
         Returns:
             SkipConnection: new SkipConnection instance.
         """
-        try:
-            cls.verify_config(config)
+        validate(config, cls.schema)
 
+        try:
             return cls(
                 config["in_channels"],
                 config["out_channels"],

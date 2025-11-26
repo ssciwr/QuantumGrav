@@ -57,7 +57,7 @@ class LinearSequential(torch.nn.Module, base.Configurable):
     def __init__(
         self,
         dims: list[Sequence[int]],
-        activations: list[type[torch.nn.Module]] = [torch.nn.ReLU],
+        activations: list[type[torch.nn.Module]],
         linear_kwargs: list[Dict[Any, Any]] | None = None,
         activation_kwargs: list[Dict[Any, Any]] | None = None,
     ):
@@ -130,23 +130,7 @@ class LinearSequential(torch.nn.Module, base.Configurable):
         Returns:
             list[torch.Tensor]: List of output tensors from each classifier layer.
         """
-        # Sequential handles passing output from one layer to the next
-        logits = self.layers(x)  # No need for manual looping or cloning
-
-        return logits
-
-    @classmethod
-    def verify_config(cls, config: dict[str, Any]) -> bool:
-        """Verify configuration dict
-
-        Args:
-            config (dict[str, Any]): Config dict to verify
-
-        Returns:
-            bool: When verification succeeds
-        """
-        validate(config, cls.schema)
-        return True
+        return self.layers(x)
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "LinearSequential":
@@ -161,9 +145,9 @@ class LinearSequential(torch.nn.Module, base.Configurable):
         Raises:
             ValueError: If the specified activation function is not registered.
         """
-        try:
-            cls.verify_config(config)
+        validate(config, cls.schema)
 
+        try:
             n_layers = len(config["dims"])
 
             if "linear_kwargs" in config and len(config["linear_kwargs"]) != n_layers:

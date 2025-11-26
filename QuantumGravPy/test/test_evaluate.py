@@ -13,6 +13,93 @@ def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
 
 
 @pytest.fixture
+def model_config_eval():
+    return {
+        "encoder": [
+            {
+                "in_dim": 2,
+                "out_dim": 8,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    8,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "projection_args": [2, 8],
+                "projection_kwargs": {
+                    "bias": False,
+                },
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+            {
+                "in_dim": 8,
+                "out_dim": 12,
+                "dropout": 0.3,
+                "gnn_layer_type": "gcn",
+                "normalizer": "batch_norm",
+                "activation": "relu",
+                "norm_args": [
+                    12,
+                ],
+                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+                "projection_args": [8, 12],
+                "projection_kwargs": {
+                    "bias": False,
+                },
+                "gnn_layer_kwargs": {
+                    "cached": False,
+                    "bias": True,
+                    "add_self_loops": True,
+                },
+            },
+        ],
+        "downstream_tasks": [
+            {
+                "type": "LinearSequential",
+                "dims": [[12, 24], [24, 16], [16, 3]],
+                "activations": ["relu", "relu", "identity"],
+                "backbone_kwargs": [{}, {}, {}],
+                "activation_kwargs": [
+                    {"inplace": False},
+                    {"inplace": False},
+                    {"inplace": False},
+                ],
+                "active": True,
+            },
+        ],
+        "pooling_layers": [
+            {
+                "type": "mean",
+                "args": [],
+                "kwargs": {},
+            }
+        ],
+        "aggregate_pooling": {
+            "type": "cat1",
+            "args": [],
+            "kwargs": {},
+        },
+    }
+
+
+@pytest.fixture
+def gnn_model_eval(model_config_eval):
+    """Fixture to create a GNNModel for evaluation."""
+
+    model = QG.GNNModel.from_config(
+        model_config_eval,
+    )
+    model.eval()
+    return model
+
+
+@pytest.fixture
 def input():
     return {
         "patience": 7,
