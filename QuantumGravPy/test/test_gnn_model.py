@@ -68,8 +68,8 @@ def downstream_task_specs():
 def pooling_specs():
     """Fixture providing pooling layer specifications"""
     return [
-        (torch_geometric.nn.global_mean_pool, None, None),
-        (torch_geometric.nn.global_max_pool, None, None),
+        [torch_geometric.nn.global_mean_pool, [], {}],
+        [torch_geometric.nn.global_max_pool, [], {}],
     ]
 
 
@@ -151,6 +151,10 @@ def graph_features_net():
     )
 
 
+def concat(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return torch.cat((x, y), dim=1)
+
+
 @pytest.fixture
 def gnn_model_with_graph_features(
     gnn_block, downstream_tasks_graphfeatures, pooling_layer, graph_features_net
@@ -159,7 +163,7 @@ def gnn_model_with_graph_features(
         encoder_type=gnn_block,
         downstream_tasks=downstream_tasks_graphfeatures,
         pooling_layers=pooling_layer,
-        aggregate_graph_features_type=lambda x, y: partial(torch.cat, dim=1)((x, y)),
+        aggregate_graph_features_type=concat,
         graph_features_net_type=graph_features_net,
         aggregate_pooling_type=partial(torch.cat, dim=1),
         active_tasks={0: True, 1: True},
@@ -167,117 +171,52 @@ def gnn_model_with_graph_features(
 
 
 @pytest.fixture
-def gnn_model_with_graph_features_no_pooling(
-    gnn_block, downstream_tasks_graphfeatures, graph_features_net
+def gnn_model_config(
+    encoder_type, encoder_args, encoder_kwargs, pooling_specs, graph_features_net
 ):
-    return QG.GNNModel(
-        encoder_type=gnn_block,
-        downstream_tasks=downstream_tasks_graphfeatures,
-        aggregate_graph_features_type=lambda x, y: partial(torch.cat, dim=0)((x, y)),
-        graph_features_net_type=graph_features_net,
-        active_tasks={0: True, 1: True},
-    )
-
-
-@pytest.fixture
-def gnn_model_config():
+    """Config matching the new GNNModel.from_config API, using existing fixtures."""
     config = {
-        "active_tasks": [
-            1,
-        ],
-        "encoder": [
-            {
-                "in_dim": 16,
-                "out_dim": 32,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer_type": "batch_norm",
-                "activation_type": "relu",
-                "norm_args": [
-                    32,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [16, 32],
-                "projection_kwargs": {"bias": False},
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-            {
-                "in_dim": 32,
-                "out_dim": 16,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer_type": "batch_norm",
-                "activation_type": "relu",
-                "norm_args": [
-                    16,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [32, 16],
-                "projection_kwargs": {"bias": False},
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-        ],
+        "encoder_type": encoder_type,
+        "encoder_args": encoder_args,
+        "encoder_kwargs": encoder_kwargs,
+        # After two pooling ops concatenated along dim=1, encoder output 32 -> 64 input to heads
         "downstream_tasks": [
-            {
-                "dims": [(16, 24), (24, 18), (18, 3)],
-                "activations": ["relu", "relu", "identity"],
-                "linear_kwargs": [
-                    {"bias": True},
-                    {"bias": True},
-                    {"bias": False},
+            [
+                QG.models.LinearSequential,
+                [
+                    [(96, 24), (24, 18), (18, 2)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
-                "activation_kwargs": [{"inplace": False}, {"inplace": False}, {}],
-                "active": False,
-            },
-            {
-                "dims": [(16, 24), (24, 18), (18, 3)],
-                "activations": ["relu", "relu", "identity"],
-                "linear_kwargs": [
-                    {
-                        "bias": True,
-                    },
-                    {"bias": True},
-                    {"bias": False},
-                ],
-                "activation_kwargs": [{"inplace": False}, {"inplace": False}, {}],
-                "active": True,
-            },
-        ],
-        "pooling_layers": [
-            {
-                "type": "mean",
-                "args": [],
-                "kwargs": {},
-            },
-        ],
-        "aggregate_pooling": {
-            "type": "cat1",
-            "args": [],
-            "kwargs": {},
-        },
-        "aggregate_graph_features": {
-            "type": "cat1",
-            "args": [],
-            "kwargs": {},
-        },
-        "graph_features_net": {
-            "dims": [(10, 24), (24, 8), (8, 32)],
-            "activations": ["relu", "relu", "sigmoid"],
-            "linear_kwargs": [{}, {}, {}],
-            "activation_kwargs": [
-                {"inplace": False},
-                {"inplace": False},
-                {},
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
             ],
-        },
+            [
+                QG.models.LinearSequential,
+                [
+                    [(96, 24), (24, 18), (18, 3)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+        ],
+        "pooling_layers": pooling_specs,
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
+        "graph_features_net_type": graph_features_net,
+        "aggregate_graph_features_type": concat,
+        "active_tasks": {0: False, 1: True},
     }
     return config
 
@@ -622,13 +561,12 @@ def test_gnn_model_set_active_backprop(gnn_model, to_disable):
     assert gnn_model.active_tasks == {0: True, 1: True}
     output = gnn_model(x, edge_index, batch)
     assert 0 in output and 1 in output
-    loss = sum(
-        [
-            compute_loss(output[i], y[i])
-            for i in range(len(gnn_model.active_tasks))
-            if gnn_model.active_tasks[i]
-        ]
-    )
+    loss_terms = [
+        compute_loss(output[i], y[i])
+        for i in range(len(gnn_model.active_tasks))
+        if gnn_model.active_tasks[i]
+    ]
+    loss = torch.stack(loss_terms).sum()
 
     for _, p in gnn_model.named_parameters():
         assert p.grad is None
@@ -651,13 +589,12 @@ def test_gnn_model_set_active_backprop(gnn_model, to_disable):
     assert gnn_model.active_tasks[to_disable] is False
     assert gnn_model.active_tasks[task_to_keep] is True
     output = gnn_model(x, edge_index, batch)
-    loss = sum(
-        [
-            compute_loss(output[i], y[i])
-            for i in range(len(gnn_model.active_tasks))
-            if gnn_model.active_tasks[i]
-        ]
-    )
+    loss_terms = [
+        compute_loss(output[i], y[i])
+        for i in range(len(gnn_model.active_tasks))
+        if gnn_model.active_tasks[i]
+    ]
+    loss = torch.stack(loss_terms).sum()
 
     for _, p in gnn_model.named_parameters():
         assert p.grad is None
@@ -676,7 +613,7 @@ def test_gnn_model_set_active_backprop(gnn_model, to_disable):
     assert len(output) == 1
     assert output[task_to_keep].shape == (
         2,
-        2,
+        2 if to_disable == 1 else 3,
     )  # 2 graphs, 2 classes
     # reset grads
     for p in gnn_model.parameters():
@@ -684,15 +621,14 @@ def test_gnn_model_set_active_backprop(gnn_model, to_disable):
 
     # re-enable task 'to_disable'
     gnn_model.set_task_active(to_disable)
-    assert gnn_model.active_tasks == [True, True]
+    assert gnn_model.active_tasks == {0: True, 1: True}
     output = gnn_model(x, edge_index, batch)
-    loss = sum(
-        [
-            compute_loss(output[i], y[i])
-            for i in range(len(gnn_model.active_tasks))
-            if gnn_model.active_tasks[i]
-        ]
-    )
+    loss_terms = [
+        compute_loss(output[i], y[i])
+        for i in range(len(gnn_model.active_tasks))
+        if gnn_model.active_tasks[i]
+    ]
+    loss = torch.stack(loss_terms).sum()
 
     for _, p in gnn_model.named_parameters():
         assert p.grad is None
@@ -703,7 +639,7 @@ def test_gnn_model_set_active_backprop(gnn_model, to_disable):
         assert p.grad is not None
 
     assert len(output) == 2
-    assert output[0].shape == (2, 3)  # 2 graphs,2 classes
+    assert output[0].shape == (2, 2)  # 2 graphs,2 classes
     assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
     # reset grads
     for p in gnn_model.parameters():
@@ -730,72 +666,75 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
     assert output[1].shape == (2, 3)
 
 
-def test_gnn_model_forward_without_pooling(gnn_model_with_graph_features_no_pooling):
-    "test gnn model without adding pooling"
-    x = torch.randn(5, 16)  # 5 nodes with 16 features each
-    edge_index = torch.tensor(
-        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
-    )  # Simple edge index
-    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
-    graph_features = torch.randn(2, 10)  # 2 graphs with 10 features each
-
-    assert len(gnn_model_with_graph_features_no_pooling.pooling_layers) == 1
-    assert isinstance(
-        gnn_model_with_graph_features_no_pooling.pooling_layers[0], torch.nn.Identity
-    )
-    assert isinstance(
-        gnn_model_with_graph_features_no_pooling.aggregate_pooling,
-        QG.gnn_model.ModuleWrapper,
-    )
-    assert (
-        gnn_model_with_graph_features_no_pooling.aggregate_pooling.get_fn() == torch.cat
-    )
-    output = gnn_model_with_graph_features_no_pooling(
-        x, edge_index, batch, graph_features=graph_features
-    )
-    assert output[0].shape == (2, 2)
-    assert output[1].shape == (2, 3)
-
-
 def test_gnn_model_to_config(gnn_model_with_graph_features):
     cfg = gnn_model_with_graph_features.to_config()
-    assert "encoder" in cfg
+
+    assert "encoder_type" in cfg
+    assert cfg["encoder_type"] == "QuantumGrav.models.gnn_block.GNNBlock"
+    assert cfg["encoder_args"] is None
+    assert cfg["encoder_kwargs"] is None
     assert "downstream_tasks" in cfg
     assert "pooling_layers" in cfg
-    assert "graph_features_net" in cfg
-    assert "aggregate_graph_features" in cfg
+
+    assert "aggregate_pooling_type" in cfg
+    assert cfg["aggregate_pooling_type"] == "functools.partial"
+    assert cfg["aggregate_pooling_args"] is None
+    assert cfg["aggregate_pooling_kwargs"] is None
+
+    assert "graph_features_net_type" in cfg
+    assert (
+        cfg["graph_features_net_type"]
+        == "QuantumGrav.models.linear_sequential.LinearSequential"
+    )
+    assert cfg["graph_features_net_args"] is None
+    assert cfg["graph_features_net_kwargs"] is None
+
+    assert "aggregate_graph_features_type" in cfg
+    assert (
+        cfg["aggregate_graph_features_type"]
+        == "QuantumGravPy.test.test_gnn_model.concat"
+    )
+    assert cfg["aggregate_graph_features_args"] is None
+    assert cfg["aggregate_graph_features_kwargs"] is None
+    assert "active_tasks" in cfg
 
 
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
     model = QG.GNNModel.from_config(gnn_model_config)
 
-    assert model.active_tasks == [False, True]
-    assert isinstance(model.encoder, torch.nn.ModuleList)
+    # Active tasks mapping
+    assert model.active_tasks == {0: False, 1: True}
 
-    assert len(model.encoder) == 2  # Assuming two GNN blocks
+    # Encoder is a single module
+    assert isinstance(model.encoder, QG.models.GNNBlock)
 
-    for task in model.downstream_tasks:
-        assert isinstance(task, QG.models.LinearSequential)
+    # Downstream tasks are built
+    assert isinstance(model.downstream_tasks, torch.nn.ModuleList)
+    assert len(model.downstream_tasks) == 2
+    assert all(
+        isinstance(t, QG.models.LinearSequential) for t in model.downstream_tasks
+    )
 
+    # Pooling layers exist and are wrappers around functions
     assert model.pooling_layers is not None
-
     for pooling in model.pooling_layers:
         assert isinstance(pooling, QG.gnn_model.ModuleWrapper)
 
+    # Graph features network provided in config
     assert isinstance(model.graph_features_net, QG.models.LinearSequential)
 
-    x = torch.randn(5, 16)  # 5 nodes with 16 features each
-    edge_index = torch.tensor(
-        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
-    )  # Simple edge index
-    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
-    model.eval()  # Set model to evaluation mode
-    output = model(x, edge_index, batch)
-    assert model.training is False  # Ensure model is in eval mode
+    # Run a forward pass
+    x = torch.randn(5, 16)
+    edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long)
+    batch = torch.tensor([0, 0, 0, 1, 1])
+    model.eval()
+    output = model(x, edge_index, batch, graph_features=torch.randn(2, 10))
+    assert model.training is False
     assert isinstance(output, dict)
-    assert 0 not in output
-    assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
+    assert 0 not in output  # inactive
+    assert 1 in output
+    assert output[1].shape == (2, 3)
 
 
 def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):

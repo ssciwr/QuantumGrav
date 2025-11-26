@@ -8,7 +8,6 @@ import QuantumGrav as QG
 
 
 import torch
-import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 from torch_geometric.loader import DataLoader
@@ -275,44 +274,6 @@ def read_data():
     return reader
 
 
-# models
-
-
-@pytest.fixture
-def gnn_block():
-    return QG.models.GNNBlock(
-        in_dim=16,
-        out_dim=32,
-        dropout=0.3,
-        gnn_layer_type=torch_geometric.nn.conv.GCNConv,
-        normalizer_type=torch.nn.BatchNorm1d,
-        activation_type=torch.nn.ReLU,
-        gnn_layer_args=[],
-        gnn_layer_kwargs={"cached": False, "bias": True, "add_self_loops": True},
-        norm_args=[
-            32,
-        ],
-        norm_kwargs={"eps": 1e-5, "momentum": 0.2},
-        skip_args=[16, 32],
-        skip_kwargs={"weight_initializer": "kaiming_uniform"},
-    )
-
-
-@pytest.fixture
-def classifier_block():
-    return QG.models.LinearSequential(
-        dims=[(32, 24), (24, 12), (12, 3)],
-        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
-        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
-        activation_kwargs=[{"inplace": False}, {}, {}],
-    )
-
-
-@pytest.fixture
-def pooling_layer():
-    return torch_geometric.nn.global_mean_pool
-
-
 @pytest.fixture
 def make_dataset(create_data_zarr, read_data):
     datadir, datafiles = create_data_zarr
@@ -345,93 +306,6 @@ def make_dataloader(create_data_zarr, make_dataset):
         drop_last=True,  # Ensure all batches are of the same size. last batches that are bad need to be handled by hand
     )
     return dataloader
-
-
-@pytest.fixture
-def model_config_eval():
-    return {
-        "encoder": [
-            {
-                "in_dim": 2,
-                "out_dim": 8,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
-                "norm_args": [
-                    8,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [2, 8],
-                "projection_kwargs": {
-                    "bias": False,
-                },
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-            {
-                "in_dim": 8,
-                "out_dim": 12,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
-                "norm_args": [
-                    12,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [8, 12],
-                "projection_kwargs": {
-                    "bias": False,
-                },
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-        ],
-        "downstream_tasks": [
-            {
-                "type": "LinearSequential",
-                "dims": [[12, 24], [24, 16], [16, 3]],
-                "activations": ["relu", "relu", "identity"],
-                "backbone_kwargs": [{}, {}, {}],
-                "activation_kwargs": [
-                    {"inplace": False},
-                    {"inplace": False},
-                    {"inplace": False},
-                ],
-                "active": True,
-            },
-        ],
-        "pooling_layers": [
-            {
-                "type": "mean",
-                "args": [],
-                "kwargs": {},
-            }
-        ],
-        "aggregate_pooling": {
-            "type": "cat1",
-            "args": [],
-            "kwargs": {},
-        },
-    }
-
-
-@pytest.fixture
-def gnn_model_eval(model_config_eval):
-    """Fixture to create a GNNModel for evaluation."""
-
-    model = QG.GNNModel.from_config(
-        model_config_eval,
-    )
-    model.eval()
-    return model
 
 
 @pytest.fixture(scope="session")

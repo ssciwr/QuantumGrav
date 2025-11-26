@@ -1,6 +1,6 @@
 from typing import Any, Callable, Sequence, Dict, Tuple
 from pathlib import Path
-from inspect import isclass
+from inspect import isclass, isfunction
 
 import torch
 import jsonschema
@@ -51,6 +51,33 @@ def instantiate_type(
         raise ValueError(
             f"{object_or_type} must be either a subtype of torch.nn.Module or an instance of such a type or a callable"
         )
+
+
+def get_name_or_type(object: Any) -> Any:
+    """Get a string representation of module and type from an object which can be ModuleWrapper, general class or function
+
+    Args:
+        object (Any): Object to get a string representation of
+
+    Returns:
+        Any: string representation of the form outer_module.inner_module.object_name
+    """
+    print("object: ", object)
+    if object is None:
+        print("None")
+        return None
+    elif isinstance(object, ModuleWrapper):
+        print("wrapper")
+        return f"{object.get_fn().__module__}.{object.get_fn().__name__}"
+    elif isclass(type(object)) and not isfunction(object):
+        print("class")
+        return f"{type(object).__module__}.{type(object).__name__}"
+    elif isfunction(object):
+        print("callable")
+        return f"{object.__module__}.{object.__name__}"
+    else:
+        print("something weird here!")
+        return "unknown"
 
 
 class GNNModel(torch.nn.Module, base.Configurable):
@@ -240,10 +267,15 @@ class GNNModel(torch.nn.Module, base.Configurable):
         self.encoder_kwargs = encoder_kwargs
         self.downstream_task_specs = downstream_tasks
         self.pooling_layer_specs = pooling_layers
+
+        self.aggregate_pooling_type = aggregate_pooling_type
         self.aggregate_pooling_args = aggregate_pooling_args
         self.aggregate_pooling_kwargs = aggregate_pooling_kwargs
+
         self.graph_features_net_args = graph_features_net_args
         self.graph_features_net_kwargs = graph_features_net_kwargs
+
+        self.aggregate_graph_features_type = aggregate_graph_features_type
         self.aggregate_graph_features_args = aggregate_graph_features_args
         self.aggregate_graph_features_kwargs = aggregate_graph_features_kwargs
 
@@ -268,11 +300,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 ]
             )
         else:
-            self.pooling_layers = torch.nn.ModuleList(
-                [
-                    torch.nn.Identity(),
-                ]
-            )  # non-op, gives x->[x,]
+            self.pooling_layers = [
+                None,
+            ]  # does nothing later
 
         # aggregate pooling layer
         if aggregate_pooling_type is not None:
@@ -355,7 +385,8 @@ class GNNModel(torch.nn.Module, base.Configurable):
 
         # pool everything together into a single graph representation
         pooled_embeddings = [
-            pooling_op(embeddings, batch) for pooling_op in self.pooling_layers
+            pooling_op(embeddings, batch) if pooling_op else embeddings
+            for pooling_op in self.pooling_layers
         ]
 
         return self.aggregate_pooling(pooled_embeddings)
@@ -380,7 +411,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
         d_kwargs: Sequence[Dict[str, Any]] = (
             [{} for _ in self.downstream_tasks] if kwargs is None else kwargs
         )
-
+        print("x shape: ", x.shape)
         return {
             i: self.downstream_tasks[i](x, *d_args[i], **d_kwargs[i])
             for i in range(0, len(self.downstream_tasks))
@@ -413,15 +444,17 @@ class GNNModel(torch.nn.Module, base.Configurable):
             Dict[int, torch.Tensor]: Raw output of downstream tasks.
         """
         # apply the GCN backbone to the node features
+        print("input: ", x.shape)
         embeddings = self.get_embeddings(
             x, edge_index, batch, gcn_kwargs=embedding_kwargs
         )
-
+        print("embeddings shape: ", embeddings.shape)
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
             graph_features = self.graph_features_net(graph_features)
-
+            print("graph features: ", graph_features.shape)
             embeddings = self.aggregate_graph_features(embeddings, graph_features)
+        print("graph embeddings: ", embeddings.shape)
 
         # downstream tasks are given out as is, no softmax or other assumptions
         return self.compute_downstream_tasks(
@@ -480,7 +513,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
         """Serialize the model architecture to a configuration dictionary. You can only reconstruct
         the calling instance from this config in full if you constructed the whole system in this
         instance from scratch. Setting indidvidual modules from outside instances will prevent
-        reconstructability.
+        reconstructability. Also, any functions need to be proper pythonf functions defined as def funcname(...): not functools.partial or lambda.
 
         Note: Type objects are converted to fully qualified module paths (strings).
 
@@ -490,20 +523,36 @@ class GNNModel(torch.nn.Module, base.Configurable):
         """
 
         config: Dict[str, Any] = {
-            "encoder_type": f"{type(self.encoder).__module__}.{type(self.encoder).__name__}",
-            "encoder_args": self.encoder_args,
-            "encoder_kwargs": self.encoder_kwargs,
+            "encoder_type": get_name_or_type(self.encoder),
+            "encoder_args": self.encoder_args if self.encoder_args is not None else [],
+            "encoder_kwargs": self.encoder_kwargs
+            if self.encoder_kwargs is not None
+            else {},
             "downstream_tasks": self.downstream_task_specs,
             "pooling_layers": self.pooling_layer_specs,
-            "aggregate_pooling_type": f"{type(self.aggregate_pooling).__module__}.{type(self.aggregate_pooling).__name__}",
-            "aggregate_pooling_args": self.aggregate_pooling_args,
-            "aggregate_pooling_kwargs": self.aggregate_pooling_kwargs,
-            "graph_features_net_type": f"{type(self.graph_features_net).__module__}.{type(self.graph_features_net).__name__}",
-            "graph_features_net_args": self.graph_features_net_args,
-            "graph_features_net_kwargs": self.graph_features_net_kwargs,
-            "aggregate_graph_features_type": f"{type(self.aggregate_graph_features).__module__}.{type(self.aggregate_graph_features).__name__}",
-            "aggregate_graph_features_args": self.aggregate_graph_features_args,
-            "aggregate_graph_features_kwargs": self.aggregate_graph_features_kwargs,
+            "aggregate_pooling_type": get_name_or_type(self.aggregate_pooling_type),
+            "aggregate_pooling_args": self.aggregate_pooling_args
+            if self.aggregate_pooling_args is not None
+            else [],
+            "aggregate_pooling_kwargs": self.aggregate_pooling_kwargs
+            if self.aggregate_pooling_kwargs is not None
+            else {},
+            "graph_features_net_type": get_name_or_type(self.graph_features_net),
+            "graph_features_net_args": self.graph_features_net_args
+            if self.graph_features_net_args is not None
+            else [],
+            "graph_features_net_kwargs": self.graph_features_net_kwargs
+            if self.graph_features_net_kwargs is not None
+            else {},
+            "aggregate_graph_features_type": get_name_or_type(
+                self.aggregate_graph_features_type
+            ),
+            "aggregate_graph_features_args": self.aggregate_graph_features_args
+            if self.aggregate_graph_features_args is not None
+            else [],
+            "aggregate_graph_features_kwargs": self.aggregate_graph_features_kwargs
+            if self.aggregate_graph_features_kwargs is not None
+            else {},
             "active_tasks": {key: True for key in self.active_tasks.keys()},
         }
 
