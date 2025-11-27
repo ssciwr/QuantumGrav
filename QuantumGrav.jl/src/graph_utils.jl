@@ -12,7 +12,7 @@ Creates an adjacency matrix from a causet's future relations.
 - `eltype::Type{T}`: Numeric element type to store the elements. Ignored if you pass in a BitMatrix, which as no element type.
 
 # Returns
-- `M{T}`: Sparse adjacency matrix representing the causal structure
+- `AbstractMatrix{T}`: Adjacency matrix of the specified matrix type (as given by the `type` parameter), constrained to subtypes of `AbstractMatrix`.
 
 # Notes
 Converts the causet's future_relations to a matrix format by
