@@ -709,7 +709,7 @@ def test_gnn_model_set_active_backprop(gnn_model, to_disable):
         assert p.grad is not None
 
     assert len(output) == 2
-    assert output[0].shape == (2, 2)  # 2 graphs,2 classes
+    assert output[0].shape == (2, 2)  # 2 graphs, 2 classes
     assert output[1].shape == (2, 3)  # 2 graphs, 3 classes
     # reset grads
     for p in gnn_model.parameters():

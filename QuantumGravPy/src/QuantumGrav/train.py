@@ -454,7 +454,11 @@ class Trainer:
             max(saved_models, key=lambda f: f.stat().st_mtime) if saved_models else None
         )
         if best_of_the_best is None:
-            raise RuntimeError("No saved model found for testing.")
+            raise RuntimeError(
+                "No saved model found for testing. Please verify that the checkpoint_path is correct, "
+                f"that a model with the name addition '{model_name_addition}' exists, and that training "
+                "completed successfully and saved a model checkpoint."
+            )
 
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
 

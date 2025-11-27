@@ -525,5 +525,5 @@ class GNNModel(torch.nn.Module, base.Configurable):
         """
 
         model = cls.from_config(config).to(device)
-        model.load_state_dict(torch.load(path, map_location=device))
+        model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
         return model
