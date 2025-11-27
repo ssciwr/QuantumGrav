@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 
@@ -12,12 +13,73 @@ import os
 import zarr
 from datetime import datetime
 from pathlib import Path
+from functools import partial
 
 
 @pytest.fixture
 def tmppath(tmp_path_factory):
     checkpoint_path = tmp_path_factory.mktemp("checkpoints")
     return checkpoint_path
+
+
+@pytest.fixture
+def model_config_eval():
+    config = {
+        "encoder_type": QG.models.GNNBlock,
+        "encoder_args": [2, 32],
+        "encoder_kwargs": {
+            "dropout": 0.3,
+            "gnn_layer_type": torch_geometric.nn.conv.GCNConv,
+            "normalizer_type": torch.nn.BatchNorm1d,
+            "activation_type": torch.nn.ReLU,
+            "gnn_layer_args": [],
+            "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
+            "norm_args": [32],
+            "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+            "skip_args": [2, 32],
+            "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
+        },
+        # After two pooling ops concatenated along dim=1, encoder output 32 -> 64 input to heads
+        "downstream_tasks": [
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 2)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 3)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+        ],
+        "pooling_layers": [
+            [torch_geometric.nn.global_mean_pool, [], {}],
+            [torch_geometric.nn.global_max_pool, [], {}],
+        ],
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
+        "active_tasks": {0: True, 1: True},
+    }
+    return config
 
 
 @pytest.fixture
@@ -63,8 +125,6 @@ def config(model_config_eval, tmppath):
             "backend": "gloo",
         },
     }
-
-    cfg["model"]["name"] = "GNNModel"
 
     return cfg
 
