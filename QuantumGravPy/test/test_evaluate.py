@@ -5,21 +5,13 @@ import torch
 import torch_geometric
 import numpy as np
 import pytest
+from functools import partial
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
     loss = torch.nn.MSELoss()(x[0].unsqueeze(0), data.y.to(torch.float32))
     return loss
-
-
-# Helper functions for aggregation
-def concat(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    return torch.cat((x, y), dim=1)
-
-
-def cat1(xs: list[torch.Tensor]) -> torch.Tensor:
-    return torch.cat(xs, dim=1)
 
 
 @pytest.fixture
@@ -76,7 +68,7 @@ def model_config_eval():
             [torch_geometric.nn.global_mean_pool, [], {}],
             [torch_geometric.nn.global_max_pool, [], {}],
         ],
-        "aggregate_pooling_type": cat1,
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
         "active_tasks": {0: True, 1: True},
     }
     return config

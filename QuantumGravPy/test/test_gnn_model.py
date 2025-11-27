@@ -4,6 +4,8 @@ import pytest
 import torch
 import torch_geometric
 
+from functools import partial
+
 
 @pytest.fixture
 def encoder_type():
@@ -128,7 +130,7 @@ def gnn_model(gnn_block, downstream_tasks, pooling_layer):
         encoder_type=gnn_block,
         downstream_tasks=downstream_tasks,
         pooling_layers=pooling_layer,
-        aggregate_pooling_type=cat1,
+        aggregate_pooling_type=partial(torch.cat, dim=1),
         aggregate_pooling_args=None,
         aggregate_pooling_kwargs=None,
         active_tasks={0: True, 1: True},
@@ -138,10 +140,6 @@ def gnn_model(gnn_block, downstream_tasks, pooling_layer):
 # Helper functions for aggregation
 def concat(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.cat((x, y), dim=1)
-
-
-def cat1(xs: list[torch.Tensor]) -> torch.Tensor:
-    return torch.cat(xs, dim=1)
 
 
 @pytest.fixture
@@ -160,7 +158,7 @@ def gnn_model_with_graph_features(
         pooling_layers=pooling_layer,
         aggregate_graph_features_type=concat,
         graph_features_net_type=graph_features_net,
-        aggregate_pooling_type=cat1,
+        aggregate_pooling_type=partial(torch.cat, dim=1),
         active_tasks={0: True, 1: True},
     )
 
@@ -206,7 +204,7 @@ def gnn_model_config(encoder_type, encoder_args, encoder_kwargs, pooling_specs):
             ],
         ],
         "pooling_layers": pooling_specs,
-        "aggregate_pooling_type": cat1,
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
         "graph_features_net_type": QG.models.LinearSequential,
         "graph_features_net_args": [
             [(10, 32), (32, 24), (24, 32)],
@@ -273,7 +271,7 @@ def arbitrary_model_cfg(pooling_specs):
             ],
         ],
         "pooling_layers": pooling_specs,
-        "aggregate_pooling_type": cat1,
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
         "graph_features_net_type": torch_geometric.nn.models.MLP,
         "graph_features_net_args": [],
         "graph_features_net_kwargs": {
@@ -431,7 +429,7 @@ def test_gnn_model_creation_from_scratch(
         encoder_kwargs=encoder_kwargs,
         downstream_tasks=downstream_task_specs,
         pooling_layers=pooling_specs,
-        aggregate_pooling_type=cat1,
+        aggregate_pooling_type=partial(torch.cat, dim=1),
         active_tasks={0: True, 1: False},
     )
 
