@@ -8,17 +8,57 @@ import tqdm
 import yaml
 from datetime import datetime
 
-from .evaluate import DefaultValidator, DefaultTester
+from . import evaluate
+from . import early_stopping
 from . import gnn_model
 
 import torch
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 import optuna
+import jsonschema
 
 
 class Trainer:
     """Trainer class for training and evaluating GNN models."""
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Model trainer class Configuration",
+        "type": "object",
+        "properties": {
+            "training": {
+                "type": "object",
+                "description": "Training configuration",
+                "properties": {},
+                "additionalProperties": True,
+            },
+            "model": {
+                "type": "object",
+                "description": "Model configuration",
+            },
+            "validation": {
+                "type": "object",
+                "description": "Model validation configuration",
+                "properties": {},
+                "additionalProperties": True,
+            },
+            "testing": {
+                "type": "object",
+                "description": "Configuration for model testing after training",
+                "properties": {},
+                "additionalProperties": True,
+            },
+            "earlystopping": {
+                "type": "object",
+                "description": "Early stopping configuration",
+                "properties": {},
+                "additionalProperties": True,
+            },
+        },
+        "required": ["training", "model", "validation", "testing"],
+        "additionalProperties": False,
+    }
 
     def __init__(
         self,
@@ -27,9 +67,9 @@ class Trainer:
         criterion: Callable[[Any, Data, Any], torch.Tensor],
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
+        early_stopping: early_stopping.DefaultEarlystopping | None = None,
+        validator: evaluate.DefaultValidator | None = None,
+        tester: evaluate.DefaultTester | None = None,
     ):
         """Initialize the trainer.
 
@@ -44,13 +84,15 @@ class Trainer:
         Raises:
             ValueError: If the configuration is invalid.
         """
-        if (
-            all(x in config for x in ["training", "model", "validation", "testing"])
-            is False
-        ):
-            raise ValueError(
-                "Configuration must contain 'training', 'model', 'validation' and 'testing' sections."
-            )
+
+        jsonschema.validate(instance=config, schema=self.schema)
+        # if (
+        #     all(x in config for x in ["training", "model", "validation", "testing"])
+        #     is False
+        # ):
+        #     raise ValueError(
+        #         "Configuration must contain 'training', 'model', 'validation' and 'testing' sections."
+        #     )
 
         self.config = config
         self.logger = logging.getLogger(__name__)
