@@ -106,8 +106,8 @@ class SkipConnection(torch.nn.Module, base.Configurable):
             return cls(
                 config["in_channels"],
                 config["out_channels"],
-                weight_initializer=config["weight_initializer"],
-                bias_initializer=config["bias_initializer"],
+                weight_initializer=config.get("weight_initializer"),
+                bias_initializer=config.get("bias_initializer"),
             )
         except Exception as e:
             raise RuntimeError(f"Error, couldn't build SkipConnection: {e}")
