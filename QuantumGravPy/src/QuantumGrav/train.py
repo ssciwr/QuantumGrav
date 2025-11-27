@@ -453,10 +453,14 @@ class Trainer:
         best_of_the_best = (
             max(saved_models, key=lambda f: f.stat().st_mtime) if saved_models else None
         )
+        if best_of_the_best is None:
+            raise RuntimeError("No saved model found for testing.")
 
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
-        self.model = gnn_model.GNNModel.load(best_of_the_best, device=self.device)
 
+        self.model = gnn_model.GNNModel.load(
+            self.config["model"], best_of_the_best, device=self.device
+        )
         self.model.eval()
         if self.tester is None:
             raise RuntimeError("Tester must be initialized before testing.")
@@ -478,12 +482,9 @@ class Trainer:
             raise ValueError("Model must be initialized before saving checkpoint.")
 
         self.logger.info(
-            f"Saving checkpoint for model {self.config['model'].get('name', ' model')} at epoch {self.epoch} to {self.checkpoint_path}"
+            f"Saving checkpoint for model at epoch {self.epoch} to {self.checkpoint_path}"
         )
-        outpath = (
-            self.checkpoint_path
-            / f"{self.config['model'].get('name', 'model')}_{name_addition}.pt"
-        )
+        outpath = self.checkpoint_path / f"model_{name_addition}.pt"
 
         if outpath.exists() is False:
             outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -512,12 +513,9 @@ class Trainer:
             "available checkpoints: %s", list(Path(self.checkpoint_path).iterdir())
         )
 
-        loadpath = (
-            Path(self.checkpoint_path)
-            / f"{self.config['model'].get('name', 'model')}_{name_addition}.pt"
-        )
+        loadpath = Path(self.checkpoint_path) / f"model_{name_addition}.pt"
 
         if not loadpath.exists():
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
-        self.model = gnn_model.GNNModel.load(loadpath)
+        self.model = gnn_model.GNNModel.load(self.config["model"], loadpath)
