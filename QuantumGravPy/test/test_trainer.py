@@ -5,10 +5,11 @@ from torch_geometric.data import Data
 
 import QuantumGrav as QG
 import numpy as np
-from pathlib import Path
 from functools import partial
+import jsonschema
 import re
-from datetime import datetime
+import datetime
+from pathlib import Path
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 
@@ -87,10 +88,11 @@ def config(model_config_eval, tmppath):
             # training loop
             "device": "cpu",
             "checkpoint_at": 20,
-            "path": tmppath,
+            "path": str(tmppath),
             # optimizer
-            "learning_rate": 0.001,
-            "weight_decay": 0.0001,
+            "optimizer_type": torch.optim.Adam,
+            "optimizer_args": [],
+            "optimizer_kwargs": {"lr": 0.001, "weight_decay": 0.0},
             # training loader
             "batch_size": 4,
             "num_workers": 0,
@@ -220,8 +222,8 @@ def test_trainer_creation_works(config):
 
 def test_trainer_creation_broken(broken_config):
     with pytest.raises(
-        ValueError,
-        match="Configuration must contain 'training', 'model', 'validation' and 'testing' sections.",
+        jsonschema.ValidationError,
+        match="'validation' is a required property",
     ):
         QG.Trainer(
             broken_config,
@@ -370,7 +372,7 @@ def test_trainer_check_model_status(config):
 
     assert saved is True
 
-    partial_path = datetime.now().strftime("%Y-%m-%d_")
+    partial_path = datetime.datetime.now().strftime("%Y-%m-%d_")
     paths = [
         f
         for f in list(Path(config["training"]["path"]).iterdir())

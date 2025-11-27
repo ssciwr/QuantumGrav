@@ -91,10 +91,11 @@ def config(model_config_eval, tmppath):
             "device": "cpu",
             "early_stopping_patience": 10,
             "checkpoint_at": 20,
-            "path": tmppath,
+            "path": str(tmppath),
             # optimizer
-            "learning_rate": 0.001,
-            "weight_decay": 0.0001,
+            "optimizer_type": torch.optim.Adam,
+            "optimizer_args": [],
+            "optimizer_kwargs": {"lr": 0.001, "weight_decay": 0.0001},
             # training loader
             "batch_size": 4,
             "num_workers": 0,
