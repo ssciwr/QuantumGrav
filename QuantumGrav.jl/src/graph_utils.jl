@@ -9,7 +9,7 @@ Creates an adjacency matrix from a causet's future relations.
 # Arguments
 - `c::CausalSets.AbstractCauset`: The causet object containing future relations
 - `type::Type{M}`: Array type for the adjacency matrix entries. Must be a subtype of AbstractArray
-- `eltype::Type{T}`: Numeric element type to store the elements. Ignored if you pass in a BitMatrix, which as no element type.
+- `eltype::Type{T}`: Numeric element type to store the elements. Ignored if you pass in a BitMatrix, which has no element type.
 
 # Returns
 - `AbstractMatrix{T}`: Adjacency matrix of the specified matrix type (as given by the `type` parameter), constrained to subtypes of `AbstractMatrix`.
