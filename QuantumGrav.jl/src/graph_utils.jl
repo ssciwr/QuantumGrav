@@ -42,7 +42,7 @@ end
 Calculates the maximum path length from a source node in a directed acyclic graph.
 
 # Arguments
-- `adj_matrix::AbstractMatrix` Adjacency matrix representing the directed graph
+- `adj_matrix::AbstractMatrix`: Adjacency matrix representing the directed graph
 - `topo_order::AbstractVector{Int}`: Topologically sorted order of vertices
 - `source::Int`: Source vertex index to calculate distances from
 
