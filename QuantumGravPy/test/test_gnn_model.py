@@ -135,6 +135,7 @@ def gnn_model(gnn_block, downstream_tasks, pooling_layer):
     )
 
 
+# Helper functions for aggregation
 def concat(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.cat((x, y), dim=1)
 
@@ -222,6 +223,73 @@ def gnn_model_config(encoder_type, encoder_args, encoder_kwargs, pooling_specs):
         "aggregate_graph_features_type": concat,
         "active_tasks": {0: False, 1: True},
     }
+    return config
+
+
+@pytest.fixture
+def arbitrary_model_cfg(pooling_specs):
+    config = {
+        "encoder_type": torch_geometric.nn.models.GCN,
+        "encoder_args": [16, 32, 3],
+        "encoder_kwargs": {
+            "dropout": 0.5,
+            "act": "relu",
+            "act_first": False,
+            "act_kwargs": None,
+            "norm": "batchnorm",
+            "norm_kwargs": None,
+            "jk": None,
+        },
+        "downstream_tasks": [
+            [
+                torch_geometric.nn.models.MLP,
+                [],
+                {
+                    "in_channels": 80,
+                    "hidden_channels": 32,
+                    "out_channels": 4,
+                    "num_layers": 3,
+                },
+            ],
+            [
+                torch_geometric.nn.models.MLP,
+                [],
+                {
+                    "in_channels": 80,
+                    "hidden_channels": 24,
+                    "out_channels": 4,
+                    "num_layers": 4,
+                },
+            ],
+            [
+                torch_geometric.nn.models.MLP,
+                [],
+                {
+                    "in_channels": 80,
+                    "hidden_channels": 23,
+                    "out_channels": 2,
+                    "num_layers": 4,
+                },
+            ],
+        ],
+        "pooling_layers": pooling_specs,
+        "aggregate_pooling_type": cat1,
+        "graph_features_net_type": torch_geometric.nn.models.MLP,
+        "graph_features_net_args": [],
+        "graph_features_net_kwargs": {
+            "in_channels": 8,
+            "hidden_channels": 16,
+            "out_channels": 16,
+            "num_layers": 3,
+        },
+        "aggregate_graph_features_type": concat,
+        "active_tasks": {
+            0: True,
+            1: False,
+            2: True,
+        },
+    }
+
     return config
 
 
@@ -746,6 +814,48 @@ def test_gnn_model_save_load(gnn_model_config, tmp_path):
 
     y = og_model.forward(x, edge_index, batch, graph_features=graph_features)
 
+    y_loaded = loaded_gnn_model.forward(
+        x, edge_index, batch, graph_features=graph_features
+    )
+    for i in y.keys():
+        assert torch.allclose(y[i], y_loaded[i], atol=1e-8)
+
+
+def test_gnn_model_arbitrary_composition(arbitrary_model_cfg, tmp_path):
+    "test saving and loading of the combined model with arbitrary composition"
+
+    gnn_model = QG.GNNModel.from_config(arbitrary_model_cfg)
+    assert isinstance(gnn_model.encoder, torch_geometric.nn.models.GCN)
+    assert len(gnn_model.downstream_tasks) == 3
+    for task in gnn_model.downstream_tasks:
+        assert isinstance(task, torch_geometric.nn.models.MLP)
+    assert isinstance(gnn_model.graph_features_net, torch_geometric.nn.models.MLP)
+
+    gnn_model.save(tmp_path / "arbitrary_model.pt")
+    assert (tmp_path / "arbitrary_model.pt").exists()
+    loaded_gnn_model = QG.GNNModel.load(
+        arbitrary_model_cfg, tmp_path / "arbitrary_model.pt"
+    )
+    assert len(loaded_gnn_model.state_dict().keys()) == len(
+        gnn_model.state_dict().keys()
+    )
+    for k in loaded_gnn_model.state_dict().keys():
+        assert torch.equal(
+            loaded_gnn_model.state_dict()[k],
+            gnn_model.state_dict()[k],
+        )
+
+    # test forward pass
+    x = torch.randn(5, 16)  # 5 nodes with 16 features each
+    edge_index = torch.tensor(
+        [[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long
+    )  # Simple edge index
+    batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
+    graph_features = torch.randn(2, 8)  # 2 graphs with 8 features each
+
+    gnn_model.eval()
+    loaded_gnn_model.eval()
+    y = gnn_model.forward(x, edge_index, batch, graph_features=graph_features)
     y_loaded = loaded_gnn_model.forward(
         x, edge_index, batch, graph_features=graph_features
     )
