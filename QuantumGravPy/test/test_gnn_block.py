@@ -7,6 +7,40 @@ import torch
 
 
 @pytest.fixture
+def encoder_type():
+    """Fixture providing an encoder class type"""
+    return QG.models.GNNBlock
+
+
+@pytest.fixture
+def encoder_args():
+    """Fixture providing encoder constructor args"""
+    return [16, 32]
+
+
+@pytest.fixture
+def encoder_kwargs():
+    """Fixture providing encoder constructor kwargs"""
+    return {
+        "dropout": 0.3,
+        "gnn_layer_type": torch_geometric.nn.conv.GCNConv,
+        "normalizer_type": torch.nn.BatchNorm1d,
+        "activation_type": torch.nn.ReLU,
+        "gnn_layer_args": [],
+        "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
+        "norm_args": [32],
+        "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+        "skip_args": [16, 32],
+        "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
+    }
+
+
+@pytest.fixture
+def gnn_block(encoder_type, encoder_args, encoder_kwargs):
+    return encoder_type(*encoder_args, **encoder_kwargs)
+
+
+@pytest.fixture
 def gnn_block_config():
     """Fixture to provide configuration for GNNBlock."""
     return {
