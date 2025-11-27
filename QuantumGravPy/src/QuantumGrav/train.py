@@ -27,33 +27,166 @@ class Trainer:
         "title": "Model trainer class Configuration",
         "type": "object",
         "properties": {
+            "log_level": {
+                "description": "Optional logging level (int or string, e.g. INFO)",
+                "anyOf": [{"type": "integer"}, {"type": "string"}],
+            },
             "training": {
                 "type": "object",
                 "description": "Training configuration",
-                "properties": {},
+                "properties": {
+                    "seed": {"type": "integer", "description": "Random seed"},
+                    "device": {
+                        "type": "string",
+                        "description": "Torch device string, e.g. 'cpu', 'cuda', 'cuda:0'",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Output directory for run artifacts and checkpoints",
+                    },
+                    "num_epochs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Number of training epochs",
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Training DataLoader batch size",
+                    },
+                    "optimizer_type": {
+                        "description": "Optimizer type name, e.g. 'torch.optim.Adam' or 'torch.optim.SGD'",
+                    },
+                    "optimizer_args": {
+                        "type": "array",
+                        "description": "Arguments for optimizer",
+                        "items": {},
+                    },
+                    "optimizer_kwargs": {
+                        "type": "object",
+                        "description": "Optimizer keyword arguments",
+                        "additionalProperties": {},
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle training dataset",
+                    },
+                    "checkpoint_at": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "description": "Checkpoint every N epochs (or None to disable)",
+                    },
+                },
+                "required": [
+                    "seed",
+                    "device",
+                    "path",
+                    "num_epochs",
+                    "batch_size",
+                    "optimizer_type",
+                    "optimizer_args",
+                    "optimizer_kwargs",
+                    "num_workers",
+                    "drop_last",
+                    "checkpoint_at",
+                ],
                 "additionalProperties": True,
             },
             "model": {
-                "type": "object",
-                "description": "Model configuration",
+                # Use the GNNModel schema directly to validate model configuration
+                **gnn_model.GNNModel.schema,
             },
             "validation": {
                 "type": "object",
                 "description": "Model validation configuration",
-                "properties": {},
+                "properties": {
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Validation DataLoader batch size",
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle validation dataset",
+                    },
+                },
+                "required": ["batch_size"],
                 "additionalProperties": True,
             },
             "testing": {
                 "type": "object",
                 "description": "Configuration for model testing after training",
-                "properties": {},
+                "properties": {
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Test DataLoader batch size",
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle test dataset",
+                    },
+                },
+                "required": ["batch_size"],
                 "additionalProperties": True,
             },
             "earlystopping": {
-                "type": "object",
-                "description": "Early stopping configuration",
-                "properties": {},
-                "additionalProperties": True,
+                # Optional early stopping configuration following DefaultEarlyStopping schema
+                **early_stopping.DefaultEarlyStopping.schema,
             },
         },
         "required": ["training", "model", "validation", "testing"],
@@ -67,7 +200,7 @@ class Trainer:
         criterion: Callable[[Any, Data, Any], torch.Tensor],
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: early_stopping.DefaultEarlystopping | None = None,
+        early_stopping: early_stopping.DefaultEarlyStopping | None = None,
         validator: evaluate.DefaultValidator | None = None,
         tester: evaluate.DefaultTester | None = None,
     ):
@@ -86,14 +219,6 @@ class Trainer:
         """
 
         jsonschema.validate(instance=config, schema=self.schema)
-        # if (
-        #     all(x in config for x in ["training", "model", "validation", "testing"])
-        #     is False
-        # ):
-        #     raise ValueError(
-        #         "Configuration must contain 'training', 'model', 'validation' and 'testing' sections."
-        #     )
-
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(config.get("log_level", logging.INFO))
@@ -175,17 +300,13 @@ class Trainer:
             return self.optimizer
 
         try:
-            lr = self.config["training"].get("learning_rate", 0.001)
-            weight_decay = self.config["training"].get("weight_decay", 0.0001)
-            optimizer = torch.optim.Adam(
+            optimizer = self.config["training"].get("optimizer_type", torch.optim.Adam)(
                 self.model.parameters(),
-                lr=lr,
-                weight_decay=weight_decay,
+                *self.config["training"].get("optimizer_args", []),
+                **self.config["training"].get("optimizer_kwargs", {}),
             )
             self.optimizer = optimizer
-            self.logger.info(
-                f"Optimizer initialized with learning rate: {lr} and weight decay: {weight_decay}"
-            )
+            self.logger.info("Optimizer initialized")
         except Exception as e:
             self.logger.error(f"Error initializing optimizer: {e}")
         return self.optimizer
@@ -564,4 +685,6 @@ class Trainer:
         if not loadpath.exists():
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
-        self.model = gnn_model.GNNModel.load(self.config["model"], loadpath)
+        self.model = gnn_model.GNNModel.load(
+            self.config["model"], loadpath, device=self.device
+        )

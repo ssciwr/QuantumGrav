@@ -3,6 +3,7 @@ from collections.abc import Collection
 
 import numpy as np
 import os
+import copy
 
 from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
@@ -81,14 +82,20 @@ class TrainerDDP(train.Trainer):
         if "parallel" not in config:
             raise ValueError("Configuration must contain 'parallel' section for DDP.")
 
+        trainer_config = copy.deepcopy(config)
+        del trainer_config["parallel"]
+
         super().__init__(
-            config,
+            trainer_config,
             criterion,
             apply_model,
             early_stopping,
             validator,
             tester,
         )
+
+        self.config = config  # keep the full config including parallel section
+
         # initialize the systems differently on each process/rank
         torch.manual_seed(self.seed + rank)
         if torch.cuda.is_available():
