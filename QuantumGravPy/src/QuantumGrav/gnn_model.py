@@ -1,6 +1,6 @@
 from typing import Any, Callable, Sequence, Dict, Tuple
 from pathlib import Path
-from inspect import isclass, isfunction
+from inspect import isclass
 import jsonschema
 
 import torch
@@ -51,27 +51,6 @@ def instantiate_type(
         raise ValueError(
             f"{object_or_type} must be either a subtype of torch.nn.Module or an instance of such a type or a callable"
         )
-
-
-def get_name_or_type(object: Any) -> Any:
-    """Get a string representation of module and type from an object which can be ModuleWrapper, general class or function
-
-    Args:
-        object (Any): Object to get a string representation of
-
-    Returns:
-        Any: string representation of the form outer_module.inner_module.object_name
-    """
-    if object is None:
-        return None
-    elif isinstance(object, ModuleWrapper):
-        return f"{object.get_fn().__module__}.{object.get_fn().__name__}"
-    elif isclass(type(object)) and not isfunction(object):
-        return f"{type(object).__module__}.{type(object).__name__}"
-    elif isfunction(object):
-        return f"{object.__module__}.{object.__name__}"
-    else:
-        return "unknown"
 
 
 class GNNModel(torch.nn.Module, base.Configurable):
