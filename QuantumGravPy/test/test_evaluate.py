@@ -2,6 +2,7 @@ import logging
 import QuantumGrav as QG
 from torch_geometric.data import Data
 import torch
+import torch_geometric
 import numpy as np
 import pytest
 
@@ -12,80 +13,73 @@ def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     return loss
 
 
+# Helper functions for aggregation
+def concat(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return torch.cat((x, y), dim=1)
+
+
+def cat1(xs: list[torch.Tensor]) -> torch.Tensor:
+    return torch.cat(xs, dim=1)
+
+
 @pytest.fixture
 def model_config_eval():
-    return {
-        "encoder": [
-            {
-                "in_dim": 2,
-                "out_dim": 8,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
-                "norm_args": [
-                    8,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [2, 8],
-                "projection_kwargs": {
-                    "bias": False,
-                },
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-            {
-                "in_dim": 8,
-                "out_dim": 12,
-                "dropout": 0.3,
-                "gnn_layer_type": "gcn",
-                "normalizer": "batch_norm",
-                "activation": "relu",
-                "norm_args": [
-                    12,
-                ],
-                "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
-                "projection_args": [8, 12],
-                "projection_kwargs": {
-                    "bias": False,
-                },
-                "gnn_layer_kwargs": {
-                    "cached": False,
-                    "bias": True,
-                    "add_self_loops": True,
-                },
-            },
-        ],
+    config = {
+        "encoder_type": QG.models.GNNBlock,
+        "encoder_args": [2, 32],
+        "encoder_kwargs": {
+            "dropout": 0.3,
+            "gnn_layer_type": torch_geometric.nn.conv.GCNConv,
+            "normalizer_type": torch.nn.BatchNorm1d,
+            "activation_type": torch.nn.ReLU,
+            "gnn_layer_args": [],
+            "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
+            "norm_args": [32],
+            "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+            "skip_args": [2, 32],
+            "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
+        },
+        # After two pooling ops concatenated along dim=1, encoder output 32 -> 64 input to heads
         "downstream_tasks": [
-            {
-                "type": "LinearSequential",
-                "dims": [[12, 24], [24, 16], [16, 3]],
-                "activations": ["relu", "relu", "identity"],
-                "backbone_kwargs": [{}, {}, {}],
-                "activation_kwargs": [
-                    {"inplace": False},
-                    {"inplace": False},
-                    {"inplace": False},
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 2)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
-                "active": True,
-            },
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 3)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
         ],
         "pooling_layers": [
-            {
-                "type": "mean",
-                "args": [],
-                "kwargs": {},
-            }
+            [torch_geometric.nn.global_mean_pool, [], {}],
+            [torch_geometric.nn.global_max_pool, [], {}],
         ],
-        "aggregate_pooling": {
-            "type": "cat1",
-            "args": [],
-            "kwargs": {},
-        },
+        "aggregate_pooling_type": cat1,
+        "active_tasks": {0: True, 1: True},
     }
+    return config
 
 
 @pytest.fixture
