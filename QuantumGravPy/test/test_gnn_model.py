@@ -1,6 +1,5 @@
 import QuantumGrav as QG
 import pytest
-from functools import partial
 
 import torch
 import torch_geometric
@@ -33,6 +32,11 @@ def encoder_kwargs():
         "skip_args": [16, 32],
         "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
     }
+
+
+@pytest.fixture
+def gnn_block(encoder_type, encoder_args, encoder_kwargs):
+    return encoder_type(*encoder_args, **encoder_kwargs)
 
 
 @pytest.fixture
@@ -74,11 +78,6 @@ def pooling_specs():
 
 
 @pytest.fixture
-def gnn_block(encoder_type, encoder_args, encoder_kwargs):
-    return encoder_type(*encoder_args, **encoder_kwargs)
-
-
-@pytest.fixture
 def downstream_tasks(downstream_task_specs):
     first_type, first_args, first_kwargs = downstream_task_specs[0]
     second_type, second_args, second_kwargs = downstream_task_specs[1]
@@ -91,7 +90,7 @@ def downstream_tasks(downstream_task_specs):
 @pytest.fixture
 def downstream_tasks_graphfeatures():
     specs = [
-        (
+        [
             QG.models.LinearSequential,
             [
                 [(96, 32), (32, 12), (12, 2)],
@@ -101,8 +100,8 @@ def downstream_tasks_graphfeatures():
                 "linear_kwargs": [{"bias": True}, {"bias": True}, {"bias": False}],
                 "activation_kwargs": [{"inplace": False}, {}, {}],
             },
-        ),
-        (
+        ],
+        [
             QG.models.LinearSequential,
             [
                 [(96, 18), (18, 3)],
@@ -112,15 +111,10 @@ def downstream_tasks_graphfeatures():
                 "linear_kwargs": [{"bias": True}, {"bias": False}],
                 "activation_kwargs": [{}, {}],
             },
-        ),
+        ],
     ]
 
-    first_type, first_args, first_kwargs = specs[0]
-    second_type, second_args, second_kwargs = specs[1]
-    return [
-        (first_type(*first_args, **first_kwargs), None, None),
-        (second_type(*second_args, **second_kwargs), None, None),
-    ]
+    return specs
 
 
 @pytest.fixture
@@ -134,20 +128,10 @@ def gnn_model(gnn_block, downstream_tasks, pooling_layer):
         encoder_type=gnn_block,
         downstream_tasks=downstream_tasks,
         pooling_layers=pooling_layer,
-        aggregate_pooling_type=partial(torch.cat, dim=1),
+        aggregate_pooling_type=cat1,
         aggregate_pooling_args=None,
         aggregate_pooling_kwargs=None,
         active_tasks={0: True, 1: True},
-    )
-
-
-@pytest.fixture
-def graph_features_net():
-    return QG.models.LinearSequential(
-        [(10, 32), (32, 24), (24, 32)],
-        activations=[torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
-        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
-        activation_kwargs=[{"inplace": False}, {"inplace": False}, {"inplace": False}],
     )
 
 
@@ -155,25 +139,33 @@ def concat(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.cat((x, y), dim=1)
 
 
+def cat1(xs: list[torch.Tensor]) -> torch.Tensor:
+    return torch.cat(xs, dim=1)
+
+
 @pytest.fixture
 def gnn_model_with_graph_features(
-    gnn_block, downstream_tasks_graphfeatures, pooling_layer, graph_features_net
+    gnn_block, downstream_tasks_graphfeatures, pooling_layer
 ):
+    graph_features_net = QG.models.LinearSequential(
+        [(10, 32), (32, 24), (24, 32)],
+        [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+        linear_kwargs=[{"bias": True}, {"bias": True}, {"bias": False}],
+        activation_kwargs=[{"inplace": False}, {"inplace": False}, {"inplace": False}],
+    )
     return QG.GNNModel(
         encoder_type=gnn_block,
         downstream_tasks=downstream_tasks_graphfeatures,
         pooling_layers=pooling_layer,
         aggregate_graph_features_type=concat,
         graph_features_net_type=graph_features_net,
-        aggregate_pooling_type=partial(torch.cat, dim=1),
+        aggregate_pooling_type=cat1,
         active_tasks={0: True, 1: True},
     )
 
 
 @pytest.fixture
-def gnn_model_config(
-    encoder_type, encoder_args, encoder_kwargs, pooling_specs, graph_features_net
-):
+def gnn_model_config(encoder_type, encoder_args, encoder_kwargs, pooling_specs):
     """Config matching the new GNNModel.from_config API, using existing fixtures."""
     config = {
         "encoder_type": encoder_type,
@@ -213,8 +205,20 @@ def gnn_model_config(
             ],
         ],
         "pooling_layers": pooling_specs,
-        "aggregate_pooling_type": partial(torch.cat, dim=1),
-        "graph_features_net_type": graph_features_net,
+        "aggregate_pooling_type": cat1,
+        "graph_features_net_type": QG.models.LinearSequential,
+        "graph_features_net_args": [
+            [(10, 32), (32, 24), (24, 32)],
+            [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+        ],
+        "graph_features_net_kwargs": {
+            "linear_kwargs": [{"bias": True}, {"bias": True}, {"bias": False}],
+            "activation_kwargs": [
+                {"inplace": False},
+                {"inplace": False},
+                {"inplace": False},
+            ],
+        },
         "aggregate_graph_features_type": concat,
         "active_tasks": {0: False, 1: True},
     }
@@ -359,7 +363,7 @@ def test_gnn_model_creation_from_scratch(
         encoder_kwargs=encoder_kwargs,
         downstream_tasks=downstream_task_specs,
         pooling_layers=pooling_specs,
-        aggregate_pooling_type=partial(torch.cat, dim=1),
+        aggregate_pooling_type=cat1,
         active_tasks={0: True, 1: False},
     )
 
@@ -666,38 +670,6 @@ def test_gnn_model_forward_with_graph_features(gnn_model_with_graph_features):
     assert output[1].shape == (2, 3)
 
 
-def test_gnn_model_to_config(gnn_model_with_graph_features):
-    cfg = gnn_model_with_graph_features.to_config()
-
-    assert "encoder_type" in cfg
-    assert cfg["encoder_type"] == "QuantumGrav.models.gnn_block.GNNBlock"
-    assert cfg["encoder_args"] is None
-    assert cfg["encoder_kwargs"] is None
-    assert "downstream_tasks" in cfg
-    assert "pooling_layers" in cfg
-
-    assert "aggregate_pooling_type" in cfg
-    assert cfg["aggregate_pooling_type"] == "functools.partial"
-    assert cfg["aggregate_pooling_args"] is None
-    assert cfg["aggregate_pooling_kwargs"] is None
-
-    assert "graph_features_net_type" in cfg
-    assert (
-        cfg["graph_features_net_type"]
-        == "QuantumGrav.models.linear_sequential.LinearSequential"
-    )
-    assert cfg["graph_features_net_args"] is None
-    assert cfg["graph_features_net_kwargs"] is None
-
-    assert "aggregate_graph_features_type" in cfg
-    assert (
-        cfg["aggregate_graph_features_type"]
-        == "QuantumGravPy.test.test_gnn_model.concat"
-    )
-    assert cfg["aggregate_graph_features_args"] is None
-    assert cfg["aggregate_graph_features_kwargs"] is None
-    assert "active_tasks" in cfg
-
 
 def test_gnn_model_creation_from_config(gnn_model_config):
     "test gnn model initialization from config file"
@@ -737,28 +709,34 @@ def test_gnn_model_creation_from_config(gnn_model_config):
     assert output[1].shape == (2, 3)
 
 
-def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
+def test_gnn_model_save_load(gnn_model_config, tmp_path):
     "test saving and loading of the combined model"
-    gnn_model_with_graph_features.save(tmp_path / "model.pt")
+    og_model = QG.GNNModel.from_config(gnn_model_config)
+    og_model.save(tmp_path / "model.pt")
     assert (tmp_path / "model.pt").exists()
 
-    loaded_gnn_model = QG.GNNModel.load(tmp_path / "model.pt")
-    assert gnn_model_with_graph_features.graph_features_net is not None
+    loaded_gnn_model = QG.GNNModel.load(gnn_model_config, tmp_path / "model.pt")
+    assert loaded_gnn_model.graph_features_net is not None
     assert len(loaded_gnn_model.state_dict().keys()) == len(
-        gnn_model_with_graph_features.state_dict().keys()
+        og_model.state_dict().keys()
     )
+    for k in loaded_gnn_model.state_dict().keys():
+        assert torch.equal(
+            loaded_gnn_model.state_dict()[k],
+            og_model.state_dict()[k],
+        )
 
     loaded_keys = set(loaded_gnn_model.state_dict().keys())
-    original_keys = set(gnn_model_with_graph_features.state_dict().keys())
+    original_keys = set(og_model.state_dict().keys())
     assert loaded_keys == original_keys
 
     for k in loaded_gnn_model.state_dict().keys():
         assert torch.equal(
             loaded_gnn_model.state_dict()[k],
-            gnn_model_with_graph_features.state_dict()[k],
+            og_model.state_dict()[k],
         )
 
-    gnn_model_with_graph_features.eval()
+    og_model.eval()
     loaded_gnn_model.eval()
     x = torch.randn(5, 16)  # 5 nodes with 16 features each
     edge_index = torch.tensor(
@@ -767,9 +745,7 @@ def test_gnn_model_save_load(gnn_model_with_graph_features, tmp_path):
     batch = torch.tensor([0, 0, 0, 1, 1])  # Two graphs in the batch
     graph_features = torch.randn(2, 10)  # 2 graphs with 10 features each
 
-    y = gnn_model_with_graph_features.forward(
-        x, edge_index, batch, graph_features=graph_features
-    )
+    y = og_model.forward(x, edge_index, batch, graph_features=graph_features)
 
     y_loaded = loaded_gnn_model.forward(
         x, edge_index, batch, graph_features=graph_features

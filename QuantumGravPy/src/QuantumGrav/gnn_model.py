@@ -1,12 +1,15 @@
 from typing import Any, Callable, Sequence, Dict, Tuple
 from pathlib import Path
 from inspect import isclass, isfunction
-
-import torch
 import jsonschema
 import logging
+import pprint
+
+import torch
+import yaml
 
 from . import base
+from . import config_utils
 
 
 class ModuleWrapper(torch.nn.Module):
@@ -41,6 +44,7 @@ def instantiate_type(
     Returns:
          newly instantiated object of type 'object_or_type' or the passed object
     """
+
     if isinstance(object_or_type, torch.nn.Module):
         return object_or_type
     elif isclass(object_or_type) and issubclass(object_or_type, torch.nn.Module):
@@ -62,21 +66,15 @@ def get_name_or_type(object: Any) -> Any:
     Returns:
         Any: string representation of the form outer_module.inner_module.object_name
     """
-    print("object: ", object)
     if object is None:
-        print("None")
         return None
     elif isinstance(object, ModuleWrapper):
-        print("wrapper")
         return f"{object.get_fn().__module__}.{object.get_fn().__name__}"
     elif isclass(type(object)) and not isfunction(object):
-        print("class")
         return f"{type(object).__module__}.{type(object).__name__}"
     elif isfunction(object):
-        print("callable")
         return f"{object.__module__}.{object.__name__}"
     else:
-        print("something weird here!")
         return "unknown"
 
 
@@ -411,7 +409,6 @@ class GNNModel(torch.nn.Module, base.Configurable):
         d_kwargs: Sequence[Dict[str, Any]] = (
             [{} for _ in self.downstream_tasks] if kwargs is None else kwargs
         )
-        print("x shape: ", x.shape)
         return {
             i: self.downstream_tasks[i](x, *d_args[i], **d_kwargs[i])
             for i in range(0, len(self.downstream_tasks))
@@ -444,17 +441,13 @@ class GNNModel(torch.nn.Module, base.Configurable):
             Dict[int, torch.Tensor]: Raw output of downstream tasks.
         """
         # apply the GCN backbone to the node features
-        print("input: ", x.shape)
         embeddings = self.get_embeddings(
             x, edge_index, batch, gcn_kwargs=embedding_kwargs
         )
-        print("embeddings shape: ", embeddings.shape)
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
             graph_features = self.graph_features_net(graph_features)
-            print("graph features: ", graph_features.shape)
             embeddings = self.aggregate_graph_features(embeddings, graph_features)
-        print("graph embeddings: ", embeddings.shape)
 
         # downstream tasks are given out as is, no softmax or other assumptions
         return self.compute_downstream_tasks(
@@ -509,55 +502,6 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 f"Error during creation of GNNModel from config {e}"
             ) from e
 
-    def to_config(self) -> Dict[str, Any]:
-        """Serialize the model architecture to a configuration dictionary. You can only reconstruct
-        the calling instance from this config in full if you constructed the whole system in this
-        instance from scratch. Setting indidvidual modules from outside instances will prevent
-        reconstructability. Also, any functions need to be proper pythonf functions defined as def funcname(...): not functools.partial or lambda.
-
-        Note: Type objects are converted to fully qualified module paths (strings).
-
-        Returns:
-            Dict[str, Any]: Configuration dictionary containing all model parameters
-                needed to reconstruct the model with from_config().
-        """
-
-        config: Dict[str, Any] = {
-            "encoder_type": get_name_or_type(self.encoder),
-            "encoder_args": self.encoder_args if self.encoder_args is not None else [],
-            "encoder_kwargs": self.encoder_kwargs
-            if self.encoder_kwargs is not None
-            else {},
-            "downstream_tasks": self.downstream_task_specs,
-            "pooling_layers": self.pooling_layer_specs,
-            "aggregate_pooling_type": get_name_or_type(self.aggregate_pooling_type),
-            "aggregate_pooling_args": self.aggregate_pooling_args
-            if self.aggregate_pooling_args is not None
-            else [],
-            "aggregate_pooling_kwargs": self.aggregate_pooling_kwargs
-            if self.aggregate_pooling_kwargs is not None
-            else {},
-            "graph_features_net_type": get_name_or_type(self.graph_features_net),
-            "graph_features_net_args": self.graph_features_net_args
-            if self.graph_features_net_args is not None
-            else [],
-            "graph_features_net_kwargs": self.graph_features_net_kwargs
-            if self.graph_features_net_kwargs is not None
-            else {},
-            "aggregate_graph_features_type": get_name_or_type(
-                self.aggregate_graph_features_type
-            ),
-            "aggregate_graph_features_args": self.aggregate_graph_features_args
-            if self.aggregate_graph_features_args is not None
-            else [],
-            "aggregate_graph_features_kwargs": self.aggregate_graph_features_kwargs
-            if self.aggregate_graph_features_kwargs is not None
-            else {},
-            "active_tasks": {key: True for key in self.active_tasks.keys()},
-        }
-
-        return config
-
     def save(self, path: str | Path) -> None:
         """Save the model configuration and state dictionary to file.
 
@@ -569,16 +513,17 @@ class GNNModel(torch.nn.Module, base.Configurable):
             path (str | Path): File path where the model will be saved.
         """
 
-        config = self.to_config()
-
         torch.save(
-            {"config": config, "model": self.state_dict()},
+            self.state_dict(),
             path,
         )
 
     @classmethod
     def load(
-        cls, path: str | Path, device: torch.device = torch.device("cpu")
+        cls,
+        config: Dict[str, Any],
+        path: str | Path,
+        device: torch.device = torch.device("cpu"),
     ) -> "GNNModel":
         """Load a GNNModel from a file saved with the save() method.
 
@@ -589,7 +534,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
         Returns:
             GNNModel: Fully initialized model instance with loaded weights.
         """
-        model_dict = torch.load(path, weights_only=False)
-        model = cls.from_config(model_dict["config"]).to(device)
-        model.load_state_dict(model_dict["model"])
+
+        model = cls.from_config(config).to(device)
+        model.load_state_dict(torch.load(path, map_location=device))
         return model

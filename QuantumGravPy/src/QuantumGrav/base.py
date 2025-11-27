@@ -7,15 +7,6 @@ class Configurable(ABC):
     Subclasses must implement methods to verify, serialize, and instantiate from configuration dictionaries.
     """
 
-    @abstractmethod
-    def to_config(self) -> Dict[Any, Any]:
-        """Convert the caller to a config
-
-        Returns:
-            Dict[Any, Any]: config representation of the caller instance.
-        """
-        pass
-
     @classmethod
     @abstractmethod
     def from_config(cls, config: dict[str, Any]) -> "Configurable":
