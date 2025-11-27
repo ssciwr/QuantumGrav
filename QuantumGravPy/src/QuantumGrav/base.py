@@ -1,5 +1,5 @@
 from abc import abstractmethod, ABC
-from typing import Any, Dict
+from typing import Any
 
 
 class Configurable(ABC):
