@@ -1,7 +1,6 @@
 import torch
 import torch_geometric
 
-import logging
 from typing import Any, Sequence, Dict
 from pathlib import Path
 from jsonschema import validate
@@ -116,7 +115,6 @@ class LinearSequential(torch.nn.Module, base.Configurable):
         self.layers = torch.nn.Sequential(*layers)
         self.linear_kwargs = linear_kwargs
         self.activation_kwargs = activation_kwargs
-        self.logger = logging.getLogger(__name__)
 
     def forward(
         self,
