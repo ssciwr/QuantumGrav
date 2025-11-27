@@ -2,7 +2,6 @@ from typing import Any, Callable, Sequence, Dict, Tuple
 from pathlib import Path
 from inspect import isclass, isfunction
 import jsonschema
-import logging
 
 import torch
 
@@ -336,9 +335,6 @@ class GNNModel(torch.nn.Module, base.Configurable):
         else:
             self.active_tasks = {i: True for i in range(0, len(self.downstream_tasks))}
 
-        # logger
-        self.logger = logging.getLogger(__name__)
-
     def set_task_active(self, key: Any) -> None:
         """Set a downstream task as active.
 
@@ -500,11 +496,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
             ) from e
 
     def save(self, path: str | Path) -> None:
-        """Save the model configuration and state dictionary to file.
-
-        Saves a dictionary with two keys:
-        - 'config': Model architecture configuration (from to_config())
-        - 'model': Model state dictionary (learned parameters)
+        """Save the model state dictionary to file.
 
         Args:
             path (str | Path): File path where the model will be saved.
