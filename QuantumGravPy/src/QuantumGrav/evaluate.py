@@ -6,8 +6,10 @@ import logging
 import jsonschema
 from abc import abstractmethod
 
+from . import base
 
-class DefaultEvaluator:
+
+class DefaultEvaluator(base.Configurable):
     """Default evaluator for model evaluation - testing and validation during training"""
 
     schema = {
