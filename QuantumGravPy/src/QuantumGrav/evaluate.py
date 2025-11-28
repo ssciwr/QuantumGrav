@@ -4,6 +4,7 @@ import torch_geometric
 import pandas as pd
 import logging
 import jsonschema
+from abc import abstractmethod
 
 
 class DefaultEvaluator:
@@ -118,10 +119,9 @@ class DefaultEvaluator:
         self.data[len(self.data), "loss_min"] = t_current_losses.min()
         self.data[len(self.data), "loss_max"] = t_current_losses.max()
 
-    def report(self) -> None:
-        """Report the monitoring data"""
-        self.logger.info("Testing the model: ")
-        self.logger.info(f" {self.data.tail(1)}")
+        @abstractmethod
+        def report(self) -> None:
+            pass
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "DefaultEvaluator":
@@ -182,6 +182,11 @@ class DefaultTester(DefaultEvaluator):
         """
         self.evaluate(model, data_loader)
 
+    def report(self) -> None:
+        """Report the monitoring data"""
+        self.logger.info("Test results: ")
+        self.logger.info(f" {self.data.tail(1)}")
+
 
 class DefaultValidator(DefaultEvaluator):
     """Default validator for model validation.
@@ -221,3 +226,8 @@ class DefaultValidator(DefaultEvaluator):
             list[Any]: A list of validation results.
         """
         self.evaluate(model, data_loader)
+
+    def report(self) -> None:
+        """Report the monitoring data"""
+        self.logger.info("Validation results: ")
+        self.logger.info(f" {self.data.tail(1)}")
