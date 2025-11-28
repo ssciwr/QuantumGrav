@@ -1,11 +1,10 @@
-from typing import Callable, Any, Tuple
+from typing import Any, Tuple
 from collections.abc import Collection
 
 import numpy as np
 import os
 import copy
 
-from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 from . import train
 
@@ -58,12 +57,6 @@ class TrainerDDP(train.Trainer):
         rank: int,
         config: dict[str, Any],
         # training and evaluation functions
-        criterion: Callable,
-        apply_model: Callable | None = None,
-        # training evaluation and reporting
-        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
     ):
         """Initialize the distributed data parallel (DDP) trainer.
 
@@ -87,11 +80,6 @@ class TrainerDDP(train.Trainer):
 
         super().__init__(
             trainer_config,
-            criterion,
-            apply_model,
-            early_stopping,
-            validator,
-            tester,
         )
 
         self.config = config  # keep the full config including parallel section

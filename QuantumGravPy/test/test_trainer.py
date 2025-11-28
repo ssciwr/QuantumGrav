@@ -10,6 +10,7 @@ import jsonschema
 import re
 import datetime
 from pathlib import Path
+import pandas as pd
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 
@@ -227,32 +228,29 @@ def broken_config(model_config_eval):
     }
 
 
+# this is needed for testing the full training loop
 class DummyEvaluator:
     def __init__(self):
-        self.data = []
+        self.data = pd.DataFrame(columns=["loss", "other_loss"])
 
     def validate(self, model, data_loader):
-        # Dummy validation logic
-        return [torch.rand(1)]
+        # Dummy test logic
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
 
     def test(self, model, data_loader):
         # Dummy test logic
-        return [torch.rand(1)]
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
 
     def report(self, losses: list):  # type: ignore
-        avg = np.mean(losses)
-        sigma = np.std(losses)
-        print(f"Validation average loss: {avg}, Standard deviation: {sigma}")
-        self.data.append((avg, sigma))
-
-
-class DummyEarlyStopping:
-    def __init__(self):
-        self.best_score = np.inf
-        self.found_better_model = False
-
-    def __call__(self, _) -> bool:
-        return False
+        print("DummyEvaluator report:", losses, self.data.tail(1))
 
 
 def compute_loss(
@@ -353,23 +351,33 @@ def test_trainer_prepare_dataloader(make_dataset, config):
 
 
 def test_trainer_prepare_dataloader_broken(make_dataset, config):
-    trainer = QG.Trainer(
-        config,
-    )
-
     with pytest.raises(
         ValueError,
         match=re.escape(
             "Split ratios must sum to 1.0. Provided split: [0.9, 0.2, 0.1]"
         ),
     ):
-        trainer.prepare_dataloaders(make_dataset, split=[0.9, 0.2, 0.1])
+        config["data"]["split"] = [0.9, 0.2, 0.1]
+        trainer = QG.Trainer(
+            config,
+        )
+        trainer.prepare_dataloaders(make_dataset)
 
     with pytest.raises(ValueError, match=re.escape("validation size cannot be 0")):
-        trainer.prepare_dataloaders(make_dataset, split=[0.95, 0.01, 0.04])
+        config["data"]["split"] = [0.95, 0.01, 0.04]
+        trainer = QG.Trainer(
+            config,
+        )
+        trainer.prepare_dataloaders(make_dataset)
 
     with pytest.raises(ValueError, match=re.escape("test size cannot be 0")):
-        trainer.prepare_dataloaders(make_dataset, split=[0.85, 0.14, 0.01])
+        config["data"]["split"] = [0.85, 0.14, 0.01]
+        trainer = QG.Trainer(
+            config,
+        )
+        trainer.prepare_dataloaders(
+            make_dataset,
+        )
 
 
 def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
@@ -454,9 +462,7 @@ def test_trainer_train_epoch(make_dataset, config):
     assert trainer.model is not None
     assert trainer.optimizer is not None
 
-    train_loader, _, _ = trainer.prepare_dataloaders(
-        make_dataset, split=[0.8, 0.1, 0.1]
-    )
+    train_loader, _, _ = trainer.prepare_dataloaders(make_dataset)
     trainer.model.train()
 
     eval_data = trainer._run_train_epoch(trainer.model, trainer.optimizer, train_loader)
@@ -470,18 +476,23 @@ def test_trainer_check_model_status(config):
         config,
     )
 
+    print(trainer.early_stopping.__class__)
+    print(trainer.validator.__class__)
+
     trainer.initialize_model()
 
     loss = np.random.rand(10).tolist()
+    other__loss = np.random.rand(10).tolist()
+    data = pd.DataFrame({"loss": loss, "other_loss": other__loss})
 
     trainer.epoch = 1
-    saved = trainer._check_model_status(loss)
+    saved = trainer._check_model_status(data)
     assert saved is False
 
     # returns true when early stopping is triggered
     trainer.early_stopping = lambda x: True
-    loss = np.random.rand(10).tolist()
-    saved = trainer._check_model_status(loss)
+
+    saved = trainer._check_model_status(data)
 
     assert saved is True
 
