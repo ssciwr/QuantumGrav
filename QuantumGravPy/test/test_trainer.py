@@ -13,7 +13,10 @@ from pathlib import Path
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 
+# data transform functions
 
+
+# test fixtures
 @pytest.fixture
 def tmppath(tmp_path_factory):
     path = tmp_path_factory.mktemp("checkpoints")
@@ -81,7 +84,8 @@ def model_config_eval():
 
 
 @pytest.fixture
-def config(model_config_eval, tmppath):
+def config(model_config_eval, tmppath, create_data_zarr, read_data):
+    datadir, datafiles = create_data_zarr
     cfg = {
         "training": {
             "seed": 42,
@@ -101,13 +105,32 @@ def config(model_config_eval, tmppath):
             "num_epochs": 13,
             # "prefetch_factor": 2,
         },
+        "data": {
+            "pre_transform": lambda x: x,
+            "transform": lambda x: x,
+            "pre_filter": lambda x: True,
+            "reader": read_data,
+            "files": [str(f) for f in datafiles],
+            "output": str(datadir),
+            "validate_data": True,
+            "n_processes": 2,
+            "chunksize": 10,
+            "shuffle": False,
+            "split": [0.8, 0.1, 0.1],
+        },
         "model": model_config_eval,
+        "criterion": compute_loss,
         "validation": {
             "batch_size": 1,
             "num_workers": 0,
             "pin_memory": False,
             "drop_last": False,
             "shuffle": True,
+            "validator": {
+                "type": DummyEvaluator,
+                "args": [],
+                "kwargs": {},
+            },
         },
         "testing": {
             "batch_size": 1,
@@ -115,6 +138,36 @@ def config(model_config_eval, tmppath):
             "pin_memory": False,
             "drop_last": False,
             "shuffle": False,
+            "tester": {
+                "type": DummyEvaluator,
+                "args": [],
+                "kwargs": {},
+            },
+        },
+        "early_stopping": {
+            "type": QG.early_stopping.DefaultEarlyStopping,
+            "args": [
+                {
+                    0: {
+                        "delta": 1e-2,
+                        "metric": "loss",
+                        "grace_period": 8,
+                        "init_best_score": 1000000.0,
+                        "mode": "min",
+                    },
+                    1: {
+                        "delta": 1e-4,
+                        "metric": "other_loss",
+                        "grace_period": 10,
+                        "init_best_score": -1000000.0,
+                        "mode": "max",
+                    },
+                },
+                12,
+            ],
+            "kwargs": {
+                "mode": "any",
+            },
         },
     }
 
@@ -161,6 +214,7 @@ def broken_config(model_config_eval):
             "prefetch_factor": 2,
         },
         "model": model_config_eval,
+        "criterion": compute_loss,
         # validation is missing -> broken
         "testing": {
             "batch_size": 1,
@@ -215,19 +269,14 @@ def compute_loss(
 def test_trainer_creation_works(config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     assert trainer.config == config
     assert trainer.criterion is compute_loss
-    assert trainer.apply_model is not None
-    assert trainer.early_stopping is None
-    assert trainer.validator is None
-    assert trainer.tester is None
+    assert trainer.apply_model is None
+    assert isinstance(trainer.early_stopping, QG.DefaultEarlyStopping)
+    assert isinstance(trainer.validator, DummyEvaluator)
+    assert isinstance(trainer.tester, DummyEvaluator)
 
     assert trainer.device == torch.device("cpu")
     assert trainer.seed == config["training"]["seed"]
@@ -247,22 +296,12 @@ def test_trainer_creation_broken(broken_config):
     ):
         QG.Trainer(
             broken_config,
-            compute_loss,
-            apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-            early_stopping=None,
-            validator=None,
-            tester=None,
         )
 
 
 def test_trainer_init_model(config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
     model = trainer.initialize_model()
     assert model is not None
@@ -272,11 +311,6 @@ def test_trainer_init_model(config):
 def test_trainer_init_optimizer(config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     # need a model to initialize the optimizer
@@ -292,11 +326,6 @@ def test_trainer_init_optimizer(config):
 def test_trainer_prepare_dataloader(make_dataset, config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
@@ -326,11 +355,6 @@ def test_trainer_prepare_dataloader(make_dataset, config):
 def test_trainer_prepare_dataloader_broken(make_dataset, config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     with pytest.raises(
@@ -351,11 +375,6 @@ def test_trainer_prepare_dataloader_broken(make_dataset, config):
 def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
     trainer = QG.Trainer(
         config_with_data,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
@@ -380,11 +399,6 @@ def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
     config_with_data["data"]["shuffle"] = True
     trainer = QG.Trainer(
         config_with_data,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
@@ -409,11 +423,6 @@ def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
     config_with_data["data"]["subset"] = 0.5
     trainer = QG.Trainer(
         config_with_data,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
@@ -439,11 +448,6 @@ def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
 def test_trainer_train_epoch(make_dataset, config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
     trainer.initialize_model()
     trainer.initialize_optimizer()
@@ -464,11 +468,6 @@ def test_trainer_train_epoch(make_dataset, config):
 def test_trainer_check_model_status(config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=DummyEarlyStopping(),
-        validator=None,
-        tester=None,
     )
 
     trainer.initialize_model()
@@ -502,11 +501,6 @@ def test_trainer_check_model_status(config):
 def test_trainer_load_checkpoint(config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     trainer.initialize_model()
@@ -537,11 +531,6 @@ def test_trainer_load_checkpoint_fails(config):
     "Test loading a checkpoint that does not exist or when model is none"
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     trainer.initialize_model()
@@ -562,11 +551,6 @@ def test_trainer_load_checkpoint_fails(config):
 def test_trainer_check_model_status_no_model(config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=lambda x: False,
-        validator=None,
-        tester=None,
     )
 
     with pytest.raises(
@@ -579,11 +563,6 @@ def test_trainer_check_model_status_no_model(config):
 def test_trainer_run_training(make_dataset, config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=DummyEarlyStopping(),
-        validator=DummyEvaluator(),  # type: ignore
-        tester=None,
     )
     trainer.initialize_model()
     trainer.initialize_optimizer()
@@ -618,11 +597,6 @@ def test_trainer_run_training(make_dataset, config):
 def test_trainer_run_training_with_datasetconf(config_with_data):
     trainer = QG.Trainer(
         config_with_data,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=DummyEarlyStopping(),
-        validator=DummyEvaluator(),  # type: ignore
-        tester=None,
     )
     trainer.initialize_model()
     trainer.initialize_optimizer()
@@ -657,11 +631,6 @@ def test_trainer_run_training_with_datasetconf(config_with_data):
 def test_trainer_run_test(make_dataset, config):
     trainer = QG.Trainer(
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=DummyEvaluator(),  # type: ignore
     )
     assert trainer.tester is not None
     trainer.initialize_model()

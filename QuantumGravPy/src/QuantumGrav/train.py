@@ -15,6 +15,7 @@ from . import evaluate
 from . import early_stopping
 from . import gnn_model
 from . import dataset_ondisk
+from . import base
 
 import torch
 from torch_geometric.data import Data, Dataset
@@ -22,7 +23,7 @@ from torch_geometric.loader import DataLoader
 import optuna
 
 
-class Trainer:
+class Trainer(base.Configurable):
     """Trainer class for training and evaluating GNN models."""
 
     schema = {
@@ -35,7 +36,6 @@ class Trainer:
                 "description": "Python constructor spec: type(*args, **kwargs)",
                 "properties": {
                     "type": {
-                        "type": "string",
                         "description": "Fully-qualified import path or name of the type/callable to initialize",
                     },
                     "args": {
@@ -285,13 +285,13 @@ class Trainer:
                 "required": ["batch_size"],
                 "additionalProperties": True,
             },
-            "earlystopping": {
+            "early_stopping": {
                 "$ref": "#/definitions/constructor",
                 "description": "Early stopping constructor spec: provides type, args, kwargs",
             },
             "apply_model": {"description": "Optional method to build the "},
             "criterion": {
-                "descriptoin": "The loss function used for training as a python type"
+                "description": "The loss function used for training as a python type"
             },
         },
         "required": ["training", "model", "validation", "testing", "criterion"],
@@ -393,6 +393,17 @@ class Trainer:
 
         self.logger.info("Trainer initialized")
         self.logger.debug(f"Configuration: {self.config}")
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "Trainer":
+        """Create a Trainer instance from a configuration dictionary.
+
+        Args:
+            config (Dict[str, Any]): The configuration dictionary.
+        """
+        return cls(
+            config=config,
+        )
 
     def initialize_model(self) -> Any:
         """Initialize the model for training.
