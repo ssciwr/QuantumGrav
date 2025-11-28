@@ -7,16 +7,18 @@ import logging
 import tqdm
 import yaml
 from datetime import datetime
+from math import ceil, floor
 
 from . import evaluate
 from . import early_stopping
 from . import gnn_model
-
+from . import dataset_ondisk
 import torch
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 import optuna
 import jsonschema
+import pandas as pd
 
 
 class Trainer:
@@ -70,7 +72,7 @@ class Trainer:
                     "num_workers": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "DataLoader workers",
+                        "description": "DataLoader workers for training",
                     },
                     "pin_memory": {
                         "type": "boolean",
@@ -109,6 +111,60 @@ class Trainer:
                     "checkpoint_at",
                 ],
                 "additionalProperties": True,
+            },
+            "data": {
+                "type": "object",
+                "description": "Dataset configuration",
+                "properties": {
+                    "pre_transform": {
+                        "description": "Name of the python object to use for the pre-transform function to use. Must refer to a callable"
+                    },
+                    "transform": {
+                        "description": "Name of the python object to use for the transform function to use. Must refer to a callable"
+                    },
+                    "pre_filter": {
+                        "description": "Name of the python object to use for the pre_filter function to use. Must refer to a callable"
+                    },
+                    "reader": {
+                        "description": "Name  of the python object to read raw data from file. Must be callable",
+                    },
+                    "files": {
+                        "type": "array",
+                        "description": "list of zarr stores to get data from",
+                        "minItems": 1,
+                        "items": {
+                            "type": "string",
+                            "description": "zarr file names to read data from",
+                        },
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "path to store preprocessed data at.",
+                    },
+                    "validate_data": {
+                        "type": "boolean",
+                        "description": "Whether to validate the transformed data objects or not",
+                    },
+                    "n_processes": {
+                        "type": "integer",
+                        "description": "number of processes to use for preprocessing the dataset",
+                        "minimum": 0,
+                    },
+                    "chunksize": {
+                        "type": "integer",
+                        "description": "Number of datapoints to process at once during preprocessing",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Whether to shuffle the dataset or not",
+                    },
+                    "subset": {
+                        "type": "number",
+                        "description": "Fraction of the dataset to use. Full dataset is used when not given",
+                    },
+                },
+                "required": ["output", "files", "reader"],
+                "additionalProperties": False,
             },
             "model": {
                 # Use the GNNModel schema directly to validate model configuration
@@ -189,7 +245,12 @@ class Trainer:
                 **early_stopping.DefaultEarlyStopping.schema,
             },
         },
-        "required": ["training", "model", "validation", "testing"],
+        "required": [
+            "training",
+            "model",
+            "validation",
+            "testing",
+        ],
         "additionalProperties": False,
     }
 
@@ -330,23 +391,51 @@ class Trainer:
         Returns:
             Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
         """
+        if dataset is None:
+            cfg = self.config["data"]
+            dataset = dataset_ondisk.QGDataset(
+                cfg["files"],
+                cfg["output"],
+                cfg["reader"],
+                float_type=cfg.get("float_type", torch.float32),
+                int_type=cfg.get("int_type", torch.int32),
+                validate_data=cfg.get("validate_data", True),
+                chunksize=cfg.get("chunksize", 1),
+                n_processes=cfg.get("n_processes", 1),
+                transform=cfg.get("transform"),
+                pre_transform=cfg.get("pre_transform"),
+                pre_filter=cfg.get("pre_filter"),
+            )
 
-        if (
-            dataset is not None
-            and train_dataset is None
-            and val_dataset is None
-            and test_dataset is None
-        ):
-            train_size = int(len(dataset) * split[0])
-            val_size = int(len(dataset) * split[1])
-            test_size = len(dataset) - train_size - val_size
+            if cfg.get("subset"):
+                num_points = ceil(len(dataset) * cfg["subset"])
+                dataset = dataset.index_select(
+                    np.random.randint(0, len(dataset), num_points).tolist(),
+                )
 
+            if cfg.get("shuffle"):
+                dataset.shuffle()
+
+        if train_dataset is None and val_dataset is None and test_dataset is None:
             if not np.isclose(
                 np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
             ):
                 raise ValueError(
                     f"Split ratios must sum to 1.0. Provided split: {split}"
                 )
+
+            train_size = ceil(len(dataset) * split[0])
+            val_size = floor(len(dataset) * split[1])
+            test_size = len(dataset) - train_size - val_size
+
+            if train_size == 0:
+                raise ValueError("train size cannot be 0")
+
+            if val_size == 0:
+                raise ValueError("validation size cannot be 0")
+
+            if test_size == 0:
+                raise ValueError("test size cannot be 0")
 
             self.train_dataset, self.val_dataset, self.test_dataset = (
                 torch.utils.data.random_split(
@@ -394,10 +483,6 @@ class Trainer:
         if dataset is not None:
             self.logger.info(
                 f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
-            )
-        else:
-            self.logger.info(
-                f"Data loaders prepared with dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
             )
         return train_loader, val_loader, test_loader
 
@@ -476,7 +561,7 @@ class Trainer:
 
         return losses
 
-    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
+    def _check_model_status(self, eval_data: pd.DataFrame) -> bool:
         """Check the status of the model during training.
 
         Args:

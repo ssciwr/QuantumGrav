@@ -122,6 +122,26 @@ def config(model_config_eval, tmppath):
 
 
 @pytest.fixture
+def config_with_data(config, create_data_zarr, read_data):
+    datadir, datafiles = create_data_zarr
+    cfg = config
+    cfg["data"] = {
+        "pre_transform": lambda x: x,
+        "transform": lambda x: x,
+        "pre_filter": lambda x: True,
+        "reader": read_data,
+        "files": [str(f) for f in datafiles],
+        "output": str(datadir),
+        "validate_data": True,
+        "n_processes": 2,
+        "chunksize": 10,
+        "shuffle": False,
+    }
+
+    return cfg
+
+
+@pytest.fixture
 def broken_config(model_config_eval):
     return {
         "training": {
@@ -321,6 +341,100 @@ def test_trainer_prepare_dataloader_broken(make_dataset, config):
     ):
         trainer.prepare_dataloaders(make_dataset, split=[0.9, 0.2, 0.1])
 
+    with pytest.raises(ValueError, match=re.escape("validation size cannot be 0")):
+        trainer.prepare_dataloaders(make_dataset, split=[0.95, 0.01, 0.04])
+
+    with pytest.raises(ValueError, match=re.escape("test size cannot be 0")):
+        trainer.prepare_dataloaders(make_dataset, split=[0.85, 0.14, 0.01])
+
+
+def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
+    trainer = QG.Trainer(
+        config_with_data,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+        split=[0.8, 0.1, 0.1]
+    )
+
+    for batch in train_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (60, 2)
+
+    for batch in val_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (15, 2)
+
+    for batch in test_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (15, 2)
+
+    config_with_data["data"]["shuffle"] = True
+    trainer = QG.Trainer(
+        config_with_data,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+        split=[0.8, 0.1, 0.1]
+    )
+
+    for batch in train_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (60, 2)
+
+    for batch in val_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (15, 2)
+
+    for batch in test_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (15, 2)
+
+    config_with_data["data"]["subset"] = 0.5
+    trainer = QG.Trainer(
+        config_with_data,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=None,
+        validator=None,
+        tester=None,
+    )
+
+    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+        split=[0.6, 0.2, 0.2]
+    )
+
+    for batch in train_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (60, 2)
+
+    for batch in val_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (15, 2)
+
+    for batch in test_loader:
+        assert isinstance(batch, Data)
+        assert batch.x is not None
+        assert batch.x.shape == (15, 2)
+
 
 def test_trainer_train_epoch(make_dataset, config):
     trainer = QG.Trainer(
@@ -499,6 +613,45 @@ def test_trainer_run_training(make_dataset, config):
     assert len(valid_data) == config["training"]["num_epochs"]
     assert training_data.shape[0] == config["training"]["num_epochs"]
     assert len(trainer.validator.data) == config["training"]["num_epochs"]
+
+
+def test_trainer_run_training_with_datasetconf(config_with_data):
+    trainer = QG.Trainer(
+        config_with_data,
+        compute_loss,
+        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
+        early_stopping=DummyEarlyStopping(),
+        validator=DummyEvaluator(),  # type: ignore
+        tester=None,
+    )
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+
+    assert trainer.validator is not None
+    assert trainer.model is not None
+
+    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
+        split=[0.8, 0.1, 0.1]
+    )
+
+    original_weights = [param.clone() for param in trainer.model.parameters()]
+
+    training_data, valid_data = trainer.run_training(
+        test_loader,
+        validation_loader,
+    )
+    trained_weights = [param.clone() for param in trainer.model.parameters()]
+
+    # Check if the model parameters have changed after training
+    for orig, trained in zip(original_weights, trained_weights):
+        assert not torch.all(torch.eq(orig, trained.data)), (
+            "Model parameters did not change after training."
+        )
+
+    assert valid_data is not None  # has no validator
+    assert len(valid_data) == config_with_data["training"]["num_epochs"]
+    assert training_data.shape[0] == config_with_data["training"]["num_epochs"]
+    assert len(trainer.validator.data) == config_with_data["training"]["num_epochs"]
 
 
 def test_trainer_run_test(make_dataset, config):
