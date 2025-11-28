@@ -21,7 +21,7 @@ def linseq_params():
 @pytest.fixture
 def linearseq(linseq_params):
     params = linseq_params
-    return QG.linear_sequential.LinearSequential(
+    return QG.models.LinearSequential(
         dims=params["dims"],
         activations=params["activations"],
         linear_kwargs=params["linear_kwargs"],
@@ -30,7 +30,7 @@ def linearseq(linseq_params):
 
 
 def test_linseq_creation(linseq_params):
-    linearseq = QG.linear_sequential.LinearSequential(
+    linearseq = QG.models.LinearSequential(
         dims=linseq_params["dims"],
         activations=linseq_params["activations"],
         linear_kwargs=linseq_params["linear_kwargs"],
@@ -55,7 +55,7 @@ def test_linseq_broken_dim_args(linseq_params):
     with pytest.raises(
         ValueError, match="dims and activations must have the same length"
     ):
-        QG.linear_sequential.LinearSequential(
+        QG.models.LinearSequential(
             dims=linseq_params["dims"],
             activations=[
                 torch.nn.ReLU,
@@ -65,7 +65,7 @@ def test_linseq_broken_dim_args(linseq_params):
         )
 
     with pytest.raises(ValueError, match="dims must not be empty"):
-        QG.linear_sequential.LinearSequential(
+        QG.models.LinearSequential(
             dims=[],
             activations=linseq_params["activations"],
             linear_kwargs=linseq_params["linear_kwargs"],
@@ -83,7 +83,7 @@ def test_linseq_forward_pass(linearseq):
 
 def test_linseq_forward_pass_with_kwargs(linseq_params):
     input_tensor = torch.randn(5, 10)  # Batch size of 5, input dimension of 10
-    cl = QG.linear_sequential.LinearSequential(
+    cl = QG.models.LinearSequential(
         dims=linseq_params["dims"],
         activations=linseq_params["activations"],
         linear_kwargs=[{"bias": True}, {"bias": False}, {"bias": True}],
@@ -113,8 +113,8 @@ def test_linseq_backward_pass(linearseq):
 def test_linseq_from_config():
     "test construction of a linearsequential instance from config dict"
     config = {
-        "dims": [(10, 20), (20, 30), (30, 3)],
-        "activations": ["relu", "relu", "identity"],
+        "dims": [[10, 20], [20, 30], [30, 3]],
+        "activations": [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
         "linear_kwargs": [{}, {}, {}],
         "activation_kwargs": [
             {"inplace": False},
@@ -123,9 +123,9 @@ def test_linseq_from_config():
         ],
     }
 
-    linearseq = QG.linear_sequential.LinearSequential.from_config(config)
+    linearseq = QG.models.LinearSequential.from_config(config)
 
-    assert isinstance(linearseq, QG.linear_sequential.LinearSequential)
+    assert isinstance(linearseq, QG.models.LinearSequential)
     assert len(linearseq.layers) == 6
     assert linearseq.layers[0].in_channels == 10
     assert linearseq.layers[0].out_channels == 20
@@ -141,7 +141,7 @@ def test_linseq_save_load(linearseq, tmp_path):
 
     assert (tmp_path / "model.pt").exists()
 
-    loaded_linseq = QG.LinearSequential.load(tmp_path / "model.pt")
+    loaded_linseq = QG.models.LinearSequential.load(tmp_path / "model.pt")
 
     assert loaded_linseq.state_dict().keys() == linearseq.state_dict().keys()
     for k in loaded_linseq.state_dict().keys():

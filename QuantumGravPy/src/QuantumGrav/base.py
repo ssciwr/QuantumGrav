@@ -1,33 +1,11 @@
 from abc import abstractmethod, ABC
-from typing import Any, Dict
+from typing import Any
 
 
 class Configurable(ABC):
     """Abstract base class for objects that can be configured via configuration files.
     Subclasses must implement methods to verify, serialize, and instantiate from configuration dictionaries.
     """
-
-    @classmethod
-    @abstractmethod
-    def verify_config(cls, config: dict[str, Any]) -> bool:
-        """Abstract function that verifies a config file
-
-        Args:
-            config (dict[str, Any]): config to verify
-
-        Returns:
-            bool: whether the config is valid or not
-        """
-        pass  # must be implemented in subclass
-
-    @abstractmethod
-    def to_config(self) -> Dict[Any, Any]:
-        """Convert the caller to a config
-
-        Returns:
-            Dict[Any, Any]: config representation of the caller instance.
-        """
-        pass
 
     @classmethod
     @abstractmethod
