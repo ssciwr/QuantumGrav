@@ -1,5 +1,5 @@
 from collections.abc import Collection
-from typing import Callable, Any, Tuple
+from typing import Callable, Any, Tuple, Dict
 
 import numpy as np
 from pathlib import Path
@@ -8,17 +8,18 @@ import tqdm
 import yaml
 from datetime import datetime
 from math import ceil, floor
+import jsonschema
+import pandas as pd
 
 from . import evaluate
 from . import early_stopping
 from . import gnn_model
 from . import dataset_ondisk
+
 import torch
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 import optuna
-import jsonschema
-import pandas as pd
 
 
 class Trainer:
@@ -28,6 +29,30 @@ class Trainer:
         "$schema": "http://json-schema.org/draft-07/schema#",
         "title": "Model trainer class Configuration",
         "type": "object",
+        "definitions": {
+            "constructor": {
+                "type": "object",
+                "description": "Python constructor spec: type(*args, **kwargs)",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "description": "Fully-qualified import path or name of the type/callable to initialize",
+                    },
+                    "args": {
+                        "type": "array",
+                        "description": "Positional arguments for constructor",
+                        "items": {},
+                    },
+                    "kwargs": {
+                        "type": "object",
+                        "description": "Keyword arguments for constructor",
+                        "additionalProperties": {},
+                    },
+                },
+                "required": ["type"],
+                "additionalProperties": False,
+            }
+        },
         "properties": {
             "log_level": {
                 "description": "Optional logging level (int or string, e.g. INFO)",
@@ -167,8 +192,8 @@ class Trainer:
                 "additionalProperties": False,
             },
             "model": {
-                # Use the GNNModel schema directly to validate model configuration
-                **gnn_model.GNNModel.schema,
+                "$ref": "#/definitions/constructor",
+                "description": "Model constructor spec: provides type, args, kwargs",
             },
             "validation": {
                 "type": "object",
@@ -200,6 +225,10 @@ class Trainer:
                     "shuffle": {
                         "type": "boolean",
                         "description": "Shuffle validation dataset",
+                    },
+                    "validator": {
+                        "$ref": "#/definitions/constructor",
+                        "description": "Validator constructor spec: provides type, args, kwargs",
                     },
                 },
                 "required": ["batch_size"],
@@ -236,13 +265,17 @@ class Trainer:
                         "type": "boolean",
                         "description": "Shuffle test dataset",
                     },
+                    "tester": {
+                        "$ref": "#/definitions/constructor",
+                        "description": "Tester constructor spec: provides type, args, kwargs",
+                    },
                 },
                 "required": ["batch_size"],
                 "additionalProperties": True,
             },
             "earlystopping": {
-                # Optional early stopping configuration following DefaultEarlyStopping schema
-                **early_stopping.DefaultEarlyStopping.schema,
+                "$ref": "#/definitions/constructor",
+                "description": "Early stopping constructor spec: provides type, args, kwargs",
             },
         },
         "required": [
@@ -256,7 +289,7 @@ class Trainer:
 
     def __init__(
         self,
-        config: dict[str, Any],
+        config: Dict[str, Any],
         # training and evaluation functions
         criterion: Callable[[Any, Data, Any], torch.Tensor],
         apply_model: Callable | None = None,
@@ -288,7 +321,6 @@ class Trainer:
         # functions for executing training and evaluation
         self.criterion = criterion
         self.apply_model = apply_model
-        self.early_stopping = early_stopping
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
 
@@ -316,10 +348,41 @@ class Trainer:
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.latest_checkpoint = None
         # training and evaluation functions
-        self.validator = validator
         self.tester = tester
         self.model = None
         self.optimizer = None
+
+        if early_stopping is not None:
+            self.early_stopping = early_stopping
+        elif early_stopping is None and "early_stopping" in config:
+            self.early_stopping = config["early_stopping"]["type"](
+                *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
+            )
+        else:
+            pass
+            # nothing needed here -> no early stopping
+
+        if validator is not None:
+            self.validator = validator
+        elif validator is None and "validator" in config["validation"]:
+            self.early_stopping = config["validation"]["validator"]["type"](
+                *config["validation"]["validator"]["args"],
+                **config["validation"]["validator"]["kwargs"],
+            )
+        else:
+            pass
+            # nothing needed here
+
+        if tester is not None:
+            self.tester = tester
+        elif tester is None and "tester" in config["testing"]:
+            self.early_stopping = config["testing"]["tester"]["type"](
+                *config["testing"]["tester"]["args"],
+                **config["testing"]["tester"]["kwargs"],
+            )
+        else:
+            pass
+            # nothing needed here
 
         with open(self.data_path / "config.yaml", "w") as f:
             yaml.dump(self.config, f)
@@ -335,10 +398,16 @@ class Trainer:
         """
         if self.model is not None:
             return self.model
-        # try:
-        model = gnn_model.GNNModel.from_config(self.config["model"])
-        model = model.to(self.device)
-        self.model = model
+        try:
+            self.model = gnn_model.GNNModel.from_config(self.config["model"]).to(
+                self.device
+            )
+
+        except Exception:
+            self.model = self.config["model"]["type"](
+                *self.config["model"]["args"], **self.config["model"]["kwargs"]
+            ).to(self.device)
+
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
 
