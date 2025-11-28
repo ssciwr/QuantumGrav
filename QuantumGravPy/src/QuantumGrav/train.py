@@ -1,5 +1,5 @@
 from collections.abc import Collection
-from typing import Callable, Any, Tuple, Dict
+from typing import Any, Tuple, Dict
 
 import numpy as np
 from pathlib import Path
@@ -187,13 +187,25 @@ class Trainer:
                         "type": "number",
                         "description": "Fraction of the dataset to use. Full dataset is used when not given",
                     },
+                    "split": {
+                        "type": "array",
+                        "description": "Split ratios of the dataset",
+                        "items": {
+                            "type": "number",
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                    },
                 },
                 "required": ["output", "files", "reader"],
                 "additionalProperties": False,
             },
             "model": {
-                "$ref": "#/definitions/constructor",
-                "description": "Model constructor spec: provides type, args, kwargs",
+                "description": "Model config: either constructor triple or full GNNModel schema",
+                "anyOf": [
+                    {"$ref": "#/definitions/constructor"},
+                    gnn_model.GNNModel.schema,
+                ],
             },
             "validation": {
                 "type": "object",
@@ -227,7 +239,10 @@ class Trainer:
                         "description": "Shuffle validation dataset",
                     },
                     "validator": {
-                        "$ref": "#/definitions/constructor",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.DefaultEvaluator.schema,
+                        ],
                         "description": "Validator constructor spec: provides type, args, kwargs",
                     },
                 },
@@ -266,7 +281,10 @@ class Trainer:
                         "description": "Shuffle test dataset",
                     },
                     "tester": {
-                        "$ref": "#/definitions/constructor",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.DefaultEvaluator.schema,
+                        ],
                         "description": "Tester constructor spec: provides type, args, kwargs",
                     },
                 },
@@ -274,16 +292,18 @@ class Trainer:
                 "additionalProperties": True,
             },
             "earlystopping": {
-                "$ref": "#/definitions/constructor",
+                "anyOf": [
+                    {"$ref": "#/definitions/constructor"},
+                    early_stopping.DefaultEarlyStopping.schema,
+                ],
                 "description": "Early stopping constructor spec: provides type, args, kwargs",
             },
+            "apply_model": {"description": "Optional method to build the "},
+            "criterion": {
+                "descriptoin": "The loss function used for training as a python type"
+            },
         },
-        "required": [
-            "training",
-            "model",
-            "validation",
-            "testing",
-        ],
+        "required": ["training", "model", "validation", "testing", "criterion"],
         "additionalProperties": False,
     }
 
@@ -291,12 +311,6 @@ class Trainer:
         self,
         config: Dict[str, Any],
         # training and evaluation functions
-        criterion: Callable[[Any, Data, Any], torch.Tensor],
-        apply_model: Callable | None = None,
-        # training evaluation and reporting
-        early_stopping: early_stopping.DefaultEarlyStopping | None = None,
-        validator: evaluate.DefaultValidator | None = None,
-        tester: evaluate.DefaultTester | None = None,
     ):
         """Initialize the trainer.
 
@@ -319,8 +333,8 @@ class Trainer:
         self.logger.info("Initializing Trainer instance")
 
         # functions for executing training and evaluation
-        self.criterion = criterion
-        self.apply_model = apply_model
+        self.criterion = config["criterion"]
+        self.apply_model = config.get("apply_model")
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
 
@@ -348,41 +362,40 @@ class Trainer:
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.latest_checkpoint = None
         # training and evaluation functions
-        self.tester = tester
         self.model = None
         self.optimizer = None
 
-        if early_stopping is not None:
-            self.early_stopping = early_stopping
-        elif early_stopping is None and "early_stopping" in config:
+        try:
+            self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
+                config["early_stopping"]
+            )
+        except Exception as _:
             self.early_stopping = config["early_stopping"]["type"](
                 *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
             )
-        else:
-            pass
-            # nothing needed here -> no early stopping
 
-        if validator is not None:
-            self.validator = validator
-        elif validator is None and "validator" in config["validation"]:
-            self.early_stopping = config["validation"]["validator"]["type"](
+        try:
+            self.validator = evaluate.DefaultValidator.from_config(
+                config["validation"]["validator"]
+            )
+        except Exception as _:
+            self.validator = config["validation"]["validator"]["type"](
                 *config["validation"]["validator"]["args"],
                 **config["validation"]["validator"]["kwargs"],
             )
-        else:
-            pass
-            # nothing needed here
 
-        if tester is not None:
-            self.tester = tester
-        elif tester is None and "tester" in config["testing"]:
-            self.early_stopping = config["testing"]["tester"]["type"](
+        # nothing needed here
+        try:
+            self.validator = evaluate.DefaultValidator.from_config(
+                config["testing"]["tester"]
+            )
+        except Exception as _:
+            self.tester = config["testing"]["tester"]["type"](
                 *config["testing"]["tester"]["args"],
                 **config["testing"]["tester"]["kwargs"],
             )
-        else:
-            pass
-            # nothing needed here
+
+        # nothing needed here
 
         with open(self.data_path / "config.yaml", "w") as f:
             yaml.dump(self.config, f)
