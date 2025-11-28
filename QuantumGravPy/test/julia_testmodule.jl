@@ -75,7 +75,7 @@ function (gen::Generator)(batchsize::Int)
             QG.make_polynomial_manifold_cset(atomcount, rng, 5, 2.0; d = dim, type = type)
 
         # make the data: adjacency matrix and the other stuff
-        adjacency_matrix = QG.make_adj(cset, type = type)
+        adjacency_matrix = QG.make_adj(cset, type = Matrix, eltype = type)
 
         link_matrix = deepcopy(adjacency_matrix)
         QG.transitive_reduction!(link_matrix)
