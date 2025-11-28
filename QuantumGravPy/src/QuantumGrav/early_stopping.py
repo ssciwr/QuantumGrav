@@ -212,21 +212,6 @@ class DefaultEarlyStopping(base.Configurable):
         return self.current_patience <= 0
 
     @classmethod
-    def verify_config(cls, config: dict[str, Any]) -> bool:
-        """Verify the configuration file via a json schema.
-
-        Args:
-            config (dict[str, Any]): config to verify
-
-        Returns:
-            bool: Whether or not the config adheres to the defined schema
-        """
-        validate(config, cls.schema)
-
-        # Returns True only if validate does not raise a ValidationError
-        return True
-
-    @classmethod
     def from_config(cls, config: dict[str, Any]) -> "DefaultEarlyStopping":
         """Construct a DefaultEarlyStopping from a configuration dictionary.
 
@@ -238,7 +223,7 @@ class DefaultEarlyStopping(base.Configurable):
         Returns:
             DefaultEarlyStopping: The constructed DefaultEarlyStopping instance.
         """
-        cls.verify_config(config)
+        validate(config, cls.schema)
         conf = deepcopy(config)
 
         tasks = conf["tasks"]

@@ -7,18 +7,252 @@ import logging
 import tqdm
 import yaml
 from datetime import datetime
+from math import ceil, floor
 
-from .evaluate import DefaultValidator, DefaultTester
+from . import evaluate
+from . import early_stopping
 from . import gnn_model
-
+from . import dataset_ondisk
 import torch
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 import optuna
+import jsonschema
+import pandas as pd
 
 
 class Trainer:
     """Trainer class for training and evaluating GNN models."""
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Model trainer class Configuration",
+        "type": "object",
+        "properties": {
+            "log_level": {
+                "description": "Optional logging level (int or string, e.g. INFO)",
+                "anyOf": [{"type": "integer"}, {"type": "string"}],
+            },
+            "training": {
+                "type": "object",
+                "description": "Training configuration",
+                "properties": {
+                    "seed": {"type": "integer", "description": "Random seed"},
+                    "device": {
+                        "type": "string",
+                        "description": "Torch device string, e.g. 'cpu', 'cuda', 'cuda:0'",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Output directory for run artifacts and checkpoints",
+                    },
+                    "num_epochs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Number of training epochs",
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Training DataLoader batch size",
+                    },
+                    "optimizer_type": {
+                        "description": "Optimizer type name, e.g. 'torch.optim.Adam' or 'torch.optim.SGD'",
+                    },
+                    "optimizer_args": {
+                        "type": "array",
+                        "description": "Arguments for optimizer",
+                        "items": {},
+                    },
+                    "optimizer_kwargs": {
+                        "type": "object",
+                        "description": "Optimizer keyword arguments",
+                        "additionalProperties": {},
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers for training",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle training dataset",
+                    },
+                    "checkpoint_at": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "description": "Checkpoint every N epochs (or None to disable)",
+                    },
+                },
+                "required": [
+                    "seed",
+                    "device",
+                    "path",
+                    "num_epochs",
+                    "batch_size",
+                    "optimizer_type",
+                    "optimizer_args",
+                    "optimizer_kwargs",
+                    "num_workers",
+                    "drop_last",
+                    "checkpoint_at",
+                ],
+                "additionalProperties": True,
+            },
+            "data": {
+                "type": "object",
+                "description": "Dataset configuration",
+                "properties": {
+                    "pre_transform": {
+                        "description": "Name of the python object to use for the pre-transform function to use. Must refer to a callable"
+                    },
+                    "transform": {
+                        "description": "Name of the python object to use for the transform function to use. Must refer to a callable"
+                    },
+                    "pre_filter": {
+                        "description": "Name of the python object to use for the pre_filter function to use. Must refer to a callable"
+                    },
+                    "reader": {
+                        "description": "Name  of the python object to read raw data from file. Must be callable",
+                    },
+                    "files": {
+                        "type": "array",
+                        "description": "list of zarr stores to get data from",
+                        "minItems": 1,
+                        "items": {
+                            "type": "string",
+                            "description": "zarr file names to read data from",
+                        },
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "path to store preprocessed data at.",
+                    },
+                    "validate_data": {
+                        "type": "boolean",
+                        "description": "Whether to validate the transformed data objects or not",
+                    },
+                    "n_processes": {
+                        "type": "integer",
+                        "description": "number of processes to use for preprocessing the dataset",
+                        "minimum": 0,
+                    },
+                    "chunksize": {
+                        "type": "integer",
+                        "description": "Number of datapoints to process at once during preprocessing",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Whether to shuffle the dataset or not",
+                    },
+                    "subset": {
+                        "type": "number",
+                        "description": "Fraction of the dataset to use. Full dataset is used when not given",
+                    },
+                },
+                "required": ["output", "files", "reader"],
+                "additionalProperties": False,
+            },
+            "model": {
+                # Use the GNNModel schema directly to validate model configuration
+                **gnn_model.GNNModel.schema,
+            },
+            "validation": {
+                "type": "object",
+                "description": "Model validation configuration",
+                "properties": {
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Validation DataLoader batch size",
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle validation dataset",
+                    },
+                },
+                "required": ["batch_size"],
+                "additionalProperties": True,
+            },
+            "testing": {
+                "type": "object",
+                "description": "Configuration for model testing after training",
+                "properties": {
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Test DataLoader batch size",
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle test dataset",
+                    },
+                },
+                "required": ["batch_size"],
+                "additionalProperties": True,
+            },
+            "earlystopping": {
+                # Optional early stopping configuration following DefaultEarlyStopping schema
+                **early_stopping.DefaultEarlyStopping.schema,
+            },
+        },
+        "required": [
+            "training",
+            "model",
+            "validation",
+            "testing",
+        ],
+        "additionalProperties": False,
+    }
 
     def __init__(
         self,
@@ -27,9 +261,9 @@ class Trainer:
         criterion: Callable[[Any, Data, Any], torch.Tensor],
         apply_model: Callable | None = None,
         # training evaluation and reporting
-        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
+        early_stopping: early_stopping.DefaultEarlyStopping | None = None,
+        validator: evaluate.DefaultValidator | None = None,
+        tester: evaluate.DefaultTester | None = None,
     ):
         """Initialize the trainer.
 
@@ -44,14 +278,8 @@ class Trainer:
         Raises:
             ValueError: If the configuration is invalid.
         """
-        if (
-            all(x in config for x in ["training", "model", "validation", "testing"])
-            is False
-        ):
-            raise ValueError(
-                "Configuration must contain 'training', 'model', 'validation' and 'testing' sections."
-            )
 
+        jsonschema.validate(instance=config, schema=self.schema)
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(config.get("log_level", logging.INFO))
@@ -133,17 +361,13 @@ class Trainer:
             return self.optimizer
 
         try:
-            lr = self.config["training"].get("learning_rate", 0.001)
-            weight_decay = self.config["training"].get("weight_decay", 0.0001)
-            optimizer = torch.optim.Adam(
+            optimizer = self.config["training"].get("optimizer_type", torch.optim.Adam)(
                 self.model.parameters(),
-                lr=lr,
-                weight_decay=weight_decay,
+                *self.config["training"].get("optimizer_args", []),
+                **self.config["training"].get("optimizer_kwargs", {}),
             )
             self.optimizer = optimizer
-            self.logger.info(
-                f"Optimizer initialized with learning rate: {lr} and weight decay: {weight_decay}"
-            )
+            self.logger.info("Optimizer initialized")
         except Exception as e:
             self.logger.error(f"Error initializing optimizer: {e}")
         return self.optimizer
@@ -167,23 +391,51 @@ class Trainer:
         Returns:
             Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
         """
+        if dataset is None:
+            cfg = self.config["data"]
+            dataset = dataset_ondisk.QGDataset(
+                cfg["files"],
+                cfg["output"],
+                cfg["reader"],
+                float_type=cfg.get("float_type", torch.float32),
+                int_type=cfg.get("int_type", torch.int32),
+                validate_data=cfg.get("validate_data", True),
+                chunksize=cfg.get("chunksize", 1),
+                n_processes=cfg.get("n_processes", 1),
+                transform=cfg.get("transform"),
+                pre_transform=cfg.get("pre_transform"),
+                pre_filter=cfg.get("pre_filter"),
+            )
 
-        if (
-            dataset is not None
-            and train_dataset is None
-            and val_dataset is None
-            and test_dataset is None
-        ):
-            train_size = int(len(dataset) * split[0])
-            val_size = int(len(dataset) * split[1])
-            test_size = len(dataset) - train_size - val_size
+            if cfg.get("subset"):
+                num_points = ceil(len(dataset) * cfg["subset"])
+                dataset = dataset.index_select(
+                    np.random.randint(0, len(dataset), num_points).tolist(),
+                )
 
+            if cfg.get("shuffle"):
+                dataset.shuffle()
+
+        if train_dataset is None and val_dataset is None and test_dataset is None:
             if not np.isclose(
                 np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
             ):
                 raise ValueError(
                     f"Split ratios must sum to 1.0. Provided split: {split}"
                 )
+
+            train_size = ceil(len(dataset) * split[0])
+            val_size = floor(len(dataset) * split[1])
+            test_size = len(dataset) - train_size - val_size
+
+            if train_size == 0:
+                raise ValueError("train size cannot be 0")
+
+            if val_size == 0:
+                raise ValueError("validation size cannot be 0")
+
+            if test_size == 0:
+                raise ValueError("test size cannot be 0")
 
             self.train_dataset, self.val_dataset, self.test_dataset = (
                 torch.utils.data.random_split(
@@ -231,10 +483,6 @@ class Trainer:
         if dataset is not None:
             self.logger.info(
                 f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
-            )
-        else:
-            self.logger.info(
-                f"Data loaders prepared with dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
             )
         return train_loader, val_loader, test_loader
 
@@ -313,7 +561,7 @@ class Trainer:
 
         return losses
 
-    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
+    def _check_model_status(self, eval_data: pd.DataFrame) -> bool:
         """Check the status of the model during training.
 
         Args:
@@ -453,10 +701,18 @@ class Trainer:
         best_of_the_best = (
             max(saved_models, key=lambda f: f.stat().st_mtime) if saved_models else None
         )
+        if best_of_the_best is None:
+            raise RuntimeError(
+                "No saved model found for testing. Please verify that the checkpoint_path is correct, "
+                f"that a model with the name addition '{model_name_addition}' exists, and that training "
+                "completed successfully and saved a model checkpoint."
+            )
 
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
-        self.model = gnn_model.GNNModel.load(best_of_the_best, device=self.device)
 
+        self.model = gnn_model.GNNModel.load(
+            self.config["model"], best_of_the_best, device=self.device
+        )
         self.model.eval()
         if self.tester is None:
             raise RuntimeError("Tester must be initialized before testing.")
@@ -478,12 +734,9 @@ class Trainer:
             raise ValueError("Model must be initialized before saving checkpoint.")
 
         self.logger.info(
-            f"Saving checkpoint for model {self.config['model'].get('name', ' model')} at epoch {self.epoch} to {self.checkpoint_path}"
+            f"Saving checkpoint for model at epoch {self.epoch} to {self.checkpoint_path}"
         )
-        outpath = (
-            self.checkpoint_path
-            / f"{self.config['model'].get('name', 'model')}_{name_addition}.pt"
-        )
+        outpath = self.checkpoint_path / f"model_{name_addition}.pt"
 
         if outpath.exists() is False:
             outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -512,12 +765,11 @@ class Trainer:
             "available checkpoints: %s", list(Path(self.checkpoint_path).iterdir())
         )
 
-        loadpath = (
-            Path(self.checkpoint_path)
-            / f"{self.config['model'].get('name', 'model')}_{name_addition}.pt"
-        )
+        loadpath = Path(self.checkpoint_path) / f"model_{name_addition}.pt"
 
         if not loadpath.exists():
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
-        self.model = gnn_model.GNNModel.load(loadpath)
+        self.model = gnn_model.GNNModel.load(
+            self.config["model"], loadpath, device=self.device
+        )

@@ -12,13 +12,13 @@ The submodel classes in this section comprise the graph neural network backbone 
 
 ### Graph model block 
 This submodel is the main part of the graph neural network backbone, composed of a set of GNN layers from `pytorch-geometric` with dropout and `BatchNorm`. 
-::: QuantumGrav.gnn_block  
+::: QuantumGrav.models.gnn_block  
     handler: python
     options:
       show_source: true
 
 ### Base class for models composed of linear layers
-::: QuantumGrav.linear_sequential 
+::: QuantumGrav.models.linear_sequential 
     handler: python
     options:
       show_source: true

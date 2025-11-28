@@ -221,6 +221,3 @@ class DefaultValidator(DefaultEvaluator):
             list[Any]: A list of validation results.
         """
         self.evaluate(model, data_loader)
-
-    def report(self) -> None:
-        """Report the monitoring data"""

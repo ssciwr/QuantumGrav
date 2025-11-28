@@ -2,14 +2,87 @@ import logging
 import QuantumGrav as QG
 from torch_geometric.data import Data
 import torch
+import torch_geometric
 import numpy as np
 import pytest
+from functools import partial
 
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
     loss = torch.nn.MSELoss()(x[0].unsqueeze(0), data.y.to(torch.float32))
     return loss
+
+
+@pytest.fixture
+def model_config_eval():
+    config = {
+        "encoder_type": QG.models.GNNBlock,
+        "encoder_args": [2, 32],
+        "encoder_kwargs": {
+            "dropout": 0.3,
+            "gnn_layer_type": torch_geometric.nn.conv.GCNConv,
+            "normalizer_type": torch.nn.BatchNorm1d,
+            "activation_type": torch.nn.ReLU,
+            "gnn_layer_args": [],
+            "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
+            "norm_args": [32],
+            "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+            "skip_args": [2, 32],
+            "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
+        },
+        # After two pooling ops concatenated along dim=1, encoder output 32 -> 64 input to heads
+        "downstream_tasks": [
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 2)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 3)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+        ],
+        "pooling_layers": [
+            [torch_geometric.nn.global_mean_pool, [], {}],
+            [torch_geometric.nn.global_max_pool, [], {}],
+        ],
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
+        "active_tasks": {0: True, 1: True},
+    }
+    return config
+
+
+@pytest.fixture
+def gnn_model_eval(model_config_eval):
+    """Fixture to create a GNNModel for evaluation."""
+
+    model = QG.GNNModel.from_config(
+        model_config_eval,
+    )
+    model.eval()
+    return model
 
 
 @pytest.fixture
