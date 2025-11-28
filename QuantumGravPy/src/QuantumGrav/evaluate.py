@@ -1,18 +1,55 @@
 import torch
-from typing import Callable, Any
+from typing import Callable, Any, Tuple, Sequence, Dict
 import torch_geometric
-import numpy as np
 import pandas as pd
 import logging
+import jsonschema
 
 
 class DefaultEvaluator:
     """Default evaluator for model evaluation - testing and validation during training"""
 
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "DefaultEarlyStopping Configuration",
+        "type": "object",
+        "properties": {
+            "device": {"type": "string", "description": "The device to work on"},
+            "criterion": {"desccription": "Loss function for the model evaluation"},
+            "evaluator_tasks": {
+                "type": "array",
+                "description": "Sequence[Sequence[Tuple[str, Callable]]] - nested sequence of metric tasks",
+                "items": {
+                    "type": "array",
+                    "description": "Sequence of (metric_name, callable) tuples",
+                    "items": {
+                        "type": "array",
+                        "description": "Tuple of [metric_name, callable]",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "prefixItems": [
+                            {"type": "string", "description": "Metric name"},
+                            {
+                                "description": "Callable function (not validated in schema)"
+                            },
+                        ],
+                    },
+                },
+                "additionalProperties": True,
+            },
+            "apply_model": {
+                "description": "Optional function to call the model's forward method in customized way"
+            },
+        },
+        "required": ["device", "criterion", "evaluator_tasks"],
+        "additionalProperties": False,
+    }
+
     def __init__(
         self,
         device: str | torch.device | int,
         criterion: Callable,
+        evaluator_tasks: Sequence[Sequence[Tuple[str, Callable]]],
         apply_model: Callable | None = None,
     ):
         """Default evaluator for model evaluation.
@@ -25,14 +62,25 @@ class DefaultEvaluator:
         self.criterion = criterion
         self.apply_model = apply_model
         self.device = device
-        self.data: pd.DataFrame | list = []
         self.logger = logging.getLogger(__name__)
+
+        self.tasks: Dict[int, Dict[str, Callable]] = {}
+        columns = ["loss_avg", "loss_min", "loss_max"]
+        for task_id, per_task_monitors in enumerate(evaluator_tasks):
+            for name_monitor in per_task_monitors:
+                name, monitor = name_monitor
+                columns.append(f"{name}_{task_id}")
+                tasks = self.tasks.get(task_id, {})
+                tasks[name] = monitor
+                self.tasks[task_id] = tasks
+
+        self.data = pd.DataFrame({col: [] for col in columns})
 
     def evaluate(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Evaluate the model on the given data loader.
 
         Args:
@@ -43,8 +91,9 @@ class DefaultEvaluator:
              list[Any]: A list of evaluation results.
         """
         model.eval()
-        current_data = []
-
+        current_losses = []
+        current_predictions = []
+        current_targets = []
         with torch.no_grad():
             for i, batch in enumerate(data_loader):
                 data = batch.to(self.device)
@@ -53,40 +102,44 @@ class DefaultEvaluator:
                 else:
                     outputs = model(data.x, data.edge_index, data.batch)
                 loss = self.criterion(outputs, data)
-                current_data.append(loss)
+                current_losses.append(loss)
+                current_predictions.append(outputs)
+                current_targets.append(data.y)
 
-        return current_data
+        for task_id, task_monitor_dict in self.tasks.items():
+            for monitor_name, monitor in task_monitor_dict.items():
+                colname = f"{monitor_name}_{task_id}"
+                self.data[len(self.data), colname] = monitor(
+                    current_predictions, current_targets
+                )
 
-    def report(self, data: list | pd.Series | torch.Tensor | np.ndarray) -> None:
-        """Report the evaluation results.
+        t_current_losses = torch.cat(current_losses).cpu()
+        self.data[len(self.data), "loss_avg"] = t_current_losses.mean()
+        self.data[len(self.data), "loss_min"] = t_current_losses.min()
+        self.data[len(self.data), "loss_max"] = t_current_losses.max()
+
+    def report(self) -> None:
+        """Report the monitoring data"""
+        self.logger.info("Testing the model: ")
+        self.logger.info(f" {self.data.tail(1)}")
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "DefaultEvaluator":
+        """Build the evaluator from a config dictionary
 
         Args:
-            data (list | pd.Series | torch.Tensor | np.ndarray): The evaluation results.
+            config (Dict[str, Any]): Config dictionary to build the evaluator from.
+
+        Returns:
+            DefaultEvaluator: new evaluator instance
         """
-
-        if isinstance(data, torch.Tensor):
-            data = data.cpu().numpy()
-
-        if isinstance(data, list):
-            for i, d in enumerate(data):
-                if isinstance(d, torch.Tensor):
-                    data[i] = d.cpu().numpy()
-
-        avg = np.mean(data)
-        sigma = np.std(data)
-        self.logger.info(f"Average loss: {avg}, Standard deviation: {sigma}")
-
-        if isinstance(self.data, list):
-            self.data.append((avg, sigma))
-        else:
-            self.data = pd.concat(
-                [
-                    self.data,
-                    pd.DataFrame({"loss": avg, "std": sigma}, index=[0]),
-                ],
-                axis=0,
-                ignore_index=True,
-            )
+        jsonschema.validate(config, cls.schema)
+        return cls(
+            config["device"],
+            config["criterion"],
+            config["evaluator_tasks"],
+            config.get("apply_model"),
+        )
 
 
 class DefaultTester(DefaultEvaluator):
@@ -101,6 +154,7 @@ class DefaultTester(DefaultEvaluator):
         self,
         device: str | torch.device | int,
         criterion: Callable,
+        evaluator_tasks: Sequence[Sequence[Tuple[str, Callable]]],
         apply_model: Callable | None = None,
     ):
         """Default tester for model testing.
@@ -110,13 +164,13 @@ class DefaultTester(DefaultEvaluator):
             criterion (Callable): The loss function to use for testing.
             apply_model (Callable): A function to apply the model to the data.
         """
-        super().__init__(device, criterion, apply_model)
+        super().__init__(device, criterion, evaluator_tasks, apply_model)
 
     def test(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Test the model on the given data loader.
 
         Args:
@@ -126,7 +180,7 @@ class DefaultTester(DefaultEvaluator):
         Returns:
             list[Any]: A list of testing results.
         """
-        return self.evaluate(model, data_loader)
+        self.evaluate(model, data_loader)
 
 
 class DefaultValidator(DefaultEvaluator):
@@ -141,6 +195,7 @@ class DefaultValidator(DefaultEvaluator):
         self,
         device: str | torch.device | int,
         criterion: Callable,
+        evaluator_tasks: Sequence[Sequence[Tuple[str, Callable]]],
         apply_model: Callable | None = None,
     ):
         """Default validator for model validation.
@@ -150,13 +205,13 @@ class DefaultValidator(DefaultEvaluator):
             criterion (Callable): The loss function to use for validation.
             apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
-        super().__init__(device, criterion, apply_model)
+        super().__init__(device, criterion, evaluator_tasks, apply_model)
 
     def validate(
         self,
         model: torch.nn.Module,
         data_loader: torch_geometric.loader.DataLoader,  # type: ignore
-    ) -> list[Any]:
+    ) -> None:
         """Validate the model on the given data loader.
 
         Args:
@@ -165,208 +220,7 @@ class DefaultValidator(DefaultEvaluator):
         Returns:
             list[Any]: A list of validation results.
         """
-        return self.evaluate(model, data_loader)
+        self.evaluate(model, data_loader)
 
-
-# early stopping class. this checks a validation metric and stops training if it doesn´t improve anymore
-class DefaultEarlyStopping:
-    """Early stopping based on a validation metric."""
-
-    # put this into the package
-    def __init__(
-        self,
-        patience: int,
-        delta: list[float] = [1e-4],
-        window: list[int] = [7],
-        metric: list[str] = ["loss"],
-        smoothing: bool = False,
-        criterion: Callable = lambda early_stopping_instance,
-        data: early_stopping_instance.current_patience <= 0,
-        init_best_score: float = np.inf,
-        mode: str | Callable[[list[bool]], bool] = "any",
-        grace_period: list[int] = [
-            0,
-        ],
-        minimize: bool = False,
-    ):
-        """Early stopping initialization.
-
-        Args:
-            patience (int): Number of epochs with no improvement after which training will be stopped.
-            delta (float, optional): Minimum change to consider an improvement. Defaults to 1e-4.
-            window (int, optional): Size of the moving window for smoothing. Defaults to 7.
-            metric (str, optional): Metric to monitor for early stopping. Defaults to "loss". This class always assumes that lower values for 'metric' are better.
-            smoothing (bool, optional): Whether to apply smoothed mean to the metric to dampen fluctuations. Defaults to False.
-            criterion (Callable, optional): Custom stopping criterion. Defaults to a function that stops when patience is exhausted.
-            init_best_score (float): initial best score value.
-            mode (str | Callable[[list[bool]], bool], optional): The mode for early stopping. Can be "any", "all", or a custom function. Defaults to "any". This decides wheather all tracked metrics have to improve or only one of them, or if something else should be done by applying a custom function to the array of evaluation results.
-            minimize: Bool: Whether to minimize or maximize the criterion
-        """
-        lw = len(window)
-        lm = len(metric)
-        ld = len(delta)
-        lg = len(grace_period)
-
-        if min([lw, lm, ld, lg]) != max([lw, lm, ld, lg]):
-            raise ValueError(
-                f"Inconsistent lengths for early stopping parameters: {lw}, {lm}, {ld}, {lg}"
-            )
-
-        self.patience = patience
-        self.current_patience = patience
-        self.delta = delta
-        self.window = window
-        self.found_better = [False for _ in range(lw)]
-        self.metric = metric
-        self.init_best_score = init_best_score
-        self.best_score = [init_best_score for _ in range(lw)]
-        self.smoothing = smoothing
-        self.logger = logging.getLogger(__name__)
-        self.criterion = criterion
-        self.mode = mode
-        self.found_better = [False for _ in range(lw)]
-        self.grace_period = grace_period
-        self.current_grace_period = [grace_period[i] for i in range(lg)]
-        self.minimize = minimize
-        self.logger = logging.getLogger(__name__)
-        self.num_tasks = len(self.window)
-
-    @property
-    def found_better_model(self) -> bool:
-        """Check if a better model has been found."""
-
-        if self.mode == "any":
-            self.logger.debug("Checking early stopping criteria (any mode).")
-            return any(self.found_better)
-        elif self.mode == "all":
-            self.logger.debug("Checking early stopping criteria (all mode).")
-            return all(self.found_better)
-        elif callable(self.mode):
-            self.logger.debug("Checking early stopping criteria (custom mode).")
-            return self.mode(self.found_better)
-        else:
-            raise ValueError("Mode must be 'any', 'all', or a callable in Evaluator")
-
-    def reset(self) -> None:
-        """Reset early stopping state."""
-        self.logger.debug("Resetting early stopping state.")
-        self.current_patience = self.patience
-        self.found_better = [False for _ in range(len(self.window))]
-        self.current_grace_period = self.grace_period
-
-    def add_task(
-        self, delta: float, window: int, metric: str, grace_period: int
-    ) -> None:
-        """Add a new task for early stopping.
-
-        Args:
-            delta (float): Minimum change to consider an improvement.
-            window (int): Size of the moving window for smoothing.
-            metric (str): Metric to monitor for early stopping.
-            grace_period (int): Grace period for early stopping.
-        """
-        self.logger.debug(
-            f"Adding new task for early stopping: {metric}, grace period {grace_period}, window {window}, delta {delta}"
-        )
-        self.delta.append(delta)
-        self.window.append(window)
-        self.metric.append(metric)
-        self.grace_period.append(grace_period)
-        self.current_grace_period.append(grace_period)
-        self.best_score.append(self.init_best_score)
-        self.found_better.append(False)
-        self.num_tasks += 1
-
-    def remove_task(self, index: int) -> None:
-        """Remove a task from early stopping.
-
-        Args:
-            index (int): The index of the task to remove.
-        """
-        self.logger.debug(f"Removing task at index {index}")
-        self.delta.pop(index)
-        self.window.pop(index)
-        self.metric.pop(index)
-        self.grace_period.pop(index)
-        self.best_score.pop(index)
-        self.num_tasks -= 1
-
-    def __call__(self, data: pd.DataFrame | pd.Series) -> bool:
-        """Evaluate early stopping criteria. This is done by comparing the last value of data[self.metric] with the current best value recorded. If that value is better than the current best, the current best is updated,
-        patience is reset and 'found_better' is set to True. Otherwise, if the number of datapoints in 'data' is greater than self.window, the patience is decremented.
-
-        Args:
-            data (pd.DataFrame | pd.Series): Recorded evaluation metrics in a pandas structure.
-
-        Returns:
-            bool: True if early stopping criteria are met, False otherwise.
-        """
-        self.found_better = [False for _ in range(self.num_tasks)]
-        ds = {}  # dict to hold current metric values
-
-        # go over all registered metrics and check if the model performs better on any of them
-        # then aggregrate the result with 'found_better_model'.
-        for i in range(self.num_tasks):
-            self.logger.debug(f"Evaluating early stopping criteria for task {i}.")
-            # prevent a skipped metric from affecting early stopping
-            if self.metric[i] not in data.columns:
-                self.logger.warning(f"    Metric {self.metric[i]} not found in data.")
-                self.found_better[i] = True
-                ds[i] = 0.0
-                continue
-
-            if self.smoothing:
-                self.logger.debug(f"Applying smoothing to metric {self.metric[i]}.")
-                d = (
-                    data[self.metric[i]]
-                    .rolling(window=self.window[i], min_periods=1)
-                    .mean()
-                )
-            else:
-                self.logger.debug(f"Using raw metric values for {self.metric[i]}.")
-                d = data[self.metric[i]]
-
-            check = False
-            if self.minimize:
-                self.logger.debug("Early stopping is in 'minimize' mode.")
-                check = self.best_score[i] - self.delta[i] > d.iloc[-1]
-            else:
-                self.logger.debug("Early stopping is in 'maximize' mode.")
-                check = self.best_score[i] + self.delta[i] < d.iloc[-1]
-
-            if check and len(data):  # always minimize the metric
-                self.logger.info(
-                    f"    Better model found at task {i}: {d.iloc[-1]:.8f}, current best: {self.best_score[i]:.8f}"
-                )
-                self.found_better[i] = True
-
-            ds[i] = d.iloc[-1]
-
-        if self.found_better_model:
-            # when we found a better model the stopping patience gets reset
-            self.logger.debug("Found better model")
-            for i in range(self.num_tasks):
-                self.logger.info(
-                    f"current best score: {self.best_score[i]:.8f}, current score: {ds[i]:.8f}"
-                )
-                self.best_score[i] = ds[i]  # record best score
-            self.current_patience = self.patience  # reset patience
-
-        # only when all grace periods are done will we reduce the patience
-        elif all([g <= 0 for g in self.current_grace_period]):
-            self.logger.debug("All grace periods are done, reducing patience.")
-            self.current_patience -= 1
-        else:
-            pass
-            # don't do anything here, we want at least 'grace_period' many epochs before patience is reduced
-
-        for i in range(self.num_tasks):
-            self.logger.info(
-                f"EarlyStopping: current patience: {self.current_patience}, best score: {self.best_score[i]:.8f}, grace_period: {self.current_grace_period[i]}"
-            )
-
-        for i in range(self.num_tasks):
-            if self.current_grace_period[i] > 0:
-                self.current_grace_period[i] -= 1
-
-        return self.criterion(self, data)
+    def report(self) -> None:
+        """Report the monitoring data"""
