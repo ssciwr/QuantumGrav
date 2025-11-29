@@ -386,7 +386,7 @@ class Trainer(base.Configurable):
 
         # nothing needed here
         try:
-            self.validator = evaluate.DefaultValidator.from_config(
+            self.tester = evaluate.DefaultTester.from_config(
                 config["testing"]["tester"]
             )
         except Exception as _:
