@@ -365,14 +365,16 @@ class Trainer(base.Configurable):
         self.optimizer = self.initialize_optimizer()
 
         # early stopping and evaluation functors
-        try:
-            self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
-                config["early_stopping"]
-            )
-        except Exception as _:
-            self.early_stopping = config["early_stopping"]["type"](
-                *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
-            )
+        if "early_stopping" in config:
+            try:
+                self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
+                    config["early_stopping"]
+                )
+            except Exception as _:
+                self.early_stopping = config["early_stopping"]["type"](
+                    *config["early_stopping"]["args"],
+                    **config["early_stopping"]["kwargs"],
+                )
 
         try:
             self.validator = evaluate.DefaultValidator.from_config(

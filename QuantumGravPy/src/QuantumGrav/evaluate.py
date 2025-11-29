@@ -127,6 +127,9 @@ class DefaultEvaluator(base.Configurable):
                 current_targets.append(data.y)
 
         current_data_length = len(self.data)
+
+        # tasks are not associated by default to any specific output head,
+        # so we run all tasks on the collected outputs and targets
         for task_id, task_monitor_dict in self.tasks.items():
             for monitor_name, monitor in task_monitor_dict.items():
                 colname = f"{monitor_name}_{task_id}"
