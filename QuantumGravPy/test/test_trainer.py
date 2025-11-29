@@ -283,8 +283,8 @@ def test_trainer_creation_works(config):
     assert trainer.epoch == 0
     assert trainer.checkpoint_at == config["training"].get("checkpoint_at", None)
 
-    assert trainer.optimizer is None
-    assert trainer.model is None
+    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
+    assert isinstance(trainer.model, (QG.GNNModel, torch.nn.Module))
 
 
 def test_trainer_creation_broken(broken_config):
@@ -557,18 +557,6 @@ def test_trainer_load_checkpoint_fails(config):
         RuntimeError, match="Model must be initialized before loading checkpoint."
     ):
         trainer.load_checkpoint("test")
-
-
-def test_trainer_check_model_status_no_model(config):
-    trainer = QG.Trainer(
-        config,
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="Model must be initialized before saving checkpoint.",
-    ):
-        trainer.save_checkpoint()
 
 
 def test_trainer_run_training(make_dataset, config):

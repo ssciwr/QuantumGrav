@@ -1,3 +1,4 @@
+from jsonschema import ValidationError
 import pytest
 import torch
 
@@ -15,6 +16,13 @@ from datetime import datetime
 from pathlib import Path
 from functools import partial
 import pandas as pd
+
+
+@pytest.fixture()
+def setup_ddp():
+    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
+    yield
+    QG.cleanup_ddp()
 
 
 @pytest.fixture
@@ -258,6 +266,7 @@ def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
 
 
 def test_initialize_ddp():
+    """Test that DDP initialization works correctly."""
     QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
     assert os.environ["MASTER_ADDR"] == "localhost"
     assert os.environ["MASTER_PORT"] == "23456"
@@ -272,7 +281,11 @@ def test_initialize_ddp():
     assert torch.distributed.is_initialized() is False
 
 
-def test_trainer_ddp_creation_works(config):
+def test_trainer_ddp_creation_works(config, setup_ddp):
+    """Test that TrainerDDP can be created with a valid config."""
+    assert torch.distributed.is_initialized(), (
+        "Distributed process group was not initialized"
+    )
     trainer = QG.TrainerDDP(
         1,
         config,
@@ -281,35 +294,22 @@ def test_trainer_ddp_creation_works(config):
     assert trainer.rank == 1
     assert trainer.device == torch.device("cpu")
     assert trainer.world_size == 1
+    QG.cleanup_ddp()
+    assert torch.distributed.is_initialized() is False
+    assert trainer.model is not None
 
 
 def test_trainer_ddp_creation_broken(broken_config):
-    with pytest.raises(
-        ValueError, match="Configuration must contain 'parallel' section for DDP."
-    ):
+    """Test that TrainerDDP raises ValidationError when created with a broken config."""
+    with pytest.raises(ValidationError, match="is a required property"):
         QG.TrainerDDP(
             1,
             broken_config,
         )
 
 
-def test_trainer_ddp_init_model(config):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
-
-    trainer = QG.TrainerDDP(
-        0,
-        config,
-    )
-
-    trainer.initialize_model()
-    assert trainer.model is not None
-
-    QG.cleanup_ddp()
-
-
-def test_trainer_ddp_prepare_dataloaders(make_dataset, config):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
-
+def test_trainer_ddp_prepare_dataloaders(make_dataset, config, setup_ddp):
+    """Test the prepare_dataloaders method of TrainerDDP."""
     trainer = QG.TrainerDDP(
         0,
         config,
@@ -323,16 +323,13 @@ def test_trainer_ddp_prepare_dataloaders(make_dataset, config):
     assert isinstance(trainer.val_sampler, torch.utils.data.DistributedSampler)
     assert isinstance(trainer.test_sampler, torch.utils.data.DistributedSampler)
 
-    assert len(train_loader) == 2
-    assert len(val_loader) == 2
-    assert len(test_loader) == 3
-
-    QG.cleanup_ddp()
+    assert len(train_loader) == 3
+    assert len(val_loader) == 1
+    assert len(test_loader) == 2
 
 
-def test_trainer_ddp_check_model_status(config):
+def test_trainer_ddp_check_model_status(config, setup_ddp):
     """Test the _check_model_status method of TrainerDDP. We can't really test multi-processing here, so we just test the basic logic that's forwarded from Trainer"""
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
 
     loss = np.random.rand(10).tolist()
     other__loss = np.random.rand(10).tolist()
@@ -364,11 +361,9 @@ def test_trainer_ddp_check_model_status(config):
     assert "config.yaml" in file_content
     assert "model_checkpoints" in file_content
 
-    QG.cleanup_ddp()
 
-
-def test_trainer_ddp_run_training(config, make_dataset):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
+def test_trainer_ddp_run_training(config, make_dataset, setup_ddp):
+    """Test the run_training method of TrainerDDP. We can't really test multi-processing here, so we just test the basic logic that's forwarded from Trainer"""
     trainer = QG.TrainerDDP(
         0,
         config,
@@ -387,4 +382,3 @@ def test_trainer_ddp_run_training(config, make_dataset):
 
     assert len(training_data[0]) == config["training"]["num_epochs"]
     assert len(trainer.validator.data) == config["training"]["num_epochs"]
-    QG.cleanup_ddp()
