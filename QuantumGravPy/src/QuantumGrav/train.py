@@ -15,6 +15,7 @@ from . import evaluate
 from . import early_stopping
 from . import gnn_model
 from . import dataset_ondisk
+from . import base
 
 import torch
 from torch_geometric.data import Data, Dataset
@@ -22,7 +23,7 @@ from torch_geometric.loader import DataLoader
 import optuna
 
 
-class Trainer:
+class Trainer(base.Configurable):
     """Trainer class for training and evaluating GNN models."""
 
     schema = {
@@ -35,7 +36,6 @@ class Trainer:
                 "description": "Python constructor spec: type(*args, **kwargs)",
                 "properties": {
                     "type": {
-                        "type": "string",
                         "description": "Fully-qualified import path or name of the type/callable to initialize",
                     },
                     "args": {
@@ -239,10 +239,7 @@ class Trainer:
                         "description": "Shuffle validation dataset",
                     },
                     "validator": {
-                        "anyOf": [
-                            {"$ref": "#/definitions/constructor"},
-                            evaluate.DefaultEvaluator.schema,
-                        ],
+                        "$ref": "#/definitions/constructor",
                         "description": "Validator constructor spec: provides type, args, kwargs",
                     },
                 },
@@ -281,30 +278,30 @@ class Trainer:
                         "description": "Shuffle test dataset",
                     },
                     "tester": {
-                        "anyOf": [
-                            {"$ref": "#/definitions/constructor"},
-                            evaluate.DefaultEvaluator.schema,
-                        ],
+                        "$ref": "#/definitions/constructor",
                         "description": "Tester constructor spec: provides type, args, kwargs",
                     },
                 },
                 "required": ["batch_size"],
                 "additionalProperties": True,
             },
-            "earlystopping": {
-                "anyOf": [
-                    {"$ref": "#/definitions/constructor"},
-                    early_stopping.DefaultEarlyStopping.schema,
-                ],
+            "early_stopping": {
+                "$ref": "#/definitions/constructor",
                 "description": "Early stopping constructor spec: provides type, args, kwargs",
             },
             "apply_model": {"description": "Optional method to build the "},
             "criterion": {
-                "descriptoin": "The loss function used for training as a python type"
+                "description": "The loss function used for training as a python type"
             },
         },
-        "required": ["training", "model", "validation", "testing", "criterion"],
-        "additionalProperties": False,
+        "required": [
+            "training",
+            "model",
+            "validation",
+            "testing",
+            "criterion",
+        ],
+        "additionalProperties": True,
     }
 
     def __init__(
@@ -354,6 +351,7 @@ class Trainer:
             / f"{config['model'].get('name', 'run')}_{run_date}"
         )
 
+        # set up paths for storing model snapshots and data
         if not self.data_path.exists():
             self.data_path.mkdir(parents=True)
         self.logger.info(f"Data path set to: {self.data_path}")
@@ -361,9 +359,43 @@ class Trainer:
         self.checkpoint_path = self.data_path / "model_checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.latest_checkpoint = None
-        # training and evaluation functions
-        self.model = None
-        self.optimizer = None
+
+        # model and optimizer initialization placeholders
+        self.model = self.initialize_model()
+        self.optimizer = self.initialize_optimizer()
+
+        # early stopping and evaluation functors
+        try:
+            self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
+                config["early_stopping"]
+            )
+        except Exception as _:
+            self.early_stopping = config["early_stopping"]["type"](
+                *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
+            )
+
+        try:
+            self.validator = evaluate.DefaultValidator.from_config(
+                config["validation"]["validator"]
+            )
+        except Exception as _:
+            self.validator = config["validation"]["validator"]["type"](
+                *config["validation"]["validator"]["args"],
+                **config["validation"]["validator"]["kwargs"],
+            )
+
+        # nothing needed here
+        try:
+            self.validator = evaluate.DefaultValidator.from_config(
+                config["testing"]["tester"]
+            )
+        except Exception as _:
+            self.tester = config["testing"]["tester"]["type"](
+                *config["testing"]["tester"]["args"],
+                **config["testing"]["tester"]["kwargs"],
+            )
+
+        # nothing needed here
 
         try:
             self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
@@ -403,14 +435,28 @@ class Trainer:
         self.logger.info("Trainer initialized")
         self.logger.debug(f"Configuration: {self.config}")
 
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "Trainer":
+        """Create a Trainer instance from a configuration dictionary.
+
+        Args:
+            config (Dict[str, Any]): The configuration dictionary.
+        """
+        return cls(
+            config=config,
+        )
+
     def initialize_model(self) -> Any:
         """Initialize the model for training.
 
         Returns:
             Any: The initialized model.
         """
-        if self.model is not None:
-            return self.model
+        if hasattr(self, "model") and self.model is not None:
+            self.logger.warning(
+                "Model is already initialized. This will replace it with a new instance"
+            )
+
         try:
             self.model = gnn_model.GNNModel.from_config(self.config["model"]).to(
                 self.device
@@ -434,13 +480,15 @@ class Trainer:
             torch.optim.Optimizer: The initialized optimizer.
         """
 
-        if self.model is None:
+        if not hasattr(self, "model") or self.model is None:
             raise RuntimeError(
                 "Model must be initialized before initializing optimizer."
             )
 
-        if self.optimizer is not None:
-            return self.optimizer
+        if hasattr(self, "optimizer") and self.optimizer is not None:
+            self.logger.warning(
+                "Optimizer is already initialized. This will replace it with a new instance"
+            )
 
         try:
             optimizer = self.config["training"].get("optimizer_type", torch.optim.Adam)(
@@ -454,25 +502,42 @@ class Trainer:
             self.logger.error(f"Error initializing optimizer: {e}")
         return self.optimizer
 
-    def prepare_dataloaders(
+    def prepare_dataset(
         self,
         dataset: Dataset | None = None,
         split: list[float] = [0.8, 0.1, 0.1],
         train_dataset: torch.utils.data.Subset | None = None,
         val_dataset: torch.utils.data.Subset | None = None,
         test_dataset: torch.utils.data.Subset | None = None,
-        training_sampler: torch.utils.data.Sampler | None = None,
-    ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-        """Prepare the data loaders for training, validation, and testing.
+    ) -> Tuple[Dataset, Dataset, Dataset]:
+        """Set up the split for training, validation, and testing datasets.
 
         Args:
-            dataset (Dataset): The dataset to prepare.
-            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
-            training_sampler (torch.utils.data.Sampler, optional): The sampler for the training data loader. Defaults to None.
+            dataset (Dataset | None, optional): Dataset to be split. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+            split (list[float], optional): split ratios for train, validation, and test datasets. Defaults to [0.8, 0.1, 0.1].
+            train_dataset (torch.utils.data.Subset | None, optional): Training subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+            val_dataset (torch.utils.data.Subset | None, optional): Validation subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+            test_dataset (torch.utils.data.Subset | None, optional): Testing subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+
+        Raises:
+            ValueError: If providing train, val, or test datasets, the full dataset must not be provided.
+            ValueError: If split ratios are not summing up to 1
+            ValueError: If train size is 0
+            ValueError: If validation size is 0
+            ValueError: If test size is 0
 
         Returns:
-            Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
+            Tuple[Dataset, Dataset, Dataset]: train, validation, and test datasets.
         """
+        if dataset is None and (
+            train_dataset is not None
+            or val_dataset is not None
+            or test_dataset is not None
+        ):
+            raise ValueError(
+                "If providing train, val, or test datasets, the full dataset must not be provided."
+            )
+
         if dataset is None:
             cfg = self.config["data"]
             dataset = dataset_ondisk.QGDataset(
@@ -499,6 +564,7 @@ class Trainer:
                 dataset.shuffle()
 
         if train_dataset is None and val_dataset is None and test_dataset is None:
+            split = self.config["data"].get("split", split)
             if not np.isclose(
                 np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
             ):
@@ -519,18 +585,44 @@ class Trainer:
             if test_size == 0:
                 raise ValueError("test size cannot be 0")
 
-            self.train_dataset, self.val_dataset, self.test_dataset = (
-                torch.utils.data.random_split(
-                    dataset, [train_size, val_size, test_size]
-                )
+            train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
+                dataset, [train_size, val_size, test_size]
             )
         else:
-            self.train_dataset, self.val_dataset, self.test_dataset = (
+            train_dataset, val_dataset, test_dataset = (
                 train_dataset,
                 val_dataset,
                 test_dataset,
             )
 
+        return train_dataset, val_dataset, test_dataset
+
+    def prepare_dataloaders(
+        self,
+        dataset: Dataset | None = None,
+        split: list[float] = [0.8, 0.1, 0.1],
+        train_dataset: torch.utils.data.Subset | None = None,
+        val_dataset: torch.utils.data.Subset | None = None,
+        test_dataset: torch.utils.data.Subset | None = None,
+        training_sampler: torch.utils.data.Sampler | None = None,
+    ) -> Tuple[DataLoader, DataLoader, DataLoader]:
+        """Prepare the data loaders for training, validation, and testing.
+
+        Args:
+            dataset (Dataset): The dataset to prepare.
+            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
+            training_sampler (torch.utils.data.Sampler, optional): The sampler for the training data loader. Defaults to None.
+
+        Returns:
+            Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
+        """
+        self.train_dataset, self.val_dataset, self.test_dataset = self.prepare_dataset(
+            dataset=dataset,
+            split=split,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
+        )
         train_loader = DataLoader(
             self.train_dataset,  # type: ignore
             batch_size=self.config["training"]["batch_size"],
@@ -812,9 +904,6 @@ class Trainer:
             ValueError: If the model configuration does not contain 'name'.
             ValueError: If the training configuration does not contain 'checkpoint_path'.
         """
-        if self.model is None:
-            raise ValueError("Model must be initialized before saving checkpoint.")
-
         self.logger.info(
             f"Saving checkpoint for model at epoch {self.epoch} to {self.checkpoint_path}"
         )
