@@ -384,9 +384,8 @@ class Trainer(base.Configurable):
                 **config["validation"]["validator"]["kwargs"],
             )
 
-        # nothing needed here
         try:
-            self.validator = evaluate.DefaultValidator.from_config(
+            self.tester = evaluate.DefaultTester.from_config(
                 config["testing"]["tester"]
             )
         except Exception as _:
@@ -394,40 +393,6 @@ class Trainer(base.Configurable):
                 *config["testing"]["tester"]["args"],
                 **config["testing"]["tester"]["kwargs"],
             )
-
-        # nothing needed here
-
-        try:
-            self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
-                config["early_stopping"]
-            )
-        except Exception as _:
-            self.early_stopping = config["early_stopping"]["type"](
-                *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
-            )
-
-        try:
-            self.validator = evaluate.DefaultValidator.from_config(
-                config["validation"]["validator"]
-            )
-        except Exception as _:
-            self.validator = config["validation"]["validator"]["type"](
-                *config["validation"]["validator"]["args"],
-                **config["validation"]["validator"]["kwargs"],
-            )
-
-        # nothing needed here
-        try:
-            self.validator = evaluate.DefaultValidator.from_config(
-                config["testing"]["tester"]
-            )
-        except Exception as _:
-            self.tester = config["testing"]["tester"]["type"](
-                *config["testing"]["tester"]["args"],
-                **config["testing"]["tester"]["kwargs"],
-            )
-
-        # nothing needed here
 
         with open(self.data_path / "config.yaml", "w") as f:
             yaml.dump(self.config, f)
