@@ -1,6 +1,8 @@
+from jsonschema import ValidationError
 import pytest
 import torch
 
+import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
 
@@ -12,6 +14,15 @@ import os
 import zarr
 from datetime import datetime
 from pathlib import Path
+from functools import partial
+import pandas as pd
+
+
+@pytest.fixture()
+def setup_ddp():
+    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
+    yield
+    QG.cleanup_ddp()
 
 
 @pytest.fixture
@@ -21,18 +32,79 @@ def tmppath(tmp_path_factory):
 
 
 @pytest.fixture
-def config(model_config_eval, tmppath):
+def model_config_eval():
+    config = {
+        "encoder_type": QG.models.GNNBlock,
+        "encoder_args": [2, 32],
+        "encoder_kwargs": {
+            "dropout": 0.3,
+            "gnn_layer_type": torch_geometric.nn.conv.GCNConv,
+            "normalizer_type": torch.nn.BatchNorm1d,
+            "activation_type": torch.nn.ReLU,
+            "gnn_layer_args": [],
+            "gnn_layer_kwargs": {"cached": False, "bias": True, "add_self_loops": True},
+            "norm_args": [32],
+            "norm_kwargs": {"eps": 1e-5, "momentum": 0.2},
+            "skip_args": [2, 32],
+            "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
+        },
+        # After two pooling ops concatenated along dim=1, encoder output 32 -> 64 input to heads
+        "downstream_tasks": [
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 2)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+            [
+                QG.models.LinearSequential,
+                [
+                    [(64, 24), (24, 18), (18, 3)],
+                    [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
+                ],
+                {
+                    "linear_kwargs": [
+                        {"bias": True},
+                        {"bias": True},
+                        {"bias": False},
+                    ],
+                    "activation_kwargs": [{"inplace": False}, {}, {}],
+                },
+            ],
+        ],
+        "pooling_layers": [
+            [torch_geometric.nn.global_mean_pool, [], {}],
+            [torch_geometric.nn.global_max_pool, [], {}],
+        ],
+        "aggregate_pooling_type": partial(torch.cat, dim=1),
+        "active_tasks": {0: True, 1: True},
+    }
+    return config
+
+
+@pytest.fixture
+def config(model_config_eval, tmppath, create_data_zarr, read_data):
+    datadir, datafiles = create_data_zarr
     cfg = {
         "training": {
             "seed": 42,
             # training loop
             "device": "cpu",
-            "early_stopping_patience": 10,
             "checkpoint_at": 20,
-            "path": tmppath,
+            "path": str(tmppath),
             # optimizer
-            "learning_rate": 0.001,
-            "weight_decay": 0.0001,
+            "optimizer_type": torch.optim.Adam,
+            "optimizer_args": [],
+            "optimizer_kwargs": {"lr": 0.001, "weight_decay": 0.0},
             # training loader
             "batch_size": 4,
             "num_workers": 0,
@@ -41,13 +113,32 @@ def config(model_config_eval, tmppath):
             "num_epochs": 13,
             # "prefetch_factor": 2,
         },
+        "data": {
+            "pre_transform": lambda x: x,
+            "transform": lambda x: x,
+            "pre_filter": lambda x: True,
+            "reader": read_data,
+            "files": [str(f) for f in datafiles],
+            "output": str(datadir),
+            "validate_data": True,
+            "n_processes": 2,
+            "chunksize": 10,
+            "shuffle": False,
+            "split": [0.8, 0.1, 0.1],
+        },
         "model": model_config_eval,
+        "criterion": compute_loss,
         "validation": {
             "batch_size": 1,
             "num_workers": 0,
             "pin_memory": False,
             "drop_last": False,
             "shuffle": True,
+            "validator": {
+                "type": DummyEvaluator,
+                "args": [],
+                "kwargs": {},
+            },
         },
         "testing": {
             "batch_size": 1,
@@ -55,6 +146,36 @@ def config(model_config_eval, tmppath):
             "pin_memory": False,
             "drop_last": False,
             "shuffle": False,
+            "tester": {
+                "type": DummyEvaluator,
+                "args": [],
+                "kwargs": {},
+            },
+        },
+        "early_stopping": {
+            "type": QG.early_stopping.DefaultEarlyStopping,
+            "args": [
+                {
+                    0: {
+                        "delta": 1e-2,
+                        "metric": "loss",
+                        "grace_period": 8,
+                        "init_best_score": 1000000.0,
+                        "mode": "min",
+                    },
+                    1: {
+                        "delta": 1e-4,
+                        "metric": "other_loss",
+                        "grace_period": 10,
+                        "init_best_score": -1000000.0,
+                        "mode": "max",
+                    },
+                },
+                12,
+            ],
+            "kwargs": {
+                "mode": "any",
+            },
         },
         "parallel": {
             "world_size": 1,
@@ -63,8 +184,6 @@ def config(model_config_eval, tmppath):
             "backend": "gloo",
         },
     }
-
-    cfg["model"]["name"] = "GNNModel"
 
     return cfg
 
@@ -77,32 +196,29 @@ def broken_config(config):
     return cfg
 
 
+# this is needed for testing the full training loop
 class DummyEvaluator:
     def __init__(self):
-        self.data = []
+        self.data = pd.DataFrame(columns=["loss", "other_loss"])
 
     def validate(self, model, data_loader):
-        # Dummy validation logic
-        return [torch.rand(1)]
+        # Dummy test logic
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
 
     def test(self, model, data_loader):
         # Dummy test logic
-        return [torch.rand(1)]
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
 
     def report(self, losses: list):  # type: ignore
-        avg = np.mean(losses)
-        sigma = np.std(losses)
-        print(f"Validation average loss: {avg}, Standard deviation: {sigma}")
-        self.data.append((avg, sigma))
-
-
-class DummyEarlyStopping:
-    def __init__(self):
-        self.best_score = np.inf
-        self.found_better_model = False
-
-    def __call__(self, _) -> bool:
-        return False
+        print("DummyEvaluator report:", losses, self.data.tail(1))
 
 
 def compute_loss(x: dict[int, torch.Tensor], data: Data, trainer) -> torch.Tensor:
@@ -150,6 +266,7 @@ def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
 
 
 def test_initialize_ddp():
+    """Test that DDP initialization works correctly."""
     QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
     assert os.environ["MASTER_ADDR"] == "localhost"
     assert os.environ["MASTER_PORT"] == "23456"
@@ -164,67 +281,38 @@ def test_initialize_ddp():
     assert torch.distributed.is_initialized() is False
 
 
-def test_trainer_ddp_creation_works(config):
+def test_trainer_ddp_creation_works(config, setup_ddp):
+    """Test that TrainerDDP can be created with a valid config."""
+    assert torch.distributed.is_initialized(), (
+        "Distributed process group was not initialized"
+    )
     trainer = QG.TrainerDDP(
         1,
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     assert trainer.rank == 1
     assert trainer.device == torch.device("cpu")
     assert trainer.world_size == 1
+    QG.cleanup_ddp()
+    assert torch.distributed.is_initialized() is False
+    assert trainer.model is not None
 
 
 def test_trainer_ddp_creation_broken(broken_config):
-    with pytest.raises(
-        ValueError, match="Configuration must contain 'parallel' section for DDP."
-    ):
+    """Test that TrainerDDP raises ValidationError when created with a broken config."""
+    with pytest.raises(ValidationError, match="is a required property"):
         QG.TrainerDDP(
             1,
             broken_config,
-            compute_loss,
-            apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-            early_stopping=None,
-            validator=None,
-            tester=None,
         )
 
 
-def test_trainer_ddp_init_model(config):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
-
+def test_trainer_ddp_prepare_dataloaders(make_dataset, config, setup_ddp):
+    """Test the prepare_dataloaders method of TrainerDDP."""
     trainer = QG.TrainerDDP(
         0,
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
-    )
-
-    trainer.initialize_model()
-    assert trainer.model is not None
-
-    QG.cleanup_ddp()
-
-
-def test_trainer_ddp_prepare_dataloaders(make_dataset, config):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
-
-    trainer = QG.TrainerDDP(
-        0,
-        config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=None,
-        validator=None,
-        tester=None,
     )
 
     train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
@@ -235,35 +323,29 @@ def test_trainer_ddp_prepare_dataloaders(make_dataset, config):
     assert isinstance(trainer.val_sampler, torch.utils.data.DistributedSampler)
     assert isinstance(trainer.test_sampler, torch.utils.data.DistributedSampler)
 
-    assert len(train_loader) == 2
-    assert len(val_loader) == 2
-    assert len(test_loader) == 3
-
-    QG.cleanup_ddp()
+    assert len(train_loader) == 3
+    assert len(val_loader) == 1
+    assert len(test_loader) == 2
 
 
-def test_trainer_ddp_check_model_status(config, make_dataloader):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
+def test_trainer_ddp_check_model_status(config, setup_ddp):
+    """Test the _check_model_status method of TrainerDDP. We can't really test multi-processing here, so we just test the basic logic that's forwarded from Trainer"""
+
+    loss = np.random.rand(10).tolist()
+    other__loss = np.random.rand(10).tolist()
+    data = pd.DataFrame({"loss": loss, "other_loss": other__loss})
 
     trainer = QG.TrainerDDP(
         0,
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=DummyEarlyStopping(),
-        validator=DummyEvaluator(),  # type: ignore
-        tester=DummyEvaluator(),  # type: ignore
     )
     trainer.initialize_model()
-    loss = np.random.rand(10).tolist()
-
     trainer.epoch = 1
-    saved = trainer._check_model_status(loss)
+    saved = trainer._check_model_status(data)
     assert saved is False
 
     trainer.early_stopping = lambda x: True
-    loss = np.random.rand(10).tolist()
-    saved = trainer._check_model_status(loss)
+    saved = trainer._check_model_status(data)
 
     assert saved is True
 
@@ -279,23 +361,16 @@ def test_trainer_ddp_check_model_status(config, make_dataloader):
     assert "config.yaml" in file_content
     assert "model_checkpoints" in file_content
 
-    QG.cleanup_ddp()
 
-
-def test_trainer_ddp_run_training(config, make_dataset):
-    QG.initialize_ddp(0, 1, "localhost", "23456", "gloo")
+def test_trainer_ddp_run_training(config, make_dataset, setup_ddp):
+    """Test the run_training method of TrainerDDP. We can't really test multi-processing here, so we just test the basic logic that's forwarded from Trainer"""
     trainer = QG.TrainerDDP(
         0,
         config,
-        compute_loss,
-        apply_model=lambda model, data: model(data.x, data.edge_index, data.batch),
-        early_stopping=DummyEarlyStopping(),
-        validator=DummyEvaluator(),  # type: ignore
-        tester=DummyEvaluator(),  # type: ignore
     )
 
     train_loader, validation_loader, _ = trainer.prepare_dataloaders(
-        make_dataset, split=[0.8, 0.1, 0.1]
+        make_dataset,
     )
 
     training_data, valid_data = trainer.run_training(train_loader, validation_loader)
@@ -307,4 +382,3 @@ def test_trainer_ddp_run_training(config, make_dataset):
 
     assert len(training_data[0]) == config["training"]["num_epochs"]
     assert len(trainer.validator.data) == config["training"]["num_epochs"]
-    QG.cleanup_ddp()

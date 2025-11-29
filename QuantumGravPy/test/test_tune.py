@@ -3,7 +3,7 @@ from QuantumGrav.QGTune import tune
 from QuantumGrav import config_utils as cfg
 import optuna
 import yaml
-from QuantumGrav.gnn_block import GNNBlock
+from QuantumGrav.models.gnn_block import GNNBlock
 from torch_geometric.nn.conv.sage_conv import SAGEConv
 import copy
 
