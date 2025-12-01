@@ -40,7 +40,7 @@ from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .linear_sequential import LinearSequential
 from .early_stopping import DefaultEarlyStopping
 
-from .load_zarr import zarr_to_dict
+from .load_zarr import zarr_group_to_dict, zarr_file_to_dict
 
 __all__ = [
     # julia interface
@@ -90,5 +90,6 @@ __all__ = [
     "get_loader",
     "ConfigHandler",
     # zarr loading
-    "zarr_to_dict",
+    "zarr_file_to_dict",
+    "zarr_group_to_dict",
 ]

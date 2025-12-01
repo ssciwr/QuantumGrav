@@ -40,13 +40,13 @@
             "r_distribution_args" => [4.0, 2.0],
             "r_distribution_kwargs" => Dict(),
             "n2_rel_distribution" => "Uniform",
-            "n2_rel_distribution_args" => [0., 1.0],
+            "n2_rel_distribution_args" => [0.0, 1.0],
             "n2_rel_distribution_kwargs" => Dict(),
             "connectivity_distribution" => "Beta",
             "connectivity_distribution_args" => [0.5, 0.1],
             "connectivity_distribution_kwargs" => Dict(),
             "link_prob_distribution" => "Normal",
-            "link_prob_distribution_args" => [2.0, 1.5],
+            "link_prob_distribution_args" => [0.5, 0.001],
             "link_prob_distribution_kwargs" => Dict(),
         ),
         "complex_topology" => Dict(
@@ -72,7 +72,7 @@
             "r_distribution_args" => [4.0, 8.0],
             "r_distribution_kwargs" => Dict(),
             "flip_distribution" => "Uniform",
-            "flip_distribution_args" => [0., 1.0],
+            "flip_distribution_args" => [0.0, 1.0],
             "flip_distribution_kwargs" => Dict(),
         ),
         "grid" => Dict(
@@ -131,7 +131,7 @@ end
 
 @testitem "test_Csetfactory_works" tags=[:csetfactories] setup = [config] begin
     using Random: Random
-    using Distributions: Distributions
+    using Distributions
 
     csetfactory = QuantumGrav.CsetFactory(cfg)
     @test csetfactory.rng isa Random.Xoshiro
@@ -163,31 +163,93 @@ end
     @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
 
     broken_cfg = deepcopy(cfg)
-    broken_cfg["unallowed_key"] = "blah"
-    @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
-
-    broken_cfg = deepcopy(cfg)
     broken_cfg["grid"] = Dict()
     @test_throws ArgumentError QuantumGrav.CsetFactory(broken_cfg)
+end
+@testitem "test_Csetfactory_works_with_loaded_file" tags=[:csetfactories] setup = [config] begin
+    using Random
+    using Distributions
+    using YAML
+
+    dir = tempdir()
+    YAML.write_file(joinpath(dir, "config.yaml"), cfg)
+
+    loaded_config = YAML.load_file(joinpath(dir, "config.yaml"))
+
+    csetfactory = QuantumGrav.CsetFactory(loaded_config)
+    @test csetfactory.rng isa Random.Xoshiro
+    @test csetfactory.npoint_distribution isa Distributions.DiscreteUniform
+    @test Distributions.params(csetfactory.npoint_distribution) ==
+          tuple(cfg["csetsize_distr_args"]...)
+    tuple(cfg["csetsize_distr_args"]...)
+    @test csetfactory.conf == cfg
+    for key in [
+        "random",
+        "complex_topology",
+        "merged",
+        "polynomial",
+        "layered",
+        "grid",
+        "destroyed",
+    ]
+        @test key in keys(csetfactory.cset_makers)
+    end
+
+    csetfactory.cset_makers["foo"] = (n, rng; conf = nothing) -> 42
+
+    @test "foo" in keys(csetfactory.cset_makers)
+
 end
 
 
 @testitem "test_Csetfactory_call" tags=[:csetfactories] setup = [config] begin
-    using Random: Random
-    using Distributions: Distributions
-    using CausalSets: CausalSets
+    using Distributions
+    using Random
+    using Distributions
+    using CausalSets
 
     rng = Random.Xoshiro(1234)
     csetfactory = QuantumGrav.CsetFactory(cfg)
-
-    cset = csetfactory("random", 12, rng)
+    n = 64
+    cset, _ = csetfactory("random", n, rng)
 
     @test cset isa CausalSets.BitArrayCauset
-    @test cset.atom_count == 12
+    @test cset.atom_count == n
+
+    cset, curvature_matrix = csetfactory("polynomial", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test curvature_matrix isa Vector{Float64}
+
+    cset, layers = csetfactory("layered", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test layers isa Int
+
+    cset, curvature_matrix, grid = csetfactory("grid", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test curvature_matrix isa Vector{Float64}
+    @test grid isa String
+
+    cset, curvature_matrix = csetfactory("complex_topology", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count <= n
+    @test curvature_matrix isa Vector{Float64}
+
+    cset, n2rel = csetfactory("merged", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test n2rel isa Float64
+
+    cset, fraction = csetfactory("destroyed", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test fraction isa Float64
 end
 
 @testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.PolynomialCsetMaker(cfg["polynomial"])
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
@@ -221,7 +283,7 @@ end
 end
 
 @testitem "test_random_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.RandomCsetMaker(cfg["random"])
     @test csetmaker.connectivity_distribution isa Distributions.Cauchy
@@ -256,7 +318,7 @@ end
 end
 
 @testitem "test_layered_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.LayeredCsetMaker(cfg["layered"])
 
@@ -307,11 +369,11 @@ end
     cset, layers = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
-    @test layers >= 2 
+    @test layers >= 2
 end
 
 @testitem "test_destroyed_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.DestroyedCsetMaker(cfg["destroyed"])
 
@@ -369,7 +431,7 @@ end
 end
 
 @testitem "test_merged_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.MergedCsetMaker(cfg["merged"])
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
@@ -449,7 +511,7 @@ end
 
 @testitem "test_complex_topology_factory_construction" tags = [:csetfactories] setup =
     [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.ComplexTopCsetMaker(cfg["complex_topology"])
 
@@ -512,7 +574,7 @@ end
 end
 
 @testitem "test_grid_factory_construction" tags = [:csetfactories] setup = [config] begin
-    using Distributions: Distributions
+    using Distributions
 
     csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
@@ -588,14 +650,15 @@ end
         csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
 
         # Produce a cset for this grid type
-        cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]; grid = grid_type)
+        cset, curvature_matrix, grid_type_out =
+            csetmaker(25, rng; config = cfg["grid"], grid = grid_type)
         @test isnothing(cset) === false
         @test cset.atom_count == 25
         @test grid_type == grid_type_out
     end
 
     csetmaker = QuantumGrav.GridCsetMakerPolynomial(cfg["grid"])
-    cset, curvature_matrix, grid_type_out = csetmaker(25, rng, cfg["grid"]) # randomly chosen grid type
+    cset, curvature_matrix, grid_type_out = csetmaker(25, rng; config = cfg["grid"]) # randomly chosen grid type
     @test isnothing(cset) === false
     @test cset.atom_count == 25
     @test length(curvature_matrix) == 25

@@ -31,9 +31,40 @@ def make_test_zarr(tmp_path):
         shutil.rmtree(zarr_path)
 
 
+def test_load_zarr_from_group(make_test_zarr):
+    """Test loading a zarr subgroup into a nested dict."""
+
+    store = zarr.storage.LocalStore(make_test_zarr, read_only=True)
+    root = zarr.open_group(store=store, mode="r")
+
+    dict_to_check = {
+        "group1": {
+            "array1": np.array([1, 2, 3]),
+            "array2": np.array([[1, 2], [3, 4]]),
+        },
+        "group2": {"subgroup": {"array3": np.array([5, 6, 7, 8])}},
+    }
+
+    tgt = dict()
+    QG.zarr_group_to_dict(root, tgt)
+
+    assert "group1" in tgt
+    assert "group2" in tgt
+    assert "array1" in tgt["group1"]
+    assert "array2" in tgt["group1"]
+    assert "subgroup" in tgt["group2"]
+    assert "array3" in tgt["group2"]["subgroup"]
+    assert np.array_equal(tgt["group1"]["array1"], dict_to_check["group1"]["array1"])
+    assert np.array_equal(tgt["group1"]["array2"], dict_to_check["group1"]["array2"])
+    assert np.array_equal(
+        tgt["group2"]["subgroup"]["array3"],
+        dict_to_check["group2"]["subgroup"]["array3"],
+    )
+
+
 def test_load_zarr_dict(make_test_zarr):
     """Test loading a zarr store into a nested dict."""
-    zarr_dict = QG.zarr_to_dict(make_test_zarr)
+    zarr_dict = QG.zarr_file_to_dict(make_test_zarr)
     dict_to_check = {
         "group1": {
             "array1": np.array([1, 2, 3]),
@@ -65,7 +96,7 @@ def test_load_zarr_empty(tmp_path):
     store = zarr.storage.LocalStore(tmp_path / "empty.zarr")
     zarr.group(store=store, overwrite=True)
 
-    zarr_dict = QG.zarr_to_dict(tmp_path / "empty.zarr")
+    zarr_dict = QG.zarr_file_to_dict(tmp_path / "empty.zarr")
     assert zarr_dict == {}
 
 
@@ -77,7 +108,7 @@ def test_load_only_arrays(tmp_path):
     root.create_array("array1", data=np.array([1, 2, 3]))
     root.create_array("array2", data=np.array([[1, 2], [3, 4]]))
 
-    zarr_dict = QG.zarr_to_dict(tmp_path / "only_arrays.zarr")
+    zarr_dict = QG.zarr_file_to_dict(tmp_path / "only_arrays.zarr")
     np.testing.assert_array_equal(zarr_dict["array1"], np.array([1, 2, 3]))
     np.testing.assert_array_equal(zarr_dict["array2"], np.array([[1, 2], [3, 4]]))
 
@@ -90,6 +121,6 @@ def test_load_nd_arrays(tmp_path):
     root.create_array("array1", data=np.random.rand(3, 4, 9))
     root.create_array("array2", data=np.random.rand(2, 3, 4, 3, 6))
 
-    zarr_dict = QG.zarr_to_dict(tmp_path / "nd_arrays.zarr")
+    zarr_dict = QG.zarr_file_to_dict(tmp_path / "nd_arrays.zarr")
     assert "array1" in zarr_dict
     assert "array2" in zarr_dict
