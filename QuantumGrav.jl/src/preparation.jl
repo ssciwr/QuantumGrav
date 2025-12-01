@@ -1,6 +1,6 @@
 
 """
-    copy_sourcecode(funcs_to_copy::Vector{Any}, targetpath::String)
+	copy_sourcecode(funcs_to_copy::Vector{Any}, targetpath::String)
 
 Copy the sourcecode files of the functions in the arguments to a targetpath.
 
@@ -25,13 +25,13 @@ function copy_sourcecode(funcs_to_copy::Vector, targetpath::String)
 end
 
 """
-    get_git_info!(config::Dict{String, Any})
+	get_git_info!(config::AbstractDict)
 Get git info (branch, source, tree_hash) of the QuantumGrav package
 
 # Arguments
-config::Dict{String, Any} Config dictionary to put the git data into
+config::AbstractDict Config dictionary to put the git data into
 """
-function get_git_info!(config::Dict{String,Any})
+function get_git_info!(config::AbstractDict)
     pkg_id = Base.identify_package("QuantumGrav")
 
     if pkg_id === nothing
@@ -55,7 +55,7 @@ function get_git_info!(config::Dict{String,Any})
 end
 
 """
-    prepare_dataproduction(config::Dict{String, Any}, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
+	prepare_dataproduction(config::AbstractDict, funcs_to_copy::Vector{Any})::Tuple{str, Zarr.DirectoryStore}
 
 Prepare the data production process from the config dict supplied.
 - create a target directory
@@ -65,15 +65,19 @@ Prepare the data production process from the config dict supplied.
 - create a zarr directorystore based on the config file.
 
 # Arguments
-config::Dict{String, Any} Config file defining the data generation system
+config::AbstractDict Config file defining the data generation system
 funcs_to_copy::Vector{Any} Functions which are to be used and whose source files are to be copied to be retained
+
+# Keyword arguments
+name::String Prefix for the created zarr file. Will be followed by the caller process pid and the date in yyyy-mm-dd_HH-MM-SS
 
 # Returns
 Tuple{String, Zarr.DirectoryStore} The path to the output file and the output file itself.
 """
 function prepare_dataproduction(
-    config::Dict{String,Any},
-    funcs_to_copy::Vector,
+    config::AbstractDict,
+    funcs_to_copy::Vector;
+    name::String = "data",
 )::Tuple{String,Zarr.DirectoryStore}
     # consistency checks
     for key in ["num_datapoints", "output", "seed"]
@@ -106,14 +110,16 @@ function prepare_dataproduction(
     YAML.write_file(
         joinpath(
             abspath(expanduser(config["output"])),
-            "config_$(getpid())_$(datetime).yaml",
+            "$(name)_$(getpid())_$(datetime).yaml",
         ),
         config,
     )
 
     # create the output file
-    filepath =
-        joinpath(abspath(expanduser(config["output"])), "data_$(getpid())_$(datetime).zarr")
+    filepath = joinpath(
+        abspath(expanduser(config["output"])),
+        "$(name)_$(getpid())_$(datetime).zarr",
+    )
 
     file = Zarr.DirectoryStore(filepath)
 

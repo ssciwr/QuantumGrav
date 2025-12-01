@@ -388,7 +388,6 @@ def test_load_yaml_invalid(tmp_path):
 
 
 def test_load_yaml_valid(get_config_file):
-
     config = tune.load_yaml(get_config_file)
 
     assert "model" in config
