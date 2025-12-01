@@ -522,10 +522,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#onthefly-dataset" class="md-nav__link">
+  <a href="#indexing-and-subsetting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        OntheFly dataset
+        Indexing and subsetting
       
     </span>
   </a>
@@ -735,10 +735,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#onthefly-dataset" class="md-nav__link">
+  <a href="#indexing-and-subsetting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        OntheFly dataset
+        Indexing and subsetting
       
     </span>
   </a>
@@ -787,13 +787,14 @@ For practicality, this should be the same in each stored array.</p>
 <p>A <code>reader</code> function that reads the raw data to construct a single cset/graph/sample.</p>
 </li>
 <li>
-<p>A <code>pre_transform</code> function which builds the actual <code>Data</code> object. This will be executed only once when you open the dataset path.  Internally, the dataset will create a directory named <code>processed</code> which will contain the processed files, one for each cset. The precence of this directory is used to determine if <code>pre_transform</code> is executed again, so you can go to the directory and delete <code>processed</code> or rename it to trigger a new processing run.</p>
+<p>A <code>pre_transform</code> function which builds the actual <code>Data</code> object. This will be executed only once when you open the dataset path.  Internally, the dataset will create a directory named <code>processed</code> which will contain the processed files, one for each cset. The precence of this directory is used to determine if <code>pre_transform</code> is executed again, so you can go to the directory and delete <code>processed</code> or rename it to trigger a new processing run. The <code>pre_transform</code> function is optional, it defaults to <code>None</code> and you don't have to provide it. This can be useful when you experiment a lot with different compositions, subsets or transformations. The <code>pre_transform</code> function is optional, it defaults to <code>None</code> and you don't have to provide it. This can be useful when you experiment a lot with different compositions, subsets or transformations.
+If not supplied, the dataset will return the return value of the <code>reader</code> function for each loaded datapoint.</p>
 </li>
 <li>
-<p>A <code>pre_filter</code> function which filters out undesired raw samples and only lets a subset through to be processed by <code>pre_transform</code>. The semantics is the same as <code>pre_transform</code>, and the two will always be executed together.</p>
+<p>A <code>pre_filter</code> function which filters out undesired raw samples and only lets a subset through to be processed by <code>pre_transform</code>. The semantics is the same as <code>pre_transform</code>, and the two will always be executed together. Like the <code>pre_transform</code> function, the <code>pre_filter</code> function is optional. Not supplying it will make the dataset use every datapoint regardless of properties. <code>pre_filter</code> and <code>pre_transform</code> function independently, only when both are <code>None</code> is the cached pre-processing not triggered.</p>
 </li>
 <li>
-<p>A <code>transform</code> function which is executed each time the dataset path on disk is opened, and can be used to execute all data transformations that would need to be carried out each time a dataset is loaded.</p>
+<p>A <code>transform</code> function which is executed each time a datapoint is loaded from disk. This works well when doing experimentations with different data transformations or for augmentation on the fly.</p>
 </li>
 </ul>
 <p>The last three are part of <code>pytorch</code>/<code>pytorch_geometric</code>'s <code>Dataset</code> API, so check out the respective documentation to learn more about them.</p>
@@ -904,7 +905,8 @@ or we can filter out some targets:</p>
 <p>The <code>transform</code> function follows the same principle, so we don't show it explicitly here and just set it to a no-op:
 <div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">transform</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span>
 </span></code></pre></div>
-Now, we can put together our dataset. Upon first instantiation, it will pre-process the data in the files given as <code>input</code> into <code>Data</code> objects and store them individually in a directory <code>output/processed</code>. As long as it sees this directory, it will not process any files again when another dataset is opend with the same output path. Data procesessing will be parallelized over the number of processes given as <code>n_processes</code>, and <code>chunk_size</code> many samples will be processed at once.</p>
+Note how the <code>reader</code> function returns a dictionary, while the <code>pre_transform</code> function builds the data object that <code>pytorch_geometric</code> works with. If <code>pre_transform</code> is not given, a dataset would load datapoints as <code>dicts</code>.</p>
+<p>Now, we can put together our dataset. Upon first instantiation, it will pre-process the data in the files given as <code>input</code> into <code>Data</code> objects and store them individually in a directory <code>output/processed</code>. As long as it sees this directory, it will not process any files again when another dataset is opend with the same output path. Data procesessing will be parallelized over the number of processes given as <code>n_processes</code>, and <code>chunk_size</code> many samples will be processed at once.</p>
 <p><div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">QGDataset</span><span class="p">(</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="nb">input</span><span class="p">,</span>
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">output</span><span class="p">,</span>
@@ -918,8 +920,18 @@ Now, we can put together our dataset. Upon first instantiation, it will pre-proc
 </span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="p">)</span>
 </span></code></pre></div>
 Here we use 12 processes which process the data in chunks of 5000 samples before loading the next 5000 using the <code>reader</code> function, processing them and so on.</p>
-<h2 id="onthefly-dataset">OntheFly dataset</h2>
-<p>We will rarely use this, so no explicit example is provided. You can check out the <code>test_ontheflydataset.py</code> test file to see how it is used in principle.</p>
+<h2 id="indexing-and-subsetting">Indexing and subsetting</h2>
+<p>To index into an existing dataset, use the normal <code>[]</code> operator with either a range or an integer:
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">datapoint</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">42</span><span class="p">]</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">range_of_datapoints</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">42</span><span class="p">:</span><span class="mi">84</span><span class="p">]</span>
+</span></code></pre></div></p>
+<p>Note that the dataset internally treats all supplied files as one consecutive range of datapoints, in the order they are given!</p>
+<p>Since the <code>QGDataset</code> is a torch dataset under the hood, it works together with <a href="https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.Subset">torch's subset functionality</a>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">subset</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Subset</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">4</span><span class="p">:</span><span class="mi">100</span><span class="p">)</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">random_subset</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Subste</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">99</span><span class="p">,</span> <span class="mi">25</span><span class="p">))</span>
+</span></code></pre></div>
+<p>This can help with dataset splitting for, e.g., k-fold cross validation or other tasks where splitting a dataset into multiple groups are needed.</p>
 
 
 
