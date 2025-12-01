@@ -3,6 +3,7 @@ import juliacall as jcall
 from pathlib import Path
 import zarr
 import numpy as np
+from typing import Callable, Type, Dict, Any
 
 import QuantumGrav as QG
 
@@ -225,13 +226,12 @@ def create_data_zarr(create_data_zarr_basic):
 
 
 @pytest.fixture
-def read_data():
-    def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
+def read_data_dict():
+    def reader(
+        f: zarr.Group, idx: int, float_dtype: Type, int_dtype: Type, validate: Callable
+    ) -> Dict[Any, Any]:
         adj_raw = f["adjacency_matrix"][idx, :, :]
         adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
-        edge_index, edge_weight = dense_to_sparse(adj_matrix)
-        adj_matrix = adj_matrix.to_sparse()
-        node_features = []
 
         # Path lengths
         max_path_future = torch.tensor(
@@ -241,11 +241,30 @@ def read_data():
         max_path_past = torch.tensor(
             f["max_pathlen_past"][idx, :], dtype=float_dtype
         ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-        node_features.extend([max_path_future, max_path_past])
+
+        return {
+            "adj": adj_matrix,
+            "max_path_future": max_path_future,
+            "max_path_past": max_path_past,
+            "dimension": f["dimension"][idx],
+        }
+
+    return reader
+
+
+@pytest.fixture
+def read_data(read_data_dict):
+    def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
+        datadict = read_data_dict(f, idx, float_dtype, int_dtype, validate)
+
+        adj_matrix = torch.tensor(datadict["adj"], dtype=float_dtype)
+        edge_index, edge_weight = dense_to_sparse(adj_matrix)
+        node_features = []
+        node_features.extend([datadict["max_path_future"], datadict["max_path_past"]])
 
         x = torch.cat(node_features, dim=1)
 
-        dimension = f["dimension"][idx]
+        dimension = datadict["dimension"]
 
         if isinstance(dimension, np.ndarray):
             value_list = [

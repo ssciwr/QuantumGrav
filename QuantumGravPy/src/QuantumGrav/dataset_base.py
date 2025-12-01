@@ -11,6 +11,7 @@ from pathlib import Path
 from collections.abc import Callable, Collection
 from joblib import delayed, Parallel
 from typing import Sequence
+import numpy as np
 
 
 class QGDatasetBase:
@@ -30,9 +31,9 @@ class QGDatasetBase:
         validate_data: bool = True,
         n_processes: int = 1,
         chunksize: int = 1000,
-        **kwargs,
+        preprocess: bool = False,
     ):
-        """Initialize a DatasetMixin instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets. It provides a common interface for both in-memory and on-disk datasets. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
+        """Initialize a QGDatasetBase instance. This class is designed to provide some common functionality that can be used by downstream datasets built on top of torch dataset classes. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
@@ -43,6 +44,7 @@ class QGDatasetBase:
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
             n_processes (int, optional): The number of processes to use for parallel processing of read data. Defaults to 1.
             chunksize (int, optional): The size of the chunks to process in parallel. Defaults to 1000.
+            preprocess: (bool, optional): Whether datapreprocessing should happen and the results be stored on disk. Defaults to False.
 
         Raises:
             ValueError: If one of the input data files does not exist
@@ -65,20 +67,25 @@ class QGDatasetBase:
         self.validate_data = validate_data
         self.n_processes = n_processes
         self.chunksize = chunksize
+        self.preprocess = preprocess
 
         # get the number of samples in the dataset
         self._num_samples = 0
-
+        num_samples_per_file = []
         for filepath in self.input:
             if not Path(filepath).exists():
                 raise FileNotFoundError(f"Input file {filepath} does not exist.")
-            self._num_samples += self._get_num_samples_per_file(filepath)
+            n = self._get_num_samples_per_file(filepath)
+            num_samples_per_file.append(n)
+            self._num_samples += n
+
+        self._num_samples_per_file = np.stack(num_samples_per_file, axis=0)
 
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
                 self.metadata = yaml.load(f, Loader=yaml.FullLoader)
-        else:
+        elif preprocess:
             Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
             self.metadata = {
                 "num_samples": int(self._num_samples),
@@ -89,12 +96,16 @@ class QGDatasetBase:
                 "validate_data": self.validate_data,
                 "n_processes": self.n_processes,
                 "chunksize": self.chunksize,
+                "preprocess": self.preprocess,
             }
 
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
                 yaml.dump(self.metadata, f)
+        else:
+            # do nothing here b/c this branch doesn't need any action
+            pass
 
-    def _get_num_samples_per_file(self, filepath: str | Path) -> int:
+    def _get_num_samples_per_file(self, filepath: str | Path) -> int | np.ndarray:
         """Get the number of samples in a given file.
 
         Args:
