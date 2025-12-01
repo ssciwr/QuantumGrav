@@ -33,7 +33,7 @@ class QGDatasetBase:
         chunksize: int = 1000,
         preprocess: bool = False,
     ):
-        """Initialize a DatasetMixin instance. This class is designed to handle the provide some common functionality that can be used by downstream datasets build on top of torch dataset classes. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
+        """Initialize a QGDatasetBase instance. This class is designed to provide some common functionality that can be used by downstream datasets built on top of torch dataset classes. It is not to be instantiated directly, but rather used as a mixin for other dataset classes.
 
         Args:
             input (list[str  |  Path] : The list of input files for the dataset, or a callable that generates a set of input files.
@@ -44,7 +44,7 @@ class QGDatasetBase:
             validate_data (bool, optional): Whether to validate the data after loading. Defaults to True.
             n_processes (int, optional): The number of processes to use for parallel processing of read data. Defaults to 1.
             chunksize (int, optional): The size of the chunks to process in parallel. Defaults to 1000.
-            preprocess: (bool, optional): Whether datapreprocessing should happend and the results be stored on disk. Defaults to false
+            preprocess: (bool, optional): Whether datapreprocessing should happen and the results be stored on disk. Defaults to False.
 
         Raises:
             ValueError: If one of the input data files does not exist
@@ -102,7 +102,7 @@ class QGDatasetBase:
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
                 yaml.dump(self.metadata, f)
         else:
-            # do nothing here b/c this branch doesn´t need any action
+            # do nothing here b/c this branch doesn't need any action
             pass
 
     def _get_num_samples_per_file(self, filepath: str | Path) -> int | np.ndarray:

@@ -36,7 +36,7 @@ class QGDataset(QGDatasetBase, Dataset):
         pre_transform: Callable[[Data | Collection[Any]], Data] | None = None,
         pre_filter: Callable[[Data | Collection[Any]], bool] | None = None,
     ):
-        """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. When there is no pre_transform and no pre_filter is given, the system will not create a `processesd` directory.
+        """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. When there is no pre_transform and no pre_filter is given, the system will not create a `processed` directory.
 
         Args:
             input (list[str  |  Path] | Callable[[Any], dict]): List of input zarr file paths.
@@ -149,29 +149,27 @@ class QGDataset(QGDatasetBase, Dataset):
         return self.stores[file]
 
     def close(self) -> None:
-        "Close all open zarr stores"
+        "Close all open zarr stores."
         for store, _ in self.stores.values():
             store.close()
         self.stores.clear()
 
     def __del__(self):
-        "Cleanup on deletion"
+        "Cleanup on deletion."
         self.close()
 
     def map_index(self, idx: int) -> Tuple[str | Path, int]:
-        """_summary_
+        """Map a global index to a specific file and local index within that file.
 
         Args:
-            idx (int): _description_
+            idx (int): The global index to map.
 
         Raises:
-            RuntimeError: _description_
+            RuntimeError: If the index cannot be mapped to any file.
 
         Returns:
-            Tuple[str | Path, int]: _description_
+            Tuple[str | Path, int]: The file and local index corresponding to the global index.
         """
-        # if idx >= self._num_samples:
-        #     raise IndexError(f"Error: tried to retrieve datapoint {idx} of {self._num_samples}")
         original_index = idx
         final_file: Path | str | None = None
 
