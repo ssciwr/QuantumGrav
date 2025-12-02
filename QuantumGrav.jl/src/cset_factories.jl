@@ -360,7 +360,7 @@ function (rcm::RandomCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
     config::Union{Dict,Nothing} = nothing,
-)::CausalSets.BitArrayCauset
+)
 
     connectivity_goal = rand(rng, rcm.connectivity_distribution)
 
