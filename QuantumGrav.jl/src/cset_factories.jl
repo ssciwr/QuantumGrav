@@ -364,40 +364,40 @@ function (rcm::RandomCsetMaker)(
 
     connectivity_goal = rand(rng, rcm.connectivity_distribution)
 
-    converged = false
+    # converged = false
 
-    cset = nothing
+    # cset = nothing
 
-    tries = 1
+    # tries = 1
 
-    while converged == false
-        if tries > rcm.num_tries
-            cset = nothing
-            break
-        end
+    # while converged == false
+    #     if tries > rcm.num_tries
+    #         cset = nothing
+    #         break
+    #     end
 
-        cset_try, converged = sample_bitarray_causet_by_connectivity(
-            n,
-            connectivity_goal,
-            rcm.max_iter,
-            rng;
-            abs_tol = rcm.abs_tol,
-            rel_tol = rcm.rel_tol,
-        )
-        tries += 1
+    cset, converged = sample_bitarray_causet_by_connectivity(
+        n,
+        connectivity_goal,
+        rcm.max_iter,
+        rng;
+        abs_tol = rcm.abs_tol,
+        rel_tol = rcm.rel_tol,
+    )
+    #     tries += 1
 
-        cset = cset_try
-    end
+    #     cset = cset_try
+    # end
 
-    if cset === nothing
-        throw(
-            ErrorException(
-                "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $(tries-1) tries.",
-            ),
-        )
-    end
+    # if cset === nothing
+    #     throw(
+    #         ErrorException(
+    #             "Failed to generate causet with n=$n and connectivity_goal=$connectivity_goal after $(tries-1) tries.",
+    #         ),
+    #     )
+    # end
 
-    return cset
+    return cset, converged
 end
 
 """
