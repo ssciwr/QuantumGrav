@@ -180,7 +180,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
         aggregate_graph_features_type: type | torch.nn.Module | Callable | None = None,
         aggregate_graph_features_args: Sequence[Any] | None = None,
         aggregate_graph_features_kwargs: Dict[str, Any] | None = None,
-        active_tasks: Dict[Any, bool] | None = None,
+        active_tasks: Dict[int, bool] | None = None,
     ):
         """Initialize GNNModel with encoder, pooling, and downstream task components.
 
@@ -203,7 +203,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 Required if graph_features_net_type is provided. Defaults to None.
             aggregate_graph_features_args (Sequence[Any] | None, optional): Positional arguments for aggregate_graph_features_type. Defaults to None.
             aggregate_graph_features_kwargs (Dict[str, Any] | None, optional): Keyword arguments for aggregate_graph_features_type. Defaults to None.
-            active_tasks (Dict[Any, bool] | None, optional): Dictionary mapping task indices to active status.
+            active_tasks (Dict[int, bool] | None, optional): Dictionary mapping task indices to active status.
                 If None, all tasks are active by default. Defaults to None.
 
         Raises:
@@ -285,9 +285,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 aggregate_pooling_kwargs,
             )
         else:
-            self.aggregate_pooling = ModuleWrapper(
-                torch.cat
-            )  # non-op for length 1 lists
+            self.aggregate_pooling = ModuleWrapper(torch.cat)
 
         # set up graph features processing if provided
         if graph_features_net_type is not None:
@@ -310,26 +308,35 @@ class GNNModel(torch.nn.Module, base.Configurable):
 
         # active tasks
         if active_tasks:
-            self.active_tasks = active_tasks
+            if len(active_tasks) != len(self.downstream_tasks) or set(
+                active_tasks.keys()
+            ) != set(range(len(self.downstream_tasks))):
+                raise ValueError(
+                    "active_tasks keys must match the indices of downstream tasks."
+                )
+            self.active_tasks: Dict[int, bool] = active_tasks
         else:
             self.active_tasks = {i: True for i in range(0, len(self.downstream_tasks))}
 
-    def set_task_active(self, key: Any) -> None:
+    def set_task_active(self, key: int) -> None:
         """Set a downstream task as active.
 
         Args:
-            key (Any): key (name) of the downstream task to activate.
+            key (int): key (name) of the downstream task to activate.
         """
-
+        if key not in self.active_tasks:
+            raise KeyError(f"Task {key} not found in active tasks.")
         self.active_tasks[key] = True
 
-    def set_task_inactive(self, key: Any) -> None:
+    def set_task_inactive(self, key: int) -> None:
         """Set a downstream task as inactive.
 
         Args:
-            key (Any): key (name) of the downstream task to deactivate.
+            key (int): key (name) of the downstream task to deactivate.
         """
 
+        if key not in self.active_tasks:
+            raise KeyError(f"Task {key} not found in active tasks.")
         self.active_tasks[key] = False
 
     def get_embeddings(
@@ -354,10 +361,14 @@ class GNNModel(torch.nn.Module, base.Configurable):
         embeddings = self.encoder(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
 
         # pool everything together into a single graph representation
-        pooled_embeddings = [
-            pooling_op(embeddings, batch) if pooling_op else embeddings
-            for pooling_op in self.pooling_layers
-        ]
+        if not self.pooling_layers or self.pooling_layers == [None]:
+            # No pooling layers provided; pass embeddings directly
+            pooled_embeddings = [embeddings]
+        else:
+            pooled_embeddings = [
+                pooling_op(embeddings, batch) if pooling_op else embeddings
+                for pooling_op in self.pooling_layers
+            ]
 
         return self.aggregate_pooling(pooled_embeddings)
 
@@ -471,7 +482,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Error during creation of GNNModel from config {e}"
+                f"Error during creation of GNNModel from config: {e}"
             ) from e
 
     def save(self, path: str | Path) -> None:
@@ -493,7 +504,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
         path: str | Path,
         device: torch.device = torch.device("cpu"),
     ) -> "GNNModel":
-        """Load a GNNModel from a file saved with the save() method.
+        """Load a GNNModel from a file saved with the save() method that's defined by the provided config.
+        It is assumed that the config used to save the model is the same as the one provided here or defines the
+        same model architecture. Therefore, configs should always be saved alongside the model weights.
 
         Args:
             path (str | Path): Path to the saved model file.
