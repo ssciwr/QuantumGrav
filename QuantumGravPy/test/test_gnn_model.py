@@ -125,6 +125,20 @@ def pooling_layer(pooling_specs):
 
 
 @pytest.fixture
+def latent_model():
+    nn = QG.models.LinearSequential(
+        [
+            (16, 24),
+            (24, 16),
+        ],
+        [torch.nn.ReLU, torch.nn.Identity],
+        linear_kwargs=[{"bias": True}, {"bias": False}],
+        activation_kwargs=[{"inplace": False}, {"inplace": False}],
+    )
+    return nn
+
+
+@pytest.fixture
 def gnn_model(gnn_block, downstream_tasks, pooling_layer):
     return QG.GNNModel(
         encoder_type=gnn_block,
@@ -291,7 +305,7 @@ def arbitrary_model_cfg(pooling_specs):
     return config
 
 
-def test_gnn_model_creation(gnn_model):
+def test_gnn_model_creation_pooling(gnn_model):
     """Test the creation of GNNModel from pre-existing module instances."""
 
     # Test encoder is correctly set
@@ -331,6 +345,72 @@ def test_gnn_model_creation(gnn_model):
     params = list(gnn_model.parameters())
     assert len(params) > 0
     assert all(p.requires_grad for p in params)
+
+    # Test forward pass works
+    x = torch.randn(10, 16)
+    edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]], dtype=torch.long)
+    batch = torch.tensor([0, 0, 0, 1, 1, 1, 1, 2, 2, 2])
+
+    gnn_model.eval()
+    output = gnn_model(x, edge_index, batch)
+
+    assert isinstance(output, dict)
+    assert 0 in output
+    assert 1 in output
+    assert output[0].shape[0] == 3  # 3 graphs in batch
+    assert output[0].shape[1] == 2  # 3 output classes
+    assert output[1].shape[0] == 3  # 3 graphs in batch
+    assert output[1].shape[1] == 3  # 3 output classes
+
+
+def test_gnn_model_creation_latent(
+    gnn_block, downstream_tasks, pooling_layer, latent_model
+):
+    """Test the gnn model with a latent space model instead of a normal one"""
+
+    gnn_model = QG.GNNModel(
+        encoder_type=gnn_block,
+        downstream_tasks=downstream_tasks,
+        pooling_layers=pooling_layer,
+        aggregate_pooling_type=None,
+        aggregate_pooling_args=None,
+        aggregate_pooling_kwargs=None,
+        latent_model_type=latent_model,
+        latent_model_args=None,
+        latent_model_kwargs=None,
+        active_tasks={0: True, 1: True},
+    )
+
+    # Test encoder is correctly set
+    assert isinstance(gnn_model.encoder, QG.models.GNNBlock)
+    assert gnn_model.encoder.in_dim == 16
+    assert gnn_model.encoder.out_dim == 32
+
+    # Test downstream tasks are correctly set
+    assert isinstance(gnn_model.downstream_tasks, torch.nn.ModuleList)
+    assert len(gnn_model.downstream_tasks) == 2
+    assert all(
+        isinstance(task, QG.models.LinearSequential)
+        for task in gnn_model.downstream_tasks
+    )
+
+    # Test that latent model is set correctly and that with_latent is correct
+    assert gnn_model.with_latent is True
+    assert gnn_model.with_pooling is False
+
+    # Test that all components are registered as modules
+    module_names = {name for name, _ in gnn_model.named_modules()}
+    assert "encoder" in module_names
+    assert "downstream_tasks" in module_names
+    assert "latent_model" in module_names
+
+    # Test parameters exist and require gradients
+    params = list(gnn_model.parameters())
+    assert len(params) > 0
+    assert all(p.requires_grad for p in params)
+
+    # Test active tasks
+    assert gnn_model.active_tasks == {0: True, 1: True}
 
     # Test forward pass works
     x = torch.randn(10, 16)
