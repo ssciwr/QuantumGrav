@@ -417,6 +417,32 @@ def test_gnn_model_creation_goes_wrong():
             aggregate_pooling_type=torch.cat,
         )
 
+    with pytest.raises(
+        ValueError,
+        match="active_tasks keys must match the indices of downstream tasks.",
+    ):
+        QG.GNNModel(
+            encoder_type=torch.nn.Identity(),
+            downstream_tasks=[(torch.nn.Linear(10, 5), None, None)],
+            pooling_layers=[(torch_geometric.nn.global_mean_pool, None, None)],
+            aggregate_pooling_type=torch.cat,
+            active_tasks={
+                5: True,
+            },
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="active_tasks keys must match the indices of downstream tasks.",
+    ):
+        QG.GNNModel(
+            encoder_type=torch.nn.Identity(),
+            downstream_tasks=[(torch.nn.Linear(10, 5), None, None)],
+            pooling_layers=[(torch_geometric.nn.global_mean_pool, None, None)],
+            aggregate_pooling_type=torch.cat,
+            active_tasks={0: True, 1: True, 2: False},
+        )
+
 
 def test_gnn_model_creation_from_scratch(
     encoder_type, encoder_args, encoder_kwargs, downstream_task_specs, pooling_specs

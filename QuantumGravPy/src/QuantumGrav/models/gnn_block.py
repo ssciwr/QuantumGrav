@@ -52,7 +52,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             },
             "gnn_layer_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments fo the gcn layer",
+                "description": "Keyword arguments for the gcn layer",
             },
             "normalizer_type": {
                 "description": "type of the normalizer module, e.g. BatchNorm",
@@ -64,7 +64,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             },
             "norm_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments fo the normalization layer",
+                "description": "Keyword arguments for the normalization layer",
             },
             "activation_type": {
                 "description": "type of the activation function",
@@ -76,7 +76,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             },
             "activation_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments fo the activation layer",
+                "description": "Keyword arguments for the activation layer",
             },
             "skip_args": {
                 "type": "array",
@@ -85,7 +85,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             },
             "skip_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments fo the skip connection layer",
+                "description": "Keyword arguments for the skip connection layer",
             },
         },
         "required": ["in_dim", "out_dim"],
@@ -245,7 +245,7 @@ class GNNBlock(torch.nn.Module, base.Configurable):
             )
 
         except Exception as e:
-            raise RuntimeError(f"Error while building GNNBlock from config {e}") from e
+            raise RuntimeError(f"Error while building GNNBlock from config: {e}") from e
 
     def to_config(self) -> dict[str, Any]:
         """Convert the GNNBlock instance to a configuration dictionary."""

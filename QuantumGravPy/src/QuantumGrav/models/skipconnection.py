@@ -30,11 +30,6 @@ class SkipConnection(torch.nn.Module, base.Configurable):
                 "description": "Initializer for the weight matrix",
                 "enum": ["glorot", "uniform", "kaiming_uniform"],
             },
-            "bias_initializer": {
-                "type": "string",
-                "description": "Initializer for the bias vector",
-                "enum": ["zeros"],
-            },
         },
         "required": ["in_channels", "out_channels"],
         "additionalProperties": False,
@@ -45,7 +40,6 @@ class SkipConnection(torch.nn.Module, base.Configurable):
         in_channels: int,
         out_channels: int,
         weight_initializer: str | None = None,
-        bias_initializer: str | None = None,
     ):
         """Initialize the SkipConnection module. For mismatched input/output dimensions, a linear projection is applied.
         For weight and bias initializers, see torch_geometric.nn.dense.Linear documentation.
@@ -62,7 +56,6 @@ class SkipConnection(torch.nn.Module, base.Configurable):
             "in_channels": in_channels,
             "out_channels": out_channels,
             "weight_initializer": weight_initializer,
-            "bias_initializer": bias_initializer,
         }
 
         if in_channels != out_channels:
@@ -71,7 +64,6 @@ class SkipConnection(torch.nn.Module, base.Configurable):
                 out_channels,
                 bias=False,
                 weight_initializer=weight_initializer,
-                bias_initializer=bias_initializer,
             )
         else:
             self.proj = torch.nn.Identity()
@@ -107,7 +99,6 @@ class SkipConnection(torch.nn.Module, base.Configurable):
                 config["in_channels"],
                 config["out_channels"],
                 weight_initializer=config.get("weight_initializer"),
-                bias_initializer=config.get("bias_initializer"),
             )
         except Exception as e:
             raise RuntimeError(f"Error, couldn't build SkipConnection: {e}")
