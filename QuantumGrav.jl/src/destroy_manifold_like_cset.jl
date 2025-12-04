@@ -46,6 +46,11 @@ function destroy_manifold_cset(
             ),
         )
     end
+
+    if size < 2 
+        throw(ArgumentError("size must be at least 2 to perform edge flips, is $(size)"))
+    end
+    
     cset, sprinkling, chebyshev_coefs =
         make_polynomial_manifold_cset(size, rng, order, r; d = d, type = type)
 
