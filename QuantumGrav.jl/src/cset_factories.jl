@@ -505,10 +505,10 @@ function (dcm::DestroyedCsetMaker)(
 
     r = rand(rng, dcm.r_distribution)
 
-    f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n))
+    f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n * (n - 1) / 2))
 
     cset = destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
-    return cset, f/n
+    return cset, f/(n * (n - 1) / 2)
 end
 
 

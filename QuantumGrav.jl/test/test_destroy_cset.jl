@@ -50,3 +50,37 @@ end
         @test abs(chebyshev_coefs[i, j]) ≤ 10 * envelope[i, j]
     end
 end
+
+@testitem "destroy_manifold_cset_input_errors" tags = [:destroy_causets, :errors] setup = [setupTests] begin
+
+    r = 3.
+    npoints = 100
+    num_flips = 1
+    order = 5
+
+    @test_throws ArgumentError QuantumGrav.destroy_manifold_cset(
+        npoints,
+        0,
+        rng,
+        order,
+        r
+    )
+
+    @test_throws ArgumentError QuantumGrav.destroy_manifold_cset(
+        npoints,
+        Int64(npoints * (npoints - 1) / 2 + 1),
+        rng,
+        order,
+        r
+    )
+
+        @test_throws ArgumentError QuantumGrav.destroy_manifold_cset(
+        1,
+        num_flips,
+        rng,
+        order,
+        r;
+        d = 2,
+        type = Float32,
+    )
+end
