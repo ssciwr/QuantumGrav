@@ -1144,22 +1144,12 @@ csetfactory_schema = JSONSchema.Schema("""
         		  "properties": {},
         		  "additionalProperties": true
         		},
-        		"merged_ambiguous": {
-        		  "type": "object",
-        		  "properties": {},
-        		  "additionalProperties": true
-        		},
         		"complex_topology": {
         		  "type": "object",
         		  "properties": {},
         		  "additionalProperties": true
         		},
         		"destroyed": {
-        		  "type": "object",
-        		  "properties": {},
-        		  "additionalProperties": true
-        		},
-        		"destroyed_ambiguous": {
         		  "type": "object",
         		  "properties": {},
         		  "additionalProperties": true
@@ -1180,6 +1170,15 @@ csetfactory_schema = JSONSchema.Schema("""
         			"additionalProperties": true
         		},
         		"csetsize_distr": {"type": "string"},
+            "coarse_graining_distribution": {"type": "string"},
+            "coarse_graining_distribution_args": {
+        			"type": "array",
+        			"items": { "type": "number" }
+        		},
+        		"coarse_graining_distribution_kwargs": {
+        			"type": "object",
+        			"additionalProperties": true
+        		},
         		"output": { "type": "string" },
         		"cset_type": {
         		  "oneOf": [
