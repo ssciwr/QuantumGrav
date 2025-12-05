@@ -11,7 +11,7 @@ def yaml_text_nonsweep():
         model:
             name: test_model
             layers: 1
-            type: !pyobject QuantumGrav.GNNBlock
+            type: !pyobject QuantumGrav.models.GNNBlock
             convtype: !pyobject torch_geometric.nn.SAGEConv
             bs: 16
             lr: 0.1
@@ -115,7 +115,7 @@ def test_read_yaml(yaml_text):
 
     # type nodes
     tn = cfg["model"]["type"]
-    assert tn == QG.GNNBlock
+    assert tn == QG.models.GNNBlock
 
     tn = cfg["model"]["convtype"]
     assert tn == torch_geometric.nn.SAGEConv
@@ -150,7 +150,7 @@ def test_read_yaml_throws():
 def test_convert_to_pyobject_tags():
     config = {
         "model": {
-            "type": QG.gnn_block.GNNBlock,
+            "type": QG.models.GNNBlock,
             "convtype": torch_geometric.nn.conv.sage_conv.SAGEConv,
             "name": "test_model",
             "layers": 2,
@@ -162,7 +162,8 @@ def test_convert_to_pyobject_tags():
 
     # check if the types are converted to pyobject tags
     assert (
-        config_with_tags["model"]["type"] == "!pyobject QuantumGrav.gnn_block.GNNBlock"
+        config_with_tags["model"]["type"]
+        == "!pyobject QuantumGrav.models.gnn_block.GNNBlock"
     )
     assert (
         config_with_tags["model"]["convtype"]
