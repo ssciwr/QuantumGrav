@@ -122,6 +122,8 @@
         "num_datapoints" => 5,
         "csetsize_distr_args" => [10, 20],
         "csetsize_distr" => "DiscreteUniform",
+        "coarse_graining_distr" => "DiscreteUniform",
+        "coarse_graining_distr_args" => [0.01, 0.1],
         "cset_type" => "polynomial",
         "output" => "./",
     )
