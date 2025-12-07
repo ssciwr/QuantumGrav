@@ -401,7 +401,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
         if self.with_pooling:
             if not self.pooling_layers or self.pooling_layers == [None]:
                 # No pooling layers provided; pass embeddings directly
-                pooled_embeddings = [embeddings]
+                pooled_embeddings = [
+                    embeddings,
+                ]
             else:
                 pooled_embeddings = [
                     pooling_op(embeddings, batch) if pooling_op else embeddings

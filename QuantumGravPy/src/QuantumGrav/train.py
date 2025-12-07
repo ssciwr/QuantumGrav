@@ -514,4 +514,7 @@ class Trainer:
         if not loadpath.exists():
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
-        self.model = gnn_model.GNNModel.load(self.config["model"], loadpath)
+        self.model = gnn_model.GNNModel.load(
+            loadpath,
+            self.config["model"],
+        )
