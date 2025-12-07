@@ -123,6 +123,18 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 "type": "object",
                 "description": "Keyword arguments for aggregate pooling",
             },
+            "latent_model_type": {
+                "description": "Type of a general latent space model. Alternative to pooling_layers + aggregate_pooling"
+            },
+            "latent_model_args": {
+                "type": "array",
+                "description": "Arguments for latent model",
+                "items": {},
+            },
+            "latent_model_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for latent model",
+            },
             "graph_features_net_type": {
                 "description": "Type of graph features network (class or string)",
             },
