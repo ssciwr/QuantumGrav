@@ -128,8 +128,8 @@ def pooling_layer(pooling_specs):
 def latent_model():
     nn = QG.models.LinearSequential(
         [
-            (16, 24),
-            (24, 16),
+            (32, 24),
+            (24, 64),
         ],
         [torch.nn.ReLU, torch.nn.Identity],
         linear_kwargs=[{"bias": True}, {"bias": False}],
@@ -371,7 +371,7 @@ def test_gnn_model_creation_latent(
     gnn_model = QG.GNNModel(
         encoder_type=gnn_block,
         downstream_tasks=downstream_tasks,
-        pooling_layers=pooling_layer,
+        pooling_layers=None,
         aggregate_pooling_type=None,
         aggregate_pooling_args=None,
         aggregate_pooling_kwargs=None,
@@ -412,6 +412,21 @@ def test_gnn_model_creation_latent(
     # Test active tasks
     assert gnn_model.active_tasks == {0: True, 1: True}
 
+
+def test_gnn_model_latent_forward(
+    gnn_block, downstream_tasks, pooling_layer, latent_model
+):
+    """Test the gnn model with a latent space model instead of a normal one"""
+
+    gnn_model = QG.GNNModel(
+        encoder_type=gnn_block,
+        downstream_tasks=downstream_tasks,
+        latent_model_type=latent_model,
+        latent_model_args=None,
+        latent_model_kwargs=None,
+        active_tasks={0: True, 1: True},
+    )
+
     # Test forward pass works
     x = torch.randn(10, 16)
     edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]], dtype=torch.long)
@@ -423,9 +438,9 @@ def test_gnn_model_creation_latent(
     assert isinstance(output, dict)
     assert 0 in output
     assert 1 in output
-    assert output[0].shape[0] == 3  # 3 graphs in batch
+    assert output[0].shape[0] == 10  # 3 graphs in batch
     assert output[0].shape[1] == 2  # 3 output classes
-    assert output[1].shape[0] == 3  # 3 graphs in batch
+    assert output[1].shape[0] == 10  # 3 graphs in batch
     assert output[1].shape[1] == 3  # 3 output classes
 
 
@@ -886,7 +901,7 @@ def test_gnn_model_save_load(gnn_model_config, tmp_path):
     og_model.save(tmp_path / "model.pt")
     assert (tmp_path / "model.pt").exists()
 
-    loaded_gnn_model = QG.GNNModel.load(gnn_model_config, tmp_path / "model.pt")
+    loaded_gnn_model = QG.GNNModel.load(tmp_path / "model.pt", gnn_model_config)
     assert loaded_gnn_model.graph_features_net is not None
     assert len(loaded_gnn_model.state_dict().keys()) == len(
         og_model.state_dict().keys()
@@ -938,7 +953,8 @@ def test_gnn_model_arbitrary_composition(arbitrary_model_cfg, tmp_path):
     gnn_model.save(tmp_path / "arbitrary_model.pt")
     assert (tmp_path / "arbitrary_model.pt").exists()
     loaded_gnn_model = QG.GNNModel.load(
-        arbitrary_model_cfg, tmp_path / "arbitrary_model.pt"
+        tmp_path / "arbitrary_model.pt",
+        arbitrary_model_cfg,
     )
     assert len(loaded_gnn_model.state_dict().keys()) == len(
         gnn_model.state_dict().keys()
