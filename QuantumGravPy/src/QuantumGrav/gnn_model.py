@@ -4,6 +4,7 @@ from inspect import isclass
 import jsonschema
 
 import torch
+from collections.abc import Collection
 
 from . import base
 
@@ -243,14 +244,13 @@ class GNNModel(torch.nn.Module, base.Configurable):
 
         pooling_funcs = [aggregate_pooling_type, pooling_layers]
         self.with_pooling = False
-        if any([p is not None for p in pooling_funcs]) and not all(
-            p is not None for p in pooling_funcs
-        ):
-            raise ValueError(
-                "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
-            )
-        else:
-            self.with_pooling = True
+        if any(p is not None for p in pooling_funcs):
+            if not all(p is not None for p in pooling_funcs):
+                raise ValueError(
+                    "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
+                )
+            else:
+                self.with_pooling = True
 
         self.with_latent = False
         if latent_model_type is not None:
@@ -422,7 +422,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
         x: torch.Tensor,
         args: Sequence[Tuple | Sequence] | None = None,
         kwargs: Sequence[Dict[str, Any]] | None = None,
-    ) -> Dict[int, torch.Tensor]:
+    ) -> Dict[int, torch.Tensor | Collection[torch.Tensor]]:
         """Compute the outputs of the downstream tasks. Only the active tasks will be computed.
 
         Args:
@@ -431,7 +431,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
             kwargs (Sequence[Dict[str, Any]] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
 
         Returns:
-            Dict[int, torch.Tensor]: Outputs of the downstream tasks.
+            Dict[int, torch.Tensor | Collection[torch.Tensor]]: Outputs of the downstream tasks.
         """
         d_args = [[] for _ in self.downstream_tasks] if args is None else args
         d_kwargs: Sequence[Dict[str, Any]] = (
