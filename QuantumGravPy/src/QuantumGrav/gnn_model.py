@@ -199,9 +199,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 Required if pooling_layers is provided. Defaults to None.
             aggregate_pooling_args (Sequence[Any] | None, optional): Positional arguments for aggregate_pooling_type. Defaults to None.
             aggregate_pooling_kwargs (Dict[str, Any] | None, optional): Keyword arguments for aggregate_pooling_type. Defaults to None.
-            latent_model_type (type | torch.nn.Module | None):
-            latent_model_args (Sequence[Any] | None, optional):
-            latent_model_kwargs (Dict[str, Any] | None, optional):
+            latent_model_type (type | torch.nn.Module | None): Latent model type. Either this or pooling_layers can be used, not both.
+            latent_model_args (Sequence[Any] | None, optional): Latent model args.
+            latent_model_kwargs (Dict[str, Any] | None, optional): Latent model kwargs.
             graph_features_net_type (type | None, optional): Network type for processing additional graph-level features. Defaults to None.
             graph_features_net_args (Sequence[Any] | None, optional): Positional arguments for graph_features_net_type. Defaults to None.
             graph_features_net_kwargs (Dict[str, Any] | None, optional): Keyword arguments for graph_features_net_type. Defaults to None.
@@ -217,6 +217,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
             ValueError: If pooling_layers provided without aggregate_pooling_type or vice versa.
             ValueError: If pooling_layers is empty when provided.
             ValueError: If graph_features_net_type provided without aggregate_graph_features_type or vice versa.
+            ValueError: If pooling_layers and latent_type are given at the same time.
         """
 
         # check consistency
@@ -505,6 +506,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 aggregate_pooling_type=config.get("aggregate_pooling_type"),
                 aggregate_pooling_args=config.get("aggregate_pooling_args"),
                 aggregate_pooling_kwargs=config.get("aggregate_pooling_kwargs"),
+                latent_model_type=config.get("latent_model_type"),
+                latent_model_args=config.get("latent_model_args"),
+                latent_model_kwargs=config.get("latent_model_kwargs"),
                 graph_features_net_type=config.get("graph_features_net_type"),
                 graph_features_net_args=config.get("graph_features_net_args"),
                 graph_features_net_kwargs=config.get("graph_features_net_kwargs"),
