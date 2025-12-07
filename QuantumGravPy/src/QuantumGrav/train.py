@@ -455,7 +455,7 @@ class Trainer:
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
 
         self.model = gnn_model.GNNModel.load(
-            self.config["model"], best_of_the_best, device=self.device
+            best_of_the_best, self.config["model"], device=self.device
         )
         self.model.eval()
         if self.tester is None:
