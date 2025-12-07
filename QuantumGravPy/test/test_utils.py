@@ -9,7 +9,7 @@ def test_register_pooling_layer():
     """Test the registration of pooling layers."""
     layer = torch.nn.MaxPool1d(2)
     QG.register_pooling_layer("test_pooling", layer)
-    assert "test_pooling" in QG.gnn_block.utils.pooling_layers
+    assert "test_pooling" in QG.utils.pooling_layers
 
     with pytest.raises(ValueError):
         QG.register_pooling_layer("test_pooling", layer)
@@ -39,7 +39,7 @@ def test_register_gnn_layer():
     """Test the registration of GNN layers."""
     layer = torch.nn.Linear
     QG.register_gnn_layer("test_layer", layer)
-    assert "test_layer" in QG.gnn_block.utils.gnn_layers
+    assert "test_layer" in QG.utils.gnn_layers
 
     with pytest.raises(ValueError):
         QG.register_gnn_layer("test_layer", layer)
@@ -49,7 +49,7 @@ def test_register_activation():
     """Test the registration of activation layers."""
     activation = torch.nn.ReLU
     QG.register_activation("test_activation", activation)
-    assert "test_activation" in QG.gnn_block.utils.activation_layers
+    assert "test_activation" in QG.utils.activation_layers
 
     with pytest.raises(ValueError):
         QG.register_activation("test_activation", activation)
@@ -59,8 +59,8 @@ def test_register_normalizer():
     """Test the registration of normalizer layers."""
     normalizer = torch.nn.BatchNorm1d
     QG.register_normalizer("test_normalizer", normalizer)
-    assert "test_normalizer" in QG.gnn_block.utils.normalizer_layers
-    assert torch.nn.BatchNorm1d in QG.gnn_block.utils.normalizer_layers_names
+    assert "test_normalizer" in QG.utils.normalizer_layers
+    assert torch.nn.BatchNorm1d in QG.utils.normalizer_layers_names
     with pytest.raises(ValueError):
         QG.register_normalizer("test_normalizer", normalizer)
 
@@ -340,7 +340,7 @@ def test_register_graph_features_aggregation():
         return torch.mean(torch.stack(tensors), dim=0)
 
     QG.register_graph_features_aggregation("test_agg", custom_agg)
-    assert "test_agg" in QG.gnn_block.utils.graph_features_aggregations
+    assert "test_agg" in QG.utils.graph_features_aggregations
 
     with pytest.raises(ValueError):
         QG.register_graph_features_aggregation("test_agg", custom_agg)
@@ -353,7 +353,7 @@ def test_register_pooling_aggregation():
         return torch.sum(torch.stack(tensors), dim=0)
 
     QG.register_pooling_aggregation("test_pool_agg", custom_pool_agg)
-    assert "test_pool_agg" in QG.gnn_block.utils.pooling_aggregations
+    assert "test_pool_agg" in QG.utils.pooling_aggregations
 
     with pytest.raises(ValueError):
         QG.register_pooling_aggregation("test_pool_agg", custom_pool_agg)
