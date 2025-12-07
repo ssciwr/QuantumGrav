@@ -305,6 +305,34 @@ def arbitrary_model_cfg(pooling_specs):
     return config
 
 
+def test_module_wrapper_behavior():
+    """Ensure ModuleWrapper forwards and exposes function."""
+
+    def fn(x, y):
+        return x + y
+
+    wrapper = QG.gnn_model.ModuleWrapper(fn)
+    out = wrapper(torch.tensor(1), torch.tensor(2))
+    assert out.item() == 3
+    assert wrapper.get_fn() is fn
+
+
+def test_instantiate_type_variants():
+    """Cover instantiate_type for Module, class, and callable."""
+    mod = torch.nn.Linear(2, 2)
+    got_mod = QG.gnn_model.instantiate_type(mod, None, None)
+    assert isinstance(got_mod, torch.nn.Module)
+
+    cls_inst = QG.gnn_model.instantiate_type(torch.nn.ReLU, None, {"inplace": False})
+    assert isinstance(cls_inst, torch.nn.Module)
+
+    def my_pool(a, b=None):
+        return a if b is None else a
+
+    callable_wrapped = QG.gnn_model.instantiate_type(my_pool, None, None)
+    assert isinstance(callable_wrapped, QG.gnn_model.ModuleWrapper)
+
+
 def test_gnn_model_creation_pooling(gnn_model):
     """Test the creation of GNNModel from pre-existing module instances."""
 
@@ -981,3 +1009,89 @@ def test_gnn_model_arbitrary_composition(arbitrary_model_cfg, tmp_path):
     )
     for i in y.keys():
         assert torch.allclose(y[i], y_loaded[i], atol=1e-8)
+
+
+def test_gnn_model_compute_downstream_args_kwargs(gnn_block, pooling_layer):
+    """Ensure downstream args/kwargs are passed into tasks."""
+    head = QG.models.LinearSequential(
+        [(64, 16), (16, 2)],
+        [torch.nn.ReLU, torch.nn.Identity],
+        linear_kwargs=[{"bias": True}, {"bias": False}],
+        activation_kwargs=[{"inplace": False}, {"inplace": False}],
+    )
+    model = QG.GNNModel(
+        encoder_type=gnn_block,
+        downstream_tasks=[(head, None, None), (head, None, None)],
+        pooling_layers=pooling_layer,
+        aggregate_pooling_type=partial(torch.cat, dim=1),
+        active_tasks={0: True, 1: True},
+    )
+
+    x = torch.randn(6, 16)
+    edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]], dtype=torch.long)
+    batch = torch.tensor([0, 0, 0, 1, 1, 1])
+
+    model.eval()
+    outputs = model(
+        x,
+        edge_index,
+        batch,
+        downstream_task_args=[[], []],
+        downstream_task_kwargs=[{}, {}],
+    )
+    assert 0 in outputs and 1 in outputs
+    assert outputs[0].shape == (2, 2)
+
+
+def test_set_task_active_inactive_errors(gnn_model):
+    with pytest.raises(KeyError):
+        gnn_model.set_task_active(5)
+    with pytest.raises(KeyError):
+        gnn_model.set_task_inactive(5)
+
+
+def test_get_embeddings_no_pooling_path(gnn_block):
+    """Exercise path when with_pooling is False and latent is used."""
+    latent = QG.models.LinearSequential(
+        [(32, 24)],
+        [torch.nn.Identity],
+        linear_kwargs=[{"bias": True}],
+        activation_kwargs=[{}],
+    )
+    model = QG.GNNModel(
+        encoder_type=gnn_block,
+        downstream_tasks=[(torch.nn.Identity(), None, None)],
+        latent_model_type=latent,
+        active_tasks={0: True},
+    )
+    x = torch.randn(4, 16)
+    edge_index = torch.tensor([[0, 1, 2], [1, 2, 3]], dtype=torch.long)
+    out = model.get_embeddings(x, edge_index)
+    assert isinstance(out, torch.Tensor)
+    assert out.shape[-1] == 24
+
+
+def test_graph_features_paths(gnn_block, pooling_layer):
+    """Cover graph feature aggregation identity fallback when config not provided."""
+    model = QG.GNNModel(
+        encoder_type=gnn_block,
+        downstream_tasks=[
+            (QG.models.LinearSequential([(64, 2)], [torch.nn.Identity]), None, None)
+        ],
+        pooling_layers=pooling_layer,
+        aggregate_pooling_type=partial(torch.cat, dim=1),
+        active_tasks={0: True},
+    )
+    x = torch.randn(6, 16)
+    edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 5]], dtype=torch.long)
+    batch = torch.tensor([0, 0, 0, 1, 1, 1])
+    # since graph_features_net and aggregation are Identity, do not pass features
+    model.eval()
+    outputs = model(x, edge_index, batch)
+    assert 0 in outputs
+
+
+def test_from_config_validation_error():
+    bad_cfg = {"encoder_type": torch.nn.Identity}
+    with pytest.raises(RuntimeError):
+        QG.GNNModel.from_config(bad_cfg)
