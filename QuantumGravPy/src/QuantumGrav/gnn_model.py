@@ -4,6 +4,7 @@ from inspect import isclass
 import jsonschema
 
 import torch
+from collections.abc import Collection
 
 from . import base
 
@@ -123,6 +124,18 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 "type": "object",
                 "description": "Keyword arguments for aggregate pooling",
             },
+            "latent_model_type": {
+                "description": "Type of a general latent space model. Alternative to pooling_layers + aggregate_pooling"
+            },
+            "latent_model_args": {
+                "type": "array",
+                "description": "Arguments for latent model",
+                "items": {},
+            },
+            "latent_model_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for latent model",
+            },
             "graph_features_net_type": {
                 "description": "Type of graph features network (class or string)",
             },
@@ -174,6 +187,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
         aggregate_pooling_type: type | torch.nn.Module | Callable | None = None,
         aggregate_pooling_args: Sequence[Any] | None = None,
         aggregate_pooling_kwargs: Dict[str, Any] | None = None,
+        latent_model_type: type | torch.nn.Module | None = None,
+        latent_model_args: Sequence[Any] | None = None,
+        latent_model_kwargs: Dict[str, Any] | None = None,
         graph_features_net_type: type | torch.nn.Module | None = None,
         graph_features_net_args: Sequence[Any] | None = None,
         graph_features_net_kwargs: Dict[str, Any] | None = None,
@@ -196,6 +212,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 Required if pooling_layers is provided. Defaults to None.
             aggregate_pooling_args (Sequence[Any] | None, optional): Positional arguments for aggregate_pooling_type. Defaults to None.
             aggregate_pooling_kwargs (Dict[str, Any] | None, optional): Keyword arguments for aggregate_pooling_type. Defaults to None.
+            latent_model_type (type | torch.nn.Module | None): Latent model type. Either this or pooling_layers can be used, not both.
+            latent_model_args (Sequence[Any] | None, optional): Latent model args.
+            latent_model_kwargs (Dict[str, Any] | None, optional): Latent model kwargs.
             graph_features_net_type (type | None, optional): Network type for processing additional graph-level features. Defaults to None.
             graph_features_net_args (Sequence[Any] | None, optional): Positional arguments for graph_features_net_type. Defaults to None.
             graph_features_net_kwargs (Dict[str, Any] | None, optional): Keyword arguments for graph_features_net_type. Defaults to None.
@@ -211,6 +230,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
             ValueError: If pooling_layers provided without aggregate_pooling_type or vice versa.
             ValueError: If pooling_layers is empty when provided.
             ValueError: If graph_features_net_type provided without aggregate_graph_features_type or vice versa.
+            ValueError: If pooling_layers and latent_type are given at the same time.
         """
 
         # check consistency
@@ -223,11 +243,22 @@ class GNNModel(torch.nn.Module, base.Configurable):
             )
 
         pooling_funcs = [aggregate_pooling_type, pooling_layers]
-        if any([p is not None for p in pooling_funcs]) and not all(
-            p is not None for p in pooling_funcs
-        ):
+        self.with_pooling = False
+        if any(p is not None for p in pooling_funcs):
+            if not all(p is not None for p in pooling_funcs):
+                raise ValueError(
+                    "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
+                )
+            else:
+                self.with_pooling = True
+
+        self.with_latent = False
+        if latent_model_type is not None:
+            self.with_latent = True
+
+        if self.with_latent and self.with_pooling:
             raise ValueError(
-                "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
+                "Either latent_model_type or pooling_layers and aggregate_pooling can be given, not both"
             )
 
         # set up downstream tasks. These are independent of each other, but there must be one at least
@@ -261,31 +292,35 @@ class GNNModel(torch.nn.Module, base.Configurable):
 
         self.downstream_tasks = torch.nn.ModuleList(downstream_task_modules)
 
-        # set up pooling layers and their aggregation
-        if pooling_layers is not None:
-            if len(pooling_layers) == 0:
-                raise ValueError("At least one pooling layer must be provided.")
+        if self.with_pooling:
+            if pooling_layers is not None:
+                if len(pooling_layers) == 0:
+                    raise ValueError("At least one pooling layer must be provided.")
 
-            self.pooling_layers = torch.nn.ModuleList(
-                [
-                    instantiate_type(pl_type, args, kwargs)
-                    for pl_type, args, kwargs in pooling_layers
-                ]
-            )
-        else:
-            self.pooling_layers = [
-                None,
-            ]  # does nothing later
+                self.pooling_layers = torch.nn.ModuleList(
+                    [
+                        instantiate_type(pl_type, args, kwargs)
+                        for pl_type, args, kwargs in pooling_layers
+                    ]
+                )
+            else:
+                self.pooling_layers = None
 
-        # aggregate pooling layer
-        if aggregate_pooling_type is not None:
-            self.aggregate_pooling = instantiate_type(
-                aggregate_pooling_type,
-                aggregate_pooling_args,
-                aggregate_pooling_kwargs,
+            # aggregate pooling layer
+            if aggregate_pooling_type is not None:
+                self.aggregate_pooling = instantiate_type(
+                    aggregate_pooling_type,
+                    aggregate_pooling_args,
+                    aggregate_pooling_kwargs,
+                )
+            else:
+                self.aggregate_pooling = torch.nn.Identity()  # non-op
+
+        if self.with_latent:
+            # alternatively to pooling_layer, set up latent_model
+            self.latent_model = instantiate_type(
+                latent_model_type, latent_model_args, latent_model_kwargs
             )
-        else:
-            self.aggregate_pooling = ModuleWrapper(torch.cat)
 
         # set up graph features processing if provided
         if graph_features_net_type is not None:
@@ -344,7 +379,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
         x: torch.Tensor,
         edge_index: torch.Tensor,
         batch: torch.Tensor | None = None,
-        gcn_kwargs: dict | None = None,
+        gcn_kwargs: Dict[str, Any] | None = None,
+        latent_args: Sequence[Any] | None = None,
+        latent_kwargs: Dict[str, Any] | None = None,
     ) -> torch.Tensor:
         """Get embeddings from the GCN model.
 
@@ -361,23 +398,33 @@ class GNNModel(torch.nn.Module, base.Configurable):
         embeddings = self.encoder(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
 
         # pool everything together into a single graph representation
-        if not self.pooling_layers or self.pooling_layers == [None]:
-            # No pooling layers provided; pass embeddings directly
-            pooled_embeddings = [embeddings]
-        else:
-            pooled_embeddings = [
-                pooling_op(embeddings, batch) if pooling_op else embeddings
-                for pooling_op in self.pooling_layers
-            ]
+        if self.with_pooling:
+            if not self.pooling_layers or self.pooling_layers == [None]:
+                # No pooling layers provided; pass embeddings directly
+                pooled_embeddings = [
+                    embeddings,
+                ]
+            else:
+                pooled_embeddings = [
+                    pooling_op(embeddings, batch) if pooling_op else embeddings
+                    for pooling_op in self.pooling_layers
+                ]
 
-        return self.aggregate_pooling(pooled_embeddings)
+            return self.aggregate_pooling(pooled_embeddings)
+
+        elif self.with_latent:
+            return self.latent_model(
+                embeddings,
+                *(latent_args if latent_args is not None else []),
+                **(latent_kwargs if latent_kwargs is not None else {}),
+            )
 
     def compute_downstream_tasks(
         self,
         x: torch.Tensor,
         args: Sequence[Tuple | Sequence] | None = None,
         kwargs: Sequence[Dict[str, Any]] | None = None,
-    ) -> Dict[int, torch.Tensor]:
+    ) -> Dict[int, torch.Tensor | Collection[torch.Tensor]]:
         """Compute the outputs of the downstream tasks. Only the active tasks will be computed.
 
         Args:
@@ -386,7 +433,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
             kwargs (Sequence[Dict[str, Any]] | None, optional): Keyword arguments for downstream tasks. Defaults to None.
 
         Returns:
-            Dict[int, torch.Tensor]: Outputs of the downstream tasks.
+            Dict[int, torch.Tensor | Collection[torch.Tensor]]: Outputs of the downstream tasks.
         """
         d_args = [[] for _ in self.downstream_tasks] if args is None else args
         d_kwargs: Sequence[Dict[str, Any]] = (
@@ -404,6 +451,8 @@ class GNNModel(torch.nn.Module, base.Configurable):
         edge_index: torch.Tensor,
         batch: torch.Tensor,
         graph_features: torch.Tensor | None = None,
+        latent_args: Sequence[Any] | None = None,
+        latent_kwargs: Dict[str, Any] | None = None,
         downstream_task_args: Sequence[Tuple | Sequence[Any]] | None = None,
         downstream_task_kwargs: Sequence[Dict[str, Any]] | None = None,
         embedding_kwargs: Dict[Any, Any] | None = None,
@@ -425,7 +474,12 @@ class GNNModel(torch.nn.Module, base.Configurable):
         """
         # apply the GCN backbone to the node features
         embeddings = self.get_embeddings(
-            x, edge_index, batch, gcn_kwargs=embedding_kwargs
+            x,
+            edge_index,
+            batch,
+            gcn_kwargs=embedding_kwargs,
+            latent_args=latent_args,
+            latent_kwargs=latent_kwargs,
         )
         # If we have graph features, we need to process them and concatenate them with the node features
         if graph_features is not None:
@@ -466,6 +520,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 aggregate_pooling_type=config.get("aggregate_pooling_type"),
                 aggregate_pooling_args=config.get("aggregate_pooling_args"),
                 aggregate_pooling_kwargs=config.get("aggregate_pooling_kwargs"),
+                latent_model_type=config.get("latent_model_type"),
+                latent_model_args=config.get("latent_model_args"),
+                latent_model_kwargs=config.get("latent_model_kwargs"),
                 graph_features_net_type=config.get("graph_features_net_type"),
                 graph_features_net_args=config.get("graph_features_net_args"),
                 graph_features_net_kwargs=config.get("graph_features_net_kwargs"),
@@ -500,8 +557,10 @@ class GNNModel(torch.nn.Module, base.Configurable):
     @classmethod
     def load(
         cls,
-        config: Dict[str, Any],
         path: str | Path,
+        config: Dict[str, Any] | None = None,
+        args: Sequence[Any] | None = None,
+        kwargs: Dict[str, Any] | None = None,
         device: torch.device = torch.device("cpu"),
     ) -> "GNNModel":
         """Load a GNNModel from a file saved with the save() method that's defined by the provided config.
@@ -510,12 +569,20 @@ class GNNModel(torch.nn.Module, base.Configurable):
 
         Args:
             path (str | Path): Path to the saved model file.
+            config (Dict[str, Any] | None): Config for building the model
+            args (Sequence[Any] | None): Arguments for building the model if config is not supplied
+            kwargs (Dict[str, Any] | None): Keyword argumetns for building the model if config is not supplied
             device (torch.device, optional): Device to load the model onto. Defaults to torch.device("cpu").
 
         Returns:
             GNNModel: Fully initialized model instance with loaded weights.
         """
-
-        model = cls.from_config(config).to(device)
+        if config is not None:
+            model = cls.from_config(config).to(device)
+        else:
+            model = cls(
+                *(args if args is not None else []),
+                **(kwargs if kwargs is not None else {}),
+            )
         model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
         return model

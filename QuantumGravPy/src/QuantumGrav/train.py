@@ -845,7 +845,7 @@ class Trainer(base.Configurable):
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
 
         self.model = gnn_model.GNNModel.load(
-            self.config["model"], best_of_the_best, device=self.device
+            best_of_the_best, self.config["model"], device=self.device
         )
         self.model.eval()
         if self.tester is None:
@@ -902,5 +902,6 @@ class Trainer(base.Configurable):
             raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
 
         self.model = gnn_model.GNNModel.load(
-            self.config["model"], loadpath, device=self.device
+            loadpath,
+            self.config["model"],
         )
