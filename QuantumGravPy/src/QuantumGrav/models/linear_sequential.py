@@ -1,13 +1,15 @@
-import logging
 import torch
 import torch_geometric
 
-from . import utils
-from typing import Any, Sequence
+from typing import Any, Sequence, Dict
 from pathlib import Path
+from jsonschema import validate
+
+from .. import base
+from .. import utils
 
 
-class LinearSequential(torch.nn.Module):
+class LinearSequential(torch.nn.Module, base.Configurable):
     """This class implements a neural network block consisting of a backbone
     (a sequence of linear layers with activation functions) and multiple
     output layers for classification tasks. It supports multi-objective
@@ -15,14 +17,50 @@ class LinearSequential(torch.nn.Module):
     to a different classification task, but can also be used for any other type of sequential processing that involves linear layers.
     """
 
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "LinearSequential Configuration",
+        "type": "object",
+        "properties": {
+            "dims": {
+                "type": "array",
+                "description": "(input_channels, output_channels) for each layer",
+                "items": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
+                "minItems": 1,
+            },
+            "activations": {
+                "type": "array",
+                "description": "list of activation function objects, e.g. torch.nn.ReLU",
+                "items": {},
+            },
+            "linear_kwargs": {
+                "type": "array",
+                "description": "keyword arguments to torch_geometric.nn.dense.Linear",
+                "items": {"type": "object"},
+            },
+            "activation_kwargs": {
+                "type": "array",
+                "description": "keyword arguments to the activation function objects",
+                "items": {"type": "object"},
+            },
+        },
+        "required": ["dims", "activations"],
+        "additionalProperties": False,  # Only allow specified properties
+    }
+
     def __init__(
         self,
         dims: list[Sequence[int]],
-        activations: list[type[torch.nn.Module]] = [torch.nn.ReLU],
-        linear_kwargs: list[dict] | None = None,
-        activation_kwargs: list[dict] | None = None,
+        activations: list[type[torch.nn.Module]],
+        linear_kwargs: list[Dict[Any, Any]] | None = None,
+        activation_kwargs: list[Dict[Any, Any]] | None = None,
     ):
-        """Create a LinearSequential object with a backbone and multiple output layers. All layers are of type `Linear` with an activation function in between (the backbone) and a set of linear output layers.
+        """Create a LinearSequential object containing a sequence of MLPs of type torch_geometric.nn.dense.Linear, interspersed with activation functions. All layers are of type `Linear` with an activation function in between (the backbone) and a set of linear output layers.
 
         Args:
             input_dim (int): input dimension of the LinearSequential object
@@ -77,7 +115,6 @@ class LinearSequential(torch.nn.Module):
         self.layers = torch.nn.Sequential(*layers)
         self.linear_kwargs = linear_kwargs
         self.activation_kwargs = activation_kwargs
-        self.logger = logging.getLogger(__name__)
 
     def forward(
         self,
@@ -91,17 +128,14 @@ class LinearSequential(torch.nn.Module):
         Returns:
             list[torch.Tensor]: List of output tensors from each classifier layer.
         """
-        # Sequential handles passing output from one layer to the next
-        logits = self.layers(x)  # No need for manual looping or cloning
-
-        return logits
+        return self.layers(x)
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> "LinearSequential":
+    def from_config(cls, config: Dict[str, Any]) -> "LinearSequential":
         """Create a LinearSequential from a configuration dictionary.
 
         Args:
-            config (dict[str, Any]): Configuration dictionary containing parameters for the LinearSequential.
+            config (Dict[str, Any]): Configuration dictionary containing parameters for the LinearSequential.
 
         Returns:
             LinearSequential: An instance of LinearSequential initialized with the provided configuration.
@@ -109,39 +143,48 @@ class LinearSequential(torch.nn.Module):
         Raises:
             ValueError: If the specified activation function is not registered.
         """
-        activations = config["activations"]
-        activations = [utils.get_registered_activation(act) for act in activations]
+        validate(config, cls.schema)
 
-        if None in activations:
-            raise ValueError(
-                f"Activation function '{config.get('activation')}' is not registered."
+        try:
+            n_layers = len(config["dims"])
+
+            if "linear_kwargs" in config and len(config["linear_kwargs"]) != n_layers:
+                raise ValueError("linear_kwargs must match dims length")
+
+            if "activation_kwargs" in config and len(
+                config["activation_kwargs"]
+            ) != len(config["activations"]):
+                raise ValueError("activation_kwargs must match dims length")
+
+            return cls(
+                dims=config["dims"],
+                activations=config["activations"],
+                linear_kwargs=config.get("linear_kwargs", None),
+                activation_kwargs=config.get("activation_kwargs", None),
             )
+        except Exception as e:
+            raise RuntimeError(
+                f"Error while building LinearSequential from config: {e}"
+            ) from e
 
-        return cls(
-            dims=config["dims"],
-            activations=activations,
-            linear_kwargs=config.get("linear_kwargs", None),
-            activation_kwargs=config.get("activation_kwargs", None),
-        )
-
-    def to_config(self) -> dict[str, Any]:
+    def to_config(self) -> Dict[str, Any]:
         """Build a config file from the current model
 
         Returns:
-            dict[str, Any]: Model config
+            Dict[str, Any]: Model config
         """
         linear_dims = []
         activations = []
 
         for layer in self.layers:
             if isinstance(layer, torch_geometric.nn.dense.Linear):
-                linear_dims.append((layer.in_channels, layer.out_channels))
+                linear_dims.append([layer.in_channels, layer.out_channels])
             elif isinstance(layer, torch.nn.Linear):
-                linear_dims.append((layer.in_features, layer.out_features))
-            elif isinstance(layer, torch.nn.Module):
-                activations.append(utils.activation_layers_names[type(layer)])
+                linear_dims.append([layer.in_features, layer.out_features])
+            elif isinstance(layer, torch.nn.Module) or callable(layer):
+                activations.append(f"{layer.__module__}.{type(layer).__name__}")
             else:
-                self.logger.warning(f"Unknown layer type: {type(layer)}")
+                raise ValueError(f"Unknown layer type: {type(layer)}")
 
         config = {
             "dims": linear_dims,
@@ -176,7 +219,9 @@ class LinearSequential(torch.nn.Module):
             LinearSequential: An instance of LinearSequential initialized from the loaded data.
         """
         cfg = torch.load(path)
-
+        cfg["config"]["activations"] = [
+            utils.import_and_get(act) for act in cfg["config"]["activations"]
+        ]
         model = cls.from_config(cfg["config"])
         model.load_state_dict(cfg["state_dict"], strict=False)
         model.to(device)
