@@ -38,9 +38,10 @@ from .train import Trainer
 from .train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
 from .early_stopping import DefaultEarlyStopping
 
-from .load_zarr import zarr_to_dict
+from .load_zarr import zarr_group_to_dict, zarr_file_to_dict
 
 from . import models
+
 
 __all__ = [
     # models subpackage
@@ -90,5 +91,6 @@ __all__ = [
     "get_loader",
     "ConfigHandler",
     # zarr loading
-    "zarr_to_dict",
+    "zarr_file_to_dict",
+    "zarr_group_to_dict",
 ]

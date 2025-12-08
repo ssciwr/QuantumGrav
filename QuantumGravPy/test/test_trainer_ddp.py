@@ -1,7 +1,8 @@
-from jsonschema import ValidationError
 import pytest
-import torch
 
+from jsonschema import ValidationError
+
+import torch
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse

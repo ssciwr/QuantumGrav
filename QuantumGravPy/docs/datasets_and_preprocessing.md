@@ -15,11 +15,11 @@ Becausse this package does not make assumptions about the structure and characte
 
 - A `reader` function that reads the raw data to construct a single cset/graph/sample.
 
-- A `pre_transform` function which builds the actual `Data` object. This will be executed only once when you open the dataset path.  Internally, the dataset will create a directory named `processed` which will contain the processed files, one for each cset. The precence of this directory is used to determine if `pre_transform` is executed again, so you can go to the directory and delete `processed` or rename it to trigger a new processing run.
+- A `pre_transform` function which builds the actual `Data` object. This will be executed only once when you open the dataset path.  Internally, the dataset will create a directory named `processed` which will contain the processed files, one for each cset. The precence of this directory is used to determine if `pre_transform` is executed again, so you can go to the directory and delete `processed` or rename it to trigger a new processing run. The `pre_transform` function is optional, it defaults to `None` and you don't have to provide it. This can be useful when you experiment a lot with different compositions, subsets or transformations. The `pre_transform` function is optional, it defaults to `None` and you don't have to provide it. This can be useful when you experiment a lot with different compositions, subsets or transformations.
+If not supplied, the dataset will return the return value of the `reader` function for each loaded datapoint.
+- A `pre_filter` function which filters out undesired raw samples and only lets a subset through to be processed by `pre_transform`. The semantics is the same as `pre_transform`, and the two will always be executed together. Like the `pre_transform` function, the `pre_filter` function is optional. Not supplying it will make the dataset use every datapoint regardless of properties. `pre_filter` and `pre_transform` function independently, only when both are `None` is the cached pre-processing not triggered.
 
-- A `pre_filter` function which filters out undesired raw samples and only lets a subset through to be processed by `pre_transform`. The semantics is the same as `pre_transform`, and the two will always be executed together.
-
-- A `transform` function which is executed each time the dataset path on disk is opened, and can be used to execute all data transformations that would need to be carried out each time a dataset is loaded.
+- A `transform` function which is executed each time a datapoint is loaded from disk. This works well when doing experimentations with different data transformations or for augmentation on the fly.
 
 The last three are part of `pytorch`/`pytorch_geometric`'s `Dataset` API, so check out the respective documentation to learn more about them.
 
@@ -149,6 +149,9 @@ The `transform` function follows the same principle, so we don't show it explici
 ```python
 transform = lambda x: x
 ```
+Note how the `reader` function returns a dictionary, while the `pre_transform` function builds the data object that `pytorch_geometric` works with. If `pre_transform` is not given, a dataset would load datapoints as `dicts`.
+
+
 Now, we can put together our dataset. Upon first instantiation, it will pre-process the data in the files given as `input` into `Data` objects and store them individually in a directory `output/processed`. As long as it sees this directory, it will not process any files again when another dataset is opend with the same output path. Data procesessing will be parallelized over the number of processes given as `n_processes`, and `chunk_size` many samples will be processed at once.
 
 ```python
@@ -166,5 +169,22 @@ dataset = QGDataset(
 ```
 Here we use 12 processes which process the data in chunks of 5000 samples before loading the next 5000 using the `reader` function, processing them and so on.
 
-## OntheFly dataset
-We will rarely use this, so no explicit example is provided. You can check out the `test_ontheflydataset.py` test file to see how it is used in principle.
+
+## Indexing and subsetting
+To index into an existing dataset, use the normal `[]` operator with either a range or an integer:
+```python
+datapoint = dataset[42]
+
+range_of_datapoints = dataset[42:84]
+```
+
+Note that the dataset internally treats all supplied files as one consecutive range of datapoints, in the order they are given!
+
+Since the `QGDataset` is a torch dataset under the hood, it works together with [torch's subset functionality](https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.Subset):
+
+```python
+subset = torch.Subset(dataset, 0:4:100)
+random_subset = torch.Subste(dataset, torch.randint(0, 99, 25))
+```
+
+This can help with dataset splitting for, e.g., k-fold cross validation or other tasks where splitting a dataset into multiple groups are needed.

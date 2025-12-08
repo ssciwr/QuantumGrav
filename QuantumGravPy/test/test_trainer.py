@@ -7,9 +7,9 @@ import QuantumGrav as QG
 import numpy as np
 from functools import partial
 import jsonschema
+from pathlib import Path
 import re
 import datetime
-from pathlib import Path
 import pandas as pd
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader

@@ -110,7 +110,7 @@ function prepare_dataproduction(
     YAML.write_file(
         joinpath(
             abspath(expanduser(config["output"])),
-            "config_$(getpid())_$(datetime).yaml",
+            "$(name)_$(getpid())_$(datetime).yaml",
         ),
         config,
     )

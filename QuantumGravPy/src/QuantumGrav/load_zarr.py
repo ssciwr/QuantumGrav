@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 
-def _read_zarr(group: zarr.Group, target: dict[str, Any]) -> None:
+def zarr_group_to_dict(group: zarr.Group, target: dict[str, Any]) -> None:
     """Read a nested zarr group into a nested dict.
 
     Args:
@@ -20,12 +20,12 @@ def _read_zarr(group: zarr.Group, target: dict[str, Any]) -> None:
             if key not in target:
                 target[key] = {}
             tgt = target[key]
-            _read_zarr(group[key], tgt)
+            zarr_group_to_dict(group[key], tgt)
         else:
             target[key] = group[key][:]
 
 
-def zarr_to_dict(path: Path | str) -> dict[str, Any]:
+def zarr_file_to_dict(path: Path | str) -> dict[str, Any]:
     """Read a nested zarr group into a nested dict.
 
     Args:
@@ -41,6 +41,6 @@ def zarr_to_dict(path: Path | str) -> dict[str, Any]:
     # target dict
     target: dict[str, Any] = {}
 
-    _read_zarr(root, target)
+    zarr_group_to_dict(root, target)
 
     return target
