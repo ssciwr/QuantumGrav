@@ -1,6 +1,6 @@
 from typing import Any, Tuple
 from collections.abc import Collection
-
+import pandas as pd
 import os
 import jsonschema
 
@@ -181,18 +181,15 @@ class TrainerDDP(train.Trainer):
         """Prepare dataloader for distributed training.
 
         Args:
-            dataset (Dataset | None, optional): _description_. Defaults to None.
-            split (list[float], optional): _description_. Defaults to [0.8, 0.1, 0.1].
-            train_dataset (torch.utils.data.Subset | None, optional): _description_. Defaults to None.
-            val_dataset (torch.utils.data.Subset | None, optional): _description_. Defaults to None.
-            test_dataset (torch.utils.data.Subset | None, optional): _description_. Defaults to None.
+            dataset (Dataset | None, optional): Dataset to use. Defaults to None.
+            split (list[float], optional): Splits into train, validation and test datasets. Defaults to [0.8, 0.1, 0.1].
+            train_dataset (torch.utils.data.Subset | None, optional): Training dataset. Only used when Dataset is None. Defaults to None.
+            val_dataset (torch.utils.data.Subset | None, optional): Validation dataset. Only used when Dataset is None.. Defaults to None.
+            test_dataset (torch.utils.data.Subset | None, optional): Test dataset. Only used when Dataset is None.. Defaults to None.
             training_sampler (torch.utils.data.Sampler | None, optional): Ignored here. Defaults to None.
 
-        Raises:
-            ValueError: _description_
-
         Returns:
-            Tuple[ DataLoader, DataLoader, DataLoader, ]: _description_
+            Tuple[ DataLoader, DataLoader, DataLoader, ]: Train, validation and test dataloaders
         """
         self.train_dataset, self.val_dataset, self.test_dataset = self.prepare_dataset(
             dataset=dataset,
@@ -259,11 +256,11 @@ class TrainerDDP(train.Trainer):
         )
         return train_loader, val_loader, test_loader
 
-    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
+    def _check_model_status(self, eval_data: pd.DataFrame | list[torch.Tensor]) -> bool:
         """Check the status of the model during evaluation.
 
         Args:
-            eval_data (list[Any] | torch.Tensor): The evaluation data to check.
+            eval_data (pd.DataFrame): The evaluation data to check.
 
         Returns:
             bool: Whether the model training should stop.
@@ -329,7 +326,8 @@ class TrainerDDP(train.Trainer):
         for _ in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
-            train_loader.sampler.set_epoch(self.epoch)
+            if train_loader.sampler:
+                train_loader.sampler.set_epoch(self.epoch)
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
             total_training_data.append(epoch_data)
 

@@ -289,7 +289,9 @@ class Trainer(base.Configurable):
                 "$ref": "#/definitions/constructor",
                 "description": "Early stopping constructor spec: provides type, args, kwargs",
             },
-            "apply_model": {"description": "Optional method to build the "},
+            "apply_model": {
+                "description": "Optional method to call the model on data. Useful when using optional signatures for instance "
+            },
             "criterion": {
                 "description": "The loss function used for training as a python type"
             },
@@ -361,8 +363,8 @@ class Trainer(base.Configurable):
         self.latest_checkpoint = None
 
         # model and optimizer initialization placeholders
-        self.model = self.initialize_model()
-        self.optimizer = self.initialize_optimizer()
+        self.model = None
+        self.optimizer = None
 
         # early stopping and evaluation functors
         try:
