@@ -256,7 +256,7 @@ def read_data(read_data_dict):
     def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
         datadict = read_data_dict(f, idx, float_dtype, int_dtype, validate)
 
-        adj_matrix = torch.tensor(datadict["adj"], dtype=float_dtype)
+        adj_matrix = datadict["adj"].detach().clone()
         edge_index, edge_weight = dense_to_sparse(adj_matrix)
         node_features = []
         node_features.extend([datadict["max_path_future"], datadict["max_path_past"]])
