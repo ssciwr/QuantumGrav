@@ -283,8 +283,28 @@ def test_trainer_creation_works(config):
     assert trainer.epoch == 0
     assert trainer.checkpoint_at == config["training"].get("checkpoint_at", None)
 
-    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
-    assert isinstance(trainer.model, (QG.GNNModel, torch.nn.Module))
+    assert trainer.optimizer is None
+    assert trainer.model is None
+
+
+def test_trainer_model_instantiation_works(config):
+    trainer = QG.Trainer(
+        config,
+    )
+    assert trainer.model is None
+    trainer.initialize_model()
+
+    assert isinstance(trainer.model, QG.GNNModel)
+
+
+def test_trainer_optimizer_instantiation_works(config):
+    trainer = QG.Trainer(
+        config,
+    )
+    assert trainer.model is None
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+    assert isinstance(trainer.optimizer, torch.optim.Adam)
 
 
 def test_trainer_creation_broken(broken_config):

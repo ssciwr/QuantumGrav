@@ -6,6 +6,7 @@ import torch
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.utils import dense_to_sparse
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import QuantumGrav as QG
 
@@ -297,7 +298,39 @@ def test_trainer_ddp_creation_works(config, setup_ddp):
     assert trainer.world_size == 1
     QG.cleanup_ddp()
     assert torch.distributed.is_initialized() is False
+    assert trainer.model is None
+
+
+def test_trainer_ddp_creation_model_init(config, setup_ddp):
+    "Test that TrainerDDP model can be created"
+    assert torch.distributed.is_initialized(), (
+        "Distributed process group was not initialized"
+    )
+
+    trainer = QG.TrainerDDP(1, config)
+
+    trainer.initialize_model()
+
     assert trainer.model is not None
+    assert isinstance(trainer.model, DDP)
+
+
+def test_trainer_ddp_creation_optimizer_init(config, setup_ddp):
+    "Test that TrainerDDP model can be created"
+    assert torch.distributed.is_initialized(), (
+        "Distributed process group was not initialized"
+    )
+
+    trainer = QG.TrainerDDP(1, config)
+    trainer.initialize_model()
+
+    assert trainer.model is not None
+    assert isinstance(trainer.model, DDP)
+
+    assert trainer.optimizer is None
+    trainer.initialize_optimizer()
+    assert trainer.optimizer is not None
+    assert isinstance(trainer.optimizer, torch.optim.Adam)
 
 
 def test_trainer_ddp_creation_broken(broken_config):
