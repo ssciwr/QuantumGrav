@@ -371,7 +371,10 @@ class Trainer(base.Configurable):
             self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
                 config["early_stopping"]
             )
-        except Exception as _:
+        except Exception as e:
+            self.logger.debug(
+                f"from_config failed for early stopping, using direct instantiation: {e}"
+            )
             self.early_stopping = config["early_stopping"]["type"](
                 *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
             )
@@ -380,24 +383,27 @@ class Trainer(base.Configurable):
             self.validator = evaluate.DefaultValidator.from_config(
                 config["validation"]["validator"]
             )
-        except Exception as _:
+        except Exception as e:
+            self.logger.debug(
+                f"from_config failed for validator, using direct instantiation: {e}"
+            )
             self.validator = config["validation"]["validator"]["type"](
                 *config["validation"]["validator"]["args"],
                 **config["validation"]["validator"]["kwargs"],
             )
 
-        # nothing needed here
         try:
             self.tester = evaluate.DefaultTester.from_config(
                 config["testing"]["tester"]
             )
-        except Exception as _:
+        except Exception as e:
+            self.logger.debug(
+                f"from_config failed for tester, using direct instantiation: {e}"
+            )
             self.tester = config["testing"]["tester"]["type"](
                 *config["testing"]["tester"]["args"],
                 **config["testing"]["tester"]["kwargs"],
             )
-
-        # nothing needed here
 
         with open(self.data_path / "config.yaml", "w") as f:
             yaml.dump(self.config, f)
@@ -433,6 +439,9 @@ class Trainer(base.Configurable):
             )
 
         except Exception:
+            self.logger.debug(
+                "from_config for  model initialization failed, using direct initialization instead"
+            )
             self.model = self.config["model"]["type"](
                 *self.config["model"]["args"], **self.config["model"]["kwargs"]
             ).to(self.device)
@@ -470,6 +479,7 @@ class Trainer(base.Configurable):
             self.logger.info("Optimizer initialized")
         except Exception as e:
             self.logger.error(f"Error initializing optimizer: {e}")
+            raise e
         return self.optimizer
 
     def prepare_dataset(
@@ -499,7 +509,7 @@ class Trainer(base.Configurable):
         Returns:
             Tuple[Dataset, Dataset, Dataset]: train, validation, and test datasets.
         """
-        if dataset is None and (
+        if dataset is not None and (
             train_dataset is not None
             or val_dataset is not None
             or test_dataset is not None
@@ -534,7 +544,7 @@ class Trainer(base.Configurable):
                 dataset.shuffle()
 
         if train_dataset is None and val_dataset is None and test_dataset is None:
-            split = self.config["data"].get("split", split)
+            split = self.config.get("data", {}).get("split", split)
             if not np.isclose(
                 np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
             ):
