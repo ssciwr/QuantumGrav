@@ -9,7 +9,7 @@ from ..gnn_model import instantiate_type
 from .. import base
 import jsonschema
 
-class GraphEmbeddingToLatent(torch.nn.Module):
+class GraphEmbeddingToLatent(torch.nn.Module, base.Configurable):
     """
     Module that transforms graph-level embeddings into latent representations.
 
@@ -56,51 +56,42 @@ class GraphEmbeddingToLatent(torch.nn.Module):
             "aggregate_pooling_kwargs": {
                 "type": "object"
             },
-            "bottleneck": {
-                "anyOf": [
-                    {"type": "null"},
-                    {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 3,
-                        "items": [
-                            {"description": "bottleneck module type"},
-                            {"type": "array", "items": {}},
-                            {"type": "object"}
-                        ],
-                    },
-                ]
+            "bottleneck_type": {
+                "description": "Optional: class/module for bottleneck transformation. If omitted, no bottleneck is applied."
             },
-            "mu_head": {
-                "anyOf": [
-                    {"type": "null"},
-                    {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 3,
-                        "items": [
-                            {"description": "mu_head module type"},
-                            {"type": "array", "items": {}},
-                            {"type": "object"}
-                        ],
-                    },
-                ]
+            "bottleneck_args": {
+                "type": "array",
+                "description": "Positional arguments for bottleneck_type.",
+                "items": {}
             },
-            "logvar_head": {
-                "anyOf": [
-                    {"type": "null"},
-                    {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 3,
-                        "items": [
-                            {"description": "logvar_head module type"},
-                            {"type": "array", "items": {}},
-                            {"type": "object"}
-                        ],
-                    },
-                ]
-            }
+            "bottleneck_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for bottleneck_type."
+            },
+            "mu_head_type": {
+                "description": "Optional: class/module producing the latent mean μ. Must be provided together with logvar head."
+            },
+            "mu_head_args": {
+                "type": "array",
+                "description": "Positional arguments for mu_head_type.",
+                "items": {}
+            },
+            "mu_head_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for mu_head_type."
+            },
+            "logvar_head_type": {
+                "description": "Optional: class/module producing latent log-variance log σ². Must be provided together with mu head."
+            },
+            "logvar_head_args": {
+                "type": "array",
+                "description": "Positional arguments for logvar_head_type.",
+                "items": {}
+            },
+            "logvar_head_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for logvar_head_type."
+            },
         },
         "required": ["pooling_layers", "aggregate_pooling_type"],
         "additionalProperties": False
@@ -108,8 +99,8 @@ class GraphEmbeddingToLatent(torch.nn.Module):
 
     def __init__(
         self,
-        pooling_layers: Sequence[tuple[type | torch.nn.Module, Sequence[Any] | None, dict[str, Any] | None]] | None = None,
-        aggregate_pooling_type: type | torch.nn.Module | Callable | None = None,
+        pooling_layers: Sequence[tuple[type | torch.nn.Module, Sequence[Any] | None, dict[str, Any] | None]],
+        aggregate_pooling_type: type | torch.nn.Module | Callable,
         aggregate_pooling_args: Sequence[Any] | None = None,
         aggregate_pooling_kwargs: dict[str, Any] | None = None,
         bottleneck_type: type | torch.nn.Module | None = None,
@@ -173,7 +164,7 @@ class GraphEmbeddingToLatent(torch.nn.Module):
         if pooling_layers is None or len(pooling_layers) == 0:
             raise ValueError("LatentModule requires pooling_layers: latent operates on graph-level embeddings.")
         self.pooling_layers = torch.nn.ModuleList(
-            [instantiate_type(t, a, k) for (t, a, k) in pooling_layers]
+            [instantiate_type(pl_type, args, kwargs) for (pl_type, args, kwargs) in pooling_layers]
         )
         if aggregate_pooling_type is None:
             raise ValueError("LatentModule requires aggregate_pooling_type; pooling is mandatory for graph-level latent vectors.")
@@ -195,10 +186,10 @@ class GraphEmbeddingToLatent(torch.nn.Module):
             )
 
 
-    def forward(self, h: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    def forward(self, embeddings: torch.Tensor, batch: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """
         Args:
-            h (torch.Tensor): Input tensor representing the graph-level embedding.
+            embeddings (torch.Tensor): Input tensor representing the graph-level embedding.
 
         Returns:
             tuple:
@@ -207,8 +198,12 @@ class GraphEmbeddingToLatent(torch.nn.Module):
                 - logvar (torch.Tensor | None): Log-variance vector of the latent distribution, or None.
         """
         # pooling
-        pooled = [pl(h) for pl in self.pooling_layers]
-        h = self.aggregate_pooling(pooled)
+        pooled_embeddings = [
+                    pooling_op(embeddings, batch)
+                    for pooling_op in self.pooling_layers
+                ]
+
+        h = self.aggregate_pooling(pooled_embeddings)
 
         if self.bottleneck is not None:
             h = self.bottleneck(h)
@@ -227,21 +222,15 @@ class GraphEmbeddingToLatent(torch.nn.Module):
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "LatentModule":
         jsonschema.validate(cfg, cls.schema)
-        b_cfg = cfg.get("bottleneck")
-        if b_cfg:
-            b_type, b_args, b_kwargs = b_cfg
-        else:
-            b_type = b_args = b_kwargs = None
-        m_cfg = cfg.get("mu_head")
-        if m_cfg:
-            m_type, m_args, m_kwargs = m_cfg
-        else:
-            m_type = m_args = m_kwargs = None
-        l_cfg = cfg.get("logvar_head")
-        if l_cfg:
-            l_type, l_args, l_kwargs = l_cfg
-        else:
-            l_type = l_args = l_kwargs = None
+        b_type = cfg.get("bottleneck_type")
+        b_args = cfg.get("bottleneck_args")
+        b_kwargs = cfg.get("bottleneck_kwargs")
+        m_type = cfg.get("mu_head_type")
+        m_args = cfg.get("mu_head_args")
+        m_kwargs = cfg.get("mu_head_kwargs")
+        l_type = cfg.get("logvar_head_type")
+        l_args = cfg.get("logvar_head_args")
+        l_kwargs = cfg.get("logvar_head_kwargs")
         pl = cfg.get("pooling_layers")
         ag_type = cfg.get("aggregate_pooling_type")
         ag_args = cfg.get("aggregate_pooling_args")

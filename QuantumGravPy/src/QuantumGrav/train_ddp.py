@@ -110,7 +110,7 @@ class TrainerDDP(train.Trainer):
         Returns:
             DDP: The initialized model.
         """
-        model = gnn_model.GNNModel.from_config(self.config["model"])
+        model = gnn_model_old.GNNModel.from_config(self.config["model"])
 
         if self.device.type == "cpu" or (
             isinstance(self.device, torch.device) and self.device.type == "cpu"
@@ -247,15 +247,22 @@ class TrainerDDP(train.Trainer):
             ValueError: If the model configuration does not contain 'name'.
             ValueError: If the training configuration does not contain 'checkpoint_path'.
         """
-        # TODO: check if this works really - it should save the best model that is there
         if self.rank == 0:
             if self.model is None:
                 raise ValueError("Model must be initialized before saving checkpoint.")
 
+            if "name" not in self.config["model"]:
+                raise ValueError(
+                    "Model configuration must contain 'name' to save checkpoint."
+                )
+
             self.logger.info(
-                f"Saving checkpoint for model model at epoch {self.epoch} to {self.checkpoint_path}"
+                f"Saving checkpoint for model {self.config['model']['name']} at epoch {self.epoch} to {self.checkpoint_path}"
             )
-            outpath = self.checkpoint_path / f"model_{name_addition}.pt"
+            outpath = (
+                self.checkpoint_path
+                / f"{self.config['model']['name']}_epoch_{self.epoch}_{name_addition}.pt"
+            )
 
             if outpath.exists() is False:
                 outpath.parent.mkdir(parents=True, exist_ok=True)
