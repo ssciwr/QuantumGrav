@@ -81,7 +81,6 @@ def test_default_early_stopping_check_any_grace_period_decreased(early_stoppingi
     assert early_stopping.current_patience == early_stoppinginput["patience"]
 
     for key, task in early_stopping.tasks.items():
-        print(f"key: {key}, found better: {task['found_better']}")
         assert task["current_grace_period"] == task["grace_period"] - 1
         assert task["found_better"] == (key == 1)
 
