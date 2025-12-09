@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import datetime
 import pandas as pd
+from copy import deepcopy
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 
@@ -178,7 +179,7 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
 @pytest.fixture
 def config_with_data(config, create_data_zarr, read_data):
     datadir, datafiles = create_data_zarr
-    cfg = config
+    cfg = deepcopy(config)
     cfg["data"] = {
         "pre_transform": lambda x: x,
         "transform": lambda x: x,
@@ -234,7 +235,7 @@ class DummyEvaluator:
         self.data = pd.DataFrame(columns=["loss", "other_loss"])
 
     def validate(self, model, data_loader):
-        # Dummy test logic
+        # Dummy validate logic
         losses = torch.rand(10)
         avg1 = losses.mean().item()
         avg2 = losses.mean().item()

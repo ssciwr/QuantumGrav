@@ -204,7 +204,7 @@ class DummyEvaluator:
         self.data = pd.DataFrame(columns=["loss", "other_loss"])
 
     def validate(self, model, data_loader):
-        # Dummy test logic
+        # Dummy validator logic
         losses = torch.rand(10)
         avg1 = losses.mean().item()
         avg2 = losses.mean().item()
