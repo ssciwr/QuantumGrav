@@ -123,6 +123,179 @@ function prepare_dataproduction(
 
     file = Zarr.DirectoryStore(filepath)
 
+    # create root group
+    Zarr.zgroup(file, "")
+
     return filepath, file
 
+end
+
+
+"""
+    setup_mp(config::Dict)
+
+DOCSTRING
+"""
+function setup_mp(config::Dict)
+    @sync for p in workers()
+
+        # runs on the main process
+        seed_per_process = rand(1:1_000_000_000_000)
+        @info "setting up worker $p with seed $seed_per_process"
+
+        # deepcopy config and set seed in the copy to not contaminate the config
+        worker_conf = deepcopy(config)
+        worker_conf["seed"] = seed_per_process
+
+        # seed each worker and initialize factories on workers individually
+        @spawnat p begin
+            Random.seed!(seed_per_process)
+            global worker_factory = QG.CsetFactory(worker_conf)
+            make_cset_data(worker_factory)  # warm-up
+        end
+    end
+end
+
+"""
+    setup_config(configpath::Union{String, Nothing})
+
+DOCSTRING
+"""
+function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
+    defaultconfigpath =
+        joinpath(dirname(@__DIR__), "configs", "createdata_config_default.yaml")
+    default_config = YAML.load_file(defaultconfigpath)
+
+    if configpath === nothing
+        config = default_config
+        return config
+    else
+        if isfile(configpath)
+            loaded_config = YAML.load_file(configpath)
+            # this replaces the overlapping entries
+            config = merge(default_config, loaded_config)
+            return config
+        else
+            throw(ArgumentError("Error: Config file not found at $configpath"))
+        end
+    end
+end
+
+
+"""
+    produce_data(num_workers::Int64, num_threads::Int64, num_blas_threads::Int64, chunksize::Int64, configpath::String, make_data::Function)
+
+Produce data on num_workers in parallel using the supplied make_data function. This works by spawning the data production workers and have them
+fill a Channel with data that is drained by a writer task concurrently. Therefore, data writing and data production happens at the same time. At most `chunksize` datapoints can be held in the queue. When it's full the workers will
+wait until a slot in it becomes free. In the same way, the writer task will wait until a new datapoint is available if the queue is empty.
+How many datapoints are written is defined in the config. See the documentation of the config file for this.
+Worker processes will be removed after the data production task is done.
+
+# Arguments:
+- `num_workers`: Number of data production workers
+- `num_threads`: Number of threads per data production worker. Make sure you coordinate this with the number of workers and number of blas threads to avoid oversubscription
+- `num_blas_threads`: Number of threads the BLAS library uses for LinearAlgebra tasks. Make sure you coordinate this with the number of workers and number of threads to avoid oversubscription
+- `chunksize`: Maximum datapoints to be held in memory at any one time.
+- `configpath`: path on disk to the config file to load
+- `make_data`: Function with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
+
+# Returns
+Nothing
+"""
+function produce_data(
+    num_workers::Int64,
+    num_threads::Int64,
+    num_blas_threads::Int64,
+    chunksize::Int64,
+    configpath::String,
+    make_data::Function,
+)::Nothing
+
+    using Distributed
+
+    try
+        if length(workers()) > 1
+            @warn "Warning, there are multiple workers already initialized: $(length(workers()))"
+        end
+
+        addprocs(
+            num_workers;
+            exeflags = ["--threads=$(num_threads)", "--optimize=3"],
+            enable_threaded_blas = true,
+        ) # add 6 worker processes to the current Julia session
+
+        @everywhere import CausalSets
+        @everywhere import YAML
+        @everywhere import Random
+        @everywhere import Zarr
+        @everywhere using ProgressMeter
+        @everywhere import Statistics
+        @everywhere import LinearAlgebra
+        @everywhere import Distributions
+        @everywhere import SparseArrays
+        @everywhere import StatsBase
+        @everywhere import JSON
+        @everywhere
+
+        @everywhere nbt = $num_blas_threads
+        @everywhere make_cset_data = $make_data
+        @everywhere LinearAlgebra.BLAS.set_num_threads($nbt)
+
+        # this is important - we need this to have the worker_factory on every process
+        @everywhere global worker_factory
+
+        @info "setup config"
+        config = setup_config(configpath)
+
+        # set the global rng seed in the main process
+        @info "set seed"
+        Random.seed!(config["seed"])
+
+        # setup multiprocessing
+        setup_mp(config)
+
+        # get cset type
+        cset_type = config["cset_type"]
+        @info "generating data for cset type $(cset_type)"
+
+        # make file, prepare config, output dir
+        @info "preparing output zarr store"
+        filepath, file = QG.prepare_dataproduction(config, [make_data], name = cset_type)
+
+        # get number of csets to create
+        n = config["num_datapoints"]
+
+        # split indices across workers and set up data queue
+        # only hold chunksize many csets in memory at any given time
+        queue = RemoteChannel(() -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)))
+
+        # start async writer task
+        writer = @async begin
+            @info "Writer started on pid=$(myid())"
+            root = Zarr.zopen(file, "w"; path = "")
+            for _ = 1:n # write exactly n times => num_datasets write operations
+                i, cset_data = take!(queue) # blocks when queue is empty
+                csetdata = Dict("cset_$(i)" => cset_data)
+                QG.dict_to_zarr(root, csetdata)
+            end
+            @info "Writer finished"
+        end
+
+        # start producers
+        @info "Producing data"
+        p = Progress(n, barglyphs = BarGlyphs("[=> ]"))
+        progress_pmap(1:n, progress = p, batch_size = 1) do i
+            cset_data = make_cset_data(worker_factory)
+            put!(queue, (i, cset_data)) # blocks when queue is full
+        end
+
+        @info "All producers finished. Waiting for writer to finish"
+        wait(writer)
+        @info "Finished cset type $(cset_type)"
+    catch e
+        @error "Error during data generation: $e"
+    finally
+        @info "Finished data generation"
+        rmprocs(workers())
+    end
 end

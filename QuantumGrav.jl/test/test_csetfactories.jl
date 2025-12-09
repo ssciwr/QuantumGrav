@@ -312,7 +312,7 @@ end
 
     csetmaker = QuantumGrav.RandomCsetMaker(cfg["random"])
     rng = Random.Xoshiro(cfg["seed"])
-    cset = csetmaker(25, rng)
+    cset, _ = csetmaker(25, rng)
     @test isnothing(cset) === false
     @test cset.atom_count == 25
 end
