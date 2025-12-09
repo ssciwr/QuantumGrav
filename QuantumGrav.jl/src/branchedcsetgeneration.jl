@@ -374,6 +374,7 @@ rng = MersenneTwister(42)
 points, cuts = generate_random_branch_points(3, 2; rng=rng)
 # `points` contains 3 random coordinates
 # `cuts` contains 2 random cut segments
+```
 """
 function generate_random_branch_points(
     nPoints::Int,
@@ -810,6 +811,7 @@ y = CausalSets.Coordinates{2}((2.0, 0.0))
 left, right = diamond_corners(x, y)
 # left  = Coordinates{2}((1.0, -1.0))
 # right = Coordinates{2}((1.0,  1.0))
+```
 """
 function diamond_corners(
     manifold::CausalSets.AbstractManifold,
@@ -877,6 +879,7 @@ p2 = CausalSets.Coordinates{2}((3.0, 0.0))
 
 point_in_diamond(CausalSets.MinkowskiManifold{2}(), p1, x, y)  # true
 point_in_diamond(CausalSets.MinkowskiManifold{2}(), p2, x, y)  # false
+```
 """
 function point_in_diamond(
     manifold::CausalSets.AbstractManifold,
@@ -945,6 +948,7 @@ manifold = CausalSets.MinkowskiManifold{2}()
 
 cut_crosses_diamond(manifold, x, y, cut1)  # true, cut passes through diamond
 cut_crosses_diamond(manifold, x, y, cut2)  # false, cut endpoint lies inside diamond
+```
 """
 function cut_crosses_diamond(
     manifold::CausalSets.AbstractManifold,
@@ -1055,6 +1059,7 @@ cut1 = (CausalSets.Coordinates{2}((1.0, -1.0)), CausalSets.Coordinates{2}((1.0, 
 cut2 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((2.0, 0.0)))
 intersection = CausalSets.Coordinates{2}((1.0, 0.0))
 intersected_cut_crosses_diamond(x, y, cut1, cut2, intersection)  # returns true
+```
 """
 function intersected_cut_crosses_diamond(
     manifold::CausalSets.AbstractManifold,
@@ -1172,6 +1177,7 @@ cut = (CausalSets.Coordinates{2}((1.0, -1.0)), CausalSets.Coordinates{2}((1.0, 1
 manifold = CausalSets.MinkowskiManifold{2}()
 path = propagate_ray(manifold, x, y, +1.0, [cut])
 # returns a path like [(0.0,0.0), (1.0,1.0), (2.0,0.0)]
+```
 """
 function propagate_ray(
     manifold::CausalSets.AbstractManifold,
@@ -1504,6 +1510,7 @@ y = CausalSets.Coordinates{2}((2.0, 0.0))
 cuts = [(CausalSets.Coordinates{2}((1.0, -1.1)), CausalSets.Coordinates{2}((1.0, 1.1)))]
 manifold = CausalSets.MinkowskiManifold{2}()
 in_wedge_of(manifold, cuts, x, y)  # returns false because the cut closes the wedge
+```
 """
 function in_wedge_of(
     manifold::CausalSets.AbstractManifold,
@@ -1687,6 +1694,7 @@ branch_info = (single_branch_points, finite_cuts)
 
 manifold = CausalSets.MinkowskiManifold{2}()
 in_past_of(manifold, branch_info, x, y)  # returns false (finite cut obstructs the path)
+```
 """
 function CausalSets.in_past_of(
     manifold::CausalSets.ConformallyTimesliceableManifold{N},
@@ -2065,6 +2073,7 @@ using Random, CausalSets
 rng = MersenneTwister(1234)
 cset, sprinkling, branch_info, coefs =
     make_branched_manifold_cset(50, 2, 3, rng, 5, 2.0)
+```
 """
 function make_branched_manifold_cset(
     npoints::Int64,
