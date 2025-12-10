@@ -11,6 +11,7 @@ import Zarr
 import Dates
 import Pkg
 import JSONSchema
+import Distributed
 
 include("utils.jl")
 include("csetgeneration.jl")

@@ -132,13 +132,16 @@ end
 
 
 """
-    setup_mp(config::Dict)
+	setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
 
-DOCSTRING
+Set up the multiprocessing environment for data production. 
+This initializes a CsetFactory on each worker process with a different seed and 
+copies the config dict to each worker. It also imports needed modules.
 """
-function setup_mp(config::Dict)
-    @sync for p in workers()
+function setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
 
+    @sync for p in Distributed.workers()
+        println("process: ", p)
         # runs on the main process
         seed_per_process = rand(1:1_000_000_000_000)
         @info "setting up worker $p with seed $seed_per_process"
@@ -147,19 +150,48 @@ function setup_mp(config::Dict)
         worker_conf = deepcopy(config)
         worker_conf["seed"] = seed_per_process
 
-        # seed each worker and initialize factories on workers individually
-        @spawnat p begin
-            Random.seed!(seed_per_process)
-            global worker_factory = QG.CsetFactory(worker_conf)
-            make_cset_data(worker_factory)  # warm-up
+        Distributed.@spawnat p begin
+            println("setting up worker: ", myid())
+            #execute this on each worker
+            @eval Main begin
+                import Pkg
+                Pkg.activate($(Base.active_project()))
+                println(
+                    "importing modules on worker: ",
+                    myid(),
+                    ", ",
+                    Base.active_project(),
+                )
+                using CausalSets
+                using YAML
+                using Random
+                using Zarr
+                using ProgressMeter
+                using Statistics
+                using LinearAlgebra
+                using Distributions
+                using SparseArrays
+                using StatsBase
+                using JSON
+
+                LinearAlgebra.BLAS.set_num_threads(num_blas_threads)
+
+                println("setting up cset factory on worker: ", myid())
+                global worker_factory
+                global make_cset_data
+
+                global make_cset_data = $make_data
+                global worker_factory = CsetFactory(worker_conf)
+                println("done setting up cset factory on worker: ", myid())
+            end
         end
     end
 end
 
 """
-    setup_config(configpath::Union{String, Nothing})
+	setup_config(configpath::Union{String, Nothing})
 
-DOCSTRING
+Set up the configuration for data production. Loads the default configuration and merges it with a user-provided configuration file if given.
 """
 function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
     defaultconfigpath =
@@ -183,7 +215,7 @@ end
 
 
 """
-    produce_data(num_workers::Int64, num_threads::Int64, num_blas_threads::Int64, chunksize::Int64, configpath::String, make_data::Function)
+	produce_data(num_workers::Int64, num_threads::Int64, num_blas_threads::Int64, chunksize::Int64, configpath::String, make_data::Function)
 
 Produce data on num_workers in parallel using the supplied make_data function. This works by spawning the data production workers and have them
 fill a Channel with data that is drained by a writer task concurrently. Therefore, data writing and data production happens at the same time. At most `chunksize` datapoints can be held in the queue. When it's full the workers will
@@ -211,38 +243,21 @@ function produce_data(
     make_data::Function,
 )::Nothing
 
-    using Distributed
-
     try
         if length(workers()) > 1
             @warn "Warning, there are multiple workers already initialized: $(length(workers()))"
         end
 
-        addprocs(
+        Distributed.addprocs(
             num_workers;
-            exeflags = ["--threads=$(num_threads)", "--optimize=3"],
+            exeflags = [
+                "--project=$(Base.active_project())",
+                "--threads=$(num_threads)",
+                "--optimize=3",
+            ],
             enable_threaded_blas = true,
-        ) # add 6 worker processes to the current Julia session
+        )
 
-        @everywhere import CausalSets
-        @everywhere import YAML
-        @everywhere import Random
-        @everywhere import Zarr
-        @everywhere using ProgressMeter
-        @everywhere import Statistics
-        @everywhere import LinearAlgebra
-        @everywhere import Distributions
-        @everywhere import SparseArrays
-        @everywhere import StatsBase
-        @everywhere import JSON
-        @everywhere
-
-        @everywhere nbt = $num_blas_threads
-        @everywhere make_cset_data = $make_data
-        @everywhere LinearAlgebra.BLAS.set_num_threads($nbt)
-
-        # this is important - we need this to have the worker_factory on every process
-        @everywhere global worker_factory
 
         @info "setup config"
         config = setup_config(configpath)
@@ -252,7 +267,7 @@ function produce_data(
         Random.seed!(config["seed"])
 
         # setup multiprocessing
-        setup_mp(config)
+        setup_mp(config, num_blas_threads, make_data)
 
         # get cset type
         cset_type = config["cset_type"]
@@ -273,7 +288,7 @@ function produce_data(
         writer = @async begin
             @info "Writer started on pid=$(myid())"
             root = Zarr.zopen(file, "w"; path = "")
-            for _ = 1:n # write exactly n times => num_datasets write operations
+            for _ ∈ 1:n # write exactly n times => num_datasets write operations
                 i, cset_data = take!(queue) # blocks when queue is empty
                 csetdata = Dict("cset_$(i)" => cset_data)
                 QG.dict_to_zarr(root, csetdata)
