@@ -12,6 +12,7 @@ import Dates
 import Pkg
 import JSONSchema
 import Distributed
+import ProgressMeter
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -49,7 +50,7 @@ export make_adj,
     create_grid_causet_2D,
     create_grid_causet_2D_polynomial_manifold,
     prepare_dataproduction,
-    setup_mp,
+    setup_multiprocessing,
     setup_config,
     produce_data,
     copy_sourcecode,

@@ -130,66 +130,8 @@ function prepare_dataproduction(
 
 end
 
-
-# """
-# 	setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
-
-# Set up the multiprocessing environment for data production. 
-# This initializes a CsetFactory on each worker process with a different seed and 
-# copies the config dict to each worker. It also imports needed modules.
-# """
-# function setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
-
-#     @sync for p in Distributed.workers()
-#         println("process: ", p)
-#         # runs on the main process
-#         seed_per_process = rand(1:1_000_000_000_000)
-#         @info "setting up worker $p with seed $seed_per_process"
-
-#         # deepcopy config and set seed in the copy to not contaminate the config
-#         worker_conf = deepcopy(config)
-#         worker_conf["seed"] = seed_per_process
-
-#         Distributed.@spawnat p begin
-#             println("setting up worker: ", myid())
-#             #execute this on each worker
-#             @eval Main begin
-#                 import Pkg
-#                 Pkg.activate($(Base.active_project()))
-#                 println(
-#                     "importing modules on worker: ",
-#                     myid(),
-#                     ", ",
-#                     Base.active_project(),
-#                 )
-#                 using CausalSets
-#                 using YAML
-#                 using Random
-#                 using Zarr
-#                 using ProgressMeter
-#                 using Statistics
-#                 using LinearAlgebra
-#                 using Distributions
-#                 using SparseArrays
-#                 using StatsBase
-#                 using JSON
-
-#                 LinearAlgebra.BLAS.set_num_threads(num_blas_threads)
-
-#                 println("setting up cset factory on worker: ", myid())
-#                 global worker_factory
-#                 global make_cset_data
-
-#                 global make_cset_data = $make_data
-#                 global worker_factory = CsetFactory(worker_conf)
-#                 println("done setting up cset factory on worker: ", myid())
-#             end
-#         end
-#     end
-# end
-
 """
-    setup_config(configpath::Union{String, Nothing})::Dict{Any,Any}
+	setup_config(configpath::Union{String, Nothing})::Dict{Any,Any}
 
 Set up the configuration for data production.
 - Loads the default configuration from `configs/createdata_default.yaml`.
@@ -222,6 +164,32 @@ function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
     end
 end
 
+"""global function _setup_channel()::Channel{CsetFactory} to avoid closure serialization in setup_multiprocessing"""
+function _setup_channel()
+    return Channel{CsetFactory}(1)
+end
+
+function setup_multiprocessing(config::Dict)
+
+    # setup multiprocessing environment. Put this into its own function when it works
+    worker_factories = Dict()
+    for p in Distributed.workers()
+        @info "setting up worker_factory on pid=$(p)"
+
+        process_local_seed = config["seed"] + p
+        process_local_config = deepcopy(config)
+        process_local_config["seed"] = process_local_seed
+
+        # set the rng seed on the worker
+        # this requires all imports to be done with @everywhere 
+        Distributed.remotecall_eval(Main, p, :(Random.seed!($process_local_seed)))
+
+        worker_factories[p] = Distributed.RemoteChannel(_setup_channel, p)
+
+        put!(worker_factories[p], CsetFactory(process_local_config))
+    end
+    return worker_factories
+end
 
 """
 	produce_data(num_workers::Int64, num_threads::Int64, num_blas_threads::Int64, chunksize::Int64, configpath::String, make_data::Function)
@@ -244,29 +212,19 @@ Worker processes will be removed after the data production task is done.
 Nothing
 """
 function produce_data(
-    num_workers::Int64,
-    num_threads::Int64,
-    num_blas_threads::Int64,
     chunksize::Int64,
-    configpath::String,
+    configpath::Union{String,Nothing},
     make_data::Function,
 )::Nothing
 
     try
-        if length(workers()) > 1
-            @warn "Warning, there are multiple workers already initialized: $(length(workers()))"
+        if length(Distributed.workers()) < 2
+            throw(
+                ErrorException(
+                    "At least 2 worker processes are required for data production. Please use `Distributed.addprocs(n)` to add n worker processes before calling `produce_data`.",
+                ),
+            )
         end
-
-        Distributed.addprocs(
-            num_workers;
-            exeflags = [
-                "--project=$(Base.active_project())",
-                "--threads=$(num_threads)",
-                "--optimize=3",
-            ],
-            enable_threaded_blas = true,
-        )
-
 
         @info "setup config"
         config = setup_config(configpath)
@@ -275,42 +233,46 @@ function produce_data(
         @info "set seed"
         Random.seed!(config["seed"])
 
-        # setup multiprocessing
-        setup_mp(config, num_blas_threads, make_data)
-
+        @info "set up multiprocessing environment"
+        worker_factories = setup_multiprocessing(config)
         # get cset type
         cset_type = config["cset_type"]
         @info "generating data for cset type $(cset_type)"
 
         # make file, prepare config, output dir
         @info "preparing output zarr store"
-        filepath, file = QG.prepare_dataproduction(config, [make_data], name = cset_type)
+        filepath, file = prepare_dataproduction(config, [make_data], name = cset_type)
 
         # get number of csets to create
         n = config["num_datapoints"]
 
         # split indices across workers and set up data queue
         # only hold chunksize many csets in memory at any given time
-        queue = RemoteChannel(() -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)))
+        queue = Distributed.RemoteChannel(
+            () -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)),
+        )
 
         # start async writer task
         writer = @async begin
-            @info "Writer started on pid=$(myid())"
+            @info "Writer started on pid=$(Distributed.myid())"
             root = Zarr.zopen(file, "w"; path = "")
             for _ ∈ 1:n # write exactly n times => num_datasets write operations
                 i, cset_data = take!(queue) # blocks when queue is empty
                 csetdata = Dict("cset_$(i)" => cset_data)
-                QG.dict_to_zarr(root, csetdata)
+                dict_to_zarr(root, csetdata)
             end
             @info "Writer finished"
         end
 
         # start producers
         @info "Producing data"
-        p = Progress(n, barglyphs = BarGlyphs("[=> ]"))
-        progress_pmap(1:n, progress = p, batch_size = 1) do i
-            cset_data = make_cset_data(worker_factory)
+        p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
+        ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
+            # select worker 
+            worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
+            cset_data = make_data(worker_factory)
             put!(queue, (i, cset_data)) # blocks when queue is full
+            put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
         end
 
         @info "All producers finished. Waiting for writer to finish"
@@ -318,8 +280,6 @@ function produce_data(
         @info "Finished cset type $(cset_type)"
     catch e
         @error "Error during data generation: $e"
-    finally
-        @info "Finished data generation"
-        rmprocs(workers())
+        throw(e)
     end
 end
