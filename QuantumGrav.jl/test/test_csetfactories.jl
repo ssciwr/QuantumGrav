@@ -355,7 +355,7 @@ end
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["stddev_distribution_args"] = nothing
-    @test_throws ArgumentError LayeredCsetMaker(broken_cfg["layered"])
+    @test_throws ArgumentError QuantumGrav.LayeredCsetMaker(broken_cfg["layered"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["layered"]["connectivity_distribution_args"] = nothing
@@ -495,7 +495,7 @@ end
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["merged"]["connectivity_distribution_args"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
+    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
 end
 
@@ -631,7 +631,7 @@ end
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["order_distribution_args"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 
     broken_cfg = deepcopy(cfg)
     broken_cfg["grid"]["r_distribution_args"] = nothing

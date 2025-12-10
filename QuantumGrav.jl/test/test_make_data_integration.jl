@@ -159,7 +159,7 @@ end
     for i in [1, 2, 3]
         cset, _ = csetfactory("polynomial", 64, rng)
         data = make_data(cset)
-        dict_to_zarr(root, Dict("data_$(i)"=>data))
+        QuantumGrav.dict_to_zarr(root, Dict("data_$(i)"=>data))
     end
 
     file = nothing
