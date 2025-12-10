@@ -195,15 +195,6 @@ end
     end
 end
 
-# @testitem "setup_multiprocessing_test" tags = [:preparation] setup = [config] begin
-#     import Distributed
-#     @test length(Distributed.workers()) == 0
-#     Distributed.addprocs(2)
-#     QuantumGrav.setup_mp(cfg)
-
-#     @test 3 == 6 # check here that each worker has a csetfactory
-
-# end
 
 @testitem "setup_config_test" tags = [:preparation] begin
     import YAML
@@ -214,13 +205,24 @@ end
         @test haskey(cfg, "seed")
         @test haskey(cfg, "num_datapoints")
         @test haskey(cfg, "cset_type")
+        @test cfg["num_datapoints"] == 5
+        @test cfg["seed"] == 42
+        @test cfg["cset_type"] == "polynomial"
     end
+end
 
+@testitem "setup_config_test_override" tags = [:preparation] begin
+    using YAML
     # success: merge user config overriding a default value
     mktempdir() do tmp
         cfgpath = joinpath(tmp, "override.yaml")
         # override a couple of keys from default
-        user_cfg = Dict("seed" => 1234, "num_datapoints" => 7, "cset_type" => "random")
+        user_cfg = Dict(
+            "seed" => 1234,
+            "num_datapoints" => 7,
+            "cset_type" => "random",
+            "output" => tmp,
+        )
         YAML.write_file(cfgpath, user_cfg)
 
         cfg = QuantumGrav.setup_config(cfgpath)
@@ -229,8 +231,12 @@ end
         @test cfg["cset_type"] == "random"
         # Ensure other defaults still present
         @test haskey(cfg, "output")
+        @test cfg["output"] == tmp
     end
+end
 
+@testitem "setup_config_test_path_normalization" tags = [:preparation] begin
+    using YAML
     # success: path normalization works with ~ and relative paths
     mktempdir() do tmp
         # create in tmp and pass relative path from within tmp
@@ -242,18 +248,68 @@ end
             @test cfg["seed"] == 999
         end
     end
+end
 
+@testitem "setup_config_test_failure" tags = [:preparation] begin
+    using YAML: YAML
     # failure: missing file throws ArgumentError
     @test_throws ArgumentError QuantumGrav.setup_config("/path/that/does/not/exist.yaml")
 end
 
-# @testitem "produce_data" tags=[:preparation] begin
-#     import CausalSets
-#     import Zarr
+@testitem "setup_multiprocessing" tags = [:multiprocessing] setup=[config] begin
+    using Distributed
+    addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
 
-#     mktempdir() do configbasepath
-#         cfgpath = joinpath(configbasepath, "config.yml")
+    @everywhere using QuantumGrav
+    @everywhere using Random
 
-#         QuantumGrav.produce_data(2, 2, 2, 5)
-#     end
-# end
+    try
+        factories = setup_multiprocessing(cfg)
+
+        # global RNGs on each worker
+        rng_global_res = Dict(p => [] for p in workers())
+        @sync for p in workers()
+            # we have to use remotecall_eval here to avoid closures which would pull in local scope and with 
+            # that things that cannot be serialized
+            rng_global_res[p] = remotecall_eval(Main, p, :(rand(1:100, 10)))
+        end
+
+        for (k1, v1) in rng_global_res
+            for (k2, v2) in rng_global_res
+                if k1 != k2
+                    @test Set(v1) != Set(v2)
+                end
+            end
+        end
+
+        # local RNGs from factories
+        rng_local_results = Dict(p => [] for p in workers())
+        for p in workers()
+            rng_local_results[p] = remotecall_eval(Main, p, :(
+                begin
+
+                    factory = take!($factories[$p])
+                    local_rng = factory.rng
+                    x = rand(local_rng, 1:100, 10)
+                    put!($factories[$p], factory)
+                    return x
+                end
+            ))
+        end
+
+        for (k1, v1) in rng_local_results
+            for (k2, v2) in rng_global_res
+                if k1 != k2
+                    @test Set(v1) != Set(v2)
+                end
+            end
+        end
+    finally
+        rmprocs(workers()...)
+    end
+end
+
+
+@testitem "test_produce_data" tags = [:data_production] setup=[config] begin
+    cmd = `julia --project=$(dirname(@__DIR__)) `
+end
