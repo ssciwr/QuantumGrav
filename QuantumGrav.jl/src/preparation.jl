@@ -131,84 +131,93 @@ function prepare_dataproduction(
 end
 
 
+# """
+# 	setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
+
+# Set up the multiprocessing environment for data production. 
+# This initializes a CsetFactory on each worker process with a different seed and 
+# copies the config dict to each worker. It also imports needed modules.
+# """
+# function setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
+
+#     @sync for p in Distributed.workers()
+#         println("process: ", p)
+#         # runs on the main process
+#         seed_per_process = rand(1:1_000_000_000_000)
+#         @info "setting up worker $p with seed $seed_per_process"
+
+#         # deepcopy config and set seed in the copy to not contaminate the config
+#         worker_conf = deepcopy(config)
+#         worker_conf["seed"] = seed_per_process
+
+#         Distributed.@spawnat p begin
+#             println("setting up worker: ", myid())
+#             #execute this on each worker
+#             @eval Main begin
+#                 import Pkg
+#                 Pkg.activate($(Base.active_project()))
+#                 println(
+#                     "importing modules on worker: ",
+#                     myid(),
+#                     ", ",
+#                     Base.active_project(),
+#                 )
+#                 using CausalSets
+#                 using YAML
+#                 using Random
+#                 using Zarr
+#                 using ProgressMeter
+#                 using Statistics
+#                 using LinearAlgebra
+#                 using Distributions
+#                 using SparseArrays
+#                 using StatsBase
+#                 using JSON
+
+#                 LinearAlgebra.BLAS.set_num_threads(num_blas_threads)
+
+#                 println("setting up cset factory on worker: ", myid())
+#                 global worker_factory
+#                 global make_cset_data
+
+#                 global make_cset_data = $make_data
+#                 global worker_factory = CsetFactory(worker_conf)
+#                 println("done setting up cset factory on worker: ", myid())
+#             end
+#         end
+#     end
+# end
+
 """
-	setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
+    setup_config(configpath::Union{String, Nothing})::Dict{Any,Any}
 
-Set up the multiprocessing environment for data production. 
-This initializes a CsetFactory on each worker process with a different seed and 
-copies the config dict to each worker. It also imports needed modules.
-"""
-function setup_mp(config::Dict, num_blas_threads::Int, make_data::Function)
+Set up the configuration for data production.
+- Loads the default configuration from `configs/createdata_default.yaml`.
+- If a user-provided config path is given, loads it and merges with the default (overlapping keys in the user config override defaults).
 
-    @sync for p in Distributed.workers()
-        println("process: ", p)
-        # runs on the main process
-        seed_per_process = rand(1:1_000_000_000_000)
-        @info "setting up worker $p with seed $seed_per_process"
+# Arguments
+- `configpath::Union{String, Nothing}`: Path to a YAML config file to merge with the defaults. If `nothing`, only the default config is used. Relative paths and paths with `~` are supported.
 
-        # deepcopy config and set seed in the copy to not contaminate the config
-        worker_conf = deepcopy(config)
-        worker_conf["seed"] = seed_per_process
-
-        Distributed.@spawnat p begin
-            println("setting up worker: ", myid())
-            #execute this on each worker
-            @eval Main begin
-                import Pkg
-                Pkg.activate($(Base.active_project()))
-                println(
-                    "importing modules on worker: ",
-                    myid(),
-                    ", ",
-                    Base.active_project(),
-                )
-                using CausalSets
-                using YAML
-                using Random
-                using Zarr
-                using ProgressMeter
-                using Statistics
-                using LinearAlgebra
-                using Distributions
-                using SparseArrays
-                using StatsBase
-                using JSON
-
-                LinearAlgebra.BLAS.set_num_threads(num_blas_threads)
-
-                println("setting up cset factory on worker: ", myid())
-                global worker_factory
-                global make_cset_data
-
-                global make_cset_data = $make_data
-                global worker_factory = CsetFactory(worker_conf)
-                println("done setting up cset factory on worker: ", myid())
-            end
-        end
-    end
-end
-
-"""
-	setup_config(configpath::Union{String, Nothing})
-
-Set up the configuration for data production. Loads the default configuration and merges it with a user-provided configuration file if given.
+# Returns
+- `Dict{Any,Any}`: The resulting configuration dictionary after applying defaults and optional overrides.
 """
 function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
-    defaultconfigpath =
-        joinpath(dirname(@__DIR__), "configs", "createdata_config_default.yaml")
+    defaultconfigpath = joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
     default_config = YAML.load_file(defaultconfigpath)
 
     if configpath === nothing
         config = default_config
         return config
     else
-        if isfile(configpath)
-            loaded_config = YAML.load_file(configpath)
-            # this replaces the overlapping entries
+        # Normalize user-provided path to improve robustness
+        normalized = abspath(expanduser(configpath))
+        if isfile(normalized)
+            loaded_config = YAML.load_file(normalized)
+            # this replaces the overlapping entries (shallow merge is fine for our config structure)
             config = merge(default_config, loaded_config)
             return config
         else
-            throw(ArgumentError("Error: Config file not found at $configpath"))
+            throw(ArgumentError("Error: Config file not found at $(normalized)"))
         end
     end
 end
