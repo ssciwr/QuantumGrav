@@ -125,6 +125,60 @@
     return cfg
 end
 
+# make some dummy data. this must return a dictionary
+# the make data fucntion must be defined at the top level 
+
+@testsnippet run_dataproduction begin
+    using Distributed
+
+    # add processes
+    addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
+
+    # use @everywhere to include necessary modules on all workers
+    @everywhere using QuantumGrav
+    @everywhere using Random
+    @everywhere using YAML
+    @everywhere using Zarr
+    @everywhere using LinearAlgebra
+    @everywhere using Dates
+    # @everywhere using ProgressMeter
+    @everywhere using CausalSets
+
+    @everywhere @eval Main function make_data(factory::CsetFactory)
+        cset, _ = factory("random", 32, factory.rng)
+        return Dict("n" => cset.atom_count)
+    end
+    # make a temporary output path
+    targetpath = mktempdir()
+
+    try
+        # read the default config and modify it to use the temporary output path
+        # and produce more data
+        defaultconfigpath =
+            joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
+        cfg = YAML.load_file(defaultconfigpath)
+        cfg["output"] = targetpath
+        cfg["num_datapoints"] = 9
+
+        configpath = joinpath(targetpath, "config.yaml")
+
+        # .. then write back again
+        open(configpath, "w") do io
+            YAML.write(io, cfg)
+        end
+
+        # produce 20 data points using multiprocessing
+        # hole max. 10 datapoints in the writing queue at once 
+        # and use the make data function that we had defined above
+        QuantumGrav.produce_data(3, configpath, Main.make_data)
+
+    finally
+        println("done with produce_data_mp_testitem.jl")
+        rmprocs(workers()...)
+    end
+    return targetpath
+end
+
 @testitem "check_copy_sourcecode" tags = [:preparation] begin
     import CausalSets
     mktempdir() do targetpath
@@ -256,7 +310,7 @@ end
     @test_throws ArgumentError QuantumGrav.setup_config("/path/that/does/not/exist.yaml")
 end
 
-@testitem "setup_multiprocessing" tags = [:multiprocessing] setup=[config] begin
+@testitem "setup_multiprocessing_test" tags = [:multiprocessing] setup=[config] begin
     using Distributed
     addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
 
@@ -309,7 +363,14 @@ end
     end
 end
 
+@testitem "dataproduction_test" tags = [:dataproduction] setup=[run_dataproduction] begin
+    # check that data was produced
+    zarr_files = filter(x -> occursin(".zarr", x), readdir(targetpath))
+    @test length(zarr_files) == 1
 
-@testitem "test_produce_data" tags = [:data_production] setup=[config] begin
-    cmd = `julia --project=$(dirname(@__DIR__)) `
+    # test data content
+    store = zarr_files[1]
+    group = Zarr.zopen(joinpath(targetpath, store), "r"; path = "") # open root
+    @test group isa Zarr.ZGroup
+    @test length(keys(group.groups)) == 9 # 9 datapoints produced
 end

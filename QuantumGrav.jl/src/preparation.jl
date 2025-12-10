@@ -221,70 +221,66 @@ function produce_data(
     make_data::Function,
 )::Nothing
 
-    try
-        if length(Distributed.workers()) < 2
-            throw(
-                ErrorException(
-                    "At least 2 worker processes are required for data production. Please use `Distributed.addprocs(n)` to add n worker processes before calling `produce_data`.",
-                ),
-            )
-        end
-
-        @info "setup config"
-        config = setup_config(configpath)
-
-        # set the global rng seed in the main process
-        @info "set global random seed"
-        Random.seed!(config["seed"])
-
-        @info "set up multiprocessing environment"
-        worker_factories = setup_multiprocessing(config)
-
-        # get cset type
-        cset_type = config["cset_type"]
-        @info "generating data for cset type $(cset_type)"
-
-        # make file, prepare config, output dir
-        @info "preparing output zarr store"
-        filepath, file = prepare_dataproduction(config, [make_data], name = cset_type)
-
-        # get number of csets to create
-        n = config["num_datapoints"]
-
-        # split indices across workers and set up data queue
-        # only hold chunksize many csets in memory at any given time
-        queue = Distributed.RemoteChannel(
-            () -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)),
+    if length(Distributed.workers()) < 2
+        throw(
+            ErrorException(
+                "At least 2 worker processes are required for data production. Please use `Distributed.addprocs(n)` to add n worker processes before calling `produce_data`.",
+            ),
         )
-
-        # start async writer task
-        writer = @async begin
-            @info "Writer started on pid=$(Distributed.myid())"
-            root = Zarr.zopen(file, "w"; path = "")
-            for _ ∈ 1:n # write exactly n times => num_datasets write operations
-                i, cset_data = take!(queue) # blocks when queue is empty
-                csetdata = Dict("cset_$(i)" => cset_data)
-                dict_to_zarr(root, csetdata)
-            end
-            @info "Writer finished"
-        end
-
-        # start producers
-        @info "Producing data"
-        p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
-        ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
-            # select worker 
-            worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
-            cset_data = make_data(worker_factory)
-            put!(queue, (i, cset_data)) # blocks when queue is full
-            put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
-        end
-
-        @info "All producers finished. Waiting for writer to finish"
-        wait(writer)
-        @info "Finished cset type $(cset_type)"
-    catch e
-        @error "Error during data generation: $e"
-        throw(e)
     end
+
+    @info "setup config"
+    config = setup_config(configpath)
+
+    # set the global rng seed in the main process
+    @info "set global random seed"
+    Random.seed!(config["seed"])
+
+    @info "set up multiprocessing environment"
+    worker_factories = setup_multiprocessing(config)
+
+    # get cset type
+    cset_type = config["cset_type"]
+    @info "generating data for cset type $(cset_type)"
+
+    # make file, prepare config, output dir
+    @info "preparing output zarr store"
+    filepath, file = prepare_dataproduction(config, [make_data], name = cset_type)
+
+    # get number of csets to create
+    n = config["num_datapoints"]
+
+    # split indices across workers and set up data queue
+    # only hold chunksize many csets in memory at any given time
+    queue = Distributed.RemoteChannel(
+        () -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)),
+    )
+
+    # start async writer task
+    writer = @async begin
+        @info "Writer started on pid=$(Distributed.myid())"
+        root = Zarr.zopen(file, "w"; path = "")
+        for _ ∈ 1:n # write exactly n times => num_datasets write operations
+            i, cset_data = take!(queue) # blocks when queue is empty
+            csetdata = Dict("cset_$(i)" => cset_data)
+            dict_to_zarr(root, csetdata)
+        end
+        @info "Writer finished"
+    end
+
+    # start producers
+    @info "Producing data"
+    p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
+    ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
+        # select worker 
+        worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
+        cset_data = make_data(worker_factory)
+        put!(queue, (i, cset_data)) # blocks when queue is full
+        put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
+    end
+
+    @info "All producers finished. Waiting for writer to finish"
+    wait(writer)
+    @info "Finished cset type $(cset_type)"
+
 end
