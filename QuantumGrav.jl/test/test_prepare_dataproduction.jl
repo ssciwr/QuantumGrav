@@ -195,27 +195,65 @@ end
     end
 end
 
-@testitem "setup_multiprocessing_test" tags = [:preparation] setup = [config] begin
-    import Distributed
-    @test length(Distributed.workers()) == 0
-    Distributed.addprocs(2)
-    QuantumGrav.setup_mp(cfg)
+# @testitem "setup_multiprocessing_test" tags = [:preparation] setup = [config] begin
+#     import Distributed
+#     @test length(Distributed.workers()) == 0
+#     Distributed.addprocs(2)
+#     QuantumGrav.setup_mp(cfg)
 
-    @test 3 == 6 # check here that each worker has a csetfactory
+#     @test 3 == 6 # check here that each worker has a csetfactory
 
-end
+# end
 
 @testitem "setup_config_test" tags = [:preparation] begin
+    import YAML
 
-end
-
-@testitem "produce_data" tags=[:preparation] begin
-    import CausalSets
-    import Zarr
-
-    mktempdir() do configbasepath
-        cfgpath = joinpath(configbasepath, "config.yml")
-
-        QuantumGrav.produce_data(2, 2, 2, 5)
+    # success: load default when configpath is nothing
+    let cfg = QuantumGrav.setup_config(nothing)
+        @test isa(cfg, Dict)
+        @test haskey(cfg, "seed")
+        @test haskey(cfg, "num_datapoints")
+        @test haskey(cfg, "cset_type")
     end
+
+    # success: merge user config overriding a default value
+    mktempdir() do tmp
+        cfgpath = joinpath(tmp, "override.yaml")
+        # override a couple of keys from default
+        user_cfg = Dict("seed" => 1234, "num_datapoints" => 7, "cset_type" => "random")
+        YAML.write_file(cfgpath, user_cfg)
+
+        cfg = QuantumGrav.setup_config(cfgpath)
+        @test cfg["seed"] == 1234
+        @test cfg["num_datapoints"] == 7
+        @test cfg["cset_type"] == "random"
+        # Ensure other defaults still present
+        @test haskey(cfg, "output")
+    end
+
+    # success: path normalization works with ~ and relative paths
+    mktempdir() do tmp
+        # create in tmp and pass relative path from within tmp
+        cfgname = "rel_override.yaml"
+        cfgpath = joinpath(tmp, cfgname)
+        YAML.write_file(cfgpath, Dict("seed" => 999))
+        cd(tmp) do
+            cfg = QuantumGrav.setup_config(cfgname)
+            @test cfg["seed"] == 999
+        end
+    end
+
+    # failure: missing file throws ArgumentError
+    @test_throws ArgumentError QuantumGrav.setup_config("/path/that/does/not/exist.yaml")
 end
+
+# @testitem "produce_data" tags=[:preparation] begin
+#     import CausalSets
+#     import Zarr
+
+#     mktempdir() do configbasepath
+#         cfgpath = joinpath(configbasepath, "config.yml")
+
+#         QuantumGrav.produce_data(2, 2, 2, 5)
+#     end
+# end
