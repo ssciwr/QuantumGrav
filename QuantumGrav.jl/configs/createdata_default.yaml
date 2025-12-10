@@ -1,0 +1,102 @@
+num_datapoints: 5
+output: "../data"
+seed: 42
+csetsize_distr: "DiscreteUniform"
+csetsize_distr_args: [64, 128]
+
+cset_type:   [
+    "polynomial",
+    "complex_topology",
+    "destroyed",
+    "merged",
+    "grid",
+    "layered",
+    "random",
+  ]
+
+polynomial: &poly_defaults
+  order_distribution: "DiscreteUniform"
+  order_distribution_args: [5, 15]
+  order_distribution_kwargs: {}
+  r_distribution: "Uniform"
+  r_distribution_args: [2.0, 8.0]
+  r_distribution_kwargs: {}
+
+random:
+  connectivity_distribution: "Uniform"
+  connectivity_distribution_args: [0.1, 1.0]
+  connectivity_distribution_kwargs: {}
+  max_iter: 30
+  num_tries: 100
+  abs_tol: 1e-2
+  rel_tol: null
+
+layered:
+  connectivity_distribution: "Uniform"
+  connectivity_distribution_args: [0.05, 1.0]
+  connectivity_distribution_kwargs: {}
+  stddev_distribution: "Uniform"
+  stddev_distribution_args: [0.0, 1.0]
+  stddev_distribution_kwargs: {}
+  layer_distribution: "Uniform"
+  layer_distribution_args: [2, 20]
+  layer_distribution_kwargs: {}
+
+merged:
+  <<: *poly_defaults
+  n2_rel_distribution: "Uniform"
+  n2_rel_distribution_args: [0.0, 1.0]
+  n2_rel_distribution_kwargs: {}
+  connectivity_distribution: "Uniform"
+  connectivity_distribution_args: [0.0, 1.0]
+  connectivity_distribution_kwargs: {}
+  link_prob_distribution: "Uniform"
+  link_prob_distribution_args: [0.0, 1.0]
+  link_prob_distribution_kwargs: {}
+
+complex_topology:
+  <<: *poly_defaults
+  vertical_cut_distribution: "Uniform"
+  vertical_cut_distribution_args: [1.0, 5.0]
+  vertical_cut_distribution_kwargs: {}
+  finite_cut_distribution: "Uniform"
+  finite_cut_distribution_args: [1.0, 5.0]
+  finite_cut_distribution_kwargs: {}
+  tol: 1e-2
+
+destroyed:
+  <<: *poly_defaults
+  flip_distribution: "Uniform"
+  flip_distribution_args: [0.0, 1.0]
+  flip_distribution_kwargs: {}
+
+grid:
+  <<: *poly_defaults
+  grid_distribution: "DiscreteUniform"
+  grid_distribution_args: [1, 6]
+  grid_distribution_kwargs: {}
+  rotate_distribution: "Uniform"
+  rotate_distribution_args: [0.0, 180.0]
+  rotate_distribution_kwargs: {}
+
+  quadratic: {}
+
+  rectangular: &rectangular_defaults
+    segment_ratio_distribution: "Uniform"
+    segment_ratio_distribution_args: [0.2, 5.0]
+    segment_ratio_distribution_kwargs: {}
+
+  rhombic:
+    <<: *rectangular_defaults
+
+  hexagonal:
+    <<: *rectangular_defaults
+
+  triangular:
+    <<: *rectangular_defaults
+
+  oblique:
+    <<: *rectangular_defaults
+    oblique_angle_distribution: "Uniform"
+    oblique_angle_distribution_args: [0.0, 59.0]
+    oblique_angle_distribution_kwargs: {}
