@@ -1,18 +1,10 @@
 num_datapoints: 5
-output: "../data"
+output: "./"
 seed: 42
 csetsize_distr: "DiscreteUniform"
 csetsize_distr_args: [64, 128]
 
-cset_type:   [
-    "polynomial",
-    "complex_topology",
-    "destroyed",
-    "merged",
-    "grid",
-    "layered",
-    "random",
-  ]
+cset_type: "polynomial"
 
 polynomial: &poly_defaults
   order_distribution: "DiscreteUniform"
