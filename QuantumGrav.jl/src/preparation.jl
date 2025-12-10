@@ -184,6 +184,10 @@ function setup_multiprocessing(config::Dict)
         # this requires all imports to be done with @everywhere 
         Distributed.remotecall_eval(Main, p, :(Random.seed!($process_local_seed)))
 
+        # we need to use RemoteChannels here into which we can put the CsetFactory instances, 
+        # one per process. 
+        # then we can take them, use them, and put them back again which avoids 
+        # conflicts or reuse between processes and avoids global variables
         worker_factories[p] = Distributed.RemoteChannel(_setup_channel, p)
 
         put!(worker_factories[p], CsetFactory(process_local_config))
@@ -230,11 +234,12 @@ function produce_data(
         config = setup_config(configpath)
 
         # set the global rng seed in the main process
-        @info "set seed"
+        @info "set global random seed"
         Random.seed!(config["seed"])
 
         @info "set up multiprocessing environment"
         worker_factories = setup_multiprocessing(config)
+
         # get cset type
         cset_type = config["cset_type"]
         @info "generating data for cset type $(cset_type)"
