@@ -157,19 +157,36 @@ function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
         if isfile(normalized)
             loaded_config = YAML.load_file(normalized)
             # this replaces the overlapping entries (shallow merge is fine for our config structure)
-            config = merge(default_config, loaded_config)
-            return config
+            return merge(default_config, loaded_config)
         else
             throw(ArgumentError("Error: Config file not found at $(normalized)"))
         end
     end
 end
 
-"""global function _setup_channel()::Channel{CsetFactory} to avoid closure serialization in setup_multiprocessing"""
+"""_setup_channel()::Channel{CsetFactory}
+Define this explicitly to avoid closure serialization in setup_multiprocessing
+"""
 function _setup_channel()
     return Channel{CsetFactory}(1)
 end
 
+"""
+	setup_multiprocessing(config::Dict)
+
+Set up the multiprocessing environment for distributed computation.
+
+This function creates a dictionary mapping worker process IDs to RemoteChannels,
+each containing a process-local instance of `CsetFactory` initialized with a unique seed.
+The random seed for each worker is set to `config["seed"] + pid`, and the configuration
+is deep-copied and updated for each worker.
+
+# Arguments
+- `config::Dict`: Configuration dictionary containing at least a `"seed"` key.
+
+# Returns
+- `Dict{Any,Any}`: A dictionary mapping worker process IDs to RemoteChannels containing `CsetFactory` instances.
+"""
 function setup_multiprocessing(config::Dict)
 
     # setup multiprocessing environment. Put this into its own function when it works
@@ -197,7 +214,7 @@ function setup_multiprocessing(config::Dict)
 end
 
 """
-	produce_data(num_workers::Int64, num_threads::Int64, num_blas_threads::Int64, chunksize::Int64, configpath::String, make_data::Function)
+	produce_data(chunksize::Int64, configpath::String, make_data::Function)
 
 Produce data on num_workers in parallel using the supplied make_data function. This works by spawning the data production workers and have them
 fill a Channel with data that is drained by a writer task concurrently. Therefore, data writing and data production happens at the same time. At most `chunksize` datapoints can be held in the queue. When it's full the workers will
@@ -206,14 +223,11 @@ How many datapoints are written is defined in the config. See the documentation 
 Worker processes will be removed after the data production task is done.
 
 # Arguments:
-- `num_workers`: Number of data production workers
-- `num_threads`: Number of threads per data production worker. Make sure you coordinate this with the number of workers and number of blas threads to avoid oversubscription
-- `num_blas_threads`: Number of threads the BLAS library uses for LinearAlgebra tasks. Make sure you coordinate this with the number of workers and number of threads to avoid oversubscription
 - `chunksize`: Maximum datapoints to be held in memory at any one time.
 - `configpath`: path on disk to the config file to load
-- `make_data`: Function with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
-
-# Returns
+- `make_data`: Function for producing the data with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
+   This must return a Dictionary mapping names (strings) => Union{AbstractVector, Number, Bool, String}
+# Returns:
 Nothing
 """
 function produce_data(
@@ -275,9 +289,12 @@ function produce_data(
     ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
         # select worker
         worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
-        cset_data = make_data(worker_factory)
-        put!(queue, (i, cset_data)) # blocks when queue is full
-        put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
+        try
+            cset_data = make_data(worker_factory)
+            put!(queue, (i, cset_data)) # blocks when queue is full
+        finally
+            put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
+        end
     end
 
     @info "All producers finished. Waiting for writer to finish"
