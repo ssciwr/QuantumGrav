@@ -1,6 +1,5 @@
 ################################################################################
 # command line args
-config = nothing
 configpath = nothing
 num_workers = 1
 num_threads = 1
