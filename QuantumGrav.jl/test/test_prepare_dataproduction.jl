@@ -1,4 +1,4 @@
-@testsnippet config begin
+@testsnippet prepare_config begin
     cfg = Dict(
         "polynomial" => Dict(
             "order_distribution" => "DiscreteUniform",
@@ -308,7 +308,7 @@ end
     @test_throws ArgumentError QuantumGrav.setup_config("/path/that/does/not/exist.yaml")
 end
 
-@testitem "setup_multiprocessing_test" tags = [:multiprocessing] setup=[config] begin
+@testitem "setup_multiprocessing_test" tags = [:multiprocessing] setup=[prepare_config] begin
     using Distributed
     addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
 
