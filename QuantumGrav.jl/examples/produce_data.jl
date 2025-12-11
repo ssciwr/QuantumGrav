@@ -64,7 +64,7 @@ for (i, arg) in enumerate(args)
         println("Usage: julia create_data.jl [--config <path_to_config_file>]")
         println("Options:")
         println("  --config <path_to_config_file>  Path to the configuration file.")
-        println("  --num_processes <int> number of processes to run on.")
+        println("  --num_workers <int> number of processes to run on.")
         println("  --num_threads <int> number of threads **per process**")
         println(
             "  --num_blas_threads <int> number of threads the blas library should use. Only needed if you use LinearAlgebra.jl algorithms. This is independent of --num_threads!",
@@ -84,8 +84,8 @@ import Distributed
 # add processes
 Distributed.addprocs(
     num_workers,
-    execflags = ["--threads=$(num_threads)", "-O3", "--project=$(dirname(@__DIR__))"],
-    with_blas_threads = true,
+    exeflags = ["--threads=$(num_threads)", "-O3", "--project=$(dirname(@__DIR__))"],
+    enable_threaded_blas = true,
 )
 
 ################################################################################
@@ -151,15 +151,16 @@ function make_cset_data(worker_factory)::Dict{String,Any}
     return Dict(
         "adj" => adj,
         "manifold_like" => cset_type in ["polynomial", "complex_topology"],
+        "cset_type" => cset_type_encoder[cset_type],
     )
 end
 
 ################################################################################
 # run the main dataproduction part
 try
-    QG.produce_data(chunksize, configpath, make_data)
+    QG.produce_data(chunksize, configpath, make_cset_data)
 catch e
-    @error "An error occured: $(e). Data production cancelled"
+    @error "An error occurred: $(e). Data production cancelled"
 finally
     # don´t forget to remove workers processes after being done
     Distributed.rmprocs(Distributed.workers()...)
