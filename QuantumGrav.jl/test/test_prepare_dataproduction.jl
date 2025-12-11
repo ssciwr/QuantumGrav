@@ -138,7 +138,6 @@ end
     @everywhere using Zarr
     @everywhere using LinearAlgebra
     @everywhere using Dates
-    # @everywhere using ProgressMeter
     @everywhere using CausalSets
 
 
