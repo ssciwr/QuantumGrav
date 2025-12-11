@@ -144,7 +144,8 @@ Set up the configuration for data production.
 - `Dict{Any,Any}`: The resulting configuration dictionary after applying defaults and optional overrides.
 """
 function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
-    defaultconfigpath = joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
+    defaultconfigpath =
+        joinpath(dirname(dirname(@__DIR__)), "configs", "createdata_default.yaml")
     default_config = YAML.load_file(defaultconfigpath)
 
     if configpath === nothing
@@ -181,12 +182,12 @@ function setup_multiprocessing(config::Dict)
         process_local_config["seed"] = process_local_seed
 
         # set the rng seed on the worker
-        # this requires all imports to be done with @everywhere 
+        # this requires all imports to be done with @everywhere
         Distributed.remotecall_eval(Main, p, :(Random.seed!($process_local_seed)))
 
-        # we need to use RemoteChannels here into which we can put the CsetFactory instances, 
-        # one per process. 
-        # then we can take them, use them, and put them back again which avoids 
+        # we need to use RemoteChannels here into which we can put the CsetFactory instances,
+        # one per process.
+        # then we can take them, use them, and put them back again which avoids
         # conflicts or reuse between processes and avoids global variables
         worker_factories[p] = Distributed.RemoteChannel(_setup_channel, p)
 
@@ -272,7 +273,7 @@ function produce_data(
     @info "Producing data"
     p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
     ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
-        # select worker 
+        # select worker
         worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
         cset_data = make_data(worker_factory)
         put!(queue, (i, cset_data)) # blocks when queue is full
