@@ -125,9 +125,6 @@
     return cfg
 end
 
-# make some dummy data. this must return a dictionary
-# the make data fucntion must be defined at the top level
-
 @testsnippet run_dataproduction begin
     using Distributed
 
@@ -153,9 +150,9 @@ end
 
     try
         # read the default config and modify it to use the temporary output path
-        # and produce more data
+        # and produce more data. This serves as a dummy user config
         defaultconfigpath =
-            joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
+            joinpath(dirname(dirname(@__DIR__)), "configs", "createdata_default.yaml")
         cfg = YAML.load_file(defaultconfigpath)
         cfg["output"] = targetpath
         cfg["num_datapoints"] = 9
@@ -363,7 +360,8 @@ end
     end
 end
 
-@testitem "dataproduction_test" tags = [:dataproduction] setup=[run_dataproduction] begin
+@testitem "test_mp_dataproduction" tags = [:dataproduction] setup=[run_dataproduction] begin
+    import Zarr
     # check that data was produced
     zarr_files = filter(x -> occursin(".zarr", x), readdir(targetpath))
     @test length(zarr_files) == 1
@@ -375,7 +373,17 @@ end
     @test length(keys(group.groups)) == 9 # 9 datapoints produced
 
     for i = 1:9
-        cset_data = group["cset_$(i)"]
-        @test "n" in cset_data
+        @test "cset_$i" in keys(group.groups)
+        @test "n" in keys(group.groups["cset_$i"].arrays)
     end
+end
+
+
+@testitem "test_mp_dataproduction_throws" tags=[:dataproduction] setup=[run_dataproduction] begin
+    @eval Main function make_data(factory::CsetFactory)
+        cset, _ = factory("random", 32, factory.rng)
+        return Dict("n" => cset.atom_count)
+    end
+
+    @test_throws ErrorException QuantumGrav.produce_data(3, nothing, Main.make_data)
 end
