@@ -323,7 +323,7 @@ end
         @sync for p in workers()
             # we have to use remotecall_eval here to avoid closures which would pull in local scope and with
             # that things that cannot be serialized
-            rng_global_res[p] = remotecall_eval(Main, p, :(rand(1:100, 10)))
+            rng_global_res[p] = Distributed.remotecall_eval(Main, p, :(rand(1:100, 10)))
         end
 
         for (k1, v1) in rng_global_res
@@ -337,7 +337,7 @@ end
         # local RNGs from factories
         rng_local_results = Dict(p => [] for p in workers())
         for p in workers()
-            rng_local_results[p] = remotecall_eval(Main, p, :(
+            rng_local_results[p] = Distributed.remotecall_eval(Main, p, :(
                 begin
 
                     factory = take!($factories[$p])
