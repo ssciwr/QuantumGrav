@@ -118,6 +118,10 @@ output/
         ├── observable1/
         └── observable2/
 ```
+This process has been encapsulated into the function `QuantumGrav.produce_data`.
+
+## Examples
+For examples for how to write your own variant of this workflow e.g., for multiprocessing, see the `examples` directory int QuantumGrav/QuantumGrav.jl in the repository.
 
 ## Configuration
 The causal set factories each come with a specific configuration dictionary that is validated by JSON schemas. Each cset type requires specific distribution parameters that control the stochastic generation process.
