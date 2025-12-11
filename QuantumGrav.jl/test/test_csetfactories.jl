@@ -654,7 +654,7 @@ end
     @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 end
 
-@testitem "test_grid_factory_produce_csets" tags = [:csetfacttories] setup =
+@testitem "test_grid_factory_produce_csets" tags = [:csetfactories] setup =
     [factories_config] begin
     using Random: Random
     # Test all grid types: quadratic, rectangular, rhombic, hexagonal, triangular, oblique

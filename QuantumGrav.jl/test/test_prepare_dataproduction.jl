@@ -165,8 +165,8 @@ end
             YAML.write(io, cfg)
         end
 
-        # produce 20 data points using multiprocessing
-        # hole max. 10 datapoints in the writing queue at once
+        # produce 9 data points using multiprocessing
+        # hold max. 3 datapoints in the writing queue at once
         # and use the make data function that we had defined above
         QuantumGrav.produce_data(3, configpath, Main.make_data)
 
@@ -349,7 +349,7 @@ end
         end
 
         for (k1, v1) in rng_local_results
-            for (k2, v2) in rng_global_res
+            for (k2, v2) in rng_local_results
                 if k1 != k2
                     @test Set(v1) != Set(v2)
                 end

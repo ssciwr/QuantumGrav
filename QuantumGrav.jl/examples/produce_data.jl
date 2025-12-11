@@ -28,7 +28,7 @@ for (i, arg) in enumerate(args)
         if i + 1 <= length(args)
             global num_workers = parse(Int64, args[i+1])
         else
-            print("Error: --num_workers requires an integer argument")
+            println("Error: --num_workers requires an integer argument")
             exit(1)
         end
     end
@@ -37,7 +37,7 @@ for (i, arg) in enumerate(args)
         if i + 1 <= length(args)
             global num_threads = parse(Int64, args[i+1])
         else
-            print("Error: --num_threads requires an integer argument")
+            println("Error: --num_threads requires an integer argument")
             exit(1)
         end
     end
@@ -46,7 +46,7 @@ for (i, arg) in enumerate(args)
         if i + 1 <= length(args)
             global num_blas_threads = parse(Int64, args[i+1])
         else
-            print("Error: --num_blas_threads requires an integer argument")
+            println("Error: --num_blas_threads requires an integer argument")
             exit(1)
         end
     end
@@ -55,7 +55,7 @@ for (i, arg) in enumerate(args)
         if i + 1 <= length(args)
             global chunksize = parse(Int64, args[i+1])
         else
-            print("Error: --chunksize requires an integer argument")
+            println("Error: --chunksize requires an integer argument")
             exit(1)
         end
     end

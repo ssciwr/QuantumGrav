@@ -167,7 +167,7 @@ end
 """_setup_channel()::Channel{CsetFactory}
 Define this explicitly to avoid closure serialization in setup_multiprocessing
 """
-function _setup_channel()
+function _setup_channel()::Channel{CsetFactory}
     return Channel{CsetFactory}(1)
 end
 
@@ -189,7 +189,7 @@ is deep-copied and updated for each worker.
 """
 function setup_multiprocessing(config::Dict)
 
-    # setup multiprocessing environment. Put this into its own function when it works
+    # setup multiprocessing environment.
     worker_factories = Dict()
     for p in Distributed.workers()
         @info "setting up worker_factory on pid=$(p)"
@@ -216,12 +216,11 @@ end
 """
 	produce_data(chunksize::Int64, configpath::String, make_data::Function)
 
-Produce data on num_workers in parallel using the supplied make_data function. This works by spawning the data production workers and have them
+Produce data on num_workers in parallel using the supplied make_data function. This works by having the worker processes
 fill a Channel with data that is drained by a writer task concurrently. Therefore, data writing and data production happens at the same time. At most `chunksize` datapoints can be held in the queue. When it's full the workers will
 wait until a slot in it becomes free. In the same way, the writer task will wait until a new datapoint is available if the queue is empty.
 How many datapoints are written is defined in the config. See the documentation of the config file for this.
-Worker processes will be removed after the data production task is done.
-
+This relies on worker tasks being spawned by the user and will error when there are none.
 # Arguments:
 - `chunksize`: Maximum datapoints to be held in memory at any one time.
 - `configpath`: path on disk to the config file to load
