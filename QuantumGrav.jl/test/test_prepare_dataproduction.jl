@@ -141,8 +141,10 @@ end
     # @everywhere using ProgressMeter
     @everywhere using CausalSets
 
+
     @everywhere @eval Main function make_data(factory::CsetFactory)
-        cset, _ = factory("random", 32, factory.rng)
+        n = rand(factory.rng, factory.npoint_distribution)
+        cset, _ = factory("random", n, factory.rng)
         return Dict("n" => cset.atom_count)
     end
     # make a temporary output path
@@ -372,10 +374,14 @@ end
     @test group isa Zarr.ZGroup
     @test length(keys(group.groups)) == 9 # 9 datapoints produced
 
+    ns = []
     for i = 1:9
         @test "cset_$i" in keys(group.groups)
         @test "n" in keys(group.groups["cset_$i"].arrays)
+        n = group.groups["cset_$i"].arrays["n"][1]
+        push!(ns, n)
     end
+    @test 7 < length(unique(ns)) <= 9 # generally expected to have high uniqueness
 end
 
 
