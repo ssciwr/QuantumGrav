@@ -171,7 +171,6 @@ end
         QuantumGrav.produce_data(3, configpath, Main.make_data)
 
     finally
-        println("done with produce_data_mp_testitem.jl")
         rmprocs(workers()...)
     end
     return targetpath

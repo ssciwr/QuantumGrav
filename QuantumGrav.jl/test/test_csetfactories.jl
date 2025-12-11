@@ -252,7 +252,6 @@ end
     [factories_config] begin
     using Distributions
     csetmaker = QuantumGrav.PolynomialCsetMaker(factory_cfg["polynomial"])
-    println("factory_cfg ", factory_cfg["polynomial"])
     @test csetmaker.r_distribution isa Distributions.Normal
     @test csetmaker.order_distribution isa Distributions.DiscreteUniform
     @test Distributions.params(csetmaker.order_distribution) ==
