@@ -1,12 +1,12 @@
 from typing import Any, Callable, Sequence
 from pathlib import Path
-from inspect import isclass
+#from inspect import isclass
 import torch
-from .. import utils
-from .. import linear_sequential as QGLS
-from .. import gnn_block as QGGNN
+#from .. import utils
 from ..gnn_model import instantiate_type
+from .node_update_GRU import NodeUpdateGRU
 from .. import base
+#
 import jsonschema
 
 class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
@@ -20,7 +20,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
     of several components:
 
         • decoder backbone:
-            A GNN-like update block applied at every decoding step to propagate
+            A single-layer GRU node update block applied at every decoding step to propagate
             information among already generated nodes.
 
         • parent_logit_mlp:
@@ -58,17 +58,33 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         "title": "DecoderModule Configuration",
         "type": "object",
         "properties": {
-            "decoder_type": {
-                "description": "Type of the decoder backbone (Python class or string)."
+            "gru_type": {
+                "description": "GRU class for NodeUpdateGRU backbone."
             },
-            "decoder_args": {
+            "gru_args": {
                 "type": "array",
                 "items": {},
-                "description": "Positional arguments for decoder_type."
+                "description": "Positional arguments for gru_type."
             },
-            "decoder_kwargs": {
+            "gru_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments for decoder_type."
+                "description": "Keyword arguments for gru_type."
+            },
+            "gru_aggregation_method": {
+                "type": "string",
+                "description": "Aggregation method for NodeUpdateGRU"
+            },
+            "gru_pooling_mlp_type": {
+                "description": "Optional MLP used when GRU pooling aggregation='mlp'"
+            },
+            "gru_pooling_mlp_args": {
+                "type": "array",
+                "items": {},
+                "description": "Arguments for pooling MLP"
+            },
+            "gru_pooling_mlp_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for pooling MLP"
             },
 
             "parent_logit_mlp_type": {
@@ -113,18 +129,22 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             "ancestor_suppression_strength": {
                 "type": "number",
                 "description": "Coefficient controlling multiplicative suppression of ancestors."
-            }
+            },
         },
-        "required": ["decoder_type", "parent_logit_mlp_type"],
+        "required": ["gru_type", "parent_logit_mlp_type"],
         "additionalProperties": False
     }
 
     def __init__(
         self,
-        decoder_type: type | torch.nn.Module,
+        gru_type: type | torch.nn.Module,
         parent_logit_mlp_type: type | torch.nn.Module,
-        decoder_args: Sequence[Any] | None = None,
-        decoder_kwargs: dict[str, Any] | None = None,
+        gru_args: Sequence[Any] | None = None,
+        gru_kwargs: dict[str, Any] | None = None,
+        gru_aggregation_method: str = "mean",
+        gru_pooling_mlp_type: type | torch.nn.Module | None = None,
+        gru_pooling_mlp_args: Sequence[Any] | None = None,
+        gru_pooling_mlp_kwargs: dict[str, Any] | None = None,
         parent_logit_mlp_args: Sequence[Any] | None = None,
         parent_logit_mlp_kwargs: dict[str, Any] | None = None,
         decoder_init_type: type | torch.nn.Module | None = None,
@@ -153,8 +173,39 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         """
         super().__init__()
 
-        # decoder backbone
-        self.decoder = instantiate_type(decoder_type, decoder_args, decoder_kwargs)
+        # Store all inputs before building modules
+        self.gru_type = gru_type
+        self.gru_args = gru_args
+        self.gru_kwargs = gru_kwargs
+        self.gru_aggregation_method = gru_aggregation_method
+        self.gru_pooling_mlp_type = gru_pooling_mlp_type
+        self.gru_pooling_mlp_args = gru_pooling_mlp_args
+        self.gru_pooling_mlp_kwargs = gru_pooling_mlp_kwargs
+
+        self.parent_logit_mlp_type = parent_logit_mlp_type
+        self.parent_logit_mlp_args = parent_logit_mlp_args
+        self.parent_logit_mlp_kwargs = parent_logit_mlp_kwargs
+
+        self.decoder_init_type = decoder_init_type
+        self.decoder_init_args = decoder_init_args
+        self.decoder_init_kwargs = decoder_init_kwargs
+
+        self.ancestor_suppression_strength = ancestor_suppression_strength
+
+        self.node_feature_decoder_type = node_feature_decoder_type
+        self.node_feature_decoder_args = node_feature_decoder_args
+        self.node_feature_decoder_kwargs = node_feature_decoder_kwargs
+
+        # decoder backbone (NodeUpdateGRU)
+        self.node_updater = NodeUpdateGRU(
+            gru_type=gru_type,
+            gru_args=gru_args,
+            gru_kwargs=gru_kwargs or {},
+            aggregation_method=gru_aggregation_method,
+            pooling_mlp_type=gru_pooling_mlp_type,
+            pooling_mlp_args=gru_pooling_mlp_args,
+            pooling_mlp_kwargs=gru_pooling_mlp_kwargs,
+        )
 
         # parent logits
         self.parent_logit_mlp = instantiate_type(
@@ -163,44 +214,40 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             parent_logit_mlp_kwargs,
         )
 
-        # Verify parent_logit_mlp input dimension compatibility
-        if hasattr(self.parent_logit_mlp, "in_features"):
-            mlp_in_dim = self.parent_logit_mlp.in_features
-        elif hasattr(self.parent_logit_mlp, "dims"):
-            mlp_in_dim = self.parent_logit_mlp.dims[0][0]
-        else:
-            raise ValueError("parent_logit_mlp must define in_features or dims for input dimension inference.")
+        # ------------------------------------------------------------
+        # Validate that parent_logit_mlp outputs exactly one scalar
+        # ------------------------------------------------------------
+        # Construct test input of correct expected dimension:
+        # concat([h_t_rep, h_prev, z_rep]) → 3 * hidden_dim
+        test_in = torch.zeros(1, 3 * self.node_updater.hidden_dim)
 
-        # Validate that parent_logit_mlp outputs a single scalar per parent
-        test_in = torch.zeros(1, mlp_in_dim)
-        test_out = self.parent_logit_mlp(test_in)
-        if test_out.numel() != 1:
+        # Check that the MLP accepts the input
+        try:
+            test_out = self.parent_logit_mlp(test_in)
+        except Exception as e:
             raise ValueError(
-                f"parent_logit_mlp must output exactly one logit per parent, "
-                f"but got output shape {tuple(test_out.shape)} with {test_out.numel()} elements."
+                f"parent_logit_mlp failed when given an input of shape "
+                f"(1, {3 * self.node_updater.hidden_dim}). This indicates that the MLP input "
+                f"dimension is incompatible with the decoder design. The parent_logit_mlp "
+                f"must accept input_dim = 3 * hidden_dim = {3 * self.node_updater.hidden_dim}. "
+                f"Original error: {e}"
+            ) from e
+
+        # Ensure it returns a tensor
+        if not isinstance(test_out, torch.Tensor):
+            raise TypeError(
+                f"parent_logit_mlp must return a tensor, but got {type(test_out)} "
+                f"from module {self.parent_logit_mlp_type}."
             )
 
-        # Determine hidden_dim of decoder block
-        if hasattr(self.decoder, "out_features"):
-            hidden_dim = self.decoder.out_features
-        elif hasattr(self.decoder, "out_dim"):
-            hidden_dim = self.decoder.out_dim
-        elif hasattr(self.decoder, "hidden_dim"):
-            hidden_dim = self.decoder.hidden_dim
-        else:
+        # Ensure last dimension is 1 (one logit per parent)
+        if test_out.shape[-1] != 1:
             raise ValueError(
-                "Decoder block must define out_features, out_dim, or hidden_dim."
+                f"parent_logit_mlp must return exactly one logit per candidate parent "
+                f"(i.e. final output dimension = 1). However, module "
+                f"{self.parent_logit_mlp_type} produced output of shape {tuple(test_out.shape)}. "
+                f"Ensure the final Linear layer has output dimension 1."
             )
-        self.hidden_dim = hidden_dim
-
-        # Infer latent_dim = mlp_in_dim - 3*hidden_dim
-        latent_dim = mlp_in_dim - 3 * hidden_dim
-        if latent_dim <= 0:
-            raise ValueError(
-                f"parent_logit_mlp input dim ({mlp_in_dim}) too small for hidden_dim={hidden_dim}; "
-                f"cannot satisfy latent_dim = mlp_in_dim - 3*hidden_dim."
-            )
-
 
         # decoder initial state
         self.decoder_init = (
@@ -208,8 +255,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             if decoder_init_type is not None else None
         )
 
-        # ancestor suppression strength to impose transitive reduction
-        self.ancestor_suppression_strength = ancestor_suppression_strength
         # Boolean flag: whether ancestor suppression logic is active
         self.ancestor_suppression = (ancestor_suppression_strength != 0)
 
@@ -280,18 +325,13 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 "Use eval() mode for sampling/generation."
             )
 
-        # latent -> initial state for node 0
-        if z.dim() == 2 and z.size(0) == 1:
-            z = z.squeeze(0)
-            
-        # Use decoder's init_state logic
-        h0 = self.init_state(z)
-
-        # initial structures
-        node_states = [h0]                      # list of tensors
-        # maintain dynamic edge index
-        edge_index_list = []
-        links = []                                # will append rows as lists of 0/1
+        # latent must be a 1D tensor [latent_dim]
+        if z.dim() != 1:
+            raise ValueError(
+                f"Expected latent vector z to be 1-D (shape [latent_dim]), but got shape {tuple(z.shape)}. "
+                "Please pass z.squeeze(0) if you produced a batch of size 1."
+            )
+                
         # Determine N_max (number of atoms to generate).
         # Teacher forcing always determines N_max. If atom_count is also provided, warn and ignore it.
         if teacher_forcing_targets is not None:
@@ -309,48 +349,25 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 )
             N_max = atom_count
 
-        # dynamic positional embedding based on N_max
-        positional_emb = torch.nn.Embedding(N_max, self.hidden_dim).to(h0.device)
-
+        # initial structures
+        h0 = self.init_state(z)
+        node_states = [h0]                      # list of tensors
+        links = [[0]]                           # will append rows as lists of 0/1
+        step_logprobs = []                      # accumulate per-step log likelihoods during training
         ancestors = []
         if self.ancestor_suppression:
             bit0 = torch.zeros(N_max, dtype=torch.bool, device=h0.device)
             ancestors.append(bit0.clone())           # node 0 has no ancestors
 
-        # adjacency row for node 0
-        links.append([0])
-        # accumulate per-step log likelihoods during training
-        step_logprobs = []
-
         # grow nodes 1 .. N_max-1
         for t in range(1, N_max):
-            # Insert provisional state for new node with positional embedding
-            pos_e = positional_emb(torch.tensor(t, device=h0.device))
-            node_states.append(h0 + pos_e)
-
             prev_count = t
-
-            # GNN update BEFORE computing parent probabilities (state reflects graph up to t−1)
-            if len(edge_index_list) > 0:
-                edge_index_tensor = torch.tensor(edge_index_list, dtype=torch.long, device=h0.device).t().contiguous()
-            else:
-                edge_index_tensor = torch.empty((2,0), dtype=torch.long, device=h0.device)
-
-            H = torch.stack(node_states, dim=0)
-            H = self.decoder(H, edge_index_tensor)
-
-            # Update node_states and extract provisional state for node t
-            node_states = [H[i] for i in range(t+1)]
-            h_t = node_states[t]
 
             # compute parent logits for all previous nodes
             # Prepare inputs for parent_logit_mlp
             h_prev = torch.stack(node_states, dim=0)
-            h_t_rep = h_t.unsqueeze(0).repeat(prev_count, 1)
             z_rep = z.unsqueeze(0).repeat(prev_count, 1)
-            pos_t = positional_emb(torch.tensor(t, device=h0.device))
-            pos_t_rep = pos_t.unsqueeze(0).repeat(prev_count, 1)
-            parent_mlp_in = torch.cat([h_t_rep, h_prev[:prev_count], z_rep, pos_t_rep], dim=1)
+            parent_mlp_in = torch.cat([h_prev, z_rep], dim=1)
             logits = self.parent_logit_mlp(parent_mlp_in).squeeze(-1)
             probs = torch.sigmoid(logits)
 
@@ -392,11 +409,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             row_t.append(0)
             links.append(row_t)
 
-            # update edge list
-            for e in new_edges:
-                edge_index_list.append(e)
-            edge_index_list.sort()
-
             # update ancestors[t]: OR of ancestors of parents + parents themselves
             if self.ancestor_suppression:
                 anc_t = torch.zeros(N_max, dtype=torch.bool, device=h0.device)
@@ -407,18 +419,17 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                     anc_t[p] = True
                 ancestors.append(anc_t)
 
+            # continue here
+            node_states = self.node_updater(parent_mask, h_prev)        # GRU creates node state from parent nodes
+
+
 
         # convert link matrix + node_states to tensors
         L = torch.tensor(links, dtype=torch.float32, device=h0.device)
         if self.node_feature_decoder is not None:
-            # FINAL GNN UPDATE: ensure node_states reflect the full graph including last-node parents
-            if len(edge_index_list) > 0:
-                edge_index_tensor = torch.tensor(edge_index_list, dtype=torch.long, device=h0.device).t().contiguous()
-            else:
-                edge_index_tensor = torch.empty((2,0), dtype=torch.long, device=h0.device)
-
+            # FINAL GRU UPDATE: ensure node_states reflect the full graph including last-node parents
             H = torch.stack(node_states, dim=0)
-            H = self.decoder(H, edge_index_tensor)
+            H = self.node_updater(H)
             node_states = [H[i] for i in range(N_max)]
 
         X_hidden = torch.stack(node_states, dim=0)
@@ -459,10 +470,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         """
         jsonschema.validate(instance=config, schema=cls.schema)
 
-        decoder_type = config["decoder_type"]
-        decoder_args = config.get("decoder_args", None)
-        decoder_kwargs = config.get("decoder_kwargs", None)
-
         pl_type  = config["parent_logit_mlp_type"]
         pl_args  = config.get("parent_logit_mlp_args", None)
         pl_kwargs = config.get("parent_logit_mlp_kwargs", None)
@@ -475,12 +482,21 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         nf_args  = config.get("node_feature_decoder_args", None)
         nf_kwargs = config.get("node_feature_decoder_kwargs", None)
 
+        gru_agg = config.get("gru_aggregation_method", "mean")
+        gru_p_mlp_type = config.get("gru_pooling_mlp_type", None)
+        gru_p_mlp_args = config.get("gru_pooling_mlp_args", None)
+        gru_p_mlp_kwargs = config.get("gru_pooling_mlp_kwargs", None)
+
         return cls(
-            decoder_type=decoder_type,
+            gru_type=config["gru_type"],
             parent_logit_mlp_type=pl_type,
 
-            decoder_args=decoder_args,
-            decoder_kwargs=decoder_kwargs,
+            gru_args=config.get("gru_args", None),
+            gru_kwargs=config.get("gru_kwargs", None),
+            gru_aggregation_method=gru_agg,
+            gru_pooling_mlp_type=gru_p_mlp_type,
+            gru_pooling_mlp_args=gru_p_mlp_args,
+            gru_pooling_mlp_kwargs=gru_p_mlp_kwargs,
 
             parent_logit_mlp_args=pl_args,
             parent_logit_mlp_kwargs=pl_kwargs,
@@ -493,7 +509,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
             node_feature_decoder_type=nf_type,
             node_feature_decoder_args=nf_args,
-            node_feature_decoder_kwargs=nf_kwargs
+            node_feature_decoder_kwargs=nf_kwargs,
         )
     
     def save(self, path: str | Path) -> None:

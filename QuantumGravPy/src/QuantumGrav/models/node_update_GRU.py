@@ -1,0 +1,265 @@
+# torch
+import torch
+import torch_geometric
+
+from . import skipconnection
+from .. import base
+from .. import utils
+
+# quality of life
+from typing import Any, Dict
+from pathlib import Path
+from jsonschema import validate
+
+class NodeUpdateGRU(torch.nn.Module, base.Configurable):
+    """
+    Gated recurrent unit block.
+    Useful for decoders that update node states without full message passing.
+    """
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "NodeUpdateGRU Configuration",
+        "type": "object",
+        "properties": {
+            "gru_type": {
+                "description": "GRU-like class (e.g. torch.nn.GRUCell)"
+            },
+            "gru_args": {
+                "type": "array",
+                "description": "Positional arguments passed to the GRU module"
+            },
+            "gru_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for the GRU module"
+            },
+            "aggregation_method": {
+                "type": "string",
+                "description": "Aggregation method for parent states"
+            },
+            "pooling_mlp_type": {
+                "description": "MLP used when aggregation='mlp'"
+            },
+            "pooling_mlp_args": {
+                "type": "array",
+                "description": "Arguments for pooling MLP"
+            },
+            "pooling_mlp_kwargs": {
+                "type": "object",
+                "description": "Keyword arguments for the pooling MLP"
+            }
+        },
+        "required": ["gru_type", "gru_args"],
+        "additionalProperties": False,
+    }
+
+    def __init__(
+        self,
+        gru_type: type[torch.nn.Module] = torch.nn.GRUCell,
+        gru_args: list[Any] | None = None,
+        gru_kwargs: dict[str, Any] | None = None,
+        aggregation_method: str = "mean",
+        pooling_mlp_type: type[torch.nn.Module] | None = None,
+        pooling_mlp_args: list[Any] | None = None,
+        pooling_mlp_kwargs: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize a NodeUpdateGRU block.
+
+        Parameters
+        ----------
+        gru_type : type[torch.nn.Module]
+            A GRU-like class (e.g. torch.nn.GRUCell). The class MUST follow
+            the PyTorch RNN convention where the first two positional arguments
+            are:
+                - input_dim    (int): size of input vectors
+                - hidden_dim   (int): size of hidden state vectors
+
+        gru_args : list[Any]
+            Positional arguments passed to `gru_type`. The first arguments
+            must be integers specifying:
+                gru_args[0] → input_dim
+                gru_args[1] → hidden_dim
+
+            Example:
+                gru_args = [32, 32]  # input_dim = 32, hidden_dim = 32
+
+        gru_kwargs : dict[str, Any]
+            Keyword arguments for the GRU module.
+
+        aggregation_method : str
+            One of {"mean", "sum", "max", "mlp"}.
+
+        pooling_mlp_type : type | None
+            Optional MLP class used when aggregation_method='mlp'.
+
+        pooling_mlp_args : list[Any] | None
+            Positional arguments for the pooling MLP.
+
+        pooling_mlp_kwargs : dict[str, Any] | None
+            Keyword arguments for the pooling MLP.
+        """
+
+        super(NodeUpdateGRU, self).__init__()
+
+        self.gru_type = gru_type
+        self.gru_args = gru_args
+        self.gru_kwargs = gru_kwargs
+
+        self.aggregation_method = aggregation_method
+
+        self.pooling_mlp_type = pooling_mlp_type
+        self.pooling_mlp_args = pooling_mlp_args
+        self.pooling_mlp_kwargs = pooling_mlp_kwargs
+
+                # ------------------------------------------------------------
+        # Validate gru_args: must be a sequence with at least two integers
+        # ------------------------------------------------------------
+        if not isinstance(self.gru_args, (list, tuple)):
+            raise ValueError(
+                f"gru_args must be a list or tuple of at least two integers "
+                f"(input_dim, hidden_dim), but got type {type(self.gru_args)}."
+            )
+
+        if self.gru_args is None or len(self.gru_args) < 2:
+            raise ValueError(
+                "gru_args must specify at least [input_dim, hidden_dim]. "
+                "The first two elements of gru_args MUST be integers representing "
+                "input_dim and hidden_dim respectively."
+            )
+
+        self.in_dim = self.gru_args[0]
+        self.hidden_dim = self.gru_args[1]
+
+        # Check integer types
+        if not isinstance(self.in_dim, int) or not isinstance(self.hidden_dim, int):
+            raise TypeError(
+                "gru_args[0] and gru_args[1] must be integers specifying input_dim "
+                "and hidden_dim for the GRU module."
+            )
+
+        # Check positivity
+        if self.in_dim <= 0 or self.hidden_dim <= 0:
+            raise ValueError(
+                f"input_dim and hidden_dim must be positive integers, but received "
+                f"gru_args[0]={self.in_dim}, gru_args[1]={self.hidden_dim}."
+            )
+
+        if not isinstance(self.in_dim, int) or not isinstance(self.hidden_dim, int):
+            raise TypeError(
+                f"gru_args must begin with two integers (input_dim, hidden_dim). "
+                f"Received input_dim={self.in_dim} ({type(self.in_dim)}), "
+                f"hidden_dim={self.hidden_dim} ({type(self.hidden_dim)})."
+            )
+
+        if self.in_dim <= 0 or self.hidden_dim <= 0:
+            raise ValueError(
+                f"input_dim and hidden_dim in gru_args must be positive integers. "
+                f"Received input_dim={in_dim}, hidden_dim={hidden_dim}."
+            )
+
+        # Input projection removed: parent_agg is now passed directly to GRU.
+
+        if aggregation_method == "mlp":
+            if pooling_mlp_type is None:
+                raise ValueError("pooling_mlp_type must be provided when aggregation_method='mlp'.")
+            self.pooling_mlp = pooling_mlp_type(
+                *(pooling_mlp_args if pooling_mlp_args is not None else []),
+                **(pooling_mlp_kwargs if pooling_mlp_kwargs is not None else {})
+            )
+        else:
+            self.pooling_mlp = None
+
+        # GRU
+        self.gru = self.gru_type(
+            *gru_args,
+            **(gru_kwargs if gru_kwargs is not None else {})
+        )
+
+    def aggregate(
+        self,
+        parent_states: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Aggregate parent hidden states.
+
+        parent_states: Tensor of shape (num_parents, hidden_dim)
+
+        Returns:
+            Tensor of shape (hidden_dim,)
+        """
+        if parent_states.numel() == 0:
+            # No parents: return zeros of correct dimension
+            return torch.zeros(self.hidden_dim, device=parent_states.device)
+
+        if self.aggregation_method == "mean":
+            return parent_states.mean(dim=0)
+
+        if self.aggregation_method == "sum":
+            return parent_states.sum(dim=0)
+
+        if self.aggregation_method == "max":
+            return parent_states.max(dim=0).values
+
+        if self.aggregation_method == "mlp":
+            return self.pooling_mlp(parent_states)
+
+        raise ValueError(f"Unknown aggregation method '{self.aggregation_method}'.")
+
+    # prepare_input method removed; parent_agg is now passed directly to GRU.
+
+    def forward(
+        self,
+        parent_mask: torch.Tensor,
+        h_prev: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Full node-state update:
+          1. apply parent mask
+          2. aggregate parent states
+          3. GRU update
+
+        parent_states: (num_parents, hidden_dim)
+        h_prev:        (hidden_dim,)
+        """
+        parent_states = h_prev * parent_mask.unsqueeze(1)
+        parent_agg = self.aggregate(parent_states)
+        return self.gru(parent_agg)
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "NodeUpdateGRU":
+        validate(config, cls.schema)
+        return cls(
+            gru_type=config["gru_type"],
+            gru_args=config.get("gru_args", []),
+            gru_kwargs=config.get("gru_kwargs", {}),
+            aggregation_method=config.get("aggregation_method", "mean"),
+            pooling_mlp_type=config.get("pooling_mlp_type", None),
+            pooling_mlp_args=config.get("pooling_mlp_args", []),
+            pooling_mlp_kwargs=config.get("pooling_mlp_kwargs", {}),
+        )
+
+
+    def to_config(self) -> dict[str, Any]:
+        return {
+            "gru_type": self.gru_type,
+            "gru_args": self.gru_args if self.gru_args is not None else [],
+            "gru_kwargs": self.gru_kwargs if self.gru_kwargs is not None else {},
+            "aggregation_method": self.aggregation_method,
+            "pooling_mlp_type": self.pooling_mlp_type,
+            "pooling_mlp_args": self.pooling_mlp_args if self.pooling_mlp_args is not None else [],
+            "pooling_mlp_kwargs": self.pooling_mlp_kwargs if self.pooling_mlp_kwargs is not None else {},
+        }
+
+    def save(self, path: str | Path) -> None:
+        """Save NodeUpdateGRU to a file."""
+        cfg = self.to_config()
+        torch.save({"config": cfg, "state_dict": self.state_dict()}, path)
+
+    @classmethod
+    def load(cls, path: str | Path, device: torch.device = torch.device("cpu")) -> "NodeUpdateGRU":
+        """Load NodeUpdateGRU from a file."""
+        modeldata = torch.load(path, weights_only=False)
+        model = cls.from_config(modeldata["config"]).to(device)
+        model.load_state_dict(modeldata["state_dict"])
+        return model

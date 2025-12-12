@@ -427,3 +427,131 @@ def get_at_path(cfg: dict, path: Sequence[Any], default: Any = None) -> Any:
         cfg = cfg[p]
 
     return cfg.get(path[-1], default)
+
+def infer_input_dim(module: torch.nn.Module, max_dim: int = 4096):
+    """
+    Determine the unique input dimension D of a pytorch module. 
+    Uses heuristics or, if they fail, brute force: Find D such that
+    module(torch.zeros(1, D)) succeeds, and all other dims fail.
+    Uses exponential search with linear fallback.
+
+    Returns:
+        int: the inferred input dimension.
+    """
+    if max_dim < 2:
+        raise ValueError("infer_input_dim: max_dim must be ≥ 2.")
+
+    # -------------------------
+    # Heuristic 1 — Direct attribute: in_features
+    # -------------------------
+    if hasattr(module, "in_features"):
+        try:
+            return int(module.in_features)
+        except Exception:
+            pass
+
+    # -------------------------
+    # Heuristic 2 — dims attribute (e.g., LinearSequential)
+    # dims should be a nested list like [[in, out], ...]
+    # -------------------------
+    if hasattr(module, "dims"):
+        dims = getattr(module, "dims")
+        if isinstance(dims, (list, tuple)) and len(dims) > 0:
+            first = dims[0]
+            if isinstance(first, (list, tuple)) and len(first) > 0:
+                try:
+                    return int(first[0])
+                except Exception:
+                    pass
+
+    # -------------------------
+    # Heuristic 3 — Find the first nn.Linear child
+    # -------------------------
+    for sub in module.modules():
+        try:
+            import torch.nn as nn
+            if isinstance(sub, nn.Linear):
+                return int(sub.in_features)
+        except Exception:
+            pass
+
+    # -------------------------
+    # Phase 1 — fast exponential search
+    # -------------------------
+
+    d = 1
+    while d <= max_dim:
+        try:
+            module(torch.zeros(1, d))
+            return d
+        except Exception:
+            d *= 2
+
+    # -------------------------
+    # Phase 2 — slow but guaranteed linear search
+    # -------------------------
+
+    for d in range(1, max_dim + 1):
+        try:
+            module(torch.zeros(1, d))
+            return d
+        except Exception:
+            continue
+
+    raise ValueError(
+        "Could not infer input dimension for module: "
+        "no dimension up to max_dim succeeded."
+    )
+
+
+# ------------------------------------------------------------
+# Output dimension inference utility
+# ------------------------------------------------------------
+
+def infer_MLP_output_dim(module: torch.nn.Module, input_dim: int | None = None, max_dim: int = 4096):
+    """
+    Infer the output dimension H of a module f: R^D → R^H.
+
+    Args:
+        module (torch.nn.Module): Module whose output dimension is inferred.
+        input_dim (int | None): Optional known input dimension.
+                                If None, infer_input_dim() is used.
+        max_dim (int): Upper bound for input-dimension inference when input_dim=None.
+
+    Returns:
+        int: The inferred output dimension H.
+    """
+
+    if max_dim < 2:
+        raise ValueError("infer_output_dim: max_dim must be ≥ 2.")
+
+    # -------------------------
+    # Step 1 — Determine input dimension
+    # -------------------------
+    if input_dim is None:
+        input_dim = infer_input_dim(module, max_dim=max_dim)
+
+    # -------------------------
+    # Step 2 — Single forward pass to determine output dimension
+    # -------------------------
+    try:
+        test_input = torch.zeros(1, input_dim)
+        y = module(test_input)
+    except Exception as e:
+        raise RuntimeError(
+            f"infer_MLP_output_dim: Module {module.__class__.__name__} failed a forward pass "
+            f"with inferred input_dim={input_dim}."
+        ) from e
+
+    if not isinstance(y, torch.Tensor):
+        raise ValueError(
+            f"infer_MLP_output_dim: Module {module.__class__.__name__} must return a Tensor, got {type(y)}."
+        )
+
+    if y.ndim != 2 or y.shape[0] != 1:
+        raise ValueError(
+            f"infer_MLP_output_dim: Module {module.__class__.__name__} must output shape (1, H), "
+            f"but produced shape {tuple(y.shape)}."
+        )
+
+    return int(y.shape[1])

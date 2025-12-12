@@ -1,10 +1,8 @@
 from typing import Any, Callable, Sequence
-from pathlib import Path
-from inspect import isclass
+#from pathlib import Path
+#from inspect import isclass
 import torch
-from .. import utils
-from .. import linear_sequential as QGLS
-from .. import gnn_block as QGGNN
+#from .. import utils
 from ..gnn_model import instantiate_type
 from .. import base
 import jsonschema

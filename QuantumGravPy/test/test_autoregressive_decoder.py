@@ -17,25 +17,19 @@ import torch_geometric
 # -------------------------------------------------------------------------
 
 @pytest.fixture
-def decoder_type():
-    return QG.models.GNNBlock
+def gru_type():
+    # Use pure PyTorch GRUCell as the GRU backbone
+    return torch.nn.GRUCell
 
 @pytest.fixture
-def decoder_args():
+def gru_args():
+    # GRUCell(input_dim=32, hidden_dim=32)
     return [32, 32]
 
 @pytest.fixture
-def decoder_kwargs():
+def gru_kwargs():
     return {
-        "gnn_layer_type": torch_geometric.nn.GCNConv,
-        "normalizer_type": torch.nn.LayerNorm,
-        "activation_type": torch.nn.SiLU,
-        "gnn_layer_args": [],
-        "gnn_layer_kwargs": {"add_self_loops": True, "bias": True},
-        "norm_args": [32],
-        "norm_kwargs": {},
-        "skip_args": [32, 32],
-        "skip_kwargs": {"weight_initializer": "kaiming_uniform"},
+        "bias": True
     }
 
 @pytest.fixture
@@ -44,42 +38,18 @@ def parent_logit_mlp_type():
 
 @pytest.fixture
 def parent_logit_mlp_args():
-    return [[128, 1]]
+    # dims, activations
+    return [
+        [[32 + 32 + 32, 1]],           # dims list
+        [torch.nn.Identity],  # activations list
+    ]
 
 @pytest.fixture
 def parent_logit_mlp_kwargs():
     return {
-        "activation": torch.nn.Identity,
         "linear_kwargs": [{"bias": True}],
         "activation_kwargs": [{}],
     }
-
-
-def test_minimal_construction(
-    decoder_type, decoder_args, decoder_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    """
-    Minimal valid decoder configuration:
-    - a trivial decoder backbone (LinearSequential)
-    - a trivial parent_logit_mlp (producing a single logit)
-    This verifies that the class can be instantiated without optional components.
-    """
-    dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
-        parent_logit_mlp_type=parent_logit_mlp_type,
-        parent_logit_mlp_args=parent_logit_mlp_args,
-        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-    )
-
-    assert isinstance(dec, QG.models.AutoregressiveDecoder)
-    assert isinstance(dec.decoder, torch.nn.Module)
-    assert isinstance(dec.parent_logit_mlp, torch.nn.Module)
-    assert dec.node_feature_decoder is None
-    assert dec.ancestor_suppression_strength == 1.0
-    assert dec.hidden_dim == 32
 
 @pytest.fixture
 def decoder_init_type():
@@ -87,12 +57,14 @@ def decoder_init_type():
 
 @pytest.fixture
 def decoder_init_args():
-    return [[4, 4]]
+    return [
+        [[32, 32]],          # dims list: latent_dim=32 → hidden_dim=32
+        [torch.nn.ReLU],     # activations list
+    ]
 
 @pytest.fixture
 def decoder_init_kwargs():
     return {
-        "activation": torch.nn.ReLU,
         "linear_kwargs": [{"bias": True}],
         "activation_kwargs": [{}],
     }
@@ -103,46 +75,24 @@ def node_feature_decoder_type():
 
 @pytest.fixture
 def node_feature_decoder_args():
-    return [[4, 4]]
+    return [
+        [[4, 4]],            # dims list
+        [torch.nn.ReLU],     # activations list
+    ]
 
 @pytest.fixture
 def node_feature_decoder_kwargs():
     return {
-        "activation": torch.nn.ReLU,
-        "linear_kwargs": [{"bias": True}],
-        "activation_kwargs": [{}],
-    }
-
-
-
-@pytest.fixture
-def minimal_parent_logit_mlp_type():
-    return QG.models.LinearSequential
-
-@pytest.fixture
-def minimal_parent_logit_mlp_args():
-    return [[128, 1]]
-
-@pytest.fixture
-def minimal_parent_logit_mlp_kwargs():
-    return {
-        "activation": torch.nn.Identity,
         "linear_kwargs": [{"bias": True}],
         "activation_kwargs": [{}],
     }
 
 
 @pytest.fixture
-def bad_decoder_args():
-    # decoder_args must be a list; here we deliberately provide an invalid type
+def bad_gru_args():
+    # gru_args must be a list; here we deliberately provide an invalid type
     return "this_is_not_a_valid_arg_list"
 
-
-
-
-# -------------------------------------------------------------------------
-# Realistic parent_logit_mlp
-# -------------------------------------------------------------------------
 
 @pytest.fixture
 def deep_parent_logit_mlp_type():
@@ -150,17 +100,23 @@ def deep_parent_logit_mlp_type():
 
 @pytest.fixture
 def deep_parent_logit_mlp_args():
-    # MLP with two hidden layers before final scalar output
+    # dims, activations
     return [
-        [32 + 32 + 32 + 32, 64],   # concat(h_t, h_prev, z, pos) → 64
-        [64, 32],
-        [32, 1],                   # scalar output
+        [
+            [32 + 32 + 32, 64],
+            [64, 32],
+            [32, 1],
+        ],
+        [
+            torch.nn.SiLU,
+            torch.nn.SiLU,
+            torch.nn.Identity,
+        ],
     ]
 
 @pytest.fixture
 def deep_parent_logit_mlp_kwargs():
     return {
-        "activation": torch.nn.SiLU,
         "linear_kwargs": [{"bias": True}, {"bias": True}, {"bias": True}],
         "activation_kwargs": [{}, {}, {}],
     }
@@ -177,14 +133,19 @@ def deep_decoder_init_type():
 @pytest.fixture
 def deep_decoder_init_args():
     return [
-        [32, 64],
-        [64, 32],
+        [
+            [32, 64],
+            [64, 32],
+        ],
+        [
+            torch.nn.ReLU,
+            torch.nn.ReLU,
+        ],
     ]
 
 @pytest.fixture
 def deep_decoder_init_kwargs():
     return {
-        "activation": torch.nn.ReLU,
         "linear_kwargs": [{"bias": True}, {"bias": True}],
         "activation_kwargs": [{}, {}],
     }
@@ -201,29 +162,34 @@ def deep_node_feature_decoder_type():
 @pytest.fixture
 def deep_node_feature_decoder_args():
     return [
-        [32, 32],
-        [32, 8],   # output 8 node features
+        [
+            [32, 32],
+            [32, 8],
+        ],
+        [
+            torch.nn.ReLU,
+            torch.nn.ReLU,
+        ],
     ]
 
 @pytest.fixture
 def deep_node_feature_decoder_kwargs():
     return {
-        "activation": torch.nn.ReLU,
         "linear_kwargs": [{"bias": True}, {"bias": True}],
         "activation_kwargs": [{}, {}],
     }
 
 @pytest.fixture
 def full_decoder_config(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     decoder_init_type, decoder_init_args, decoder_init_kwargs,
     node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
 ):
     return {
-        "decoder_type": decoder_type,
-        "decoder_args": decoder_args,
-        "decoder_kwargs": decoder_kwargs,
+        "gru_type": gru_type,
+        "gru_args": gru_args,
+        "gru_kwargs": gru_kwargs,
         "parent_logit_mlp_type": parent_logit_mlp_type,
         "parent_logit_mlp_args": parent_logit_mlp_args,
         "parent_logit_mlp_kwargs": parent_logit_mlp_kwargs,
@@ -241,11 +207,41 @@ def full_decoder_config(
 # -------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------
+# Construction of minimal model
+# -------------------------------------------------------------------------
+
+def test_minimal_construction(
+    gru_type, gru_args, gru_kwargs,
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+):
+    """
+    Minimal valid decoder configuration:
+    - a trivial decoder backbone (LinearSequential)
+    - a trivial parent_logit_mlp (producing a single logit)
+    This verifies that the class can be instantiated without optional components.
+    """
+    dec = QG.models.AutoregressiveDecoder(
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
+        parent_logit_mlp_type=parent_logit_mlp_type,
+        parent_logit_mlp_args=parent_logit_mlp_args,
+        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
+    )
+
+    assert isinstance(dec, QG.models.AutoregressiveDecoder)
+    assert isinstance(dec.node_updater, torch.nn.Module)
+    assert isinstance(dec.parent_logit_mlp, torch.nn.Module)
+    assert dec.node_feature_decoder is None
+    assert dec.ancestor_suppression_strength == 1.0
+    assert dec.node_updater.hidden_dim == 32
+
+# -------------------------------------------------------------------------
 # Full construction with all optional components
 # -------------------------------------------------------------------------
 
 def test_full_construction(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     decoder_init_type, decoder_init_args, decoder_init_kwargs,
     node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
@@ -265,9 +261,9 @@ def test_full_construction(
     ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -280,7 +276,7 @@ def test_full_construction(
         ancestor_suppression_strength=0.7,
     )
 
-    assert isinstance(dec.decoder, torch.nn.Module)
+    assert isinstance(dec.node_updater, torch.nn.Module)
     assert isinstance(dec.parent_logit_mlp, torch.nn.Module)
     assert isinstance(dec.decoder_init, torch.nn.Module)
     assert isinstance(dec.node_feature_decoder, torch.nn.Module)
@@ -298,40 +294,172 @@ def test_full_construction(
 # -------------------------------------------------------------------------
 
 def test_parent_logit_mlp_output_must_be_scalar(
-    decoder_type, decoder_args, decoder_kwargs
+    gru_type, gru_args, gru_kwargs, parent_logit_mlp_kwargs
 ):
     """
     parent_logit_mlp must output exactly one logit per parent.
     If it outputs more than one element, initialization must raise ValueError.
     """
-    bad_parent_args = [[16, 2]]  # invalid: outputs 2 logits
+    bad_parent_args = [
+        [[16, 2]],           # dims list: wrong because output_dim=2 (should be 1)
+        [torch.nn.Identity], # activations list
+    ]
     with pytest.raises(ValueError):
         QG.models.AutoregressiveDecoder(
-            decoder_type=decoder_type,
-            decoder_args=decoder_args,
-            decoder_kwargs=decoder_kwargs,
+            gru_type=gru_type,
+            gru_args=gru_args,
+            gru_kwargs=gru_kwargs,
             parent_logit_mlp_type=QG.models.LinearSequential,
             parent_logit_mlp_args=bad_parent_args,
-            parent_logit_mlp_kwargs=minimal_parent_logit_mlp_kwargs,
+            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
         )
- 
+
+
 # -------------------------------------------------------------------------
-# latent_dim inference must fail when mlp_in_dim - 3*hidden_dim <= 0
+# parent_logit_mlp must accept input dimension = 3 * hidden_dim at INIT
+# -------------------------------------------------------------------------
+
+def test_parent_mlp_input_dim_mismatch_at_init(
+    gru_type, gru_args, gru_kwargs,
+    parent_logit_mlp_type, parent_logit_mlp_kwargs
+):
+    """
+    The parent_logit_mlp must accept an input tensor of shape (1, 3 * hidden_dim).
+    If its first Linear layer expects a different input dimension, initialization
+    must raise ValueError (caught in the test-input forward pass inside __init__).
+    """
+
+    # hidden_dim = 32 → required input_dim = 96
+    # Provide an MLP that expects a wrong input_dim (e.g., 16 instead of 96)
+    bad_parent_args = [
+        [[16, 1]],            # incorrect input dimension
+        [torch.nn.Identity],
+    ]
+
+    with pytest.raises(ValueError):
+        QG.models.AutoregressiveDecoder(
+            gru_type=gru_type,
+            gru_args=gru_args,
+            gru_kwargs=gru_kwargs,
+            parent_logit_mlp_type=parent_logit_mlp_type,
+            parent_logit_mlp_args=bad_parent_args,
+            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
+        )
+
+# -------------------------------------------------------------------------
+# parent_logit_mlp must return a tensor (type check)
+# -------------------------------------------------------------------------
+
+def test_parent_mlp_must_return_tensor(
+    gru_type, gru_args, gru_kwargs,
+    parent_logit_mlp_kwargs
+):
+    """
+    If parent_logit_mlp returns a non‑tensor type (e.g. list, tuple),
+    initialization must raise TypeError.
+    """
+
+    class BadMLP(torch.nn.Module):
+        def forward(self, x):
+            return [1, 2, 3]  # invalid: must return tensor
+
+    with pytest.raises(TypeError):
+        QG.models.AutoregressiveDecoder(
+            gru_type=gru_type,
+            gru_args=gru_args,
+            gru_kwargs=gru_kwargs,
+            parent_logit_mlp_type=BadMLP,
+            parent_logit_mlp_args=[],
+            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
+        )
+
+# -------------------------------------------------------------------------
+# decoder_init must output a tensor of dimension hidden_dim (32 here).
+# If it outputs the wrong dimension, autoregressive decoding must fail.
+# -------------------------------------------------------------------------
+def test_decoder_init_wrong_output_dim(
+    gru_type, gru_args, gru_kwargs,
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+):
+    """
+    decoder_init must output a tensor of dimension hidden_dim (32 here).
+    If it outputs the wrong dimension, autoregressive decoding must fail.
+    """
+
+    # A decoder_init with incorrect output dimension
+    class BadInit(torch.nn.Module):
+        def forward(self, z):
+            return torch.randn(64)  # wrong: hidden_dim = 32 expected
+
+    # Autoregressive decode should crash due to dimension mismatch
+    with pytest.raises(ValueError):
+        QG.models.AutoregressiveDecoder(
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
+        parent_logit_mlp_type=parent_logit_mlp_type,
+        parent_logit_mlp_args=parent_logit_mlp_args,
+        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
+        decoder_init_type=BadInit,
+        decoder_init_args=[],
+        decoder_init_kwargs={},
+    )
+
+# -------------------------------------------------------------------------
+# latent_dim inference failure must raise ValueError
 # -------------------------------------------------------------------------
 
 def test_latent_dim_inference_failure(
-    decoder_type,
+    gru_type,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
-    # hidden_dim = 8 → latent_dim = 16 - 3*8 = -8 → invalid
-    bad_decoder_args = [[4, 8]]
+    """
+    Validation: If hidden_dim is too large such that the implicit MLP input
+    dimension < 3 * hidden_dim.
+    """
+
+    # hidden_dim = 64 → required input_dim = 192
+    # But parent_logit_mlp first layer expects only 128
+    bad_gru_args = [32, 64]  # in_dim=32, hidden_dim=64
+
     with pytest.raises(ValueError):
         QG.models.AutoregressiveDecoder(
-            decoder_type=decoder_type,
-            decoder_args=bad_decoder_args,
-            decoder_kwargs=minimal_decoder_kwargs,
+            gru_type=gru_type,
+            gru_args=bad_gru_args,
+            gru_kwargs={},
             parent_logit_mlp_type=parent_logit_mlp_type,
             parent_logit_mlp_args=parent_logit_mlp_args,
+            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
+        )
+
+# -------------------------------------------------------------------------
+# parent_logit_mlp must not accept malformed dims argument structures
+# -------------------------------------------------------------------------
+
+def test_parent_mlp_malformed_dims_structure(
+    gru_type, gru_args, gru_kwargs,
+    parent_logit_mlp_kwargs
+):
+    """
+    The dims structure provided to LinearSequential must be properly nested as:
+        dims = [[in_dim, out_dim], [out_dim, next_dim], ...]
+    If the user provides an invalid structure (e.g. a flat list), decoder
+    initialization must raise a ValueError due to failure in parent_logit_mlp.
+    """
+
+    # Incorrect dims structure: should be [[in_dim, out_dim]] but is [in_dim, out_dim]
+    malformed_parent_args = [
+        [16, 1],             # WRONG: not wrapped in a list of layers
+        [torch.nn.Identity], # still provide activations, but dims shape is invalid
+    ]
+
+    with pytest.raises(Exception):
+        QG.models.AutoregressiveDecoder(
+            gru_type=gru_type,
+            gru_args=gru_args,
+            gru_kwargs=gru_kwargs,
+            parent_logit_mlp_type=QG.models.LinearSequential,
+            parent_logit_mlp_args=malformed_parent_args,
             parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
         )
 
@@ -340,15 +468,15 @@ def test_latent_dim_inference_failure(
 # -------------------------------------------------------------------------
 
 def test_missing_decoder_type_raises(
-    minimal_parent_logit_mlp_type,
-    minimal_parent_logit_mlp_args,
-    minimal_parent_logit_mlp_kwargs,
+    parent_logit_mlp_type,
+    parent_logit_mlp_args,
+    parent_logit_mlp_kwargs,
 ):
     cfg = {
-        # "decoder_type" missing
-        "parent_logit_mlp_type": minimal_parent_logit_mlp_type,
-        "parent_logit_mlp_args": minimal_parent_logit_mlp_args,
-        "parent_logit_mlp_kwargs": minimal_parent_logit_mlp_kwargs,
+        # "gru_type" missing
+        "parent_logit_mlp_type": parent_logit_mlp_type,
+        "parent_logit_mlp_args": parent_logit_mlp_args,
+        "parent_logit_mlp_kwargs": parent_logit_mlp_kwargs,
     }
 
     with pytest.raises(jsonschema.ValidationError):
@@ -356,12 +484,12 @@ def test_missing_decoder_type_raises(
 
 
 def test_missing_parent_logit_mlp_type_raises(
-    minimal_decoder_type, minimal_decoder_args, minimal_decoder_kwargs
+    minimal_gru_type, minimal_gru_args, minimal_gru_kwargs
 ):
     cfg = {
-        "decoder_type": minimal_decoder_type,
-        "decoder_args": minimal_decoder_args,
-        "decoder_kwargs": minimal_decoder_kwargs,
+        "gru_type": minimal_gru_type,
+        "gru_args": minimal_gru_args,
+        "gru_kwargs": minimal_gru_kwargs,
         # missing "parent_logit_mlp_type"
     }
 
@@ -373,21 +501,21 @@ def test_missing_parent_logit_mlp_type_raises(
 # -------------------------------------------------------------------------
 
 def test_malformed_decoder_args_raises(
-    minimal_decoder_type,
-    bad_decoder_args,
-    minimal_decoder_kwargs,
-    minimal_parent_logit_mlp_type,
-    minimal_parent_logit_mlp_args,
-    minimal_parent_logit_mlp_kwargs,
+    minimal_gru_type,
+    bad_gru_args,
+    minimal_gru_kwargs,
+    parent_logit_mlp_type,
+    parent_logit_mlp_args,
+    parent_logit_mlp_kwargs,
 ):
-    # invalid config: decoder_args must be a list, not a string
+    # invalid config: gru_args must be a list, not a string
     cfg = {
-        "decoder_type": minimal_decoder_type,
-        "decoder_args": bad_decoder_args,       # malformed
-        "decoder_kwargs": minimal_decoder_kwargs,
-        "parent_logit_mlp_type": minimal_parent_logit_mlp_type,
-        "parent_logit_mlp_args": minimal_parent_logit_mlp_args,
-        "parent_logit_mlp_kwargs": minimal_parent_logit_mlp_kwargs,
+        "gru_type": minimal_gru_type,
+        "gru_args": bad_gru_args,       # malformed
+        "gru_kwargs": minimal_gru_kwargs,
+        "parent_logit_mlp_type": parent_logit_mlp_type,
+        "parent_logit_mlp_args": parent_logit_mlp_args,
+        "parent_logit_mlp_kwargs": parent_logit_mlp_kwargs,
     }
 
     with pytest.raises(jsonschema.ValidationError):
@@ -400,16 +528,16 @@ def test_malformed_decoder_args_raises(
 
 def test_from_config_equivalence_full(
     full_decoder_config,
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     decoder_init_type, decoder_init_args, decoder_init_kwargs,
     node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
 ):
     # Direct construction
     direct = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -440,7 +568,7 @@ def test_from_config_equivalence_full(
  # -------------------------------------------------------------------------
 
 def test_training_requires_teacher_forcing(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     """
@@ -449,9 +577,9 @@ def test_training_requires_teacher_forcing(
     """
     latent_z = torch.randn(1, 32)
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -467,7 +595,7 @@ def test_training_requires_teacher_forcing(
 # -------------------------------------------------------------------------
 
 def test_forward_with_teacher_forcing(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     latent_vector_tf = torch.randn(1, 32)
@@ -480,9 +608,9 @@ def test_forward_with_teacher_forcing(
     ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -500,15 +628,15 @@ def test_forward_with_teacher_forcing(
 # -------------------------------------------------------------------------
 
 def test_eval_autoregressive_sampling(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     latent_eval_z = torch.randn(1, 32)
     eval_atom_count = 5
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -527,18 +655,18 @@ def test_eval_autoregressive_sampling(
 # -------------------------------------------------------------------------
 
 def test_parent_mlp_input_dim_mismatch(
-    decoder_type, decoder_args, decoder_kwargs
+    gru_type, gru_args, gru_kwargs
 ):
     # parent_logit_mlp expects input dim 8 but decoder provides 16
     bad_parent_args = [[8, 1]]
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=bad_parent_args,
-        parent_logit_mlp_kwargs=minimal_parent_logit_mlp_kwargs,
+        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
     )
 
     z = torch.randn(1, 32)
@@ -564,9 +692,9 @@ def test_decoder_backbone_missing_dim_attr(
 
     with pytest.raises(ValueError):
         QG.models.AutoregressiveDecoder(
-            decoder_type=BadDecoder,
-            decoder_args=[],
-            decoder_kwargs={},
+            gru_type=BadDecoder,
+            gru_args=[],
+            gru_kwargs={},
             parent_logit_mlp_type=parent_logit_mlp_type,
             parent_logit_mlp_args=parent_logit_mlp_args,
             parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -577,7 +705,7 @@ def test_decoder_backbone_missing_dim_attr(
 # -------------------------------------------------------------------------
 
 def test_ancestor_suppression_disabled_behavior(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     # Local test inputs
@@ -589,9 +717,9 @@ def test_ancestor_suppression_disabled_behavior(
     ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -616,7 +744,7 @@ def test_ancestor_suppression_disabled_behavior(
 # -------------------------------------------------------------------------
 
 def test_ancestor_suppression_enabled_behavior(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     # Setup
@@ -628,9 +756,9 @@ def test_ancestor_suppression_enabled_behavior(
     ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -658,7 +786,7 @@ def test_ancestor_suppression_enabled_behavior(
 # -------------------------------------------------------------------------
 
 def test_node_feature_decoder_forward(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
 ):
@@ -670,9 +798,9 @@ def test_node_feature_decoder_forward(
     ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -698,7 +826,7 @@ def test_node_feature_decoder_forward(
 # -------------------------------------------------------------------------
 
 def test_reconstruct_node_features(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
 ):
@@ -706,9 +834,9 @@ def test_reconstruct_node_features(
     atom_count = 4
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -734,7 +862,7 @@ def test_reconstruct_node_features(
 # -------------------------------------------------------------------------
 
 def test_reconstruct_node_features_without_decoder_raises(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     z = torch.randn(1, 32)
@@ -742,9 +870,9 @@ def test_reconstruct_node_features_without_decoder_raises(
 
     # Construct decoder WITHOUT node_feature_decoder
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -762,15 +890,15 @@ def test_reconstruct_node_features_without_decoder_raises(
 # -------------------------------------------------------------------------
 
 def test_eval_requires_atom_count_when_no_teacher_forcing(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     z = torch.randn(1, 32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -788,7 +916,7 @@ def test_eval_requires_atom_count_when_no_teacher_forcing(
 # -------------------------------------------------------------------------
 
 def test_atom_count_ignored_when_teacher_forcing_given(
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
     z = torch.randn(1, 32)
@@ -800,9 +928,9 @@ def test_atom_count_ignored_when_teacher_forcing_given(
     ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -832,16 +960,16 @@ def test_atom_count_ignored_when_teacher_forcing_given(
 def test_save_and_load_equivalence(
     tmp_path,
     full_decoder_config,
-    decoder_type, decoder_args, decoder_kwargs,
+    gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     decoder_init_type, decoder_init_args, decoder_init_kwargs,
     node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
 ):
     # Build model
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=decoder_type,
-        decoder_args=decoder_args,
-        decoder_kwargs=decoder_kwargs,
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
         parent_logit_mlp_type=parent_logit_mlp_type,
         parent_logit_mlp_args=parent_logit_mlp_args,
         parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
@@ -872,7 +1000,7 @@ def test_save_and_load_equivalence(
 # -------------------------------------------------------------------------
 
 def test_gnn_decoder_instantiation(
-    gnn_decoder_type, gnn_decoder_args, gnn_decoder_kwargs,
+    gnn_gru_type, gnn_gru_args, gnn_gru_kwargs,
     deep_parent_logit_mlp_type, deep_parent_logit_mlp_args, deep_parent_logit_mlp_kwargs,
     deep_decoder_init_type, deep_decoder_init_args, deep_decoder_init_kwargs,
     deep_node_feature_decoder_type, deep_node_feature_decoder_args, deep_node_feature_decoder_kwargs,
@@ -884,9 +1012,9 @@ def test_gnn_decoder_instantiation(
     """
 
     dec = QG.models.AutoregressiveDecoder(
-        decoder_type=gnn_decoder_type,
-        decoder_args=gnn_decoder_args,
-        decoder_kwargs=gnn_decoder_kwargs,
+        gru_type=gnn_gru_type,
+        gru_args=gnn_gru_args,
+        gru_kwargs=gnn_gru_kwargs,
 
         parent_logit_mlp_type=deep_parent_logit_mlp_type,
         parent_logit_mlp_args=deep_parent_logit_mlp_args,
@@ -906,7 +1034,7 @@ def test_gnn_decoder_instantiation(
     # Basic structural assertions
     assert isinstance(dec, QG.models.AutoregressiveDecoder)
     assert dec.hidden_dim == 32  # inferred from GNNBlock out_dim
-    assert isinstance(dec.decoder, torch.nn.Module)
+    assert isinstance(dec.node_updater, torch.nn.Module)
     assert isinstance(dec.parent_logit_mlp, torch.nn.Module)
     assert isinstance(dec.decoder_init, torch.nn.Module)
     assert isinstance(dec.node_feature_decoder, torch.nn.Module)
