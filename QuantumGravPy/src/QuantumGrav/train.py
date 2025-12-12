@@ -315,11 +315,6 @@ class Trainer(base.Configurable):
 
         Args:
             config (dict[str, Any]): The configuration dictionary.
-            criterion (Callable): The loss function to use.
-            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
-            early_stopping (Callable[[Collection[Any]], bool] | None, optional): A function for early stopping. Defaults to None.
-            validator (Validator | None, optional): A validator for model evaluation. Defaults to None.
-            tester (Tester | None, optional): A tester for model evaluation. Defaults to None.
 
         Raises:
             ValueError: If the configuration is invalid.
