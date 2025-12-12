@@ -583,6 +583,6 @@ class GNNModel(torch.nn.Module, base.Configurable):
             model = cls(
                 *(args if args is not None else []),
                 **(kwargs if kwargs is not None else {}),
-            )
+            ).to(device)
         model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
         return model
