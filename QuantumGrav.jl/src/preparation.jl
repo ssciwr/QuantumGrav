@@ -191,10 +191,10 @@ function setup_multiprocessing(config::Dict)
 
     # setup multiprocessing environment.
     worker_factories = Dict()
-    for p in Distributed.workers()
+    for (idx, p) in enumerate(Distributed.workers())
         @info "setting up worker_factory on pid=$(p)"
 
-        process_local_seed = config["seed"] + p
+        process_local_seed = config["seed"] + idx
         process_local_config = deepcopy(config)
         process_local_config["seed"] = process_local_seed
 
