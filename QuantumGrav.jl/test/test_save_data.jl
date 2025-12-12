@@ -40,7 +40,6 @@ end
     @test isdir(joinpath(tempdir(), "test.zarr", "testgroup", "testdata"))
     arr = Zarr.zopen(file, "r"; path = joinpath("testgroup", "testdata"))
 
-    print("metadata: ", arr.metadata.chunks)
     @test arr.metadata.chunks == (50, 50, 50)
     @test arr.metadata.shape[] == (100, 101, 102)
     @test arr[1:10, 1:3, 1:5] == dataarray[1:10, 1:3, 1:5]

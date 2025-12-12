@@ -22,8 +22,8 @@ class Trainer:
         # training evaluation and reporting
         early_stopping: Callable[[Collection[Any] | torch.Tensor], bool]
         | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
+        validator: Validator | None = None,
+        tester: Tester | None = None,
     )
 ```
 The `config` argument has its own section [below](#the-configuration-dict). The `criterion` is a loss function that must have the following signature:
@@ -38,11 +38,11 @@ The `apply_model` function is optional and defines how to call the model with th
 The next three arguments are needed to evaluate and test the model and to implement a stopping criterion, so they deserve their own little section.
 
 ### `tester` and `validator`
-We will start from the end, beginning with `tester`. This is an object of type `DefaultTester` (an instance thereof or an object derived from it).
+We will start from the end, beginning with `tester`. This is an object of type `Tester` (an instance thereof or an object derived from it).
 This class is build like this:
 
 ```python
-class DefaultTester(DefaultEvaluator):
+class Tester(Evaluator):
     def __init__(
         self, device, criterion: Callable, apply_model: Callable | None = None
     )
@@ -67,9 +67,9 @@ def report(self, data: list | pd.Series | torch.Tensor | np.ndarray)
 
 This is a function or callable object that decides when to stop the training process based on a metric it gets. It eats a list or other iterable that contains the output fo applying the model to the data using `criterion`, and, by default, computes the mean and standard deviation thereof and reports them to standard out.
 
-The `validator` object works exactly the same, (`DefaultTester` and `DefaultValidator` have the same base class: `DefaultEvaluator`), so it's not documented separately here. The only difference is that what's called `test` in `DefaultTester` is called `validate` in `DefaultEvaluator`.
+The `validator` object works exactly the same, (`Tester` and `Validator` have the same base class: `Evaluator`), so it's not documented separately here. The only difference is that what's called `test` in `Tester` is called `validate` in `Evaluator`.
 
-Under the hood, they both use the `evalute` function of their parent class `DefaultEvaluator`. So in your derived classes, you can also overwrite that and then build your own type hierarcy on top of it.
+Under the hood, they both use the `evalute` function of their parent class `Evaluator`. So in your derived classes, you can also overwrite that and then build your own type hierarcy on top of it.
 
 The idea behind these two classes is that the user derives their own class from them and adjusts the `test`, `validate` and `report` functions to their own needs, e.g., for reporting the F1 score in a classification task.
 Note that you can also break the type annotation if you think you need and for instance use your own evaluator classes - just make sure the call signatures are correct.
@@ -341,7 +341,7 @@ def pre_transform(data: dict) -> Data:
 
 ################################################################################
 # Testing and Validation helper classes.
-class Validator(QG.DefaultValidator):
+class Validator(QG.Validator):
     def __init__(
         self,
         device,

@@ -52,6 +52,8 @@ class QGDataset(QGDatasetBase, Dataset):
             pre_filter (Callable[[Data], bool] | None, optional): Function to pre-filter the data. Defaults to None.
         """
         preprocess = pre_transform is not None or pre_filter is not None
+        self.stores = {}
+
         QGDatasetBase.__init__(
             self,
             input,
@@ -72,8 +74,6 @@ class QGDataset(QGDatasetBase, Dataset):
             pre_transform=pre_transform,
             pre_filter=pre_filter,
         )
-
-        self.stores = {}
 
     def write_data(self, data: list[Data], idx: int) -> int:
         """Write the processed data to disk using `torch.save`. This is a default implementation that can be overridden by subclasses, and is intended to be used in the data loading pipeline. Thus, is not intended to be called directly.
