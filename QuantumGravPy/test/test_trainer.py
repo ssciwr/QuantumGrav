@@ -373,6 +373,8 @@ def test_trainer_model_instantiation_works(config):
     trainer.initialize_model()
 
     assert isinstance(trainer.model, QG.GNNModel)
+    assert isinstance(trainer.validator, DummyEvaluator)
+    assert isinstance(trainer.tester, DummyEvaluator)
 
 
 def test_trainer_creation_with_default_evaluators(config_with_default_evaluators):
@@ -384,10 +386,6 @@ def test_trainer_creation_with_default_evaluators(config_with_default_evaluators
     assert isinstance(trainer.tester, QG.Tester)
     assert trainer.device == torch.device("cpu")
     assert trainer.seed == config_with_default_evaluators["training"]["seed"]
-
-    # ensure model and optimizer were initialized
-    assert isinstance(trainer.model, (QG.GNNModel, torch.nn.Module))
-    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
 
 
 def test_trainer_optimizer_instantiation_works(config):
