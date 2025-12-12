@@ -178,7 +178,7 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
 
 @pytest.fixture
 def config_with_default_evaluators(config):
-    cfg = copy.deepcopy(config)
+    cfg = deepcopy(config)
     cfg["validation"]["validator"] = {
         "type": QG.Validator,
         "args": [
