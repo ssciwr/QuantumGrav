@@ -143,7 +143,7 @@ end
 
     @everywhere @eval Main function make_data(factory::CsetFactory)
         n = rand(factory.rng, factory.npoint_distribution)
-        cset, _ = factory("random", n, factory.rng)
+        cset, _ = factory(factory.conf["cset_type"], n, factory.rng)
         return Dict("n" => cset.atom_count)
     end
     # make a temporary output path
@@ -175,6 +175,110 @@ end
     end
     return targetpath
 end
+
+
+@testsnippet run_dataproduction_deterministic begin
+    using Distributed
+
+    # add processes
+    addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
+
+    # use @everywhere to include necessary modules on all workers
+    @everywhere using QuantumGrav
+    @everywhere using Random
+    @everywhere using YAML
+    @everywhere using Zarr
+    @everywhere using LinearAlgebra
+    @everywhere using Dates
+    @everywhere using CausalSets
+
+
+    @everywhere @eval Main function make_data(factory::CsetFactory)
+        n = rand(factory.rng, factory.npoint_distribution)
+        cset, _ = factory(factory.conf["cset_type"], n, factory.rng)
+        return Dict("n" => cset.atom_count)
+    end
+    # make a temporary output path
+    targetpath = mktempdir()
+
+    try
+        # read the default config and modify it to use the temporary output path
+        # and produce more data. This serves as a dummy user config
+        defaultconfigpath =
+            joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
+        cfg = YAML.load_file(defaultconfigpath)
+        cfg["output"] = targetpath
+        cfg["num_datapoints"] = 9
+
+        configpath = joinpath(targetpath, "config.yaml")
+
+        # .. then write back again
+        open(configpath, "w") do io
+            YAML.write(io, cfg)
+        end
+
+        # produce 9 data points using multiprocessing
+        # hold max. 3 datapoints in the writing queue at once
+        # and use the make data function that we had defined above
+        QuantumGrav.produce_data(3, configpath, Main.make_data)
+
+    finally
+        rmprocs(workers()...)
+    end
+    return targetpath
+end
+
+@testsnippet run_dataproduction_deterministic_second begin
+    using Distributed
+
+    # add processes
+    addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
+
+    # use @everywhere to include necessary modules on all workers
+    @everywhere using QuantumGrav
+    @everywhere using Random
+    @everywhere using YAML
+    @everywhere using Zarr
+    @everywhere using LinearAlgebra
+    @everywhere using Dates
+    @everywhere using CausalSets
+
+
+    @everywhere @eval Main function make_data(factory::CsetFactory)
+        n = rand(factory.rng, factory.npoint_distribution)
+        cset, _ = factory(factory.conf["cset_type"], n, factory.rng)
+        return Dict("n" => cset.atom_count)
+    end
+    # make a temporary output path
+    targetpath_second = mktempdir()
+
+    try
+        # read the default config and modify it to use the temporary output path
+        # and produce more data. This serves as a dummy user config
+        defaultconfigpath =
+            joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
+        cfg = YAML.load_file(defaultconfigpath)
+        cfg["output"] = targetpath_second
+        cfg["num_datapoints"] = 9
+
+        configpath = joinpath(targetpath_second, "config.yaml")
+
+        # .. then write back again
+        open(configpath, "w") do io
+            YAML.write(io, cfg)
+        end
+
+        # produce 9 data points using multiprocessing
+        # hold max. 3 datapoints in the writing queue at once
+        # and use the make data function that we had defined above
+        QuantumGrav.produce_data(3, configpath, Main.make_data)
+
+    finally
+        rmprocs(workers()...)
+    end
+    return targetpath_second
+end
+
 
 @testitem "check_copy_sourcecode" tags = [:preparation] begin
     import CausalSets
@@ -390,4 +494,47 @@ end
     end
 
     @test_throws ErrorException QuantumGrav.produce_data(3, nothing, Main.make_data)
+end
+
+
+@testitem "test_mp_dataproduction_deterministic" tags = [:dataproduction] setup=[
+    run_dataproduction_deterministic,
+    run_dataproduction_deterministic_second,
+] begin
+    import Zarr
+    # check that data was produced
+    zarr_files = filter(x -> occursin(".zarr", x), readdir(targetpath))
+    @test length(zarr_files) == 1
+
+    zarr_files_second = filter(x -> occursin(".zarr", x), readdir(targetpath_second))
+    @test length(zarr_files_second) == 1
+
+    # test data content
+    store = zarr_files[1]
+    group = Zarr.zopen(joinpath(targetpath, store), "r"; path = "") # open root
+    @test group isa Zarr.ZGroup
+    @test length(keys(group.groups)) == 9 # 9 datapoints produced
+
+    # test data content
+    store_second = zarr_files_second[1]
+    group_second = Zarr.zopen(joinpath(targetpath_second, store_second), "r"; path = "") # open root
+    @test group_second isa Zarr.ZGroup
+    @test length(keys(group_second.groups)) == 9 # 9 datapoints produced
+
+    ns = []
+    ns2 = []
+    for i = 1:9
+        @test "cset_$i" in keys(group.groups)
+        @test "n" in keys(group.groups["cset_$i"].arrays)
+        n = group.groups["cset_$i"].arrays["n"][1]
+
+        @test "cset_$i" in keys(group_second.groups)
+        @test "n" in keys(group_second.groups["cset_$i"].arrays)
+        n = group_second.groups["cset_$i"].arrays["n"][1]
+
+        push!(ns, n)
+        push!(ns2, n)
+    end
+
+    @test ns == ns2 # data should be identical between both runs
 end

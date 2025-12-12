@@ -206,10 +206,30 @@ function setup_multiprocessing(config::Dict)
         # then we can take them, use them, and put them back again which avoids
         # conflicts or reuse between processes and avoids global variables
         worker_factories[p] = Distributed.RemoteChannel(_setup_channel, p)
-
         put!(worker_factories[p], CsetFactory(process_local_config))
     end
     return worker_factories
+end
+
+"""
+	_worker_run_chunk(worker_channel::RemoteChannel, chunk::Vector{Int}, queue::RemoteChannel, make_data::Function)
+Worker function to run a chunk of data production tasks. Used for deterministic data production.
+"""
+function _worker_run_chunk(
+    worker_channel::Distributed.RemoteChannel,
+    chunk::Vector{Int},
+    queue::Distributed.RemoteChannel,
+    make_data::Function,
+)
+    factory = take!(worker_channel)
+    try
+        for i in chunk
+            cset_data = make_data(factory)
+            put!(queue, (i, cset_data))
+        end
+    finally
+        put!(worker_channel, factory)
+    end
 end
 
 """
@@ -220,18 +240,24 @@ fill a Channel with data that is drained by a writer task concurrently. Therefor
 wait until a slot in it becomes free. In the same way, the writer task will wait until a new datapoint is available if the queue is empty.
 How many datapoints are written is defined in the config. See the documentation of the config file for this.
 This relies on worker tasks being spawned by the user and will error when there are none.
+
 # Arguments:
 - `chunksize`: Maximum datapoints to be held in memory at any one time.
 - `configpath`: path on disk to the config file to load
 - `make_data`: Function for producing the data with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
    This must return a Dictionary mapping names (strings) => Union{AbstractVector, Number, Bool, String}
+
+# Keyword Arguments:
+- `deterministic::Bool = false`: If true, dataproduction will be deterministic across runs with the same config and number of workers, at the price of speed. 
+
 # Returns:
 Nothing
 """
 function produce_data(
     chunksize::Int64,
     configpath::Union{String,Nothing},
-    make_data::Function,
+    make_data::Function;
+    deterministic::Bool = false,
 )::Nothing
 
     if length(Distributed.workers()) < 2
@@ -283,15 +309,30 @@ function produce_data(
 
     # start producers
     @info "Producing data"
-    p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
-    ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
-        # select worker
-        worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
-        try
-            cset_data = make_data(worker_factory)
-            put!(queue, (i, cset_data)) # blocks when queue is full
-        finally
-            put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
+    if deterministic
+        # distribute chunks to workers in a deterministic way. no dynamic scheduling here
+        chunks = collect(Iterators.partition(1:n, length(Distributed.workers())))
+        for (w, chunk) in zip(Distributed.workers(), chunks)
+            Distributed.remotecall_wait(
+                _worker_run_chunk,
+                w,
+                worker_factories[w],
+                chunk,
+                queue,
+                make_data,
+            )
+        end
+    else
+        p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
+        ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
+            # select worker
+            worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
+            try
+                cset_data = make_data(worker_factory)
+                put!(queue, (i, cset_data)) # blocks when queue is full
+            finally
+                put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
+            end
         end
     end
 
