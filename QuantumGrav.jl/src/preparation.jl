@@ -144,8 +144,7 @@ Set up the configuration for data production.
 - `Dict{Any,Any}`: The resulting configuration dictionary after applying defaults and optional overrides.
 """
 function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
-    defaultconfigpath =
-        joinpath(dirname(dirname(@__DIR__)), "configs", "createdata_default.yaml")
+    defaultconfigpath = joinpath((dirname(@__DIR__)), "configs", "createdata_default.yaml")
     default_config = YAML.load_file(defaultconfigpath)
 
     if configpath === nothing

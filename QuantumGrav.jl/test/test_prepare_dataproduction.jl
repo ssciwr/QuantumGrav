@@ -153,7 +153,7 @@ end
         # read the default config and modify it to use the temporary output path
         # and produce more data. This serves as a dummy user config
         defaultconfigpath =
-            joinpath(dirname(dirname(@__DIR__)), "configs", "createdata_default.yaml")
+            joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
         cfg = YAML.load_file(defaultconfigpath)
         cfg["output"] = targetpath
         cfg["num_datapoints"] = 9
