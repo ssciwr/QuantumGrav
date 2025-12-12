@@ -177,6 +177,67 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
 
 
 @pytest.fixture
+def config_with_default_evaluators(config):
+    cfg = copy.deepcopy(config)
+    cfg["validation"]["validator"] = {
+        "type": QG.DefaultValidator,
+        "args": [
+            "cpu",
+            eval_loss,
+            [
+                [
+                    ("loss", monitor_dummy, None, None),
+                    ("other_loss", monitor_dummy, None, None),
+                ]
+            ],
+        ],
+        "kwargs": {},
+    }
+    cfg["testing"]["tester"] = {
+        "type": QG.DefaultTester,
+        "args": [
+            "cpu",
+            eval_loss,
+            [
+                [
+                    ("loss", monitor_dummy, None, None),
+                    ("other_loss", monitor_dummy, None, None),
+                ]
+            ],
+        ],
+        "kwargs": {},
+    }
+
+    cfg["early_stopping"] = {
+        "type": QG.early_stopping.DefaultEarlyStopping,
+        "args": [
+            {
+                0: {
+                    "delta": 1e-2,
+                    "metric": "loss_0",
+                    "grace_period": 8,
+                    "init_best_score": 1000000.0,
+                    "mode": "min",
+                },
+                1: {
+                    "delta": 1e-4,
+                    "metric": "other_loss_0",
+                    "grace_period": 10,
+                    "init_best_score": -1000000.0,
+                    "mode": "max",
+                },
+            },
+            12,
+        ],
+        "kwargs": {
+            "mode": "any",
+        },
+    }
+
+    return cfg
+
+
+@pytest.fixture
 def config_with_data(config, create_data_zarr, read_data):
     datadir, datafiles = create_data_zarr
     cfg = deepcopy(config)
@@ -296,6 +357,21 @@ def test_trainer_model_instantiation_works(config):
     trainer.initialize_model()
 
     assert isinstance(trainer.model, QG.GNNModel)
+
+
+def test_trainer_creation_with_default_evaluators(config_with_default_evaluators):
+    trainer = QG.Trainer(
+        config_with_default_evaluators,
+    )
+
+    assert isinstance(trainer.validator, QG.DefaultValidator)
+    assert isinstance(trainer.tester, QG.DefaultTester)
+    assert trainer.device == torch.device("cpu")
+    assert trainer.seed == config_with_default_evaluators["training"]["seed"]
+
+    # ensure model and optimizer were initialized
+    assert isinstance(trainer.model, (QG.GNNModel, torch.nn.Module))
+    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
 
 
 def test_trainer_optimizer_instantiation_works(config):
@@ -646,6 +722,39 @@ def test_trainer_run_training_with_datasetconf(config_with_data):
     assert len(valid_data) == config_with_data["training"]["num_epochs"]
     assert training_data.shape[0] == config_with_data["training"]["num_epochs"]
     assert len(trainer.validator.data) == config_with_data["training"]["num_epochs"]
+
+
+def test_trainer_run_training_with_default_evaluators(
+    make_dataset, config_with_default_evaluators
+):
+    trainer = QG.Trainer(
+        config_with_default_evaluators,
+    )
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+
+    assert isinstance(trainer.validator, QG.DefaultValidator)
+    assert trainer.model is not None
+
+    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
+
+    original_weights = [param.clone() for param in trainer.model.parameters()]
+
+    training_data, valid_data = trainer.run_training(
+        test_loader,
+        validation_loader,
+    )
+    trained_weights = [param.clone() for param in trainer.model.parameters()]
+
+    for orig, trained in zip(original_weights, trained_weights):
+        assert not torch.all(torch.eq(orig, trained.data))
+
+    assert (
+        len(trainer.validator.data)
+        == config_with_default_evaluators["training"]["num_epochs"]
+    )
 
 
 def test_trainer_run_test(make_dataset, config):
