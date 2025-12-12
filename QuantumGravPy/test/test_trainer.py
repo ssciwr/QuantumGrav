@@ -15,7 +15,59 @@ from copy import deepcopy
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 
-# data transform functions
+
+# evaluator helpers (for DefaultValidator/DefaultTester)
+def eval_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
+    """Loss used by DefaultEvaluator: outputs + data -> loss.
+
+    Aggregates MSE across all active task outputs.
+    """
+    all_loss = torch.zeros(1)
+    for _, task_output in x.items():
+        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))  # type: ignore
+        all_loss += loss
+    return all_loss
+
+
+def monitor_dummy(preds, targets):
+    """Simple monitor that returns zero as a scalar."""
+    return torch.tensor(0.0)
+
+
+# this is needed for testing the full training loop
+class DummyEvaluator:
+    def __init__(self):
+        self.data = pd.DataFrame(columns=["loss", "other_loss"])
+
+    def validate(self, model, data_loader):
+        # Dummy validate logic
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
+
+    def test(self, model, data_loader):
+        # Dummy test logic
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
+
+    def report(self, losses: list):  # type: ignore
+        print("DummyEvaluator report:", losses, self.data.tail(1))
+
+
+def compute_loss(
+    x: dict[int, torch.Tensor], data: Data, trainer: QG.Trainer
+) -> torch.Tensor:
+    """Compute the loss between predictions and targets."""
+    all_loss = torch.zeros(1)
+    for _, task_output in x.items():
+        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))  # type: ignore
+        all_loss += loss
+    return all_loss
 
 
 # test fixtures
@@ -288,42 +340,6 @@ def broken_config(model_config_eval):
             "shuffle": False,
         },
     }
-
-
-# this is needed for testing the full training loop
-class DummyEvaluator:
-    def __init__(self):
-        self.data = pd.DataFrame(columns=["loss", "other_loss"])
-
-    def validate(self, model, data_loader):
-        # Dummy validate logic
-        losses = torch.rand(10)
-        avg1 = losses.mean().item()
-        avg2 = losses.mean().item()
-        self.data.loc[len(self.data), "loss"] = avg1
-        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
-
-    def test(self, model, data_loader):
-        # Dummy test logic
-        losses = torch.rand(10)
-        avg1 = losses.mean().item()
-        avg2 = losses.mean().item()
-        self.data.loc[len(self.data), "loss"] = avg1
-        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
-
-    def report(self, losses: list):  # type: ignore
-        print("DummyEvaluator report:", losses, self.data.tail(1))
-
-
-def compute_loss(
-    x: dict[int, torch.Tensor], data: Data, trainer: QG.Trainer
-) -> torch.Tensor:
-    """Compute the loss between predictions and targets."""
-    all_loss = torch.zeros(1)
-    for _, task_output in x.items():
-        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))  # type: ignore
-        all_loss += loss
-    return all_loss
 
 
 def test_trainer_creation_works(config):
