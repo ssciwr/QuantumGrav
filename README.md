@@ -88,6 +88,9 @@ Follow the instructions on screen to open the documentation. More on `mkdocs` ca
 ## Notes and troubleshooting
 
 - PyTorch and PyTorch-Geometric installation is platform and CUDA-version specific; consult the official installation docs if you encounter wheel or binary compatibility errors.
+- If you get errors from Julia about 'cannot merge projects' or other things related to packaging, try to delete the Manifest.toml in your project. This will force a rebuilding of the dependency tree and versioning thereof and in the process usually resolve inconsistencies arising from package updates or addition of new
+packages.
+
 
 ### Contribution guide
 

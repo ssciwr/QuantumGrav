@@ -43,7 +43,8 @@ This will return a causal set of the requested size and kind of the type `Causal
 This package uses the zarr format for storing data to file. From a constructed cset, a multitude of observables can be derived.
 These can be stored in a dictionary that then can be written directly into a zarr file. Secondly, a helper function is provided to copy the config and the source code used to generate the observables to the same directory as the data and creates a Zarr `DirectoryStore` there. This helps with reproducibility and documentation of different data generation runs. The created Zarr file will contain the pid of the generating process and the date and time in `yyyy-mm-dd_HH-MM-SS` format.
 
-We first define a function that takes a Causal Set factory and builds a dictionary of computed observables:
+
+Any code that generates csets first must define a function that takes a Causal Set factory and builds a dictionary of computed observables:
 
 ```julia
 import QuantumGrav as QG
@@ -77,8 +78,10 @@ path_to_store, zarr_store = QG.prepare_dataproduction(
 # make the factory
 factory = QG.CsetFactory(config)
 ```
+QG provides a `setup_config` function for this which makes this a little easier.
 
-Finally, we create our data. This can also be parallelized with `Threads.@threads`, `Distributed.@distributed`, `Distributed.pmap` or in other ways.
+Finally, we create our data. Unfortunately, because this writes metadata, it can't be
+parallelized within the same store or group.
 
 ```julia
 for i in 1:num_csets
@@ -86,7 +89,7 @@ for i in 1:num_csets
     QG.dict_to_zarr(file, data)
 end
 ```
-The whole procedure will result in a directory `output/random_data_{pid}_{yyyy-mm-dd_HH-MM-SS}.zarr`, which contains
+The whole procedure will result in a directory of the form `output/*csettype*_{pid}_{yyyy-mm-dd_HH-MM-SS}.zarr`, which contains
 directories `cset_{i}` and therein the respective observables.
 
 The resulting directory structure will look like this:
@@ -118,6 +121,74 @@ output/
         ├── observable1/
         └── observable2/
 ```
+This process has been encapsulated into the function `QuantumGrav.produce_data`.
+
+## Examples
+For examples for how to write your own variant of this workflow e.g., for multiprocessing, see the `examples` directory int QuantumGrav/QuantumGrav.jl in the repository.
+
+### `produce_data.jl` example
+
+This example demonstrates how to generate a small dataset using the bundled script in [examples/produce_data.jl](QuantumGrav.jl/examples/produce_data.jl). It orchestrates multi-process and multi-threaded data generation, writes observables to a Zarr store, and cleans up worker processes afterwards.
+
+**What it does**
+- Spawns `num_workers` Julia processes, each with `num_threads` threads, optionally setting BLAS threads.
+- Loads a configuration (default plus overrides) and builds a `QG.CsetFactory` on workers.
+- Repeatedly generates causal sets and basic observables (adjacency, link matrix) via the function `make_cset_data`.
+- Writes results to a Zarr `DirectoryStore` created by `QG.produce_data`.
+- Removes worker processes on exit, even if an error occurs. This step is important when using multiprocessing to not leave orphaned processes on the system if the script crashes.
+
+**Code sections**
+Open the script on the side to follow along the different sections. From top to bottom:
+- Command-line args: Parses `--config`, `--num_workers`, `--num_threads`, `--num_blas_threads`, `--chunksize`, and `--help`.
+- Multiprocessing setup: Adds processes with `Distributed.addprocs`, passes `--threads` and `--project` flags.
+- Environment on workers: `@everywhere` imports `QuantumGrav` and `LinearAlgebra`, and sets BLAS threads.
+- Data generation helpers: Defines `cset_type_encoder` and `make_cset_data(worker_factory)` to produce minimal features.
+- Main run block: Calls `QG.produce_data(chunksize, configpath, make_cset_data)` inside a try/catch/finally that ensures `rmprocs`.
+
+CLI options
+- `--config <path>`: Path to a YAML or JSON config file. If omitted, defaults are used.
+- `--num_workers <int>`: Number of processes to spawn (≥1).
+- `--num_threads <int>`: Threads per process (≥1).
+- `--num_blas_threads <int>`: Threads used by BLAS (independent of Julia threads).
+- `--chunksize <int>`: Number of csets to generate per write chunk.
+- `--help | -h`: Prints usage information and exits.
+
+**Example configuration overrides**
+You can define a minimal override file such as [examples/example_config.yaml](QuantumGrav.jl/examples/example_config.yaml) to adjust selected parameters while inheriting the package defaults:
+
+```yaml
+seed: 21
+output: "./example_data"
+csetsize_distr: "Normal"
+csetsize_distr_args: [32, 96]
+
+# the rest will be taken over from the default config
+```
+
+**How to run**
+- From the package root, launch the script with desired resources:
+
+```bash
+julia --project=QuantumGrav.jl -O3 QuantumGrav.jl/examples/produce_data.jl \
+    --config QuantumGrav.jl/examples/example_config.yaml \
+    --num_workers 2 \
+    --num_threads 4 \
+    --num_blas_threads 4 \
+    --chunksize 50
+```
+
+**Tips**
+- You can also run from within the `QuantumGrav.jl` project directory: `julia --project -O3 examples/produce_data.jl ...`.
+- Use `--num_workers auto`-style values by scripting around detection of cores; the example expects explicit integers.
+- If you only want threading, set `--num_workers 1` and adjust `--num_threads`.
+
+**Expected outcome**
+- A Zarr directory under the `output` path (from config), named like `random_data_<pid>_<yyyy-mm-dd_HH-MM-SS>.zarr`. Unless you change it, this should be in `example_data` in the directory you called the script from.
+- Within it, zarr groups (e.g., `cset_1`, `cset_2`, …) each containing basic observables produced by `make_cset_data`.
+- The store includes metadata (`.zattrs`) and copied source/config via `QG.prepare_dataproduction`, aiding reproducibility.
+
+If any generation attempt for csets fails transiently, the script retries up to 20 times per cset before raising an error.
+
 
 ## Configuration
 The causal set factories each come with a specific configuration dictionary that is validated by JSON schemas. Each cset type requires specific distribution parameters that control the stochastic generation process.

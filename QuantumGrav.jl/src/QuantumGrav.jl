@@ -11,6 +11,8 @@ import Zarr
 import Dates
 import Pkg
 import JSONSchema
+import Distributed
+import ProgressMeter
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -50,6 +52,9 @@ export make_adj,
     prepare_dataproduction,
     copy_sourcecode,
     get_git_info!,
+    setup_config,
+    setup_multiprocessing,
+    produce_data,
     PolynomialCsetMaker,
     RandomCsetMaker,
     LayeredCsetMaker,
