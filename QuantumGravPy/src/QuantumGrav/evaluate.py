@@ -9,7 +9,7 @@ from abc import abstractmethod
 from . import base
 
 
-class DefaultEvaluator(base.Configurable):
+class Evaluator(base.Configurable):
     """Default evaluator for model evaluation - testing and validation during training"""
 
     schema = {
@@ -150,14 +150,14 @@ class DefaultEvaluator(base.Configurable):
         pass
 
     @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> "DefaultEvaluator":
+    def from_config(cls, config: Dict[str, Any]) -> "Evaluator":
         """Build the evaluator from a config dictionary
 
         Args:
             config (Dict[str, Any]): Config dictionary to build the evaluator from.
 
         Returns:
-            DefaultEvaluator: new evaluator instance
+            Evaluator: new evaluator instance
         """
         jsonschema.validate(config, cls.schema)
         return cls(
@@ -168,11 +168,11 @@ class DefaultEvaluator(base.Configurable):
         )
 
 
-class DefaultTester(DefaultEvaluator):
+class Tester(Evaluator):
     """Default tester for model testing.
 
     Args:
-        DefaultEvaluator (Class): Inherits from DefaultEvaluator and provides functionality for validating models
+        Evaluator (Class): Inherits from Evaluator and provides functionality for validating models
     using a specified criterion and optional model application function.
     """
 
@@ -216,11 +216,11 @@ class DefaultTester(DefaultEvaluator):
         self.logger.info(f" {data.tail(1)}")
 
 
-class DefaultValidator(DefaultEvaluator):
+class Validator(Evaluator):
     """Default validator for model validation.
 
     Args:
-        DefaultEvaluator (Class): Inherits from DefaultEvaluator and provides functionality for validating models
+        Evaluator (Class): Inherits from Evaluator and provides functionality for validating models
     using a specified criterion and optional model application function.
     """
 

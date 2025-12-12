@@ -180,7 +180,7 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
 def config_with_default_evaluators(config):
     cfg = copy.deepcopy(config)
     cfg["validation"]["validator"] = {
-        "type": QG.DefaultValidator,
+        "type": QG.Validator,
         "args": [
             "cpu",
             eval_loss,
@@ -194,7 +194,7 @@ def config_with_default_evaluators(config):
         "kwargs": {},
     }
     cfg["testing"]["tester"] = {
-        "type": QG.DefaultTester,
+        "type": QG.Tester,
         "args": [
             "cpu",
             eval_loss,
@@ -364,8 +364,8 @@ def test_trainer_creation_with_default_evaluators(config_with_default_evaluators
         config_with_default_evaluators,
     )
 
-    assert isinstance(trainer.validator, QG.DefaultValidator)
-    assert isinstance(trainer.tester, QG.DefaultTester)
+    assert isinstance(trainer.validator, QG.Validator)
+    assert isinstance(trainer.tester, QG.Tester)
     assert trainer.device == torch.device("cpu")
     assert trainer.seed == config_with_default_evaluators["training"]["seed"]
 
@@ -733,7 +733,7 @@ def test_trainer_run_training_with_default_evaluators(
     trainer.initialize_model()
     trainer.initialize_optimizer()
 
-    assert isinstance(trainer.validator, QG.DefaultValidator)
+    assert isinstance(trainer.validator, QG.Validator)
     assert trainer.model is not None
 
     test_loader, validation_loader, _ = trainer.prepare_dataloaders(

@@ -126,9 +126,9 @@ def tasks():
 
 
 def test_default_validator_creation(gnn_model_eval, tasks):
-    """Test the DefaultValidator class."""
+    """Test the Validator class."""
     device = torch.device("cpu")
-    evaluator = QG.DefaultValidator(
+    evaluator = QG.Validator(
         device=device,
         criterion=compute_loss,
         apply_model=lambda data: gnn_model_eval(data, data.edge_index, data.batch),
@@ -166,7 +166,7 @@ def test_default_validator_evaluate(make_dataloader, gnn_model_eval, tasks):
     dataloader = make_dataloader
     device = torch.device("cpu")
     model = gnn_model_eval.to(device)
-    evaluator = QG.DefaultValidator(
+    evaluator = QG.Validator(
         device=device,
         criterion=compute_loss,
         apply_model=lambda model, data: model(data.x, data.edge_index, data.batch)[0],
@@ -195,7 +195,7 @@ def test_default_validator_report(caplog, make_dataloader, gnn_model_eval, tasks
     dataloader = make_dataloader
     device = torch.device("cpu")
     model = gnn_model_eval.to(device)
-    evaluator = QG.DefaultValidator(
+    evaluator = QG.Validator(
         device=device,
         criterion=compute_loss,
         evaluator_tasks=tasks,
@@ -216,7 +216,7 @@ def test_default_test_report(caplog, make_dataloader, gnn_model_eval, tasks):
     dataloader = make_dataloader
     device = torch.device("cpu")
     model = gnn_model_eval.to(device)
-    evaluator = QG.DefaultTester(
+    evaluator = QG.Tester(
         device=device,
         criterion=compute_loss,
         evaluator_tasks=tasks,

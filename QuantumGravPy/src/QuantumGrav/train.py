@@ -318,8 +318,8 @@ class Trainer(base.Configurable):
             criterion (Callable): The loss function to use.
             apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
             early_stopping (Callable[[Collection[Any]], bool] | None, optional): A function for early stopping. Defaults to None.
-            validator (DefaultValidator | None, optional): A validator for model evaluation. Defaults to None.
-            tester (DefaultTester | None, optional): A tester for model evaluation. Defaults to None.
+            validator (Validator | None, optional): A validator for model evaluation. Defaults to None.
+            tester (Tester | None, optional): A tester for model evaluation. Defaults to None.
 
         Raises:
             ValueError: If the configuration is invalid.
@@ -380,7 +380,7 @@ class Trainer(base.Configurable):
             )
 
         try:
-            self.validator = evaluate.DefaultValidator.from_config(
+            self.validator = evaluate.Validator.from_config(
                 config["validation"]["validator"]
             )
         except Exception as e:
@@ -393,9 +393,7 @@ class Trainer(base.Configurable):
             )
 
         try:
-            self.tester = evaluate.DefaultTester.from_config(
-                config["testing"]["tester"]
-            )
+            self.tester = evaluate.Tester.from_config(config["testing"]["tester"])
         except Exception as e:
             self.logger.debug(
                 f"from_config failed for tester, using direct instantiation: {e}"

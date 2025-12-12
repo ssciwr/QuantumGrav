@@ -106,8 +106,8 @@ class TrainerDDP(train.Trainer):
             criterion (Callable): The loss function.
             apply_model (Callable | None, optional): The function to apply the model. Defaults to None.
             early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): The early stopping function. Defaults to None.
-            validator (DefaultValidator | None, optional): The validator for model evaluation. Defaults to None.
-            tester (DefaultTester | None, optional): The tester for model testing. Defaults to None.
+            validator (Validator | None, optional): The validator for model evaluation. Defaults to None.
+            tester (Tester | None, optional): The tester for model testing. Defaults to None.
 
         Raises:
             ValueError: If the configuration is invalid.
