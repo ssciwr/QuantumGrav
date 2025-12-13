@@ -212,27 +212,6 @@ function setup_multiprocessing(config::Dict)
 end
 
 """
-	_worker_run_chunk(worker_channel::RemoteChannel, chunk::Vector{Int}, queue::RemoteChannel, make_data::Function)
-Worker function to run a chunk of data production tasks. Used for deterministic data production.
-"""
-function _worker_run_chunk(
-    worker_channel::Distributed.RemoteChannel,
-    chunk::Vector{Int},
-    queue::Distributed.RemoteChannel,
-    make_data::Function,
-)
-    factory = take!(worker_channel)
-    try
-        for i in chunk
-            cset_data = make_data(factory)
-            put!(queue, (i, cset_data))
-        end
-    finally
-        put!(worker_channel, factory)
-    end
-end
-
-"""
 	produce_data(chunksize::Int64, configpath::String, make_data::Function)
 
 Produce data on num_workers in parallel using the supplied make_data function. This works by having the worker processes
@@ -242,13 +221,13 @@ How many datapoints are written is defined in the config. See the documentation 
 This relies on worker tasks being spawned by the user and will error when there are none.
 
 # Arguments:
-- `chunksize`: Maximum datapoints to be held in memory at any one time.
+- `chunksize`: Maximum datapoints to be held in memory at any one time. Note that setting this to a too small value can lead to deadlocks.
 - `configpath`: path on disk to the config file to load
 - `make_data`: Function for producing the data with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
    This must return a Dictionary mapping names (strings) => Union{AbstractVector, Number, Bool, String}
 
 # Keyword Arguments:
-- `deterministic::Bool = false`: If true, dataproduction will be deterministic across runs with the same config and number of workers, at the price of speed. 
+- `deterministic::Bool = false`: If true, dataproduction will be deterministic across runs with the same config and number of workers, at the price of speed.
 
 # Returns:
 Nothing
@@ -259,7 +238,7 @@ function produce_data(
     make_data::Function;
     deterministic::Bool = false,
 )::Nothing
-
+    @info "Producing data with workers $(Distributed.nworkers()) and chunksize $(chunksize)"
     if length(Distributed.workers()) < 2
         throw(
             ErrorException(
@@ -295,11 +274,11 @@ function produce_data(
         () -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)),
     )
 
-    # start async writer task
+    # start async writer task on the main process
     writer = @async begin
         @info "Writer started on pid=$(Distributed.myid())"
         root = Zarr.zopen(file, "w"; path = "")
-        for _ ∈ 1:n # write exactly n times => num_datasets write operations
+        for i ∈ 1:n # write exactly n times => num_datasets write operations
             i, cset_data = take!(queue) # blocks when queue is empty
             csetdata = Dict("cset_$(i)" => cset_data)
             dict_to_zarr(root, csetdata)
@@ -309,33 +288,26 @@ function produce_data(
 
     # start producers
     @info "Producing data"
-    if deterministic
-        # distribute chunks to workers in a deterministic way. no dynamic scheduling here
-        chunks = collect(Iterators.partition(1:n, length(Distributed.workers())))
-        for (w, chunk) in zip(Distributed.workers(), chunks)
-            Distributed.remotecall_wait(
-                _worker_run_chunk,
-                w,
-                worker_factories[w],
-                chunk,
-                queue,
-                make_data,
-            )
+    p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
+    ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
+        # select worker
+        worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
+
+        # when determinism is required, we set the rng seeds per datapoint and
+        # build a new rng each time. this way, no matter how loadbalancing handles
+        # the allocation of datapoints to workers, the randomness sources are deterministic for each datapoint
+        if deterministic
+            Random.seed!(worker_factory.rng, worker_factory.conf["seed"] + i)
+            Random.seed!(worker_factory.conf["seed"] + i)
         end
-    else
-        p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
-        ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
-            # select worker
-            worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
-            try
-                cset_data = make_data(worker_factory)
-                put!(queue, (i, cset_data)) # blocks when queue is full
-            finally
-                put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
-            end
+
+        try
+            cset_data = make_data(worker_factory)
+            put!(queue, (i, cset_data)) # blocks when queue is full
+        finally
+            put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
         end
     end
-
     @info "All producers finished. Waiting for writer to finish"
     wait(writer)
     @info "Finished cset type $(cset_type)"
