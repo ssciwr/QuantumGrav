@@ -180,8 +180,8 @@ end
 @testsnippet run_dataproduction_deterministic begin
 	using Distributed
 
-	# add processes
-	addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
+	# add processes. give it a lot to make repetition apparent if present
+	addprocs(12; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
 
 	# use @everywhere to include necessary modules on all workers
 	@everywhere using QuantumGrav
@@ -231,8 +231,9 @@ end
 @testsnippet run_dataproduction_deterministic_second begin
 	using Distributed
 
-	# add processes
-	addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
+	# add processes. give it a lot to make repetition apparent if present, but different
+    # from the first run
+	addprocs(9; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
 
 	# use @everywhere to include necessary modules on all workers
 	@everywhere using QuantumGrav
@@ -535,18 +536,15 @@ end
 		push!(ns2, n)
 	end
 
-	@test ns == ns2 # data should be identical between both runs
+    # make sure the sequence doesn't repeat itself.
+    # this only checks if repetition happens from the get go, i.e., it won't
+    # find repetitions that start after a non-repeating offset. this is, however,
+    # not necessary b/c if repetition is possible, it starts from the begining.
+    # also, we don't count single characters b/c they may repeat at random.
+    for i in 2:12 # sequences of length 2 to length 12 = num_datapoints / 2 checked
+        @test ns[1:i] != ns[i+1:2*i]
+    end
 
-	# split data and make sure they don't repeat
-	partitions = Iterators.partition(1:24, 4) # num_datapoints / workers
-	for part1 in partitions
-		equals = count(ns[part1] .== ns2[part1])
-		for part2 in partitions
-			if part1 != part2
-				@test all(ns[part1] .== ns[part2]) == false
-			else
-				@test all(ns[part1] .== ns[part2]) == true
-			end
-		end
-	end
+    @test length(unique(ns)) > Int(ceil(length(ns)*0.7)) # estimate that normally should work. but not 100% reliable b/c stochastic
+	@test ns == ns2 # data should be identical between both runs
 end

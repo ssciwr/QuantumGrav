@@ -297,8 +297,8 @@ function produce_data(
         # build a new rng each time. this way, no matter how loadbalancing handles
         # the allocation of datapoints to workers, the randomness sources are deterministic for each datapoint
         if deterministic
-            Random.seed!(worker_factory.rng, worker_factory.conf["seed"] + i)
-            Random.seed!(worker_factory.conf["seed"] + i)
+            Random.seed!(worker_factory.rng, worker_factory.conf["seed"] + i*10)
+            Random.seed!(worker_factory.conf["seed"] + i*10)
         end
 
         try
