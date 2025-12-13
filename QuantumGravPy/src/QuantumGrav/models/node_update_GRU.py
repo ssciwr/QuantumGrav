@@ -188,9 +188,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         Returns:
             Tensor of shape (hidden_dim,)
         """
-        if parent_states.numel() == 0:
-            # No parents: return zeros of correct dimension
-            return torch.zeros(self.hidden_dim, device=parent_states.device)
 
         if self.aggregation_method == "mean":
             return parent_states.mean(dim=0)
@@ -210,19 +207,16 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
 
     def forward(
         self,
-        parent_mask: torch.Tensor,
-        h_prev: torch.Tensor,
+        parent_states: torch.Tensor,
     ) -> torch.Tensor:
         """
         Full node-state update:
-          1. apply parent mask
-          2. aggregate parent states
-          3. GRU update
+          1. aggregate parent states
+          2. GRU update
 
         parent_states: (num_parents, hidden_dim)
         h_prev:        (hidden_dim,)
         """
-        parent_states = h_prev * parent_mask.unsqueeze(1)
         parent_agg = self.aggregate(parent_states)
         return self.gru(parent_agg)
 

@@ -351,17 +351,26 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         # initial structures
         h0 = self.init_state(z)
-        node_states = [h0]                      # list of tensors
-        links = [[0]]                           # will append rows as lists of 0/1
+        node_states = []                      # list of tensors
+        links = torch.zeros((N_max, N_max), dtype=torch.float32, device=h0.device)  # preallocated adjacency tensor
         step_logprobs = []                      # accumulate per-step log likelihoods during training
-        ancestors = []
+        h_prev = []
+        parent_indices = []
         if self.ancestor_suppression:
-            bit0 = torch.zeros(N_max, dtype=torch.bool, device=h0.device)
-            ancestors.append(bit0.clone())           # node 0 has no ancestors
+            # Preallocate ancestor matrix A: A[t, j]=True iff j is ancestor of t
+            A = torch.zeros((N_max, N_max), dtype=torch.bool, device=h0.device)
 
         # grow nodes 1 .. N_max-1
         for t in range(1, N_max):
             prev_count = t
+
+            # create new node state
+            parent_states = h_prev[parent_indices]
+            if parent_states.numel() == 0:
+                new_state = h0.clone()
+            else:
+                new_state = self.node_updater(parent_states)        # GRU creates node state from parent nodes
+            node_states.append(new_state)
 
             # compute parent logits for all previous nodes
             # Prepare inputs for parent_logit_mlp
@@ -372,13 +381,11 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             probs = torch.sigmoid(logits)
 
             if self.ancestor_suppression:
-                # multiplicative suppression based on ancestor relations (S_i = product_{j>i}(1 - Anc[j][i]))
-                suppression = torch.ones(prev_count, device=h0.device)
-                for j in reversed(range(prev_count)):
-                    anc_j = ancestors[j][:prev_count].float()
-                    suppression *= (1.0 - self.ancestor_suppression_strength * anc_j)
-
-                # final probabilities
+                # Use ancestor matrix A for suppression
+                A_slice = A[:prev_count, :prev_count]
+                D = A_slice.t()
+                P = probs.unsqueeze(0).expand_as(D)
+                suppression = torch.prod(torch.where(D, 1 - P, torch.ones_like(P)), dim=1)
                 adjusted_probs = probs * suppression
             else:
                 adjusted_probs = probs
@@ -397,40 +404,27 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 step_logprobs.append(log_p.sum())
             else:
                 parent_mask = torch.bernoulli(adjusted_probs).to(torch.bool)
+            
+            parent_indices = (parent_mask == 1).nonzero(as_tuple=False).flatten()
 
-            # build edges to new node t
-            new_edges = []
-            for i in range(prev_count):
-                if parent_mask[i] == 1:
-                    new_edges.append([i, t])
+            # update adjacency structure in preallocated tensor
+            links[t, :prev_count] = parent_mask.to(torch.float32)
 
-            # update adjacency structure
-            row_t = [int(parent_mask[i].item()) for i in range(prev_count)]
-            row_t.append(0)
-            links.append(row_t)
-
-            # update ancestors[t]: OR of ancestors of parents + parents themselves
+            # update ancestor matrix A: row t
+            # A[t] = OR over rows of parents; then set direct parents
             if self.ancestor_suppression:
-                anc_t = torch.zeros(N_max, dtype=torch.bool, device=h0.device)
-                parent_indices = (parent_mask == 1).nonzero(as_tuple=False).flatten()
-                for p in parent_indices.tolist():
-                    anc_p = ancestors[p]
-                    anc_t = anc_t | anc_p
-                    anc_t[p] = True
-                ancestors.append(anc_t)
+                if len(parent_indices) > 0:
+                    A[t, :] = torch.any(A[parent_indices], dim=0)
+                    A[t, parent_indices] = True
 
-            # continue here
-            node_states = self.node_updater(parent_mask, h_prev)        # GRU creates node state from parent nodes
-
-
-
-        # convert link matrix + node_states to tensors
-        L = torch.tensor(links, dtype=torch.float32, device=h0.device)
         if self.node_feature_decoder is not None:
-            # FINAL GRU UPDATE: ensure node_states reflect the full graph including last-node parents
-            H = torch.stack(node_states, dim=0)
-            H = self.node_updater(H)
-            node_states = [H[i] for i in range(N_max)]
+            # Final GRU update: ensure node_states reflect the full graph including last-node parents
+            parent_states = h_prev[parent_indices]
+            if parent_states.numel() == 0:
+                new_state = h0.clone()
+            else:
+                new_state = self.node_updater(parent_states)        # GRU creates node state from parent nodes
+            node_states.append(new_state)
 
         X_hidden = torch.stack(node_states, dim=0)
         X_out = self.node_feature_decoder(X_hidden) if self.node_feature_decoder is not None else None
@@ -440,7 +434,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         else:
             total_logprob = None
 
-        return L, X_out, total_logprob
+        return links, X_out, total_logprob
 
     def reconstruct_link_matrix(self, z, atom_count):
         L, _, _ = self.autoregressive_decode(z, atom_count=atom_count)
