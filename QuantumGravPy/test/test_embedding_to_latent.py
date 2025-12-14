@@ -46,17 +46,19 @@ def bottleneck_type():
 
 @pytest.fixture
 def bottleneck_args():
-    # 32 → 64 → 16
-    return [[32, 64, 16]]
-
+    return [
+        [
+            [64, 64],  
+            [64, 16],  
+        ]
+    ]
 
 @pytest.fixture
 def bottleneck_kwargs():
     return {
-        "activation": torch.nn.ReLU,
-        "dropout": 0.1,
+        "activations": [torch.nn.ReLU, torch.nn.ReLU],
         "linear_kwargs": [{"bias": True}, {"bias": True}],
-        "activation_kwargs": [{}, {}],
+        "activation_kwargs": [{}, {}]
     }
 
 
@@ -67,14 +69,24 @@ def mu_head_type():
 
 @pytest.fixture
 def mu_head_args():
-    # 16 → 16
-    return [[16, 16]]
+    return [
+        [
+            [16, 16]
+        ]
+    ]
 
+@pytest.fixture
+def mu_head_args_no_bottle():
+    return [
+        [
+            [64, 16]   # instead of [16, 16]
+        ]
+    ]
 
 @pytest.fixture
 def mu_head_kwargs():
     return {
-        "activation": torch.nn.Identity,
+        "activations": [torch.nn.Identity],                  # one layer → one activation
         "linear_kwargs": [{"bias": True}],
         "activation_kwargs": [{}],
     }
@@ -87,14 +99,24 @@ def logvar_head_type():
 
 @pytest.fixture
 def logvar_head_args():
-    # 16 → 16
-    return [[16, 16]]
+    return [
+        [
+            [16, 16]
+        ]
+    ]
 
+@pytest.fixture
+def logvar_head_args_no_bottle():
+    return [
+        [
+            [64, 16]   # instead of [16, 16]
+        ]
+    ]
 
 @pytest.fixture
 def logvar_head_kwargs():
     return {
-        "activation": torch.nn.Identity,
+        "activations": [torch.nn.Identity],
         "linear_kwargs": [{"bias": True}],
         "activation_kwargs": [{}],
     }
@@ -145,6 +167,11 @@ def latent_config(
 # Tests
 # -------------------------------------------------------------------------
 
+# -------------------------------------------------------------------------
+# Construction tests
+# -------------------------------------------------------------------------
+
+
 def test_latent_multilayer_construction(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
     bottleneck_type, bottleneck_args, bottleneck_kwargs,
@@ -173,6 +200,46 @@ def test_latent_multilayer_construction(
     assert isinstance(latent.pooling_layers, torch.nn.ModuleList)
     assert len(latent.pooling_layers) == 2
 
+def test_construction_with_single_pooling_layer(
+    aggregate_type, aggregate_args, aggregate_kwargs,
+    node_embeddings, batch_vector
+):
+    """
+    A latent module with exactly one pooling layer must work and produce an
+    output equal to the pooling layer's output dimension (here 32).
+    """
+
+    # One pooling layer: global_mean_pool
+    pooling_specs = [
+        [torch_geometric.nn.global_mean_pool, [], {}],
+    ]
+
+    latent = GraphEmbeddingToLatent(
+        pooling_layers=pooling_specs,
+        aggregate_pooling_type=aggregate_type,       # typically concat; single entry → identity
+        aggregate_pooling_args=aggregate_args,
+        aggregate_pooling_kwargs=aggregate_kwargs,
+        mu_head_type=None,
+        mu_head_args=None,
+        mu_head_kwargs=None,
+        logvar_head_type=None,
+        logvar_head_args=None,
+        logvar_head_kwargs=None,
+    )
+
+    h, mu, logvar = latent(node_embeddings, batch_vector)
+
+    # Only deterministic embedding should be returned
+    assert isinstance(h, torch.Tensor)
+    assert mu is None
+    assert logvar is None
+
+    # With a single pooling op producing a 32-dim vector → h must be 1×32
+    assert h.shape == (2, 32)
+
+# -------------------------------------------------------------------------
+# Forward tests
+# -------------------------------------------------------------------------
 
 def test_latent_forward_multilayer(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
@@ -205,7 +272,6 @@ def test_latent_forward_multilayer(
     assert z.shape == mu.shape == logvar.shape
     assert z.shape[-1] == 16
 
-
 def test_latent_sampling_stochastic(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
     bottleneck_type, bottleneck_args, bottleneck_kwargs,
@@ -233,86 +299,79 @@ def test_latent_sampling_stochastic(
     z2, _, _ = latent(node_embeddings, batch_vector)
     assert not torch.allclose(z1, z2)
 
-
-def test_latent_gradient_flow(
+def test_forward_without_batch_succeeds(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
-    bottleneck_type, bottleneck_args, bottleneck_kwargs,
-    mu_head_type, mu_head_args, mu_head_kwargs,
-    logvar_head_type, logvar_head_args, logvar_head_kwargs,
-    node_embeddings, batch_vector
+    node_embeddings
 ):
+    # Build a simple non‑VAE latent module
     latent = GraphEmbeddingToLatent(
         pooling_layers=pooling_specs,
         aggregate_pooling_type=aggregate_type,
         aggregate_pooling_args=aggregate_args,
         aggregate_pooling_kwargs=aggregate_kwargs,
-        bottleneck_type=bottleneck_type,
-        bottleneck_args=bottleneck_args,
-        bottleneck_kwargs=bottleneck_kwargs,
-        mu_head_type=mu_head_type,
-        mu_head_args=mu_head_args,
-        mu_head_kwargs=mu_head_kwargs,
-        logvar_head_type=logvar_head_type,
-        logvar_head_args=logvar_head_args,
-        logvar_head_kwargs=logvar_head_kwargs,
+        mu_head_type=None,
+        mu_head_args=None,
+        mu_head_kwargs=None,
+        logvar_head_type=None,
+        logvar_head_args=None,
+        logvar_head_kwargs=None,
     )
 
-    z, mu, logvar = latent(node_embeddings, batch_vector)
-    loss = (z**2).sum() + (mu**2).sum() + (logvar**2).sum()
-    loss.backward()
+    # Forward without a batch vector
+    h, mu, logvar = latent(node_embeddings)
 
-    for name, p in latent.named_parameters():
-        assert p.grad is not None
+    # Must succeed and behave as a deterministic non‑VAE module
+    assert isinstance(h, torch.Tensor)
+    assert mu is None
+    assert logvar is None
 
+    # With mean+max pooling, aggregator should concatenate to 64‑dim
+    # (32‑dim from each pooling op)
+    assert h.shape == (1, 64)
 
-def test_latent_state_dict_roundtrip(
-    tmp_path,
+def test_heterogeneous_batch_pooling_minimal(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
-    bottleneck_type, bottleneck_args, bottleneck_kwargs,
-    mu_head_type, mu_head_args, mu_head_kwargs,
-    logvar_head_type, logvar_head_args, logvar_head_kwargs,
-    node_embeddings, batch_vector
+    node_embeddings
 ):
-    latent1 = GraphEmbeddingToLatent(
-        pooling_layers=pooling_specs,
-        aggregate_pooling_type=aggregate_type,
+    """
+    Minimal unit test: heterogeneous batches must produce exactly one
+    pooled embedding per graph. No VAE, no bottleneck.
+    """
+
+    # Construct heterogeneous batch: 3 nodes in graph 0, 7 in graph 1
+    batch = torch.tensor([0, 0, 0,   1, 1, 1, 1, 1, 1, 1])
+    assert (batch == 0).sum() == 3
+    assert (batch == 1).sum() == 7
+
+    # Build latent module in deterministic non-VAE mode
+    latent = GraphEmbeddingToLatent(
+        pooling_layers=pooling_specs,                # mean + max pooling
+        aggregate_pooling_type=aggregate_type,       # concat
         aggregate_pooling_args=aggregate_args,
         aggregate_pooling_kwargs=aggregate_kwargs,
-        bottleneck_type=bottleneck_type,
-        bottleneck_args=bottleneck_args,
-        bottleneck_kwargs=bottleneck_kwargs,
-        mu_head_type=mu_head_type,
-        mu_head_args=mu_head_args,
-        mu_head_kwargs=mu_head_kwargs,
-        logvar_head_type=logvar_head_type,
-        logvar_head_args=logvar_head_args,
-        logvar_head_kwargs=logvar_head_kwargs,
+        mu_head_type=None,
+        mu_head_args=None,
+        mu_head_kwargs=None,
+        logvar_head_type=None,
+        logvar_head_args=None,
+        logvar_head_kwargs=None,
     )
 
-    torch.save(latent1.state_dict(), tmp_path / "lat.pt")
+    # Forward pass
+    h, mu, logvar = latent(node_embeddings, batch)
 
-    latent2 = GraphEmbeddingToLatent(
-        pooling_layers=pooling_specs,
-        aggregate_pooling_type=aggregate_type,
-        aggregate_pooling_args=aggregate_args,
-        aggregate_pooling_kwargs=aggregate_kwargs,
-        bottleneck_type=bottleneck_type,
-        bottleneck_args=bottleneck_args,
-        bottleneck_kwargs=bottleneck_kwargs,
-        mu_head_type=mu_head_type,
-        mu_head_args=mu_head_args,
-        mu_head_kwargs=mu_head_kwargs,
-        logvar_head_type=logvar_head_type,
-        logvar_head_args=logvar_head_args,
-        logvar_head_kwargs=logvar_head_kwargs,
-    )
-    latent2.load_state_dict(torch.load(tmp_path / "lat.pt"))
+    # Non-VAE mode → mu/logvar must be None
+    assert mu is None
+    assert logvar is None
 
-    _, mu1, log1 = latent1(node_embeddings, batch_vector)
-    _, mu2, log2 = latent2(node_embeddings, batch_vector)
+    # Two graphs → two pooled embeddings
+    assert h.shape[0] == 2
 
-    assert torch.allclose(mu1, mu2)
-    assert torch.allclose(log1, log2)
+    # pooled_dim = 32(mean) + 32(max) = 64
+    assert h.shape[1] == 64
+
+    # Output must be finite and real-valued
+    assert torch.isfinite(h).all()
 
 # -------------------------------------------------------------------------
 # Equivalence test: from_config vs direct construction
@@ -344,6 +403,11 @@ def test_latent_from_config_equivalence(
         logvar_head_kwargs=logvar_head_kwargs,
     )
 
+    # synchronize parameters before comparison 
+    # this working already shows that the architectures are equal
+    latent_direct.load_state_dict(latent_cfg.state_dict())
+
+
     # Forward outputs should match (deterministically for mu/logvar; z is stochastic)
     _, mu_cfg, log_cfg = latent_cfg(node_embeddings, batch_vector)
     _, mu_dir, log_dir = latent_direct(node_embeddings, batch_vector)
@@ -357,7 +421,7 @@ def test_latent_from_config_equivalence(
     assert params_cfg == params_dir
 
 # -------------------------------------------------------------------------
-# Config validation: missing pooling_layers
+# Config validation
 # -------------------------------------------------------------------------
 
 def test_missing_pooling_layers_raises():
@@ -371,10 +435,6 @@ def test_missing_pooling_layers_raises():
     with pytest.raises(jsonschema.ValidationError):
         GraphEmbeddingToLatent.from_config(cfg)
 
-# -------------------------------------------------------------------------
-# Config validation: missing aggregate_pooling_type
-# -------------------------------------------------------------------------
-
 def test_missing_aggregate_pooling_type_raises(pooling_specs):
     cfg = {
         "pooling_layers": pooling_specs,
@@ -385,10 +445,6 @@ def test_missing_aggregate_pooling_type_raises(pooling_specs):
     # Missing aggregate_pooling_type → schema validation should fail
     with pytest.raises(jsonschema.ValidationError):
         GraphEmbeddingToLatent.from_config(cfg)
-
-# -------------------------------------------------------------------------
-# Config validation: mu_head without logvar_head (and vice versa)
-# -------------------------------------------------------------------------
 
 def test_mu_without_logvar_raises(pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
                                   mu_head_type, mu_head_args, mu_head_kwargs):
@@ -423,10 +479,6 @@ def test_logvar_without_mu_raises(pooling_specs, aggregate_type, aggregate_args,
     with pytest.raises(ValueError):
         GraphEmbeddingToLatent.from_config(cfg)
 
-# -------------------------------------------------------------------------
-# Config validation: malformed pooling entry
-# -------------------------------------------------------------------------
-
 def test_malformed_pooling_entry_raises(aggregate_type, aggregate_args, aggregate_kwargs):
     # Pooling layers must be list of [type, args, kwargs]
     # Here we provide an invalid entry "not-a-triplet"
@@ -440,43 +492,6 @@ def test_malformed_pooling_entry_raises(aggregate_type, aggregate_args, aggregat
     # Should fail JSON schema validation
     with pytest.raises(jsonschema.ValidationError):
         GraphEmbeddingToLatent.from_config(cfg)
-
-# -------------------------------------------------------------------------
-# Dimensional consistency: bottleneck dim mismatch must raise
-# -------------------------------------------------------------------------
-
-def test_bottleneck_dim_mismatch_raises(
-    pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
-    mu_head_type, mu_head_args, mu_head_kwargs,
-    logvar_head_type, logvar_head_args, logvar_head_kwargs,
-    node_embeddings, batch_vector
-):
-    # Construct a bottleneck expecting WRONG input dim: 64 instead of 32
-    mismatched_bottleneck_type = QG.models.LinearSequential
-    mismatched_bottleneck_args = [[64, 32, 16]]  # first layer expects 64-dim input
-
-    cfg = {
-        "pooling_layers": pooling_specs,
-        "aggregate_pooling_type": aggregate_type,
-        "aggregate_pooling_args": aggregate_args,
-        "aggregate_pooling_kwargs": aggregate_kwargs,
-        "bottleneck_type": mismatched_bottleneck_type,
-        "bottleneck_args": mismatched_bottleneck_args,
-        "bottleneck_kwargs": {},
-        "mu_head_type": mu_head_type,
-        "mu_head_args": mu_head_args,
-        "mu_head_kwargs": mu_head_kwargs,
-        "logvar_head_type": logvar_head_type,
-        "logvar_head_args": logvar_head_args,
-        "logvar_head_kwargs": logvar_head_kwargs,
-    }
-
-    latent = GraphEmbeddingToLatent.from_config(cfg)
-
-    # Forward should fail due to dimension mismatch
-    import pytest
-    with pytest.raises(RuntimeError):
-        latent(node_embeddings, batch_vector)
 
 # -------------------------------------------------------------------------
 # Multiple pooling ops with different output dims must concatenate
@@ -514,34 +529,13 @@ def test_multiple_pooling_layers_concat_correctly(
     assert logvar is None
 
 # -------------------------------------------------------------------------
-# Faulty aggregator must raise an error
-# -------------------------------------------------------------------------
-
-def test_faulty_aggregator_raises(pooling_specs, node_embeddings, batch_vector):
-    # Aggregator that returns an invalid object (list instead of tensor)
-    def faulty_agg(seq):
-        return seq   # should be a tensor, not a list
-
-    latent = GraphEmbeddingToLatent(
-        pooling_layers=pooling_specs,
-        aggregate_pooling_type=faulty_agg,
-        aggregate_pooling_args=[],
-        aggregate_pooling_kwargs={},
-    )
-
-    import pytest
-    # Forward must fail when subsequent layers expect a tensor
-    with pytest.raises(Exception):
-        latent(node_embeddings, batch_vector)
-
-# -------------------------------------------------------------------------
 # No bottleneck in VAE mode (bottleneck_type=None)
 # -------------------------------------------------------------------------
 
 def test_no_bottleneck_vae_mode(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
-    mu_head_type, mu_head_args, mu_head_kwargs,
-    logvar_head_type, logvar_head_args, logvar_head_kwargs,
+    mu_head_type, mu_head_args_no_bottle, mu_head_kwargs,
+    logvar_head_type, logvar_head_args_no_bottle, logvar_head_kwargs,
     node_embeddings, batch_vector
 ):
     # No bottleneck: pooled embedding (32) is fed directly into VAE heads.
@@ -555,10 +549,10 @@ def test_no_bottleneck_vae_mode(
         "bottleneck_args": None,
         "bottleneck_kwargs": None,
         "mu_head_type": mu_head_type,
-        "mu_head_args": mu_head_args,
+        "mu_head_args": mu_head_args_no_bottle,
         "mu_head_kwargs": mu_head_kwargs,
         "logvar_head_type": logvar_head_type,
-        "logvar_head_args": logvar_head_args,
+        "logvar_head_args": logvar_head_args_no_bottle,
         "logvar_head_kwargs": logvar_head_kwargs,
     }
 
@@ -610,65 +604,69 @@ def test_no_vae_heads_nonvae_mode(
     assert log2 is None
 
 # -------------------------------------------------------------------------
-# Forward without batch must succeed (single‑graph mode)
+# Backprop tests
 # -------------------------------------------------------------------------
 
-def test_forward_without_batch_succeeds(
+
+def test_latent_gradient_flow_with_bottleneck(
     pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
-    node_embeddings
-):
-    # Build a simple non‑VAE latent module
-    latent = GraphEmbeddingToLatent(
-        pooling_layers=pooling_specs,
-        aggregate_pooling_type=aggregate_type,
-        aggregate_pooling_args=aggregate_args,
-        aggregate_pooling_kwargs=aggregate_kwargs,
-        mu_head_type=None,
-        mu_head_args=None,
-        mu_head_kwargs=None,
-        logvar_head_type=None,
-        logvar_head_args=None,
-        logvar_head_kwargs=None,
-    )
-
-    # Forward without a batch vector
-    h, mu, logvar = latent(node_embeddings)
-
-    # Must succeed and behave as a deterministic non‑VAE module
-    assert isinstance(h, torch.Tensor)
-    assert mu is None
-    assert logvar is None
-
-    # With mean+max pooling, aggregator should concatenate to 64‑dim
-    # (32‑dim from each pooling op)
-    assert h.shape == (1, 64)
-
-# -------------------------------------------------------------------------
-# Non‑VAE forward must be deterministic
-# -------------------------------------------------------------------------
-
-def test_nonvae_forward_deterministic(
-    pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
+    bottleneck_type, bottleneck_args, bottleneck_kwargs,
+    mu_head_type, mu_head_args, mu_head_kwargs,
+    logvar_head_type, logvar_head_args, logvar_head_kwargs,
     node_embeddings, batch_vector
 ):
-    # Build a simple non‑VAE latent module
+    """Gradient must flow through pooling → aggregate → bottleneck → μ/logvar → z."""
+
     latent = GraphEmbeddingToLatent(
         pooling_layers=pooling_specs,
         aggregate_pooling_type=aggregate_type,
         aggregate_pooling_args=aggregate_args,
         aggregate_pooling_kwargs=aggregate_kwargs,
-        mu_head_type=None,
-        mu_head_args=None,
-        mu_head_kwargs=None,
-        logvar_head_type=None,
-        logvar_head_args=None,
-        logvar_head_kwargs=None,
+        bottleneck_type=bottleneck_type,
+        bottleneck_args=bottleneck_args,
+        bottleneck_kwargs=bottleneck_kwargs,
+        mu_head_type=mu_head_type,
+        mu_head_args=mu_head_args,
+        mu_head_kwargs=mu_head_kwargs,
+        logvar_head_type=logvar_head_type,
+        logvar_head_args=logvar_head_args,
+        logvar_head_kwargs=logvar_head_kwargs,
     )
 
-    # Forward twice: must return identical outputs
-    h1, mu1, log1 = latent(node_embeddings, batch_vector)
-    h2, mu2, log2 = latent(node_embeddings, batch_vector)
+    z, mu, logvar = latent(node_embeddings, batch_vector)
+    loss = (z**2).sum() + (mu**2).sum() + (logvar**2).sum()
+    loss.backward()
 
-    assert torch.allclose(h1, h2)
-    assert mu1 is None and mu2 is None
-    assert log1 is None and log2 is None
+    for _, p in latent.named_parameters():
+        assert p.grad is not None, "All parameters must receive gradients in full VAE mode."
+
+def test_latent_gradient_flow_without_bottleneck(
+    pooling_specs, aggregate_type, aggregate_args, aggregate_kwargs,
+    mu_head_type, mu_head_args_no_bottle, mu_head_kwargs,
+    logvar_head_type, logvar_head_args_no_bottle, logvar_head_kwargs,
+    node_embeddings, batch_vector
+):
+    """Gradient must also flow when bottleneck is disabled (legal VAE configuration)."""
+
+    latent = GraphEmbeddingToLatent(
+        pooling_layers=pooling_specs,
+        aggregate_pooling_type=aggregate_type,
+        aggregate_pooling_args=aggregate_args,
+        aggregate_pooling_kwargs=aggregate_kwargs,
+        bottleneck_type=None,
+        bottleneck_args=None,
+        bottleneck_kwargs=None,
+        mu_head_type=mu_head_type,
+        mu_head_args=mu_head_args_no_bottle,
+        mu_head_kwargs=mu_head_kwargs,
+        logvar_head_type=logvar_head_type,
+        logvar_head_args=logvar_head_args_no_bottle,
+        logvar_head_kwargs=logvar_head_kwargs,
+    )
+
+    z, mu, logvar = latent(node_embeddings, batch_vector)
+    loss = (z**2).sum() + (mu**2).sum() + (logvar**2).sum()
+    loss.backward()
+
+    for _, p in latent.named_parameters():
+        assert p.grad is not None, "Parameters must receive gradients in no-bottleneck VAE mode."

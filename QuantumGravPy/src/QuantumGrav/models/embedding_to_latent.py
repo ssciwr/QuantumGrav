@@ -58,36 +58,36 @@ class GraphEmbeddingToLatent(torch.nn.Module, base.Configurable):
                 "description": "Optional: class/module for bottleneck transformation. If omitted, no bottleneck is applied."
             },
             "bottleneck_args": {
-                "type": "array",
+                "type": ["array", "null"],
                 "description": "Positional arguments for bottleneck_type.",
                 "items": {}
             },
             "bottleneck_kwargs": {
-                "type": "object",
+                "type": ["object", "null"],
                 "description": "Keyword arguments for bottleneck_type."
             },
             "mu_head_type": {
                 "description": "Optional: class/module producing the latent mean μ. Must be provided together with logvar head."
             },
             "mu_head_args": {
-                "type": "array",
+                "type": ["array", "null"],
                 "description": "Positional arguments for mu_head_type.",
                 "items": {}
             },
             "mu_head_kwargs": {
-                "type": "object",
+                "type": ["object", "null"],
                 "description": "Keyword arguments for mu_head_type."
             },
             "logvar_head_type": {
                 "description": "Optional: class/module producing latent log-variance log σ². Must be provided together with mu head."
             },
             "logvar_head_args": {
-                "type": "array",
+                "type": ["array", "null"],
                 "description": "Positional arguments for logvar_head_type.",
                 "items": {}
             },
             "logvar_head_kwargs": {
-                "type": "object",
+                "type": ["object", "null"],
                 "description": "Keyword arguments for logvar_head_type."
             },
         },
