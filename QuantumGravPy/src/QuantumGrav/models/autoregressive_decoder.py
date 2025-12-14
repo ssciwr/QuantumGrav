@@ -218,8 +218,8 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         # Validate that parent_logit_mlp outputs exactly one scalar
         # ------------------------------------------------------------
         # Construct test input of correct expected dimension:
-        # concat([h_t_rep, h_prev, z_rep]) → 3 * hidden_dim
-        test_in = torch.zeros(1, 3 * self.node_updater.hidden_dim)
+        # concat([h_prev, z_rep]) → 2 * hidden_dim
+        test_in = torch.zeros(1, 2 * self.node_updater.hidden_dim)
 
         # Check that the MLP accepts the input
         try:
@@ -227,9 +227,9 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         except Exception as e:
             raise ValueError(
                 f"parent_logit_mlp failed when given an input of shape "
-                f"(1, {3 * self.node_updater.hidden_dim}). This indicates that the MLP input "
+                f"(1, {2 * self.node_updater.hidden_dim}). This indicates that the MLP input "
                 f"dimension is incompatible with the decoder design. The parent_logit_mlp "
-                f"must accept input_dim = 3 * hidden_dim = {3 * self.node_updater.hidden_dim}. "
+                f"must accept input_dim = 2 * hidden_dim = {2 * self.node_updater.hidden_dim}. "
                 f"Original error: {e}"
             ) from e
 
@@ -254,6 +254,28 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             instantiate_type(decoder_init_type, decoder_init_args, decoder_init_kwargs)
             if decoder_init_type is not None else None
         )
+
+        # ------------------------------------------------------------
+        # Validate decoder_init output dimension if provided
+        # ------------------------------------------------------------
+        if self.decoder_init is not None:
+            test_z = torch.zeros(1, self.node_updater.hidden_dim)
+            try:
+                h0_test = self.decoder_init(test_z)
+            except Exception as e:
+                raise ValueError(
+                    f"decoder_init failed when applied to test latent vector. "
+                    f"Original error: {e}"
+                )
+            if not isinstance(h0_test, torch.Tensor):
+                raise TypeError(
+                    f"decoder_init must return a tensor, but returned {type(h0_test)}"
+                )
+            if h0_test.numel() != self.node_updater.hidden_dim:
+                raise ValueError(
+                    f"decoder_init must output a tensor of hidden dimension "
+                    f"{self.node_updater.hidden_dim}, but returned shape {tuple(h0_test.shape)}."
+                )
 
         # Boolean flag: whether ancestor suppression logic is active
         self.ancestor_suppression = (ancestor_suppression_strength != 0)
@@ -294,13 +316,43 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         z: torch.Tensor,
         teacher_forcing_targets: torch.Tensor | None = None,
         atom_count: int | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+    ):
         """
-        Unified forward() entrypoint for the decoder.
-        Delegates to autoregressive_decode(), which implements the CST-style
-        node-by-node graph generation.
+        Batch‑aware wrapper around autoregressive_decode().
+        Supports:
+            - z.dim() == 1 → decode single causal set
+            - z.dim() == 2 → sequentially decode each latent vector
         """
-        return self.autoregressive_decode(z, teacher_forcing_targets, atom_count) # may add other methods later
+        # Single latent vector
+        if z.dim() == 1:
+            return self.autoregressive_decode(
+                z, teacher_forcing_targets=teacher_forcing_targets, atom_count=atom_count
+            )
+
+        # Batched latents: process sequentially
+        if z.dim() == 2:
+            batches = z.size(0)
+            outputs = []
+            for batch in range(batches):
+                z_b = z[batch].view(-1)   # ensure 1‑D latent for autoregressive_decode
+
+                if teacher_forcing_targets is not None:
+                    tgt_b = teacher_forcing_targets[batch]
+                else:
+                    tgt_b = None
+
+                outputs.append(
+                    self.autoregressive_decode(
+                        z_b,
+                        teacher_forcing_targets=tgt_b,
+                        atom_count=atom_count,
+                    )
+                )
+            return outputs
+
+        raise ValueError(
+            f"Decoder expected z to have dim 1 or 2, but got shape {tuple(z.shape)}."
+        )
 
     def autoregressive_decode(
         self,
@@ -365,11 +417,12 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             prev_count = t
 
             # create new node state
-            parent_states = h_prev[parent_indices]
-            if parent_states.numel() == 0:
+            if len(parent_indices) == 0:
+                parent_states = torch.empty((0, self.node_updater.hidden_dim), device=h0.device)
                 new_state = h0.clone()
             else:
-                new_state = self.node_updater(parent_states)        # GRU creates node state from parent nodes
+                parent_states = h_prev[parent_indices]
+                new_state = self.node_updater(parent_states)      # GRU creates node state from parent nodes
             node_states.append(new_state)
 
             # compute parent logits for all previous nodes
@@ -391,7 +444,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 adjusted_probs = probs
 
             # teacher forcing vs. sampling
-            if self.training and teacher_forcing_targets is not None:
+            if teacher_forcing_targets is not None:
                 gt_row = teacher_forcing_targets[t][:prev_count].to(h0.device)
                 parent_mask = gt_row.to(torch.bool)
 
@@ -437,22 +490,40 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         return links, X_out, total_logprob
 
     def reconstruct_link_matrix(self, z, atom_count):
-        L, _, _ = self.autoregressive_decode(z, atom_count=atom_count)
-        return L
+        out = self.forward(z, atom_count=atom_count)
+        if z.dim() == 1:
+            L, _, _ = out
+            return L
+        else:
+            return [L for (L, _, _) in out]
 
     def reconstruct_node_features(self, z, atom_count):
-        L, X_out, _ = self.autoregressive_decode(z, atom_count=atom_count)
-        if X_out is None:
+        if self.node_feature_decoder is None:
             raise RuntimeError("Decoder not configured with node_feature_decoder.")
-        return L, X_out
+
+        out = self.forward(z, atom_count=atom_count)
+
+        if z.dim() == 1:
+            L, X, _ = out
+            return L, X
+
+        else:
+            return [(L, X) for (L, X, _) in out]
 
     def compute_normalized_log_likelihood(self, z, teacher_forcing_targets):
-        atom_count = teacher_forcing_targets.size(0)
-        _, _, logprob = self.autoregressive_decode(z, teacher_forcing_targets=teacher_forcing_targets)
-        return logprob / (atom_count * (atom_count - 1) / 2)
+        out = self.forward(z, teacher_forcing_targets=teacher_forcing_targets)
 
-    def full_decode(self, z, atom_count=None, teacher_forcing_targets=None):
-        return self.autoregressive_decode(z, atom_count=atom_count, teacher_forcing_targets=teacher_forcing_targets)
+        if z.dim() == 1:
+            _, _, logprob = out
+            n = teacher_forcing_targets.size(0)
+            return logprob / (n * (n - 1) / 2)
+
+        else:
+            results = []
+            for (L, X, logp), tgt in zip(out, teacher_forcing_targets):
+                n = tgt.size(0)
+                results.append(logp / (n * (n - 1) / 2))
+            return torch.stack(results, dim=0)
     
     @classmethod
     def from_config(cls, config: dict) -> "AutoregressiveDecoder":
