@@ -467,8 +467,18 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             # A[t] = OR over rows of parents; then set direct parents
             if self.ancestor_suppression:
                 if len(parent_indices) > 0:
-                    A[t, :] = torch.any(A[parent_indices], dim=0)
-                    A[t, parent_indices] = True
+                    # Compute new ancestor row from parents
+                    new_row = torch.any(A[parent_indices], dim=0)
+
+                    # Mark direct parents as ancestors
+                    direct_parents_mask = torch.zeros_like(new_row)
+                    direct_parents_mask[parent_indices] = True
+                    new_row = new_row | direct_parents_mask
+
+                    # Replace row t without touching the original tensor in-place:
+                    # A = A.clone() ensures autograd sees a fresh version counter.
+                    A = A.clone()
+                    A[t] = new_row
 
         if self.node_feature_decoder is not None:
             # Final GRU update: ensure node_states reflect the full graph including last-node parents

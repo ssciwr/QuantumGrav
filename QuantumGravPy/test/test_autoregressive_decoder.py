@@ -1072,6 +1072,75 @@ def test_full_construction_with_deep_components(
     assert logp is not None
 
 # -------------------------------------------------------------------------
+# Backward pass gradient flow through full decoder with deep components
+# -------------------------------------------------------------------------
+
+
+def test_full_decoder_gradient_flow_deep_components(
+    gru_type, gru_args, gru_kwargs,
+    deep_parent_logit_mlp_type, deep_parent_logit_mlp_args, deep_parent_logit_mlp_kwargs,
+    deep_decoder_init_type, deep_decoder_init_args, deep_decoder_init_kwargs,
+    deep_node_feature_decoder_type, deep_node_feature_decoder_args, deep_node_feature_decoder_kwargs,
+):
+    """
+    Ensure that the FULL decoder (deep parent MLP, deep init, deep node-feature decoder)
+    has proper end-to-end gradient flow. All parameters must receive a non-None gradient.
+    """
+
+    # Build full model
+    dec = QG.models.AutoregressiveDecoder(
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
+
+        parent_logit_mlp_type=deep_parent_logit_mlp_type,
+        parent_logit_mlp_args=deep_parent_logit_mlp_args,
+        parent_logit_mlp_kwargs=deep_parent_logit_mlp_kwargs,
+
+        decoder_init_type=deep_decoder_init_type,
+        decoder_init_args=deep_decoder_init_args,
+        decoder_init_kwargs=deep_decoder_init_kwargs,
+
+        node_feature_decoder_type=deep_node_feature_decoder_type,
+        node_feature_decoder_args=deep_node_feature_decoder_args,
+        node_feature_decoder_kwargs=deep_node_feature_decoder_kwargs,
+
+        ancestor_suppression_strength=0.7,
+    )
+
+    dec.train()
+
+    # Latent batch
+    z = torch.randn(1, 32, requires_grad=True)
+
+    # Teacher forcing batch (must match N × N)
+    teacher = torch.tensor(
+        [[[0, 0, 0],
+          [1, 0, 0],
+          [0, 1, 0]]],
+        dtype=torch.float32,
+    )
+
+    # Forward
+    out = dec(z, teacher_forcing_targets=teacher)
+    assert isinstance(out, list) and len(out) == 1
+    L, X, logp = out[0]
+
+    # Scalar loss that pulls on ALL modules
+    # Combine link reconstruction + node features + likelihood
+    loss = L.sum()
+    if X is not None:
+        loss = loss + X.sum()
+    if logp is not None:
+        loss = loss - logp.sum()
+
+    loss.backward()
+
+    # Check every parameter receives gradient
+    for name, p in dec.named_parameters():
+        assert p.grad is not None, f"Parameter {name} did not receive gradient"
+
+# -------------------------------------------------------------------------
 # reconstruct_link_matrix
 # -------------------------------------------------------------------------
 
