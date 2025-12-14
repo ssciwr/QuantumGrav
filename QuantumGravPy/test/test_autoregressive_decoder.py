@@ -4,7 +4,6 @@ import pytest
 import jsonschema
 
 import torch
-import torch_geometric
 
 
 # -------------------------------------------------------------------------
