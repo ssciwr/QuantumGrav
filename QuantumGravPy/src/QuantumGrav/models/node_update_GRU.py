@@ -1,13 +1,10 @@
 # torch
 import torch
-import torch_geometric
 
-from . import skipconnection
 from .. import base
-from .. import utils
 
 # quality of life
-from typing import Any, Dict
+from typing import Any
 from pathlib import Path
 from jsonschema import validate
 
@@ -217,6 +214,18 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         parent_states: (num_parents, hidden_dim)
         h_prev:        (hidden_dim,)
         """
+        # Empty parent set is invalid: NodeUpdateGRU is only called when parents exist.
+        if parent_states.size(0) == 0:
+            raise ValueError(
+                "NodeUpdateGRU.forward() received zero parent states, "
+                "but at least one parent is required."
+            )
+        # Dimensionality mismatch check
+        if parent_states.size(1) != self.in_dim:
+            raise ValueError(
+                f"NodeUpdateGRU.forward() received parent_states with wrong feature dimension: "
+                f"expected {self.in_dim}, got {parent_states.size(1)}."
+            )
         parent_agg = self.aggregate(parent_states)
         return self.gru(parent_agg)
 
