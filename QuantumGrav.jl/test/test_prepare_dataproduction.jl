@@ -220,7 +220,7 @@ end
 		# produce 24 data points using multiprocessing
 		# hold max. 4 datapoints in the writing queue at once
 		# and use the make data function that we had defined above
-		QuantumGrav.produce_data(100, configpath, Main.make_data; deterministic = true)
+		QuantumGrav.produce_data(100, configpath, Main.make_data)
 
 	finally
 		rmprocs(workers()...)
@@ -271,7 +271,7 @@ end
 		# produce 24 data points using multiprocessing
 		# hold max. 4 datapoints in the writing queue at once
 		# and use the make data function that we had defined above
-		QuantumGrav.produce_data(100, configpath, Main.make_data2; deterministic = true)
+		QuantumGrav.produce_data(100, configpath, Main.make_data2)
 
 	finally
 		rmprocs(workers()...)
@@ -497,10 +497,12 @@ end
 end
 
 
-@testitem "test_mp_dataproduction_deterministic" tags = [:dataproduction] setup=[
+@testitem "test_mp_dataproduction_deterministism" tags = [:dataproduction] setup=[
 	run_dataproduction_deterministic,
 	run_dataproduction_deterministic_second,
 ] begin
+    # run the dataproduction twice independently with different number of workers,
+    # check the results aret the same for the same seeds and do not repeat internally
 	using Zarr
 	# check that data was produced
 	zarr_files = filter(x -> occursin(".zarr", x), readdir(targetpath))

@@ -226,17 +226,13 @@ This relies on worker tasks being spawned by the user and will error when there 
 - `make_data`: Function for producing the data with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
    This must return a Dictionary mapping names (strings) => Union{AbstractVector, Number, Bool, String}
 
-# Keyword Arguments:
-- `deterministic::Bool = false`: If true, dataproduction will be deterministic across runs with the same config and number of workers, at the price of speed.
-
 # Returns:
 Nothing
 """
 function produce_data(
     chunksize::Int64,
     configpath::Union{String,Nothing},
-    make_data::Function;
-    deterministic::Bool = false,
+    make_data::Function
 )::Nothing
     @info "Producing data with workers $(Distributed.nworkers()) and chunksize $(chunksize)"
     if length(Distributed.workers()) < 2
@@ -294,12 +290,10 @@ function produce_data(
         worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
 
         # when determinism is required, we set the rng seeds per datapoint and
-        # build a new rng each time. this way, no matter how loadbalancing handles
+        # this way, no matter how loadbalancing handles
         # the allocation of datapoints to workers, the randomness sources are deterministic for each datapoint
-        if deterministic
-            Random.seed!(worker_factory.rng, worker_factory.conf["seed"] + i*10)
-            Random.seed!(worker_factory.conf["seed"] + i*10)
-        end
+        Random.seed!(worker_factory.rng, worker_factory.conf["seed"] + i*10)
+        Random.seed!(worker_factory.conf["seed"] + i*10)
 
         try
             cset_data = make_data(worker_factory)
