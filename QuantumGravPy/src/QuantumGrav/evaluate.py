@@ -74,7 +74,12 @@ class Evaluator(base.Configurable):
         Args:
             device (str | torch.device | int): The device to run the evaluation on.
             criterion (Callable): The loss function to use for evaluation.
-            apply_model (Callable): A function to apply the model to the data.
+            evaluator_tasks (Sequence[Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]]):
+                The evaluation tasks to perform. Defined as a nested sequence of tuples containing
+                (metric_name, callable, args, kwargs). For each monitoring task, you need to give
+                the name of the metric, the callable to use, and optionally the positional and keyword
+                arguments to initialize the callable. There can be multiple tasks per output head.
+            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
         self.criterion = criterion
         self.apply_model = apply_model
@@ -188,9 +193,14 @@ class Tester(Evaluator):
         """Default tester for model testing.
 
         Args:
-            device (str | torch.device | int,): The device to run the testing on.
+            device (str | torch.device | int): The device to run the testing on.
             criterion (Callable): The loss function to use for testing.
-            apply_model (Callable): A function to apply the model to the data.
+            evaluator_tasks (Sequence[Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]]):
+                The evaluation tasks to perform. Defined as a nested sequence of tuples containing
+                (metric_name, callable, args, kwargs). For each monitoring task, you need to give
+                the name of the metric, the callable to use, and optionally the positional and keyword
+                arguments to initialize the callable. There can be multiple tasks per output head.
+            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
         super().__init__(device, criterion, evaluator_tasks, apply_model)
 
@@ -236,8 +246,11 @@ class Validator(Evaluator):
         """Default validator for model validation.
 
         Args:
-            device (str | torch.device | int,): The device to run the validation on.
+            device (str | torch.device | int): The device to run the validation on.
             criterion (Callable): The loss function to use for validation.
+            evaluator_tasks (Sequence[Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]]):
+                The evaluation tasks to perform. Defined as a nested sequence of tuples containing
+                (metric_name, callable, args, kwargs).
             apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
         super().__init__(device, criterion, evaluator_tasks, apply_model)
