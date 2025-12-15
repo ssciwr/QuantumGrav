@@ -227,25 +227,27 @@ def create_data_zarr(create_data_zarr_basic):
 @pytest.fixture
 def read_data_dict():
     def reader(
-        f: zarr.Group, idx: int, float_dtype: Type, int_dtype: Type, validate: Callable
+        store, idx: int, float_dtype: Type, int_dtype: Type, validate: Callable
     ) -> Dict[Any, Any]:
-        adj_raw = f["adjacency_matrix"][idx, :, :]
+        root = zarr.open_group(store, mode="r")
+
+        adj_raw = root["adjacency_matrix"][idx, :, :]
         adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
 
         # Path lengths
         max_path_future = torch.tensor(
-            f["max_pathlen_future"][idx, :], dtype=float_dtype
+            root["max_pathlen_future"][idx, :], dtype=float_dtype
         ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
 
         max_path_past = torch.tensor(
-            f["max_pathlen_past"][idx, :], dtype=float_dtype
+            root["max_pathlen_past"][idx, :], dtype=float_dtype
         ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
 
         return {
             "adj": adj_matrix,
             "max_path_future": max_path_future,
             "max_path_past": max_path_past,
-            "dimension": f["dimension"][idx],
+            "dimension": root["dimension"][idx],
         }
 
     return reader
