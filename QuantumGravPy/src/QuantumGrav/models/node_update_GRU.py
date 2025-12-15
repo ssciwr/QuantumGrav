@@ -109,9 +109,7 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         self.pooling_mlp_args = pooling_mlp_args
         self.pooling_mlp_kwargs = pooling_mlp_kwargs
 
-                # ------------------------------------------------------------
-        # Validate gru_args: must be a sequence with at least two integers
-        # ------------------------------------------------------------
+        # Validate gru_args
         if not isinstance(self.gru_args, (list, tuple)):
             raise ValueError(
                 f"gru_args must be a list or tuple of at least two integers "
@@ -140,19 +138,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
             raise ValueError(
                 f"input_dim and hidden_dim must be positive integers, but received "
                 f"gru_args[0]={self.in_dim}, gru_args[1]={self.hidden_dim}."
-            )
-
-        if not isinstance(self.in_dim, int) or not isinstance(self.hidden_dim, int):
-            raise TypeError(
-                f"gru_args must begin with two integers (input_dim, hidden_dim). "
-                f"Received input_dim={self.in_dim} ({type(self.in_dim)}), "
-                f"hidden_dim={self.hidden_dim} ({type(self.hidden_dim)})."
-            )
-
-        if self.in_dim <= 0 or self.hidden_dim <= 0:
-            raise ValueError(
-                f"input_dim and hidden_dim in gru_args must be positive integers. "
-                f"Received input_dim={in_dim}, hidden_dim={hidden_dim}."
             )
 
         # Input projection removed: parent_agg is now passed directly to GRU.

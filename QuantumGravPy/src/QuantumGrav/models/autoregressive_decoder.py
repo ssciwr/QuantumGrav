@@ -1,8 +1,6 @@
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 from pathlib import Path
-#from inspect import isclass
 import torch
-#from .. import utils
 from ..gnn_model import instantiate_type
 from .node_update_GRU import NodeUpdateGRU
 from .. import base
@@ -19,7 +17,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
     order. This mirrors causal set sequential growth algorithms. The decoder consists 
     of several components:
 
-        • decoder backbone:
+        • node-state creator backbone:
             A single-layer GRU node update block applied at every decoding step to propagate
             information among already generated nodes.
 
@@ -157,10 +155,12 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
     ):
         """
         Args:
-            decoder_type: Class or module implementing the decoder GNN backbone.
-            decoder_args: Positional args for decoder_type.
-            decoder_kwargs: Keyword args for decoder_type.
+            gru_type: Class or module implementing the decoder GNN backbone.
             parent_logit_mlp_type: Class or module producing parent logits.
+        
+        Kwargs:
+            gru_args: Positional args for gru_type.
+            gru_kwargs: Keyword args for gru_type.
             parent_logit_mlp_args: Positional args for parent_logit_mlp_type.
             parent_logit_mlp_kwargs: Keyword args for parent_logit_mlp_type.
             decoder_init_type: Optional class for initializing decoder state.
@@ -255,9 +255,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             if decoder_init_type is not None else None
         )
 
-        # ------------------------------------------------------------
-        # Validate decoder_init output dimension if provided
-        # ------------------------------------------------------------
         if self.decoder_init is not None:
             test_z = torch.zeros(1, self.node_updater.hidden_dim)
             try:
@@ -406,8 +403,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         node_states = []                      # list of tensors
         links = torch.zeros((N_max, N_max), dtype=torch.float32, device=h0.device)  # preallocated adjacency tensor
         step_logprobs = []                      # accumulate per-step log likelihoods during training
-        h_prev = []
-        parent_indices = []
+        parent_indices = torch.empty(0, dtype=torch.long, device=h0.device)
         if self.ancestor_suppression:
             # Preallocate ancestor matrix A: A[t, j]=True iff j is ancestor of t
             A = torch.zeros((N_max, N_max), dtype=torch.bool, device=h0.device)
@@ -482,11 +478,12 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         if self.node_feature_decoder is not None:
             # Final GRU update: ensure node_states reflect the full graph including last-node parents
-            parent_states = h_prev[parent_indices]
-            if parent_states.numel() == 0:
+            if len(parent_indices) == 0:
+                parent_states = torch.empty((0, self.node_updater.hidden_dim), device=h0.device)
                 new_state = h0.clone()
             else:
-                new_state = self.node_updater(parent_states)        # GRU creates node state from parent nodes
+                parent_states = h_prev[parent_indices]
+                new_state = self.node_updater(parent_states)      # GRU creates node state from parent nodes
             node_states.append(new_state)
 
         X_hidden = torch.stack(node_states, dim=0)

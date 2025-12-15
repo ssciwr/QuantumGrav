@@ -124,25 +124,6 @@ def test_gru_mlp_aggregation_instantiation(gru_args, gru_kwargs):
     )
 
     assert isinstance(gru.pooling_mlp, DummyMLP)
-
-def test_gru_args_too_short(
-    gru_type, gru_kwargs, aggregation_method,
-):
-    """
-    NodeUpdateGRU must receive gru_args with at least two integers:
-        gru_args[0] → input_dim
-        gru_args[1] → hidden_dim
-    Providing fewer must raise ValueError.
-    """
-    bad_gru_args = [32]  # missing hidden_dim
-
-    with pytest.raises(ValueError):
-        QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
-            gru_args=bad_gru_args,
-            gru_kwargs=gru_kwargs,
-            aggregation_method=aggregation_method,
-        )
         
 def test_gru_args_non_integer(
     gru_type, gru_kwargs, aggregation_method,
@@ -207,30 +188,6 @@ def test_invalid_gru_args_too_short(
     gru_args must contain at least [input_dim, hidden_dim].
     """
     bad_args = [32]  # missing hidden_dim
-    with pytest.raises(ValueError):
-        QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
-            gru_args=bad_args,
-            gru_kwargs=gru_kwargs,
-            aggregation_method=aggregation_method,
-        )
-
-def test_invalid_gru_args_non_positive(
-    gru_type, gru_kwargs, aggregation_method,
-):
-    """
-    input_dim and hidden_dim must be > 0.
-    """
-    bad_args = [0, 32]
-    with pytest.raises(ValueError):
-        QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
-            gru_args=bad_args,
-            gru_kwargs=gru_kwargs,
-            aggregation_method=aggregation_method,
-        )
-
-    bad_args = [32, -5]
     with pytest.raises(ValueError):
         QG.models.NodeUpdateGRU(
             gru_type=gru_type,

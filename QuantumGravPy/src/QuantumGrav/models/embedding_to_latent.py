@@ -1,8 +1,5 @@
 from typing import Any, Callable, Sequence
-#from pathlib import Path
-#from inspect import isclass
 import torch
-#from .. import utils
 from ..gnn_model import instantiate_type
 from .. import base
 import jsonschema
