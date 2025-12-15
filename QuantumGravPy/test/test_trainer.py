@@ -31,8 +31,6 @@ def eval_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
 
 def monitor_dummy(preds, targets):
     """Simple monitor that returns zero as a scalar."""
-    print(preds)
-    print(targets)
     return 0.0
 
 
