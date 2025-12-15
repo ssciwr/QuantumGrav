@@ -245,6 +245,11 @@ class GNNModel(torch.nn.Module, base.Configurable):
         self.with_pooling = False
         if pooling_layers is not None:
             self.with_pooling = True
+        else:
+            if aggregate_pooling_type is not None:
+                raise ValueError(
+                    "If aggregate_pooling_type is provided, pooling_layers must also be provided."
+                )
 
         self.with_latent = False
         if latent_model_type is not None:
