@@ -31,7 +31,9 @@ def eval_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
 
 def monitor_dummy(preds, targets):
     """Simple monitor that returns zero as a scalar."""
-    return torch.tensor(0.0)
+    print(preds)
+    print(targets)
+    return 0.0
 
 
 # this is needed for testing the full training loop
