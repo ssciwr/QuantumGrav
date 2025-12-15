@@ -229,11 +229,10 @@ class QGDatasetBase:
             list[Data]: The processed data or None if the chunk is empty.
         """
         N = self._get_num_samples_per_file(store.root)
-        rootgroup = zarr.open_group(store.root)
 
         def process_item(i: int):
             item = self.data_reader(
-                rootgroup,
+                store,
                 i,
                 self.float_type,
                 self.int_type,

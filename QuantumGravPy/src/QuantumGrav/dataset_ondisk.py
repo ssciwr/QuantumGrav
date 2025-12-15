@@ -201,25 +201,15 @@ class QGDataset(QGDatasetBase, Dataset):
         else:
             # TODO: this is inefficient, but it's the only robust way I could find
             dfile, idx = self.map_index(idx)
-            _, rootgroup = self._get_store_group(dfile)
-            if len(list(rootgroup.keys())) == 0:
-                # since julia Zarr files allow having no root groups, we need to open the store directly
-                store = zarr.storage.LocalStore(dfile, read_only=True)
-                datapoint = self.data_reader(
-                    store,
-                    idx,
-                    self.float_type,
-                    self.int_type,
-                    self.validate_data,
-                )
-            else:
-                datapoint = self.data_reader(
-                    rootgroup,
-                    idx,
-                    self.float_type,
-                    self.int_type,
-                    self.validate_data,
-                )
+            store, _ = self._get_store_group(dfile)
+            # since julia Zarr files allow having no root groups, we need to open the store directly
+            datapoint = self.data_reader(
+                store,
+                idx,
+                self.float_type,
+                self.int_type,
+                self.validate_data,
+            )
 
         return self.transform(datapoint)
 
