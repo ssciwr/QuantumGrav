@@ -60,6 +60,11 @@ class Evaluator(base.Configurable):
         "additionalProperties": False,
     }
 
+    # TODO:
+    # - make the evaluator_tasks into dictionary to associate tasks to specific output heads
+    # - fix the schema to reflect that
+    # - make sure the validation works better
+    # - add more tests
     def __init__(
         self,
         device: str | torch.device | int,
