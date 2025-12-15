@@ -196,8 +196,6 @@ class QGDataset(QGDatasetBase, Dataset):
             datapoint = torch.load(
                 Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
             )
-            if self.transform is not None:
-                datapoint = self.transform(datapoint)
         else:
             # TODO: this is inefficient, but it's the only robust way I could find
             dfile, idx = self.map_index(idx)
@@ -211,7 +209,10 @@ class QGDataset(QGDatasetBase, Dataset):
                 self.validate_data,
             )
 
-        return self.transform(datapoint)
+        if self.transform is not None:
+            datapoint = self.transform(datapoint)
+
+        return datapoint
 
     def __getitem__(
         self, idx: int | Sequence[int]
