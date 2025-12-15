@@ -242,15 +242,9 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 "If graph features are to be used, both a graph features network and an aggregation method must be provided."
             )
 
-        pooling_funcs = [aggregate_pooling_type, pooling_layers]
         self.with_pooling = False
-        if any(p is not None for p in pooling_funcs):
-            if not all(p is not None for p in pooling_funcs):
-                raise ValueError(
-                    "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
-                )
-            else:
-                self.with_pooling = True
+        if pooling_layers is not None:
+            self.with_pooling = True
 
         self.with_latent = False
         if latent_model_type is not None:
