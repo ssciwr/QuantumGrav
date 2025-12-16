@@ -1,10 +1,11 @@
 import torch
-from typing import Callable, Any, Tuple, Sequence, Dict
+from typing import Callable, Any, Sequence, Dict
 import torch_geometric
 import pandas as pd
 import logging
 import jsonschema
 from abc import abstractmethod
+import tqdm
 
 from . import base
 
@@ -21,36 +22,28 @@ class Evaluator(base.Configurable):
             "criterion": {"desccription": "Loss function for the model evaluation"},
             "evaluator_tasks": {
                 "type": "array",
-                "description": "Sequence[Sequence[Tuple[str, Callable]]] - nested sequence of metric tasks",
+                "description": "Flat list of monitor specs as objects: {name, monitor, args?, kwargs?}",
                 "items": {
-                    "type": "array",
-                    "description": "Sequence of (metric_name, callable) tuples",
-                    "items": {
-                        "type": "array",
-                        "description": "Tuple of [metric_name, callable]",
-                        "minItems": 2,
-                        "maxItems": 2,
-                        "prefixItems": [
-                            {"type": "string", "description": "Metric name"},
-                            {
-                                "type": {
-                                    "description": "Fully-qualified import path or name of the type/callable to initialize",
-                                },
-                                "args": {
-                                    "type": "array",
-                                    "description": "Positional arguments for constructor",
-                                    "items": {},
-                                },
-                                "kwargs": {
-                                    "type": "object",
-                                    "description": "Keyword arguments for constructor",
-                                    "additionalProperties": {},
-                                },
-                            },
-                        ],
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Metric name"},
+                        "monitor": {
+                            "description": "Callable or spec to construct the monitor"
+                        },
+                        "args": {
+                            "type": "array",
+                            "description": "Optional positional args",
+                            "items": {},
+                        },
+                        "kwargs": {
+                            "type": "object",
+                            "description": "Optional keyword args",
+                            "additionalProperties": {},
+                        },
                     },
+                    "required": ["name", "monitor"],
+                    "additionalProperties": False,
                 },
-                "additionalProperties": True,
             },
             "apply_model": {
                 "description": "Optional function to call the model's forward method in customized way"
@@ -61,16 +54,13 @@ class Evaluator(base.Configurable):
     }
 
     # TODO:
-    # - make the evaluator_tasks into dictionary to associate tasks to specific output heads
-    # - fix the schema to reflect that
-    # - make sure the validation works better
     # - add more tests
     def __init__(
         self,
         device: str | torch.device | int,
         criterion: Callable,
         evaluator_tasks: Sequence[
-            Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]
+            Dict[str, str | Callable | Sequence[Any] | None | Dict[str, Any] | None]
         ],
         apply_model: Callable | None = None,
     ):
@@ -79,11 +69,13 @@ class Evaluator(base.Configurable):
         Args:
             device (str | torch.device | int): The device to run the evaluation on.
             criterion (Callable): The loss function to use for evaluation.
-            evaluator_tasks (Sequence[Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]]):
-                The evaluation tasks to perform. Defined as a nested sequence of tuples containing
-                (metric_name, callable, args, kwargs). For each monitoring task, you need to give
-                the name of the metric, the callable to use, and optionally the positional and keyword
-                arguments to initialize the callable. There can be multiple tasks per output head.
+            evaluator_tasks (Sequence[Dict[str, Any]]):
+                Flat list of task objects, each with keys:
+                - name: str — metric name/column label
+                - monitor: Callable or constructor spec — function to compute the metric given predictions and targets
+                - args (optional): list — positional arguments if `monitor` needs construction
+                - kwargs (optional): dict — keyword arguments if `monitor` needs construction
+                Tasks are not bound to specific output heads; each task can access all collected predictions/targets.
             apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
         self.criterion = criterion
@@ -91,20 +83,20 @@ class Evaluator(base.Configurable):
         self.device = device
         self.logger = logging.getLogger(__name__)
 
-        self.tasks: Dict[int, Dict[str, Callable]] = {}
+        # store as list of (metric_name, monitor_callable) tuples for simple iteration
+        self.tasks: list[tuple[str, Callable]] = []
         columns = ["loss_avg", "loss_min", "loss_max"]
-        for task_id, per_task_monitors in enumerate(evaluator_tasks):
-            for name, monitor, args, kwargs in per_task_monitors:
-                if args or kwargs:
-                    monitor = monitor(
-                        *(args if args else []), **(kwargs if kwargs else {})
-                    )
-                columns.append(f"{name}_{task_id}")
-                tasks = self.tasks.get(task_id, {})
-                tasks[name] = monitor
-                self.tasks[task_id] = tasks
+        for task_spec in evaluator_tasks:
+            monitor = task_spec["monitor"]
+            if task_spec.get("args") or task_spec.get("kwargs"):
+                monitor = monitor(
+                    *(task_spec.get("args", []) if task_spec.get("args") else []),
+                    **(task_spec.get("kwargs", {}) if task_spec.get("kwargs") else {}),
+                )
+            columns.append(task_spec["name"])
+            self.tasks.append((task_spec["name"], monitor))
 
-        self.data = pd.DataFrame({col: [] for col in columns})
+        self.data = pd.DataFrame({col: pd.Series([], dtype=object) for col in columns})
 
     def evaluate(
         self,
@@ -118,14 +110,14 @@ class Evaluator(base.Configurable):
             data_loader (torch_geometric.loader.DataLoader): Data loader for evaluation.
 
         Returns:
-             list[Any]: A list of evaluation results.
+             pd.DataFrame: A dataframe containing the evaluation results.
         """
         model.eval()
         current_losses = []
         current_predictions = []
         current_targets = []
         with torch.no_grad():
-            for i, batch in enumerate(data_loader):
+            for i, batch in enumerate(tqdm.tqdm(data_loader, desc="Evaluating")):
                 data = batch.to(self.device)
                 if self.apply_model:
                     outputs = self.apply_model(model, data)
@@ -140,14 +132,11 @@ class Evaluator(base.Configurable):
 
         # tasks are not associated by default to any specific output head,
         # so we run all tasks on the collected outputs and targets
-        for task_id, task_monitor_dict in self.tasks.items():
-            for monitor_name, monitor in task_monitor_dict.items():
-                colname = f"{monitor_name}_{task_id}"
-                res = monitor(current_predictions, current_targets)
-                if isinstance(res, torch.Tensor):
-                    res = res.cpu().item()
-
-                self.data.loc[current_data_length, colname] = res
+        for monitor_name, monitor in self.tasks:
+            res = monitor(current_predictions, current_targets)
+            if isinstance(res, torch.Tensor):
+                res = res.cpu().item()
+            self.data.loc[current_data_length, monitor_name] = res
 
         t_current_losses = torch.cat(current_losses).cpu()
         self.data.loc[current_data_length, "loss_avg"] = t_current_losses.mean().item()
@@ -190,9 +179,7 @@ class Tester(Evaluator):
         self,
         device: str | torch.device | int,
         criterion: Callable,
-        evaluator_tasks: Sequence[
-            Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]
-        ],
+        evaluator_tasks: Sequence[Dict[str, Any]],
         apply_model: Callable | None = None,
     ):
         """Default tester for model testing.
@@ -200,11 +187,8 @@ class Tester(Evaluator):
         Args:
             device (str | torch.device | int): The device to run the testing on.
             criterion (Callable): The loss function to use for testing.
-            evaluator_tasks (Sequence[Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]]):
-                The evaluation tasks to perform. Defined as a nested sequence of tuples containing
-                (metric_name, callable, args, kwargs). For each monitoring task, you need to give
-                the name of the metric, the callable to use, and optionally the positional and keyword
-                arguments to initialize the callable. There can be multiple tasks per output head.
+            evaluator_tasks (Sequence[Dict[str, Any]]):
+                List of task objects with keys {name, monitor, args?, kwargs?}. See `Evaluator.__init__` for details.
             apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
         super().__init__(device, criterion, evaluator_tasks, apply_model)
@@ -228,7 +212,7 @@ class Tester(Evaluator):
     def report(self, data: pd.DataFrame) -> None:
         """Report the monitoring data"""
         self.logger.info("Testing results: ")
-        self.logger.info(f" {data.tail(1)}")
+        self.logger.info("\n%s", data.tail(1).to_string(float_format="{:.4f}".format))
 
 
 class Validator(Evaluator):
@@ -243,9 +227,7 @@ class Validator(Evaluator):
         self,
         device: str | torch.device | int,
         criterion: Callable,
-        evaluator_tasks: Sequence[
-            Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]
-        ],
+        evaluator_tasks: Sequence[Dict[str, Any]],
         apply_model: Callable | None = None,
     ):
         """Default validator for model validation.
@@ -253,9 +235,8 @@ class Validator(Evaluator):
         Args:
             device (str | torch.device | int): The device to run the validation on.
             criterion (Callable): The loss function to use for validation.
-            evaluator_tasks (Sequence[Sequence[Tuple[str, Callable, Sequence[Any] | None, Dict[str, Any] | None]]]):
-                The evaluation tasks to perform. Defined as a nested sequence of tuples containing
-                (metric_name, callable, args, kwargs).
+            evaluator_tasks (Sequence[Dict[str, Any]]):
+                List of task objects with keys {name, monitor, args?, kwargs?}. See `Evaluator.__init__` for details.
             apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
         """
         super().__init__(device, criterion, evaluator_tasks, apply_model)
@@ -278,4 +259,4 @@ class Validator(Evaluator):
     def report(self, data: pd.DataFrame) -> None:
         """Report the monitoring data"""
         self.logger.info("Validation results: ")
-        self.logger.info(f" {data.tail(1)}")
+        self.logger.info("\n%s", data.tail(1).to_string(float_format="{:.4f}".format))
