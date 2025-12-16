@@ -35,25 +35,32 @@ end
 
 end
 
-@testitem "test_max_pathlen" tags = [:graph_utils] setup = [makeData] begin
+@testitem "test_max_pathlen" tags = [:graph_utils_pathlen] begin
     using CausalSets
     using SparseArrays
     using Graphs
-    cset, _ = MockData(10)
 
-    g = Graphs.SimpleDiGraph(transpose(hcat(cset.future_relations...)))
+    # build a DAG and test explicitly
+    adj = zeros(10,10)
+    adj[1, 3] = 1
+    adj[2, 3] = 1
+    adj[3, 4] = 1
+    adj[3, 6] = 1
+    adj[4, 5] = 1
+    adj[6, 7] = 1
+    adj[6, 8] = 1
+    adj[8, 9] = 1
 
-    adj = SparseArrays.SparseMatrixCSC{Float32}(Graphs.adjacency_matrix(g))
+    g = Graphs.SimpleDiGraph(adj)
 
-    max_path = QuantumGrav.max_pathlen(adj, collect(1:(cset.atom_count)), 1)
+    max_path1 = QuantumGrav.max_pathlen(adj, 1:10, 1)
+    max_path2 = QuantumGrav.max_pathlen(adj, 1:10, 2)
+    max_path6 = QuantumGrav.max_pathlen(adj, 1:10, 6)
 
-    sdg = Graphs.SimpleDiGraph(adj)
-    max_path_expected =
-        Graphs.dag_longest_path(sdg; topological_order = collect(1:(cset.atom_count)))
+    @test max_path1 == 4
+    @test max_path2 == 4
+    @test max_path6 == 2
 
-    @test max_path > 1
-    @test max_path <= cset.atom_count
-    @test max_path == (length(max_path_expected) - 1) # dag_longest_path counts differently
 end
 
 @testitem "make_transitive_reduction" tags = [:graph_utils] setup = [makeData] begin
