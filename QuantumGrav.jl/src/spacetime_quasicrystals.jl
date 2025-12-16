@@ -1,9 +1,3 @@
-using Plots
-using LinearAlgebra
-using CausalSets
-using Base: searchsortedfirst, searchsortedlast
-
-
 """
     quasicrystal(ρ::Real) -> Tuple{Vector{Float64},Vector{Float64}}
 Generate a 2D spacetime quasicrystal via a 4D cut-and-project construction
@@ -160,8 +154,6 @@ function quasicrystal(ρ::Real)::Tuple{Vector{Float64},Vector{Float64}}
     return (αin_sorted, αout_sorted)
 end
 
-big_set =quasicrystal(700.)
-
 """
     translate_sub_spacetime_crystal(
         N::Int,
@@ -196,10 +188,10 @@ function translate_sub_spacetime_crystal(
     center::NTuple{2,Float64};
     ρ::Union{Float64,Nothing} = nothing,
     crystal::Union{Tuple{Vector{Float64},Vector{Float64}},Nothing} = nothing,
-    exact_size::Bool = false,
-    deviation_from_mean_size::Float64=0.03,
-    max_iter::Int64=20,
-)
+    exact_size::Bool = true,
+    deviation_from_mean_size::Float64=0.1,
+    max_iter::Int64=100,
+)::Vector{CausalSets.Coordinates{2}}
 
     αin₀, αout₀ = center
 
@@ -229,28 +221,43 @@ function translate_sub_spacetime_crystal(
 
     if exact_size
 
+        hℓ_lo = (1 - deviation_from_mean_size) * halfℓ
+        hℓ_hi = (1 + deviation_from_mean_size) * halfℓ
+
+        # Precompute maximal candidate slice for bisection (monotonicity region)
+        αin_lo_max  = αin₀  - hℓ_hi
+        αin_hi_max  = αin₀  + hℓ_hi
+        αout_lo_max = αout₀ - hℓ_hi
+        αout_hi_max = αout₀ + hℓ_hi
+
+        i_lo_max = searchsortedfirst(αin, αin_lo_max)
+        i_hi_max = searchsortedlast(αin, αin_hi_max)
+
+        cand_αin  = Float64[]
+        cand_αout = Float64[]
+
+        for i in i_lo_max:i_hi_max
+            if αout_lo_max ≤ αout[i] ≤ αout_hi_max
+                push!(cand_αin,  αin[i])
+                push!(cand_αout, αout[i])
+            end
+        end
+
         function count_for_halfℓ(hℓ)
             αin_lo  = αin₀  - hℓ
             αin_hi  = αin₀  + hℓ
             αout_lo = αout₀ - hℓ
             αout_hi = αout₀ + hℓ
 
-            i_lo = searchsortedfirst(αin, αin_lo)
-            i_hi = searchsortedlast(αin, αin_hi)
-
             count = 0
-            if i_lo <= i_hi
-                for i in i_lo:i_hi
-                    if αout_lo ≤ αout[i] ≤ αout_hi
-                        count += 1
-                    end
+            for (a_in, a_out) in zip(cand_αin, cand_αout)
+                if αin_lo ≤ a_in ≤ αin_hi && αout_lo ≤ a_out ≤ αout_hi
+                    count += 1
                 end
             end
             return count
         end
 
-        hℓ_lo = (1 - deviation_from_mean_size) * halfℓ
-        hℓ_hi = (1 + deviation_from_mean_size) * halfℓ
         count_mid = count_for_halfℓ(halfℓ)
         hℓ_mid = (hℓ_lo + hℓ_hi) / 2
 
@@ -268,8 +275,7 @@ function translate_sub_spacetime_crystal(
             end
 
             if i == max_iter && count_mid != N
-                #@warn "Max iterations reached in size adjustment; got $count_mid points (target $N). Increase `deviation_from_mean_size` or `max_iter`."
-                return "not converged"
+                @warn "Max iterations reached in size adjustment; got $count_mid points (target $N). Increase `deviation_from_mean_size` or `max_iter`."
             end
         end
 
@@ -300,22 +306,38 @@ function translate_sub_spacetime_crystal(
     return coords
 end
 
-Nunit = length(big_set[1])
-count = 0
-halfℓtest = sqrt(256 / Nunit)/2
+function create_Minkowski_quasicrystal_cset(
+    N::Int64,
+    center::NTuple{2,Float64};
+    ρ::Union{Float64,Nothing} = nothing,
+    crystal::Union{Tuple{Vector{Float64},Vector{Float64}},Nothing} = nothing,
+    exact_size::Bool = true,
+    deviation_from_mean_size::Float64=0.1,
+    max_iter::Int64=100,
+)::CausalSets.BitArrayCauset
 
-for i in 1:1000
-
-    center = ((halfℓtest + (1 - 2*halfℓtest)) * rand(), (halfℓtest + (1 - 2*halfℓtest)) * rand())    
-    if translate_sub_spacetime_crystal(
-        256, center; 
-        crystal=big_set, 
-        exact_size=true, 
-        deviation_from_mean_size=0.02,
-        max_iter=50) == "not converged"
-        count += 1
-        println("Failed at center: $center")
+    if ρ === nothing && crystal === nothing
+        error("Either ρ or crystal must be provided")
     end
-end
 
-count
+    point_set = translate_sub_spacetime_crystal(
+        N,
+        center;
+        ρ = ρ,
+        crystal = crystal,
+        exact_size = exact_size,
+        deviation_from_mean_size = deviation_from_mean_size,
+        max_iter = max_iter,
+    )
+
+    # convert from lightcone (α_in, α_out) to Cartesian Minkowski (t, x)
+    # conventions: t = (α_in + α_out)/2, x = (α_out - α_in)/2
+    cartesian_points = Vector{CausalSets.Coordinates{2}}([
+        ((αin + αout)/2, (αout - αin)/2) for (αin, αout) in point_set
+    ])
+
+    # order by time coordinate
+    sort!(cartesian_points, by = p -> p[1])
+
+    return BitArrayCauset(CausalSets.MinkowskiManifold{2}(), cartesian_points)
+end
