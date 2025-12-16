@@ -4,6 +4,7 @@ import torch_geometric
 from typing import Any, Dict, Tuple
 from jsonschema import validate
 
+from .skipconnection import SkipConnection
 from .. import base
 
 
@@ -46,6 +47,34 @@ class Sequential(torch.nn.Module, base.Configurable):
                 "description": "Overall forward signature for torch_geometric.nn.Sequential",
                 "default": "x, edge_index, batch",
             },
+            "with_skip": {
+                "type": "boolean",
+                "description": "Wether to use a skip connection from first to last layer or not",
+                "default": False,
+            },
+            "skip_args": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Arguments for the skip connection layer",
+                "items": [
+                    {
+                        "type": "integer",
+                        "description": "Size of input features",
+                        "minimum": 0,
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Size of output features",
+                        "minimum": 0,
+                    },
+                ],
+            },
+            "skip_kwargs": {
+                "type": "object",
+                "description": "Optional keyword arguments for the skip connection layer",
+                "additionalProperties": {},
+            },
         },
         "required": ["layers"],
         "additionalProperties": False,
@@ -55,6 +84,9 @@ class Sequential(torch.nn.Module, base.Configurable):
         self,
         layers: list[Tuple[type, list[Any], Dict[str, Any], str]],
         forward_signature: str = "x, edge_index, batch",
+        with_skip: bool = False,
+        skip_args: list[Any] | None = None,
+        skip_kwargs: dict[str, Any] | None = None,
     ):
         super().__init__()
 
@@ -74,15 +106,31 @@ class Sequential(torch.nn.Module, base.Configurable):
 
         self.layers = torch_geometric.nn.Sequential(forward_signature, model_layers)
 
+        if with_skip:
+            self.skipconnection = SkipConnection(
+                *(skip_args if skip_args is not None else []),
+                **(skip_kwargs if skip_kwargs is not None else {}),
+            )
+        self.with_skip = with_skip
+
     def forward(
         self, x: torch.Tensor, edge_index: torch.Tensor, *args, **kwargs
     ) -> torch.Tensor:
-        return self.layers.forward(x, edge_index, *args, **kwargs)
+        if self.with_skip:
+            x_ = self.layers.forward(x, edge_index, *args, **kwargs)
+            x_ = self.skipconnection(x, x_)
+            return x_
+        else:
+            return self.layers.forward(x, edge_index, *args, **kwargs)
 
     @classmethod
     def from_config(cls, config: Dict[Any, Any]) -> "Sequential":
         validate(config, cls.schema)
 
         return cls(
-            config["layers"], config.get("forward_signature", "x, edge_index, batch")
+            config["layers"],
+            config.get("forward_signature", "x, edge_index, batch"),
+            config.get("with_skip", False),
+            config.get("skip_args"),
+            config.get("skip_kwargs"),
         )
