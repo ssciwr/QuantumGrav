@@ -54,6 +54,10 @@ class Trainer(base.Configurable):
             }
         },
         "properties": {
+            "name": {
+                "type": "string",
+                "description": "Name of the training run",
+            },
             "log_level": {
                 "description": "Optional logging level (int or string, e.g. INFO)",
                 "anyOf": [{"type": "integer"}, {"type": "string"}],
@@ -354,7 +358,7 @@ class Trainer(base.Configurable):
         run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.data_path = (
             Path(self.config["training"]["path"])
-            / f"{config['model'].get('name', 'run')}_{run_date}"
+            / f"{config.get('name', 'run')}_{run_date}"
         )
 
         # set up paths for storing model snapshots and data
