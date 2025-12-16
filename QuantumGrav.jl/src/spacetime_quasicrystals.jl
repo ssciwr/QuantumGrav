@@ -64,16 +64,16 @@ function quasicrystal(ρ::Real)::Tuple{Vector{Float64},Vector{Float64}}
         local_pts = NTuple{4,Int}[]
 
         # x1 bounds
-        x1_lo = ceil(Int, -2.2253 + 0.5*x0 - 0.898757*ρ)
-        x1_hi = floor(Int,  2.2253 + 0.5*x0 + 0.898757*ρ)
+        x1_lo = ceil(Int,  -2.22529571428407 + 0.5 * x0 - 0.898756954935066 * ρ)
+        x1_hi = floor(Int,  2.22529571428407 + 0.5 * x0 + 0.898756954935066 * ρ)
         x1_lo > x1_hi && return local_pts
 
         for x1 in x1_lo:x1_hi
             # x2 bounds
-            lb1 = 0.00162113*(-2829.86 + 857.666*x0 - 1098.48*x1)
-            lb2 = 0.359612*x0 + 0.280776*x1 - 1.85283*ρ
-            ub1 = 0.00162113*( 2829.86 + 857.666*x0 - 1098.48*x1)
-            ub2 = 0.359612*x0 + 0.280776*x1 + 1.85283*ρ
+            lb1 = 0.001621130114261006 * (-2829.855912710005 + 857.6660139559601 * x0 - 1098.478395249714 * x1)
+            lb2 = 0.359611796797792 * x0 + 0.280776406404415 * x1 - 1.85283492847788 * ρ
+            ub1 = 0.001621130114261006 * ( 2829.855912710005 + 857.6660139559601 * x0 - 1098.478395249714 * x1)
+            ub2 = 0.359611796797792 * x0 + 0.280776406404415 * x1 + 1.85283492847788 * ρ
 
             x2_lo = ceil(Int, max(lb1, lb2))
             x2_hi = floor(Int, min(ub1, ub2))
@@ -81,24 +81,28 @@ function quasicrystal(ρ::Real)::Tuple{Vector{Float64},Vector{Float64}}
 
             for x2 in x2_lo:x2_hi
                 # radicand
-                D =
-                    -1.96969*x0^2 - 3.07577*x0*x1 - 1.20075*x1^2 +
-                     10.9545*x0*x2 + 8.55304*x1*x2 - 15.2311*x2^2 +
-                     52.2882*ρ^2
+                D = -1.969690009882569 * x0^2 - 3.075774975293578 * x0 * x1 - 
+                    1.200746266059174 * x1^2 + 10.95453501482385 * x0 * x2 + 
+                    8.553042482705505 * x1 * x2 - 15.23105625617661 * x2^2 + 
+                    52.28817457999083 * ρ^2
                 D < 0 && continue # reject point if no x3 possible
 
                 sqrtD = sqrt(D)
-                center = 0.438447*x0 - 0.219224*x1 - 0.219224*x2
+                center = 0.4384471871911697 * x0 - 0.2192235935955849 * x1 - 0.2192235935955849 * x2
 
                 # x3 lower bounds
-                lb_lin1 = 0.25*(-75.2311 + 29.6466*x0 - 23.7245*x1 - 17.3226*x2)
-                lb_lin2 = 0.25*(-75.2311 + 6.84579*x0 + 5.47829*x1 - 0.923651*x2)
-                lb_quad = center - 0.25*sqrtD
+                lb_lin1 = 0.25*(-75.23105625617661 + 29.64663624374690 * x0 - 23.72450097900972 * x1 - 
+                            17.32256025724875 *x2)
+                lb_lin2 = 0.25*(-75.23105625617661 + 6.845786258723745 * x0 + 5.478289727774397 * x1 - 
+                            0.9236509939865662 * x2)
+                lb_quad = center - 0.25 * sqrtD
 
                 # x3 upper bounds
-                ub_lin1 = 0.00664619*(1115.17*x0 - 892.41*x1 - 651.597*x2)
-                ub_lin2 = 0.00664619*( 257.508*x0 + 206.069*x1 - 34.7436*x2)
-                ub_quad = center + 0.25*sqrtD
+                ub_lin1 = 0.006646191411927027 * (1115.173879529864 * x0 - 892.4096339007985 * x1 - 
+                            651.5972526070451 * x2)
+                ub_lin2 = 0.006646191411927027 * (257.5078655739034 * x0 + 206.0687613489150 * x1 - 
+                            34.74361994483840 * x2)
+                ub_quad = center + 0.25 * sqrtD
 
                 x3_lo = ceil(Int, max(lb_lin1, lb_lin2, lb_quad))
                 x3_hi = floor(Int, min(ub_lin1, ub_lin2, ub_quad))
@@ -215,6 +219,14 @@ function translate_sub_spacetime_crystal(
     ℓ = sqrt(N / Nunit)
     halfℓ = ℓ / 2
 
+    # --- ensure local diamond is fully contained in unit diamond
+
+    if αin₀  - halfℓ < 0 || αin₀  + halfℓ > 1 ||
+       αout₀ - halfℓ < 0 || αout₀ + halfℓ > 1
+        error("Local causal diamond not fully contained in unit diamond. Choose center further inside or reduce N.")
+    end
+
+
     if exact_size
 
         function count_for_halfℓ(hℓ)
@@ -288,15 +300,19 @@ function translate_sub_spacetime_crystal(
     return coords
 end
 
+Nunit = length(big_set[1])
 count = 0
+halfℓtest = sqrt(256 / Nunit)/2
+
 for i in 1:1000
-    center = (rand(), rand())
+
+    center = ((halfℓtest + (1 - 2*halfℓtest)) * rand(), (halfℓtest + (1 - 2*halfℓtest)) * rand())    
     if translate_sub_spacetime_crystal(
         256, center; 
         crystal=big_set, 
         exact_size=true, 
-        deviation_from_mean_size=0.0015,
-        max_iter=30) == "not converged"
+        deviation_from_mean_size=0.02,
+        max_iter=50) == "not converged"
         count += 1
         println("Failed at center: $center")
     end
