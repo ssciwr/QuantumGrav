@@ -9,6 +9,15 @@ from .. import base
 
 
 class Sequential(torch.nn.Module, base.Configurable):
+    """Composable sequential model for graph networks.
+
+    Wraps `torch_geometric.nn.Sequential` with configuration support and an optional
+    skip connection from the first layer input to the final output. Layers are
+    specified as 4-tuples `[module, args, kwargs, signature]`, where `module` is a
+    layer class, `args/kwargs` are its constructor parameters, and `signature` is
+    the layer's forward signature fragment to be used by PyG's Sequential.
+    """
+
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "title": "Sequential Model Configuration",
@@ -88,6 +97,27 @@ class Sequential(torch.nn.Module, base.Configurable):
         skip_args: list[Any] | None = None,
         skip_kwargs: dict[str, Any] | None = None,
     ):
+        """Initialize the sequential model.
+
+        Args:
+            layers (list[Tuple[type, list[Any], Dict[str, Any], str]]):
+                Ordered layer specifications as `[module, args, kwargs, signature]`.
+                - `module`: Layer class to instantiate.
+                - `args`: Positional constructor arguments.
+                - `kwargs`: Keyword constructor arguments.
+                - `signature`: Forward signature fragment used by PyG Sequential.
+            forward_signature (str, optional): Overall forward signature for the
+                composed model, passed to `torch_geometric.nn.Sequential`.
+                Defaults to "x, edge_index, batch".
+            with_skip (bool, optional): If True, add a skip connection from the
+                initial input to the final output. Defaults to False.
+            skip_args (list[Any] | None, optional): Arguments for the
+                `SkipConnection` constructor, expected shape `[in_channels, out_channels]`.
+                Required when `with_skip=True`. Defaults to None.
+            skip_kwargs (dict[str, Any] | None, optional): Optional keyword args
+                for the `SkipConnection` constructor (e.g., `weight_initializer`).
+                Defaults to None.
+        """
         super().__init__()
 
         model_layers: list[Tuple[torch.nn.Module, str]] = []
@@ -116,6 +146,21 @@ class Sequential(torch.nn.Module, base.Configurable):
     def forward(
         self, x: torch.Tensor, edge_index: torch.Tensor, *args, **kwargs
     ) -> torch.Tensor:
+        """Run the forward pass.
+
+        Applies the composed sequential layers. If a skip connection is
+        configured, combines the original input `x` with the sequential output
+        via `SkipConnection`.
+
+        Args:
+            x (torch.Tensor): Node feature tensor (input to the first layer).
+            edge_index (torch.Tensor): Edge indices for the graph.
+            *args: Additional positional arguments passed to the sequential.
+            **kwargs: Additional keyword arguments passed to the sequential.
+
+        Returns:
+            torch.Tensor: The model output, optionally combined with a skip connection.
+        """
         if self.with_skip:
             x_ = self.layers.forward(x, edge_index, *args, **kwargs)
             x_ = self.skipconnection(x, x_)
@@ -125,6 +170,22 @@ class Sequential(torch.nn.Module, base.Configurable):
 
     @classmethod
     def from_config(cls, config: Dict[Any, Any]) -> "Sequential":
+        """Construct a `Sequential` instance from a configuration dictionary.
+
+        Validates the `config` against `Sequential.schema` and builds the
+        corresponding model, including an optional skip connection.
+
+        Args:
+            config (Dict[Any, Any]): Configuration containing keys:
+                - `layers`: list of layer specs `[module, args, kwargs, signature]` (required)
+                - `forward_signature`: overall forward signature (optional)
+                - `with_skip`: enable skip connection (optional)
+                - `skip_args`: arguments for `SkipConnection` (optional; required if `with_skip`)
+                - `skip_kwargs`: keyword args for `SkipConnection` (optional)
+
+        Returns:
+            Sequential: A configured sequential model instance.
+        """
         validate(config, cls.schema)
 
         return cls(
