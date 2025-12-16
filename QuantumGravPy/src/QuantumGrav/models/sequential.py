@@ -23,17 +23,6 @@ class Sequential(torch.nn.Module, base.Configurable):
                     "items": [
                         {
                             "description": "Layer class/module reference (pyobject tag or dotted path string)",
-                            "oneOf": [
-                                {
-                                    "type": "string",
-                                    "description": "Dotted path to module/class",
-                                },
-                                {
-                                    "type": "object",
-                                    "description": "Python object spec",
-                                    "additionalProperties": True,
-                                },
-                            ],
                         },
                         {
                             "type": "array",
@@ -86,9 +75,9 @@ class Sequential(torch.nn.Module, base.Configurable):
         self.layers = torch_geometric.nn.Sequential(forward_signature, model_layers)
 
     def forward(
-        self, x: torch.Tensor, edge_index: torch.Tensor, **kwargs
+        self, x: torch.Tensor, edge_index: torch.Tensor, *args, **kwargs
     ) -> torch.Tensor:
-        return self.layers.forward(x, edge_index, **kwargs)
+        return self.layers.forward(x, edge_index, *args, **kwargs)
 
     @classmethod
     def from_config(cls, config: Dict[Any, Any]) -> "Sequential":
