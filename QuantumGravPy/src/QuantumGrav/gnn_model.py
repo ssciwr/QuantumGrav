@@ -313,7 +313,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
                     aggregate_pooling_kwargs,
                 )
             else:
-                self.aggregate_pooling = torch.nn.Identity()  # non-op
+                self.aggregate_pooling = instantiate_type(torch.cat, None, None)
 
         if self.with_latent:
             # alternatively to pooling_layer, set up latent_model
@@ -398,16 +398,10 @@ class GNNModel(torch.nn.Module, base.Configurable):
 
         # pool everything together into a single graph representation
         if self.with_pooling:
-            if not self.pooling_layers or self.pooling_layers == [None]:
-                # No pooling layers provided; pass embeddings directly
-                pooled_embeddings = [
-                    embeddings,
-                ]
-            else:
-                pooled_embeddings = [
-                    pooling_op(embeddings, batch) if pooling_op else embeddings
-                    for pooling_op in self.pooling_layers
-                ]
+            pooled_embeddings = [
+                pooling_op(embeddings, batch) if pooling_op else embeddings
+                for pooling_op in self.pooling_layers
+            ]
 
             return self.aggregate_pooling(pooled_embeddings)
 
@@ -417,6 +411,8 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 *(latent_args if latent_args is not None else []),
                 **(latent_kwargs if latent_kwargs is not None else {}),
             )
+        else:
+            return embeddings
 
     def compute_downstream_tasks(
         self,
