@@ -1,9 +1,29 @@
 using Plots
 using LinearAlgebra
+using CausalSets
+using Base: searchsortedfirst, searchsortedlast
 
-function quasicrystal_non_translated(num_points::Int)
-    
-    ρ = sqrt((num_points - a) / b)
+
+"""
+    quasicrystal(ρ::Real) -> Tuple{Vector{Float64},Vector{Float64}}
+Generate a 2D spacetime quasicrystal via a 4D cut-and-project construction
+with internal acceptance radius `ρ`.
+The construction:
+- enumerates integer lattice points in 4D satisfying analytic bounds,
+- projects them to physical spacetime using `PhysicalProj`,
+- computes lightcone coordinates `(α_in, α_out)` via Minkowski inner products,
+- returns the points restricted to the unit causal diamond,
+  sorted by `α_in` for efficient range queries.
+
+Returns
+-------
+A tuple `(α_in, α_out)` where:
+- `α_in  :: Vector{Float64}`
+- `α_out :: Vector{Float64}`
+
+Both vectors have equal length and are sorted by increasing `α_in`.
+"""
+function quasicrystal(ρ::Real)::Tuple{Vector{Float64},Vector{Float64}}
 
     √ = sqrt
 
@@ -129,196 +149,157 @@ function quasicrystal_non_translated(num_points::Int)
     αin = [minkowski(vout, point) ./ vin_vout for point in projected]
     αout = [minkowski(vin, point) ./ vin_vout for point in projected]
 
+    perm = sortperm(αin)
+    αin_sorted = αin[perm]
+    αout_sorted = αout[perm]
 
-    return (αin, αout)
+    return (αin_sorted, αout_sorted)
 end
 
-quasicrystal_non_translated(1024)[1]
+big_set =quasicrystal(700.)
 
-pts = Vector{Tuple{Vector{Float64},Vector{Float64}}}(undef, 30)
-for i in 1:30
-    pts[i] = quasicrystal_non_translated(i)
+"""
+    translate_sub_spacetime_crystal(
+        N::Int,
+        center::NTuple{2,Float64};
+        ρ::Union{Float64,Nothing} = nothing,
+        crystal::Union{Tuple{Vector{Float64},Vector{Float64}},Nothing} = nothing
+    ) -> CausalSets.Coordinates{2}
+
+Extract a local causal diamond of expected size `N` from a 2D spacetime
+quasicrystal in lightcone coordinates `(α_in, α_out)`.
+
+The function:
+- takes a quasicrystal filling unit causal diamond,
+- assumes the crystal is sorted by increasing `α_in`,
+- selects a rectangular causal diamond around `center`
+  with side length `ℓ = sqrt(N / N_unit)`,
+- returns all points inside that diamond.
+
+Arguments
+---------
+- `N` : target causal set size (expected, up to discreteness fluctuations)
+- `center` : `(α_in, α_out)` with values inside `(ℓ,1-ℓ)×(ℓ,1-ℓ)`
+- `ρ` : internal acceptance radius (used only if `crystal` is not provided)
+- `crystal` : optional precomputed quasicrystal `(α_in, α_out)`
+
+Returns
+-------
+`CausalSets.Coordinates{2}` (alias for `Vector{NTuple{2,Float64}}`)
+containing the selected points."""
+function translate_sub_spacetime_crystal(
+    N::Int64,
+    center::NTuple{2,Float64};
+    ρ::Union{Float64,Nothing} = nothing,
+    crystal::Union{Tuple{Vector{Float64},Vector{Float64}},Nothing} = nothing,
+    exact_size::Bool = false,
+    deviation_from_mean_size::Float64=0.03,
+    max_iter::Int64=20,
+)
+
+    αin₀, αout₀ = center
+
+    # --- 1. get quasicrystal in unit diamond
+    if ρ === nothing && crystal === nothing
+        error("Either ρ or crystal must be provided")
+    elseif crystal === nothing
+        αin, αout = quasicrystal(ρ)
+    else
+        αin, αout = crystal
+    end
+
+    Nunit = length(αin)
+    Nunit == 0 && error("Empty quasicrystal")
+
+    # --- 2. local diamond side length
+    ℓ = sqrt(N / Nunit)
+    halfℓ = ℓ / 2
+
+    if exact_size
+
+        function count_for_halfℓ(hℓ)
+            αin_lo  = αin₀  - hℓ
+            αin_hi  = αin₀  + hℓ
+            αout_lo = αout₀ - hℓ
+            αout_hi = αout₀ + hℓ
+
+            i_lo = searchsortedfirst(αin, αin_lo)
+            i_hi = searchsortedlast(αin, αin_hi)
+
+            count = 0
+            if i_lo <= i_hi
+                for i in i_lo:i_hi
+                    if αout_lo ≤ αout[i] ≤ αout_hi
+                        count += 1
+                    end
+                end
+            end
+            return count
+        end
+
+        hℓ_lo = (1 - deviation_from_mean_size) * halfℓ
+        hℓ_hi = (1 + deviation_from_mean_size) * halfℓ
+        count_mid = count_for_halfℓ(halfℓ)
+        hℓ_mid = (hℓ_lo + hℓ_hi) / 2
+
+        for i in (1:max_iter)
+            count_mid = count_for_halfℓ(hℓ_mid)
+            if count_mid > N
+                hℓ_hi = hℓ_mid
+            elseif count_mid < N
+                hℓ_lo = hℓ_mid
+            end
+            hℓ_mid = (hℓ_lo + hℓ_hi) / 2
+
+            if count_mid == N
+                break
+            end
+
+            if i == max_iter && count_mid != N
+                #@warn "Max iterations reached in size adjustment; got $count_mid points (target $N). Increase `deviation_from_mean_size` or `max_iter`."
+                return "not converged"
+            end
+        end
+
+        halfℓ = hℓ_mid
+    end
+
+
+    # --- 3. bounds of local diamond
+    αin_lo  = αin₀  - halfℓ
+    αin_hi  = αin₀  + halfℓ
+    αout_lo = αout₀ - halfℓ
+    αout_hi = αout₀ + halfℓ
+
+    # --- 4. extract points
+    coords = NTuple{2,Float64}[]
+    
+    i_lo = searchsortedfirst(αin, αin_lo)
+    i_hi = searchsortedlast(αin, αin_hi)
+
+    if i_lo <= i_hi
+        for i in i_lo:i_hi
+            if αout_lo ≤ αout[i] ≤ αout_hi
+                push!(coords, (αin[i], αout[i]))
+            end
+        end
+    end
+
+    return coords
 end
 
-x = collect(1:3)
-y = length.(first.(pts[1:3]))
-
-# design matrix
-X = hcat(ones(length(x)), x.^2)
-
-# least-squares fit
-coeffs = X \ y
-a, b = coeffs
-
-xfit = range(1, 3; length=300)
-yfit = a .+ b .* xfit.^2
-
-ρ = sqrt((num_points - a) / b)
-
-scatter(
-    x,
-    y;
-    label = "data",
-    xlabel = "ρ",
-    ylabel = "number of points"
-)
-
-plot!(
-    xfit,
-    yfit;
-    label = "fit: a + b ρ²",
-    linewidth = 2
-)
-
-scatter(
-    pts[30][1],
-    pts[30][2],
-    markersize = 3,
-    xlabel = "α_in",
-    ylabel = "α_out",
-    aspect_ratio = :equal,
-    xlims = (0, 1.),
-    ylims = (0, 1.),
-    legend = false,
-)
-
-test=quasicrystal_non_translated(500)
-
-length(test[1])
-
-length.(pts[:,1])
-
-using Plots
-
-scatter(
-    pts[30][1],
-    pts[30][2],
-    markersize = 3,
-    xlabel = "α_in",
-    ylabel = "α_out",
-    aspect_ratio = :equal,
-    xlims = (0, 1.),
-    ylims = (0, 1.),
-    legend = false,
-)
-
-quasicrystal_non_translated(100.0)
-
-# convenience
-using LinearAlgebra
-
-chop(z::ComplexF64; tol::Float64=1e-12) =
-    complex(
-        abs(real(z)) < tol ? 0.0 : real(z),
-        abs(imag(z)) < tol ? 0.0 : imag(z),
-    )
-
-√ = sqrt
-
-vout = [
-    -√(4 + √17) + (5 + √17)/2,
-    (5 + √17 - 2*√(53/2 + (13*√17)/2)) / 4,
-    (5 + √17 - 2*√(13/2 + (5*√17)/2)) / 4,
-    1.0
-]
-
-vin = [
-    √(4 + √17) + (5 + √17)/2,
-    (5 + √17 + 2*√(53/2 + (13*√17)/2)) / 4,
-    (5 + √17 + 2*√(13/2 + (5*√17)/2)) / 4,
-    1.0
-]
-
-v1 = Complex[
-    (5 - √17)/2 + im*√(-4 + √17),
-    (5 - √17)/4 - im*√(2*(-53 + 13*√17))/4,
-    (5 - √17)/4 + im*√(2*(-13 + 5*√17))/4,
-    1.0
-]
-
-v1star = Complex[
-    (5 - √17)/2 - im*√(-4 + √17),
-    (5 - √17)/4 + im*√(2*(-53 + 13*√17))/4,
-    (5 - √17)/4 - im*√(2*(-13 + 5*√17))/4,
-    1.0
-]
-
-PhysicalProj = [
-    1/2 + 7/(2*√17)   0.0               -2/√17           -2/√17;
-    0.0               1/2 + 3/(2*√17)    1/√17            -1/√17;
-    2/√17             1/√17              1/2 - 5/(2*√17)  -1/√17;
-    2/√17            -1/√17             -1/√17            1/2 - 5/(2*√17)
-]
-
-InternalProj = [
-    1/2 - 7/(2*√17)   0.0                2/√17            2/√17;
-    0.0               1/2 - 3/(2*√17)   -1/√17            1/√17;
-   -2/√17            -1/√17              1/2 + 5/(2*√17)  1/√17;
-   -2/√17             1/√17              1/√17            1/2 + 5/(2*√17)
-]
-
-# Minkowski metric η = diag(-1, 1, 1, 1)
-η = Diagonal([-1.0, 1.0, 1.0, 1.0])
-
-# Minkowski inner product ⟨u, v⟩ = uᵀ η v
-minkowski(u, v) = dot(u, η * v)
-
-# compute products
-vin_vin   = minkowski(vin, vin)
-vout_vout = minkowski(vout, vout)
-vin_vout  = minkowski(vin, vout)
-
-minkowski(v1, v1star)
-
-# 4D integer grid as vectors
-grid = [Float64[i, j, k, l]
-        for i in -1000:1000, j in -1000:1000, k in -1000:1000, l in -1000:1000]
-
-# flatten if you want a 1D collection
-grid = vec(grid)
-
-# now linear algebra works
-proj_internal = [InternalProj * g for g in grid]
-proj_physical = [PhysicalProj * g for g in grid]
-
-norm = minkowski(v1, v1)
-norm = chop(minkowski(v1star, v1star); tol=1e-15)
-
-int_coord = [minkowski(v1,point) ./ norm for point in proj_internal]
-
-int_coord = int_coord .+ (1 + im * sqrt(17)) 
-
-int_coord
-
-int_coord_norms = real([dot(point,point) for point in int_coord])
-
-accepted_points = []
-for (i, norm) in enumerate(int_coord_norms)
-    if norm <= 1
-        push!(accepted_points, i)
+count = 0
+for i in 1:1000
+    center = (rand(), rand())
+    if translate_sub_spacetime_crystal(
+        256, center; 
+        crystal=big_set, 
+        exact_size=true, 
+        deviation_from_mean_size=0.0015,
+        max_iter=30) == "not converged"
+        count += 1
+        println("Failed at center: $center")
     end
 end
 
-proj_physical_accepted = proj_physical[accepted_points]
-
-αin = [minkowski(vout, point) ./ vin_vout for point in proj_physical_accepted]
-αout = [minkowski(vin, point) ./ vin_vout for point in proj_physical_accepted]
-
-αpairs = collect(zip(αin, αout))
-
-αmat = hcat(αin, αout)  # size (N, 2)
-# element type: Tuple{Float64,Float64} (assuming real)
-
-using Plots
-
-scatter(
-    real.(αin),
-    real.(αout),
-    markersize = 3,
-    xlabel = "α_in",
-    ylabel = "α_out",
-    aspect_ratio = :equal,
-    xlims = (-.5, .5),
-    ylims = (-.5, .5),
-    legend = false,
-)
+count
