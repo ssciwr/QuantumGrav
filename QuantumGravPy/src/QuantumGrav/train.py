@@ -239,8 +239,11 @@ class Trainer(base.Configurable):
                         "description": "Shuffle validation dataset",
                     },
                     "validator": {
-                        "$ref": "#/definitions/constructor",
-                        "description": "Validator constructor spec: provides type, args, kwargs",
+                        "description": "Validator configuration: either constructor spec or Evaluator schema",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.Evaluator.schema,
+                        ],
                     },
                 },
                 "required": ["batch_size"],
@@ -278,16 +281,22 @@ class Trainer(base.Configurable):
                         "description": "Shuffle test dataset",
                     },
                     "tester": {
-                        "$ref": "#/definitions/constructor",
-                        "description": "Tester constructor spec: provides type, args, kwargs",
+                        "description": "Tester configuration: either constructor spec or Evaluator schema",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.Evaluator.schema,
+                        ],
                     },
                 },
                 "required": ["batch_size"],
                 "additionalProperties": True,
             },
             "early_stopping": {
-                "$ref": "#/definitions/constructor",
-                "description": "Early stopping constructor spec: provides type, args, kwargs",
+                "description": "Early stopping configuration: either constructor spec or DefaultEarlyStopping schema",
+                "anyOf": [
+                    {"$ref": "#/definitions/constructor"},
+                    early_stopping.DefaultEarlyStopping.schema,
+                ],
             },
             "apply_model": {
                 "description": "Optional method to call the model on data. Useful when using optional signatures for instance "
