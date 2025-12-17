@@ -195,16 +195,15 @@ def config_with_data(config, create_data_zarr, read_data):
 
     return cfg
 
-@pytest.fixture 
-def config_with_scheduler(config): 
+
+@pytest.fixture
+def config_with_scheduler(config):
     cfg = deepcopy(config)
     cfg["training"]["lr_scheduler_type"] = torch.optim.lr_scheduler.LinearLR
     cfg["training"]["lr_scheduler_args"] = [0.2, 0.8]
-    cfg["training"]["lr_scheduler_kwargs"] = {
-        "total_iters": 10,
-        "last_epoch": -1 
-    }
+    cfg["training"]["lr_scheduler_kwargs"] = {"total_iters": 10, "last_epoch": -1}
     return cfg
+
 
 @pytest.fixture
 def broken_config(model_config_eval):
@@ -307,6 +306,7 @@ def test_trainer_model_instantiation_works(config):
 
     assert isinstance(trainer.model, QG.GNNModel)
 
+
 def test_trainer_creation_broken(broken_config):
     with pytest.raises(
         jsonschema.ValidationError,
@@ -315,6 +315,7 @@ def test_trainer_creation_broken(broken_config):
         QG.Trainer(
             broken_config,
         )
+
 
 def test_trainer_init_model(config):
     trainer = QG.Trainer(
@@ -338,20 +339,24 @@ def test_trainer_init_optimizer(config):
     trainer.initialize_optimizer()
     assert isinstance(trainer.optimizer, torch.optim.Optimizer)
 
+
 def test_trainer_init_optimizer_fails(config):
     trainer = QG.Trainer(
         config,
     )
     # need a model to initialize the optimizer
     assert trainer.model is None
-    with pytest.raises(Exception, match="Model must be initialized before initializing optimizer."):
+    with pytest.raises(
+        Exception, match="Model must be initialized before initializing optimizer."
+    ):
         trainer.initialize_optimizer()
 
-def test_trainer_init_lr_scheduler(config_with_scheduler): 
+
+def test_trainer_init_lr_scheduler(config_with_scheduler):
     trainer = QG.Trainer(config_with_scheduler)
     trainer.initialize_model()
     trainer.initialize_optimizer()
-    
+
     assert hasattr(trainer, "lr_scheduler") is False
     trainer.initialize_lr_scheduler()
     assert hasattr(trainer, "lr_scheduler") is True
@@ -360,13 +365,18 @@ def test_trainer_init_lr_scheduler(config_with_scheduler):
     assert trainer.lr_scheduler.end_factor == 0.8
     assert trainer.lr_scheduler.total_iters == 10
     assert trainer.lr_scheduler.last_epoch == 0
-    
-def test_trainer_init_lr_scheduler_fails(config_with_scheduler): 
+
+
+def test_trainer_init_lr_scheduler_fails(config_with_scheduler):
     trainer = QG.Trainer(config_with_scheduler)
     trainer.initialize_model()
-    with pytest.raises(RuntimeError, match="Optimizer must be initialized before initializing learning rate scheduler."):
+    with pytest.raises(
+        RuntimeError,
+        match="Optimizer must be initialized before initializing learning rate scheduler.",
+    ):
         trainer.initialize_lr_scheduler()
     assert hasattr(QG.Trainer, "lr_scheduler") is False
+
 
 def test_trainer_prepare_dataloader(make_dataset, config):
     trainer = QG.Trainer(
@@ -676,23 +686,17 @@ def test_trainer_run_training_with_scheduler(make_dataset, config_with_scheduler
     trainer.initialize_model()
     trainer.initialize_optimizer()
     trainer.initialize_lr_scheduler()
-    
+
     assert trainer.validator is not None
     assert trainer.model is not None
     assert trainer.lr_scheduler is not None
-    
-    train_loader, _, __ = trainer.prepare_dataloaders(
-        split=[0.8, 0.1, 0.1]
-    )
-    
+
+    train_loader, _, __ = trainer.prepare_dataloaders(split=[0.8, 0.1, 0.1])
+
     for epoch in range(0, 3):
         original_weights = [param.clone() for param in trainer.model.parameters()]
         old_lr = trainer.lr_scheduler.get_last_lr()[0]
-        trainer._run_train_epoch(
-            trainer.model, 
-            trainer.optimizer, 
-            train_loader
-        )
+        trainer._run_train_epoch(trainer.model, trainer.optimizer, train_loader)
 
         trained_weights = [param.clone() for param in trainer.model.parameters()]
 
@@ -702,6 +706,7 @@ def test_trainer_run_training_with_scheduler(make_dataset, config_with_scheduler
                 "Model parameters did not change after training."
             )
         assert trainer.lr_scheduler.get_last_lr()[0] != old_lr
+
 
 def test_trainer_run_test(make_dataset, config):
     trainer = QG.Trainer(

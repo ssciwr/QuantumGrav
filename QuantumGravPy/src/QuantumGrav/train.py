@@ -99,16 +99,16 @@ class Trainer(base.Configurable):
                         "additionalProperties": {},
                     },
                     "lr_scheduler_type": {
-                        "description": "type of the learning rate scheduler", 
+                        "description": "type of the learning rate scheduler",
                     },
                     "lr_scheduler_args": {
                         "type": "array",
-                        "description": "arguments to construct the learning rate scheduler", 
+                        "description": "arguments to construct the learning rate scheduler",
                         "items": {},
                     },
                     "lr_scheduler_kwargs": {
                         "type": "object",
-                        "description": "keyword arguments for the construction of learning rate scheduler", 
+                        "description": "keyword arguments for the construction of learning rate scheduler",
                         "additionalProperties": {},
                     },
                     "num_workers": {
@@ -348,7 +348,7 @@ class Trainer(base.Configurable):
         self.apply_model = config.get("apply_model")
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
-        
+
         self.nprng = np.random.default_rng(self.seed)
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
@@ -479,7 +479,7 @@ class Trainer(base.Configurable):
                 raise RuntimeError(
                     "Optimizer must be initialized before initializing learning rate scheduler."
                 )
-            
+
             try:
                 self.lr_scheduler = self.config["training"].get("lr_scheduler_type")(
                     self.optimizer,
@@ -580,7 +580,7 @@ class Trainer(base.Configurable):
             if cfg.get("subset"):
                 num_points = ceil(len(dataset) * cfg["subset"])
                 dataset = dataset.index_select(
-                    self.nprng.integers(0, len(dataset),size=num_points).tolist()
+                    self.nprng.integers(0, len(dataset), size=num_points).tolist()
                 )
 
             if cfg.get("shuffle"):
@@ -764,9 +764,9 @@ class Trainer(base.Configurable):
         Returns:
             bool: Whether the training should stop early.
         """
-        if self.model is None: 
+        if self.model is None:
             raise ValueError("Model must be initialized before saving checkpoints")
-        
+
         if (
             self.checkpoint_at is not None
             and self.epoch % self.checkpoint_at == 0
