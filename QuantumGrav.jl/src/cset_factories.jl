@@ -136,8 +136,9 @@ function (m::PolynomialCsetMaker)(
     derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
-    o = rand(rng, m.order_distribution)
-    r = rand(rng, m.r_distribution)
+    o = clamp(convert(Int64, ceil(rand(rng, m.order_distribution))), 0, typemax(Int64))
+    r = clamp(rand(rng, m.r_distribution), 1.0, typemax(Float64))
+
     cset, sprinkling, chebyshev_coefs =
         make_polynomial_manifold_cset(n, rng, o, r; d = 2, type = Float32)
     curvature_matrix = Ricci_scalar_2D_of_sprinkling(
@@ -250,11 +251,11 @@ function (lm::LayeredCsetMaker)(
     rng::Random.AbstractRNG;
     config::Union{Dict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Int64}
-    connectivity_goal = rand(rng, lm.connectivity_distribution)
+    connectivity_goal = clamp(rand(rng, lm.connectivity_distribution), 0.0, 1.0)
     layers = rand(rng, lm.layer_distribution)
-    layers = Int(ceil(layers))
+    layers = clamp(Int(ceil(layers)), 1, typemax(Int64))
 
-    s = rand(rng, lm.stddev_distribution)
+    s = clamp(rand(rng, lm.stddev_distribution), 0.0, typemax(Float64))
 
     cset, _ = create_random_layered_causet(
         n,
@@ -362,7 +363,7 @@ function (rcm::RandomCsetMaker)(
     config::Union{Dict,Nothing} = nothing,
 )::CausalSets.BitArrayCauset
 
-    connectivity_goal = rand(rng, rcm.connectivity_distribution)
+    connectivity_goal = clamp(rand(rng, rcm.connectivity_distribution), 0.0, 1.0)
 
     converged = false
 
@@ -501,11 +502,13 @@ function (dcm::DestroyedCsetMaker)(
     config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
-    o = rand(rng, dcm.order_distribution)
+    o = clamp(convert(Int64, ceil(rand(rng, dcm.order_distribution))), 0, typemax(Int64))
 
-    r = rand(rng, dcm.r_distribution)
+    r = clamp(rand(rng, dcm.r_distribution), 1.0, typemax(Float64))
 
-    f = convert(Int64, ceil(rand(rng, dcm.flip_distribution) * n * (n - 1) / 2))
+    drawn_r = clamp(rand(rng, dcm.flip_distribution), 0.0, 1.0)
+
+    f = convert(Int64, drawn_r * n * (n - 1) / 2)
 
     cset = destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
     return cset, f/(n * (n - 1) / 2)
@@ -771,17 +774,17 @@ function (gcm::GridCsetMakerPolynomial)(
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
     end
 
-    o = rand(rng, gcm.order_distribution)
-    r = rand(rng, gcm.r_distribution)
-    rotate_angle_deg = rand(rng, gcm.rotate_distribution)
+    o = clamp(convert(Int64, ceil(rand(rng, gcm.order_distribution))), 0, typemax(Int64))
+    r = clamp(rand(rng, gcm.r_distribution), 1.0, typemax(Float64))
+    rotate_angle_deg = clamp(rand(rng, gcm.rotate_distribution), 0.0, 360.0)
 
     gamma_deg =
         grid == "oblique" ?
-        rand(rng, build_distr(config[grid], "oblique_angle_distribution")) : 60.0
+        clamp(rand(rng, build_distr(config[grid], "oblique_angle_distribution")), 0.0, 60.0) : 60.0
 
     b =
         grid == "quadratic" ? 1.0 :
-        rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
+        clamp(rand(rng, build_distr(config[grid], "segment_ratio_distribution")), 1.0, typemax(Float64))
 
     cset, _, pseudosprinkling, chebyshev_coefs = create_grid_causet_2D_polynomial_manifold(
         n,
@@ -936,18 +939,18 @@ function (ctm::ComplexTopCsetMaker)(
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
 
-    n_vertical_cuts = rand(rng, ctm.vertical_cut_distribution)
+    n_vertical_cuts = clamp(rand(rng, ctm.vertical_cut_distribution), 0, typemax(Int64))
     if n_vertical_cuts isa Float64
         n_vertical_cuts = convert(Int64, round(n_vertical_cuts))
     end
 
-    n_finite_cuts = rand(rng, ctm.finite_cut_distribution)
+    n_finite_cuts = clamp(rand(rng, ctm.finite_cut_distribution), 0, typemax(Int64))
     if n_finite_cuts isa Float64
         n_finite_cuts = convert(Int64, round(n_finite_cuts))
     end
 
-    order = rand(rng, ctm.order_distribution)
-    r = rand(rng, ctm.r_distribution)
+    order = clamp(convert(Int64, round(rand(rng, ctm.order_distribution))), 0, typemax(Int64))
+    r = clamp(rand(rng, ctm.r_distribution), 1.0, typemax(Float64))
 
     cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
         make_branched_manifold_cset(
@@ -1105,11 +1108,11 @@ function (mcm::MergedCsetMaker)(
     config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
-    o = rand(rng, mcm.order_distribution)
-    r = rand(rng, mcm.r_distribution)
-    n2rel = rand(rng, mcm.n2_rel_distribution)
-    l = rand(rng, mcm.link_prob_distribution)
-    p = rand(rng, mcm.connectivity_distribution)
+    o = clamp(convert(Int64, ceil(rand(rng, mcm.order_distribution))), 0, typemax(Int64))
+    r = clamp(rand(rng, mcm.r_distribution), 1.0, typemax(Float64))
+    n2rel = clamp(rand(rng, mcm.n2_rel_distribution), 0.0, typemax(Float64))
+    l = clamp(rand(rng, mcm.link_prob_distribution), 0.0, 1.0)
+    p = clamp(rand(rng, mcm.connectivity_distribution), 0.0, 1.0)
 
     cset, success, sprinkling =
         insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
