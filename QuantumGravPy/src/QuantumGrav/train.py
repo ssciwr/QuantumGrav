@@ -1,5 +1,5 @@
 from collections.abc import Collection
-from typing import Callable, Any, Tuple
+from typing import Any, Tuple, Dict
 
 import numpy as np
 from pathlib import Path
@@ -7,9 +7,15 @@ import logging
 import tqdm
 import yaml
 from datetime import datetime
+from math import ceil, floor
+import jsonschema
+import pandas as pd
 
-from .evaluate import DefaultValidator, DefaultTester
+from . import evaluate
+from . import early_stopping
 from . import gnn_model
+from . import dataset_ondisk
+from . import base
 
 import torch
 from torch_geometric.data import Data, Dataset
@@ -17,53 +23,333 @@ from torch_geometric.loader import DataLoader
 import optuna
 
 
-class Trainer:
+class Trainer(base.Configurable):
     """Trainer class for training and evaluating GNN models."""
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Model trainer class Configuration",
+        "type": "object",
+        "definitions": {
+            "constructor": {
+                "type": "object",
+                "description": "Python constructor spec: type(*args, **kwargs)",
+                "properties": {
+                    "type": {
+                        "description": "Fully-qualified import path or name of the type/callable to initialize",
+                    },
+                    "args": {
+                        "type": "array",
+                        "description": "Positional arguments for constructor",
+                        "items": {},
+                    },
+                    "kwargs": {
+                        "type": "object",
+                        "description": "Keyword arguments for constructor",
+                        "additionalProperties": {},
+                    },
+                },
+                "required": ["type"],
+                "additionalProperties": False,
+            }
+        },
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Name of the training run",
+            },
+            "log_level": {
+                "description": "Optional logging level (int or string, e.g. INFO)",
+                "anyOf": [{"type": "integer"}, {"type": "string"}],
+            },
+            "training": {
+                "type": "object",
+                "description": "Training configuration",
+                "properties": {
+                    "seed": {"type": "integer", "description": "Random seed"},
+                    "device": {
+                        "type": "string",
+                        "description": "Torch device string, e.g. 'cpu', 'cuda', 'cuda:0'",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Output directory for run artifacts and checkpoints",
+                    },
+                    "num_epochs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Number of training epochs",
+                    },
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Training DataLoader batch size",
+                    },
+                    "optimizer_type": {
+                        "description": "Optimizer type name, e.g. 'torch.optim.Adam' or 'torch.optim.SGD'",
+                    },
+                    "optimizer_args": {
+                        "type": "array",
+                        "description": "Arguments for optimizer",
+                        "items": {},
+                    },
+                    "optimizer_kwargs": {
+                        "type": "object",
+                        "description": "Optimizer keyword arguments",
+                        "additionalProperties": {},
+                    },
+                    "lr_scheduler_type": {
+                        "description": "type of the learning rate scheduler",
+                    },
+                    "lr_scheduler_args": {
+                        "type": "array",
+                        "description": "arguments to construct the learning rate scheduler",
+                        "items": {},
+                    },
+                    "lr_scheduler_kwargs": {
+                        "type": "object",
+                        "description": "keyword arguments for the construction of learning rate scheduler",
+                        "additionalProperties": {},
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers for training",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle training dataset",
+                    },
+                    "checkpoint_at": {
+                        "type": ["integer", "null"],
+                        "minimum": 1,
+                        "description": "Checkpoint every N epochs (or None to disable)",
+                    },
+                },
+                "required": [
+                    "seed",
+                    "device",
+                    "path",
+                    "num_epochs",
+                    "batch_size",
+                    "optimizer_type",
+                    "optimizer_args",
+                    "optimizer_kwargs",
+                    "num_workers",
+                    "drop_last",
+                    "checkpoint_at",
+                ],
+                "additionalProperties": True,
+            },
+            "data": {
+                "type": "object",
+                "description": "Dataset configuration",
+                "properties": {
+                    "pre_transform": {
+                        "description": "Name of the python object to use for the pre-transform function to use. Must refer to a callable"
+                    },
+                    "transform": {
+                        "description": "Name of the python object to use for the transform function to use. Must refer to a callable"
+                    },
+                    "pre_filter": {
+                        "description": "Name of the python object to use for the pre_filter function to use. Must refer to a callable"
+                    },
+                    "reader": {
+                        "description": "Name  of the python object to read raw data from file. Must be callable",
+                    },
+                    "files": {
+                        "type": "array",
+                        "description": "list of zarr stores to get data from",
+                        "minItems": 1,
+                        "items": {
+                            "type": "string",
+                            "description": "zarr file names to read data from",
+                        },
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "path to store preprocessed data at.",
+                    },
+                    "validate_data": {
+                        "type": "boolean",
+                        "description": "Whether to validate the transformed data objects or not",
+                    },
+                    "n_processes": {
+                        "type": "integer",
+                        "description": "number of processes to use for preprocessing the dataset",
+                        "minimum": 0,
+                    },
+                    "chunksize": {
+                        "type": "integer",
+                        "description": "Number of datapoints to process at once during preprocessing",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Whether to shuffle the dataset or not",
+                    },
+                    "subset": {
+                        "type": "number",
+                        "description": "Fraction of the dataset to use. Full dataset is used when not given",
+                    },
+                    "split": {
+                        "type": "array",
+                        "description": "Split ratios of the dataset",
+                        "items": {
+                            "type": "number",
+                            "minItems": 3,
+                            "maxItems": 3,
+                        },
+                    },
+                },
+                "required": ["output", "files", "reader"],
+                "additionalProperties": False,
+            },
+            "model": {
+                "description": "Model config: either constructor triple or full GNNModel schema",
+                "anyOf": [
+                    {"$ref": "#/definitions/constructor"},
+                    gnn_model.GNNModel.schema,
+                ],
+            },
+            "validation": {
+                "type": "object",
+                "description": "Model validation configuration",
+                "properties": {
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Validation DataLoader batch size",
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle validation dataset",
+                    },
+                    "validator": {
+                        "$ref": "#/definitions/constructor",
+                        "description": "Validator constructor spec: provides type, args, kwargs",
+                    },
+                },
+                "required": ["batch_size"],
+                "additionalProperties": True,
+            },
+            "testing": {
+                "type": "object",
+                "description": "Configuration for model testing after training",
+                "properties": {
+                    "batch_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Test DataLoader batch size",
+                    },
+                    "num_workers": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "DataLoader workers",
+                    },
+                    "pin_memory": {
+                        "type": "boolean",
+                        "description": "Pin GPU memory in DataLoader",
+                    },
+                    "drop_last": {
+                        "type": "boolean",
+                        "description": "Drop last incomplete batch",
+                    },
+                    "prefetch_factor": {
+                        "type": ["integer", "null"],
+                        "minimum": 2,
+                        "description": "Prefetch samples per worker (None or >=2)",
+                    },
+                    "shuffle": {
+                        "type": "boolean",
+                        "description": "Shuffle test dataset",
+                    },
+                    "tester": {
+                        "$ref": "#/definitions/constructor",
+                        "description": "Tester constructor spec: provides type, args, kwargs",
+                    },
+                },
+                "required": ["batch_size"],
+                "additionalProperties": True,
+            },
+            "early_stopping": {
+                "$ref": "#/definitions/constructor",
+                "description": "Early stopping constructor spec: provides type, args, kwargs",
+            },
+            "apply_model": {
+                "description": "Optional method to call the model on data. Useful when using optional signatures for instance "
+            },
+            "criterion": {
+                "description": "The loss function used for training as a python type"
+            },
+        },
+        "required": [
+            "training",
+            "model",
+            "validation",
+            "testing",
+            "criterion",
+        ],
+        "additionalProperties": True,
+    }
 
     def __init__(
         self,
-        config: dict[str, Any],
+        config: Dict[str, Any],
         # training and evaluation functions
-        criterion: Callable[[Any, Data, Any], torch.Tensor],
-        apply_model: Callable | None = None,
-        # training evaluation and reporting
-        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
     ):
         """Initialize the trainer.
 
         Args:
             config (dict[str, Any]): The configuration dictionary.
-            criterion (Callable): The loss function to use.
-            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
-            early_stopping (Callable[[Collection[Any]], bool] | None, optional): A function for early stopping. Defaults to None.
-            validator (DefaultValidator | None, optional): A validator for model evaluation. Defaults to None.
-            tester (DefaultTester | None, optional): A tester for model evaluation. Defaults to None.
 
         Raises:
             ValueError: If the configuration is invalid.
         """
-        if (
-            all(x in config for x in ["training", "model", "validation", "testing"])
-            is False
-        ):
-            raise ValueError(
-                "Configuration must contain 'training', 'model', 'validation' and 'testing' sections."
-            )
 
+        jsonschema.validate(instance=config, schema=self.schema)
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(config.get("log_level", logging.INFO))
         self.logger.info("Initializing Trainer instance")
 
         # functions for executing training and evaluation
-        self.criterion = criterion
-        self.apply_model = apply_model
-        self.early_stopping = early_stopping
+        self.criterion = config["criterion"]
+        self.apply_model = config.get("apply_model")
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
 
+        self.nprng = np.random.default_rng(self.seed)
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.seed)
@@ -77,9 +363,10 @@ class Trainer:
         run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.data_path = (
             Path(self.config["training"]["path"])
-            / f"{config['model'].get('name', 'run')}_{run_date}"
+            / f"{config.get('name', 'run')}_{run_date}"
         )
 
+        # set up paths for storing model snapshots and data
         if not self.data_path.exists():
             self.data_path.mkdir(parents=True)
         self.logger.info(f"Data path set to: {self.data_path}")
@@ -87,11 +374,49 @@ class Trainer:
         self.checkpoint_path = self.data_path / "model_checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.latest_checkpoint = None
-        # training and evaluation functions
-        self.validator = validator
-        self.tester = tester
+
+        # model and optimizer initialization placeholders
         self.model = None
         self.optimizer = None
+
+        # early stopping and evaluation functors
+        try:
+            self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
+                config["early_stopping"]
+            )
+        except Exception as e:
+            self.logger.debug(
+                f"from_config failed for early stopping, using direct instantiation: {e}"
+            )
+            self.early_stopping = config["early_stopping"]["type"](
+                *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
+            )
+
+        try:
+            self.validator = evaluate.DefaultValidator.from_config(
+                config["validation"]["validator"]
+            )
+        except Exception as e:
+            self.logger.debug(
+                f"from_config failed for validator, using direct instantiation: {e}"
+            )
+            self.validator = config["validation"]["validator"]["type"](
+                *config["validation"]["validator"]["args"],
+                **config["validation"]["validator"]["kwargs"],
+            )
+
+        try:
+            self.tester = evaluate.DefaultTester.from_config(
+                config["testing"]["tester"]
+            )
+        except Exception as e:
+            self.logger.debug(
+                f"from_config failed for tester, using direct instantiation: {e}"
+            )
+            self.tester = config["testing"]["tester"]["type"](
+                *config["testing"]["tester"]["args"],
+                **config["testing"]["tester"]["kwargs"],
+            )
 
         with open(self.data_path / "config.yaml", "w") as f:
             yaml.dump(self.config, f)
@@ -99,20 +424,73 @@ class Trainer:
         self.logger.info("Trainer initialized")
         self.logger.debug(f"Configuration: {self.config}")
 
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "Trainer":
+        """Create a Trainer instance from a configuration dictionary.
+
+        Args:
+            config (Dict[str, Any]): The configuration dictionary.
+        """
+        return cls(
+            config=config,
+        )
+
     def initialize_model(self) -> Any:
         """Initialize the model for training.
 
         Returns:
             Any: The initialized model.
         """
-        if self.model is not None:
-            return self.model
-        # try:
-        model = gnn_model.GNNModel.from_config(self.config["model"])
-        model = model.to(self.device)
-        self.model = model
+        if hasattr(self, "model") and self.model is not None:
+            self.logger.warning(
+                "Model is already initialized. This will replace it with a new instance"
+            )
+
+        try:
+            self.model = gnn_model.GNNModel.from_config(self.config["model"]).to(
+                self.device
+            )
+
+        except Exception:
+            self.logger.debug(
+                "from_config for  model initialization failed, using direct initialization instead"
+            )
+            self.model = self.config["model"]["type"](
+                *self.config["model"]["args"], **self.config["model"]["kwargs"]
+            ).to(self.device)
+
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
+
+    def initialize_lr_scheduler(self) -> torch.optim.lr_scheduler._LRScheduler | None:
+        """Initialize the learning rate scheduler for training.
+
+        Raises:
+            RuntimeError: If the optimizer is not initialized.
+
+        Returns:
+            torch.optim.lr_scheduler._LRScheduler: The initialized learning rate scheduler.
+        """
+        if self.config["training"].get("lr_scheduler_type") is None:
+            self.logger.info("No learning rate scheduler specified in config.")
+            return None
+        else:
+            if not hasattr(self, "optimizer") or self.optimizer is None:
+                raise RuntimeError(
+                    "Optimizer must be initialized before initializing learning rate scheduler."
+                )
+
+            try:
+                self.lr_scheduler = self.config["training"].get("lr_scheduler_type")(
+                    self.optimizer,
+                    *self.config["training"].get("lr_scheduler_args", []),
+                    **self.config["training"].get("lr_scheduler_kwargs", {}),
+                )
+                self.logger.info("Learning rate scheduler initialized.")
+                return self.lr_scheduler
+            except Exception as e:
+                self.logger.error(f"Error initializing learning rate scheduler: {e}")
+                raise e
 
     def initialize_optimizer(self) -> torch.optim.Optimizer | None:
         """Initialize the optimizer for training.
@@ -124,29 +502,117 @@ class Trainer:
             torch.optim.Optimizer: The initialized optimizer.
         """
 
-        if self.model is None:
+        if not hasattr(self, "model") or self.model is None:
             raise RuntimeError(
                 "Model must be initialized before initializing optimizer."
             )
 
-        if self.optimizer is not None:
-            return self.optimizer
+        if hasattr(self, "optimizer") and self.optimizer is not None:
+            self.logger.warning(
+                "Optimizer is already initialized. This will replace it with a new instance"
+            )
 
         try:
-            lr = self.config["training"].get("learning_rate", 0.001)
-            weight_decay = self.config["training"].get("weight_decay", 0.0001)
-            optimizer = torch.optim.Adam(
+            optimizer = self.config["training"].get("optimizer_type", torch.optim.Adam)(
                 self.model.parameters(),
-                lr=lr,
-                weight_decay=weight_decay,
+                *self.config["training"].get("optimizer_args", []),
+                **self.config["training"].get("optimizer_kwargs", {}),
             )
             self.optimizer = optimizer
-            self.logger.info(
-                f"Optimizer initialized with learning rate: {lr} and weight decay: {weight_decay}"
-            )
+            self.logger.info("Optimizer initialized")
         except Exception as e:
             self.logger.error(f"Error initializing optimizer: {e}")
+            raise e
         return self.optimizer
+
+    def prepare_dataset(
+        self,
+        dataset: Dataset | None = None,
+        split: list[float] = [0.8, 0.1, 0.1],
+        train_dataset: torch.utils.data.Subset | None = None,
+        val_dataset: torch.utils.data.Subset | None = None,
+        test_dataset: torch.utils.data.Subset | None = None,
+    ) -> Tuple[Dataset, Dataset, Dataset]:
+        """Set up the split for training, validation, and testing datasets.
+
+        Args:
+            dataset (Dataset | None, optional): Dataset to be split. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+            split (list[float], optional): split ratios for train, validation, and test datasets. Defaults to [0.8, 0.1, 0.1].
+            train_dataset (torch.utils.data.Subset | None, optional): Training subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+            val_dataset (torch.utils.data.Subset | None, optional): Validation subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+            test_dataset (torch.utils.data.Subset | None, optional): Testing subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
+
+        Raises:
+            ValueError: If providing train, val, or test datasets, the full dataset must not be provided.
+            ValueError: If split ratios are not summing up to 1
+            ValueError: If train size is 0
+            ValueError: If validation size is 0
+            ValueError: If test size is 0
+
+        Returns:
+            Tuple[Dataset, Dataset, Dataset]: train, validation, and test datasets.
+        """
+        if dataset is not None and (
+            train_dataset is not None
+            or val_dataset is not None
+            or test_dataset is not None
+        ):
+            raise ValueError(
+                "If providing train, val, or test datasets, the full dataset must not be provided."
+            )
+
+        if dataset is None:
+            cfg = self.config["data"]
+            dataset = dataset_ondisk.QGDataset(
+                cfg["files"],
+                cfg["output"],
+                cfg["reader"],
+                float_type=cfg.get("float_type", torch.float32),
+                int_type=cfg.get("int_type", torch.int32),
+                validate_data=cfg.get("validate_data", True),
+                chunksize=cfg.get("chunksize", 1),
+                n_processes=cfg.get("n_processes", 1),
+                transform=cfg.get("transform"),
+                pre_transform=cfg.get("pre_transform"),
+                pre_filter=cfg.get("pre_filter"),
+            )
+
+            if cfg.get("subset"):
+                num_points = ceil(len(dataset) * cfg["subset"])
+                dataset = dataset.index_select(
+                    self.nprng.integers(0, len(dataset), size=num_points).tolist()
+                )
+
+            if cfg.get("shuffle"):
+                dataset.shuffle()
+
+        if train_dataset is None and val_dataset is None and test_dataset is None:
+            split = self.config.get("data", {}).get("split", split)
+            if not np.isclose(
+                np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
+            ):
+                raise ValueError(
+                    f"Split ratios must sum to 1.0. Provided split: {split}"
+                )
+
+            train_size = ceil(len(dataset) * split[0])
+            val_size = floor(len(dataset) * split[1])
+            test_size = len(dataset) - train_size - val_size
+
+            if train_size == 0:
+                raise ValueError("train size cannot be 0")
+
+            if val_size == 0:
+                raise ValueError("validation size cannot be 0")
+
+            if test_size == 0:
+                raise ValueError("test size cannot be 0")
+
+            train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
+                dataset, [train_size, val_size, test_size]
+            )
+
+        return train_dataset, val_dataset, test_dataset
 
     def prepare_dataloaders(
         self,
@@ -167,36 +633,13 @@ class Trainer:
         Returns:
             Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
         """
-
-        if (
-            dataset is not None
-            and train_dataset is None
-            and val_dataset is None
-            and test_dataset is None
-        ):
-            train_size = int(len(dataset) * split[0])
-            val_size = int(len(dataset) * split[1])
-            test_size = len(dataset) - train_size - val_size
-
-            if not np.isclose(
-                np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
-            ):
-                raise ValueError(
-                    f"Split ratios must sum to 1.0. Provided split: {split}"
-                )
-
-            self.train_dataset, self.val_dataset, self.test_dataset = (
-                torch.utils.data.random_split(
-                    dataset, [train_size, val_size, test_size]
-                )
-            )
-        else:
-            self.train_dataset, self.val_dataset, self.test_dataset = (
-                train_dataset,
-                val_dataset,
-                test_dataset,
-            )
-
+        self.train_dataset, self.val_dataset, self.test_dataset = self.prepare_dataset(
+            dataset=dataset,
+            split=split,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
+        )
         train_loader = DataLoader(
             self.train_dataset,  # type: ignore
             batch_size=self.config["training"]["batch_size"],
@@ -231,10 +674,6 @@ class Trainer:
         if dataset is not None:
             self.logger.info(
                 f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
-            )
-        else:
-            self.logger.info(
-                f"Data loaders prepared with dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
             )
         return train_loader, val_loader, test_loader
 
@@ -311,17 +750,23 @@ class Trainer:
 
             losses[i] = loss
 
+        if hasattr(self, "lr_scheduler") and self.lr_scheduler is not None:
+            self.lr_scheduler.step()
+
         return losses
 
-    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
+    def _check_model_status(self, eval_data: pd.DataFrame) -> bool:
         """Check the status of the model during training.
 
         Args:
-            eval_data (list[Any]): The evaluation data from the training epoch.
+            eval_data (pd.DataFrame): The evaluation data from the training epoch.
 
         Returns:
             bool: Whether the training should stop early.
         """
+        if self.model is None:
+            raise ValueError("Model must be initialized before saving checkpoints")
+
         if (
             self.checkpoint_at is not None
             and self.epoch % self.checkpoint_at == 0
@@ -363,14 +808,11 @@ class Trainer:
         # training loop
         num_epochs = self.config["training"]["num_epochs"]
 
-        self.model = self.initialize_model()
+        self.initialize_model()
 
-        optimizer = self.initialize_optimizer()
+        self.initialize_optimizer()
 
-        if optimizer is None:
-            raise AttributeError(
-                "Error, optimizer must be successfully initialized before running training"
-            )
+        self.initialize_lr_scheduler()
 
         total_training_data = torch.zeros(num_epochs, 2, dtype=torch.float32)
 
@@ -378,7 +820,7 @@ class Trainer:
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
 
-            epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
+            epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
 
             # collect mean and std for each epoch
             total_training_data[epoch, :] = torch.Tensor(
@@ -474,9 +916,6 @@ class Trainer:
             ValueError: If the model configuration does not contain 'name'.
             ValueError: If the training configuration does not contain 'checkpoint_path'.
         """
-        if self.model is None:
-            raise ValueError("Model must be initialized before saving checkpoint.")
-
         self.logger.info(
             f"Saving checkpoint for model at epoch {self.epoch} to {self.checkpoint_path}"
         )
