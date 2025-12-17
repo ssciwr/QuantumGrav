@@ -54,6 +54,10 @@ class Trainer(base.Configurable):
             }
         },
         "properties": {
+            "name": {
+                "type": "string",
+                "description": "Name of the training run",
+            },
             "log_level": {
                 "description": "Optional logging level (int or string, e.g. INFO)",
                 "anyOf": [{"type": "integer"}, {"type": "string"}],
@@ -92,6 +96,19 @@ class Trainer(base.Configurable):
                     "optimizer_kwargs": {
                         "type": "object",
                         "description": "Optimizer keyword arguments",
+                        "additionalProperties": {},
+                    },
+                    "lr_scheduler_type": {
+                        "description": "type of the learning rate scheduler", 
+                    },
+                    "lr_scheduler_args": {
+                        "type": "array",
+                        "description": "arguments to construct the learning rate scheduler", 
+                        "items": {},
+                    },
+                    "lr_scheduler_kwargs": {
+                        "type": "object",
+                        "description": "keyword arguments for the construction of learning rate scheduler", 
                         "additionalProperties": {},
                     },
                     "num_workers": {
@@ -315,11 +332,6 @@ class Trainer(base.Configurable):
 
         Args:
             config (dict[str, Any]): The configuration dictionary.
-            criterion (Callable): The loss function to use.
-            apply_model (Callable | None, optional): A function to apply the model. Defaults to None.
-            early_stopping (Callable[[Collection[Any]], bool] | None, optional): A function for early stopping. Defaults to None.
-            validator (DefaultValidator | None, optional): A validator for model evaluation. Defaults to None.
-            tester (DefaultTester | None, optional): A tester for model evaluation. Defaults to None.
 
         Raises:
             ValueError: If the configuration is invalid.
@@ -336,7 +348,8 @@ class Trainer(base.Configurable):
         self.apply_model = config.get("apply_model")
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
-
+        
+        self.nprng = np.random.default_rng(self.seed)
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.seed)
@@ -350,7 +363,7 @@ class Trainer(base.Configurable):
         run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.data_path = (
             Path(self.config["training"]["path"])
-            / f"{config['model'].get('name', 'run')}_{run_date}"
+            / f"{config.get('name', 'run')}_{run_date}"
         )
 
         # set up paths for storing model snapshots and data
@@ -449,6 +462,36 @@ class Trainer(base.Configurable):
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
 
+    def initialize_lr_scheduler(self) -> torch.optim.lr_scheduler._LRScheduler | None:
+        """Initialize the learning rate scheduler for training.
+
+        Raises:
+            RuntimeError: If the optimizer is not initialized.
+
+        Returns:
+            torch.optim.lr_scheduler._LRScheduler: The initialized learning rate scheduler.
+        """
+        if self.config["training"].get("lr_scheduler_type") is None:
+            self.logger.info("No learning rate scheduler specified in config.")
+            return None
+        else:
+            if not hasattr(self, "optimizer") or self.optimizer is None:
+                raise RuntimeError(
+                    "Optimizer must be initialized before initializing learning rate scheduler."
+                )
+            
+            try:
+                self.lr_scheduler = self.config["training"].get("lr_scheduler_type")(
+                    self.optimizer,
+                    *self.config["training"].get("lr_scheduler_args", []),
+                    **self.config["training"].get("lr_scheduler_kwargs", {}),
+                )
+                self.logger.info("Learning rate scheduler initialized.")
+                return self.lr_scheduler
+            except Exception as e:
+                self.logger.error(f"Error initializing learning rate scheduler: {e}")
+                raise e
+
     def initialize_optimizer(self) -> torch.optim.Optimizer | None:
         """Initialize the optimizer for training.
 
@@ -537,7 +580,7 @@ class Trainer(base.Configurable):
             if cfg.get("subset"):
                 num_points = ceil(len(dataset) * cfg["subset"])
                 dataset = dataset.index_select(
-                    np.random.randint(0, len(dataset), num_points).tolist(),
+                    self.nprng.integers(0, len(dataset),size=num_points).tolist()
                 )
 
             if cfg.get("shuffle"):
@@ -567,12 +610,6 @@ class Trainer(base.Configurable):
 
             train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
                 dataset, [train_size, val_size, test_size]
-            )
-        else:
-            train_dataset, val_dataset, test_dataset = (
-                train_dataset,
-                val_dataset,
-                test_dataset,
             )
 
         return train_dataset, val_dataset, test_dataset
@@ -713,17 +750,23 @@ class Trainer(base.Configurable):
 
             losses[i] = loss
 
+        if hasattr(self, "lr_scheduler") and self.lr_scheduler is not None:
+            self.lr_scheduler.step()
+
         return losses
 
     def _check_model_status(self, eval_data: pd.DataFrame) -> bool:
         """Check the status of the model during training.
 
         Args:
-            eval_data (list[Any]): The evaluation data from the training epoch.
+            eval_data (pd.DataFrame): The evaluation data from the training epoch.
 
         Returns:
             bool: Whether the training should stop early.
         """
+        if self.model is None: 
+            raise ValueError("Model must be initialized before saving checkpoints")
+        
         if (
             self.checkpoint_at is not None
             and self.epoch % self.checkpoint_at == 0
@@ -765,14 +808,11 @@ class Trainer(base.Configurable):
         # training loop
         num_epochs = self.config["training"]["num_epochs"]
 
-        self.model = self.initialize_model()
+        self.initialize_model()
 
-        optimizer = self.initialize_optimizer()
+        self.initialize_optimizer()
 
-        if optimizer is None:
-            raise AttributeError(
-                "Error, optimizer must be successfully initialized before running training"
-            )
+        self.initialize_lr_scheduler()
 
         total_training_data = torch.zeros(num_epochs, 2, dtype=torch.float32)
 
@@ -780,7 +820,7 @@ class Trainer(base.Configurable):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
 
-            epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
+            epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
 
             # collect mean and std for each epoch
             total_training_data[epoch, :] = torch.Tensor(

@@ -195,6 +195,16 @@ def config_with_data(config, create_data_zarr, read_data):
 
     return cfg
 
+@pytest.fixture 
+def config_with_scheduler(config): 
+    cfg = deepcopy(config)
+    cfg["training"]["lr_scheduler_type"] = torch.optim.lr_scheduler.LinearLR
+    cfg["training"]["lr_scheduler_args"] = [0.2, 0.8]
+    cfg["training"]["lr_scheduler_kwargs"] = {
+        "total_iters": 10,
+        "last_epoch": -1 
+    }
+    return cfg
 
 @pytest.fixture
 def broken_config(model_config_eval):
@@ -297,17 +307,6 @@ def test_trainer_model_instantiation_works(config):
 
     assert isinstance(trainer.model, QG.GNNModel)
 
-
-def test_trainer_optimizer_instantiation_works(config):
-    trainer = QG.Trainer(
-        config,
-    )
-    assert trainer.model is None
-    trainer.initialize_model()
-    trainer.initialize_optimizer()
-    assert isinstance(trainer.optimizer, torch.optim.Adam)
-
-
 def test_trainer_creation_broken(broken_config):
     with pytest.raises(
         jsonschema.ValidationError,
@@ -316,7 +315,6 @@ def test_trainer_creation_broken(broken_config):
         QG.Trainer(
             broken_config,
         )
-
 
 def test_trainer_init_model(config):
     trainer = QG.Trainer(
@@ -331,16 +329,44 @@ def test_trainer_init_optimizer(config):
     trainer = QG.Trainer(
         config,
     )
-
     # need a model to initialize the optimizer
-    model = trainer.initialize_model()
-    assert model is not None
-    assert isinstance(model, QG.GNNModel)
+    assert trainer.model is None
+    trainer.initialize_model()
+    assert isinstance(trainer.model, QG.GNNModel)
 
-    optimizer = trainer.initialize_optimizer()
-    assert optimizer is not None
-    assert isinstance(optimizer, torch.optim.Optimizer)
+    assert trainer.optimizer is None
+    trainer.initialize_optimizer()
+    assert isinstance(trainer.optimizer, torch.optim.Optimizer)
 
+def test_trainer_init_optimizer_fails(config):
+    trainer = QG.Trainer(
+        config,
+    )
+    # need a model to initialize the optimizer
+    assert trainer.model is None
+    with pytest.raises(Exception, match="Model must be initialized before initializing optimizer."):
+        trainer.initialize_optimizer()
+
+def test_trainer_init_lr_scheduler(config_with_scheduler): 
+    trainer = QG.Trainer(config_with_scheduler)
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+    
+    assert hasattr(trainer, "lr_scheduler") is False
+    trainer.initialize_lr_scheduler()
+    assert hasattr(trainer, "lr_scheduler") is True
+    assert isinstance(trainer.lr_scheduler, torch.optim.lr_scheduler.LinearLR)
+    assert trainer.lr_scheduler.start_factor == 0.2
+    assert trainer.lr_scheduler.end_factor == 0.8
+    assert trainer.lr_scheduler.total_iters == 10
+    assert trainer.lr_scheduler.last_epoch == 0
+    
+def test_trainer_init_lr_scheduler_fails(config_with_scheduler): 
+    trainer = QG.Trainer(config_with_scheduler)
+    trainer.initialize_model()
+    with pytest.raises(RuntimeError, match="Optimizer must be initialized before initializing learning rate scheduler."):
+        trainer.initialize_lr_scheduler()
+    assert hasattr(QG.Trainer, "lr_scheduler") is False
 
 def test_trainer_prepare_dataloader(make_dataset, config):
     trainer = QG.Trainer(
@@ -497,9 +523,6 @@ def test_trainer_check_model_status(config):
         config,
     )
 
-    print(trainer.early_stopping.__class__)
-    print(trainer.validator.__class__)
-
     trainer.initialize_model()
 
     loss = np.random.rand(10).tolist()
@@ -624,14 +647,14 @@ def test_trainer_run_training_with_datasetconf(config_with_data):
     assert trainer.validator is not None
     assert trainer.model is not None
 
-    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
+    train_loader, validation_loader, _ = trainer.prepare_dataloaders(
         split=[0.8, 0.1, 0.1]
     )
 
     original_weights = [param.clone() for param in trainer.model.parameters()]
 
     training_data, valid_data = trainer.run_training(
-        test_loader,
+        train_loader,
         validation_loader,
     )
     trained_weights = [param.clone() for param in trainer.model.parameters()]
@@ -647,6 +670,38 @@ def test_trainer_run_training_with_datasetconf(config_with_data):
     assert training_data.shape[0] == config_with_data["training"]["num_epochs"]
     assert len(trainer.validator.data) == config_with_data["training"]["num_epochs"]
 
+
+def test_trainer_run_training_with_scheduler(make_dataset, config_with_scheduler):
+    trainer = QG.Trainer(config_with_scheduler)
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+    trainer.initialize_lr_scheduler()
+    
+    assert trainer.validator is not None
+    assert trainer.model is not None
+    assert trainer.lr_scheduler is not None
+    
+    train_loader, _, __ = trainer.prepare_dataloaders(
+        split=[0.8, 0.1, 0.1]
+    )
+    
+    for epoch in range(0, 3):
+        original_weights = [param.clone() for param in trainer.model.parameters()]
+        old_lr = trainer.lr_scheduler.get_last_lr()[0]
+        trainer._run_train_epoch(
+            trainer.model, 
+            trainer.optimizer, 
+            train_loader
+        )
+
+        trained_weights = [param.clone() for param in trainer.model.parameters()]
+
+        # Check if the model parameters have changed after training
+        for orig, trained in zip(original_weights, trained_weights):
+            assert not torch.all(torch.eq(orig, trained.data)), (
+                "Model parameters did not change after training."
+            )
+        assert trainer.lr_scheduler.get_last_lr()[0] != old_lr
 
 def test_trainer_run_test(make_dataset, config):
     trainer = QG.Trainer(
