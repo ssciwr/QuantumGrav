@@ -345,6 +345,7 @@ class Trainer(base.Configurable):
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
 
+        np.random.seed(self.seed)
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.seed)
@@ -454,6 +455,31 @@ class Trainer(base.Configurable):
 
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
+
+    def initialize_lr_scheduler(self) -> torch.optim.lr_scheduler._LRScheduler | None:
+        """Initialize the learning rate scheduler for training.
+
+        Raises:
+            RuntimeError: If the optimizer is not initialized.
+
+        Returns:
+            torch.optim.lr_scheduler._LRScheduler: The initialized learning rate scheduler.
+        """
+        if self.config["training"].get("lr_scheduler_type") is None:
+            self.logger.info("No learning rate scheduler specified in config.")
+            return None
+        else:
+            try:
+                self.lr_scheduler = self.config["training"].get("lr_scheduler_type")(
+                    self.optimizer,
+                    *self.config["training"].get("lr_scheduler_args", []),
+                    **self.config["training"].get("lr_scheduler_kwargs", {}),
+                )
+                self.logger.info("Learning rate scheduler initialized.")
+                return self.lr_scheduler
+            except Exception as e:
+                self.logger.error(f"Error initializing learning rate scheduler: {e}")
+                raise e
 
     def initialize_optimizer(self) -> torch.optim.Optimizer | None:
         """Initialize the optimizer for training.
@@ -719,6 +745,9 @@ class Trainer(base.Configurable):
 
             losses[i] = loss
 
+        if hasattr(self, "lr_scheduler") and self.lr_scheduler is not None:
+            self.lr_scheduler.step()
+
         return losses
 
     def _check_model_status(self, eval_data: pd.DataFrame) -> bool:
@@ -771,11 +800,13 @@ class Trainer(base.Configurable):
         # training loop
         num_epochs = self.config["training"]["num_epochs"]
 
-        self.model = self.initialize_model()
+        self.initialize_model()
 
-        optimizer = self.initialize_optimizer()
+        self.initialize_optimizer()
 
-        if optimizer is None:
+        self.initialize_lr_scheduler()
+
+        if self.optimizer is None:
             raise AttributeError(
                 "Error, optimizer must be successfully initialized before running training"
             )
@@ -786,7 +817,7 @@ class Trainer(base.Configurable):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
 
-            epoch_data = self._run_train_epoch(self.model, optimizer, train_loader)
+            epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
 
             # collect mean and std for each epoch
             total_training_data[epoch, :] = torch.Tensor(
