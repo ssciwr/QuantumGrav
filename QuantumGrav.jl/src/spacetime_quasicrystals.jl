@@ -339,5 +339,5 @@ function create_Minkowski_quasicrystal_cset(
     # order by time coordinate
     sort!(cartesian_points, by = p -> p[1])
 
-    return BitArrayCauset(CausalSets.MinkowskiManifold{2}(), cartesian_points)
+    return CausalSets.BitArrayCauset(CausalSets.MinkowskiManifold{2}(), cartesian_points)
 end
