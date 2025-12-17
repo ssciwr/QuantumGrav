@@ -350,9 +350,6 @@ class ConfigHandler:
         # then assign the sweep partners to their sweep dimensions
         self._extract_sweep_dims([], self.config, sweep_targets, coupled_targets)
 
-        print("sweep targets: ", sweep_targets)
-        print("coupled targets: ", coupled_targets)
-
         if len(sweep_targets) == 0 and len(coupled_targets) == 0:
             self.run_configs = [
                 config,
@@ -380,6 +377,8 @@ class ConfigHandler:
                     sweep_targets[tuple(v["target"])]["partner_path"].append(v["path"])
                 else:
                     sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
+
+            self.sweep_targets = list[sweep_targets.keys()]
 
             # construct the configs
             self.run_configs = self._construct_run_configs(sweep_targets)
@@ -561,8 +560,6 @@ class ConfigHandler:
         sweep_keys = [k for k in sweep_targets.keys()]
         lookup_keys = []
 
-        print("constructing run configs from sweep targets: ", sweep_targets)
-
         # make a set of lookup keys so we later know where to put the values
         # in the cartesian product.
         for v in sweep_targets.values():
@@ -581,8 +578,6 @@ class ConfigHandler:
             )
             for k in sweep_keys
         ]
-
-        print("lists for cartesian product: ", lists)
 
         # make the elements of the cartesian product. each will correspond to one lookup key
         i = 0  # index into `lists`
