@@ -49,7 +49,7 @@ class Evaluator(base.Configurable):
                 "description": "Optional function to call the model's forward method in customized way"
             },
         },
-        "required": ["device", "criterion", "evaluator_tasks"],
+        "required": ["device", "criterion"],
         "additionalProperties": False,
     }
 
@@ -61,7 +61,8 @@ class Evaluator(base.Configurable):
         criterion: Callable,
         evaluator_tasks: Sequence[
             Dict[str, str | Callable | Sequence[Any] | None | Dict[str, Any] | None]
-        ],
+        ]
+        | None,
         apply_model: Callable | None = None,
     ):
         """Default evaluator for model evaluation.
@@ -86,15 +87,21 @@ class Evaluator(base.Configurable):
         # store as list of (metric_name, monitor_callable) tuples for simple iteration
         self.tasks: list[tuple[str, Callable]] = []
         columns = ["loss_avg", "loss_min", "loss_max"]
-        for task_spec in evaluator_tasks:
-            monitor = task_spec["monitor"]
-            if task_spec.get("args") or task_spec.get("kwargs"):
-                monitor = monitor(
-                    *(task_spec.get("args", []) if task_spec.get("args") else []),
-                    **(task_spec.get("kwargs", {}) if task_spec.get("kwargs") else {}),
-                )
-            columns.append(task_spec["name"])
-            self.tasks.append((task_spec["name"], monitor))
+
+        if evaluator_tasks is not None:
+            for task_spec in evaluator_tasks:
+                monitor = task_spec["monitor"]
+                if task_spec.get("args") or task_spec.get("kwargs"):
+                    monitor = monitor(
+                        *(task_spec.get("args", []) if task_spec.get("args") else []),
+                        **(
+                            task_spec.get("kwargs", {})
+                            if task_spec.get("kwargs")
+                            else {}
+                        ),
+                    )
+                columns.append(task_spec["name"])
+                self.tasks.append((task_spec["name"], monitor))
 
         self.data = pd.DataFrame({col: pd.Series([], dtype=object) for col in columns})
 
@@ -162,7 +169,7 @@ class Evaluator(base.Configurable):
         return cls(
             config["device"],
             config["criterion"],
-            config["evaluator_tasks"],
+            config.get("evaluator_tasks"),
             config.get("apply_model"),
         )
 
