@@ -378,7 +378,7 @@ class ConfigHandler:
                 else:
                     sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
 
-            self.sweep_targets = list[sweep_targets.keys()]
+            self.sweep_targets = list(sweep_targets.keys())
 
             # construct the configs
             self.run_configs = self._construct_run_configs(sweep_targets)
