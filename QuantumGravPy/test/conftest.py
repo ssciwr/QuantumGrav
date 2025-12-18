@@ -332,8 +332,8 @@ def make_dataloader(create_data_zarr, make_dataset):
 @pytest.fixture(scope="session")
 def yaml_text():
     yaml_text = """
+        name: test_model
         model:
-            name: test_model
             layers: !sweep
                 values: [1, 2]
 
@@ -358,8 +358,21 @@ def yaml_text():
                     values: [-1, -2]
             baz:
                 - x: !coupled-sweep
-                    target: model.foo[1].x
+                    target: model.foo.1.x
                     values: [-10, -20]
+
+            listsweep: !sweep
+                values:
+                    - [1, 2]
+                    - [3, 4, 5]
+                    - [6]
+
+            coupled_listsweep: !coupled-sweep
+                target: model.listsweep
+                values:
+                    - [10, 20]
+                    - [30, 40, 50]
+                    - [60]
 
         trainer:
             epochs: !range
