@@ -239,10 +239,11 @@ def config_with_default_evaluators(config):
             "cpu",
             eval_loss,
             [
-                [
-                    ("loss", monitor_dummy, None, None),
-                    ("other_loss", monitor_dummy, None, None),
-                ]
+                {
+                    "name": "loss",
+                    "monitor": monitor_dummy,
+                },
+                {"name": "other_loss", "monitor": monitor_dummy},
             ],
         ],
         "kwargs": {},
@@ -253,10 +254,11 @@ def config_with_default_evaluators(config):
             "cpu",
             eval_loss,
             [
-                [
-                    ("loss", monitor_dummy, None, None),
-                    ("other_loss", monitor_dummy, None, None),
-                ]
+                {
+                    "name": "loss",
+                    "monitor": monitor_dummy,
+                },
+                {"name": "other_loss", "monitor": monitor_dummy},
             ],
         ],
         "kwargs": {},
@@ -268,14 +270,14 @@ def config_with_default_evaluators(config):
             {
                 0: {
                     "delta": 1e-2,
-                    "metric": "loss_0",
+                    "metric": "loss",
                     "grace_period": 8,
                     "init_best_score": 1000000.0,
                     "mode": "min",
                 },
                 1: {
                     "delta": 1e-4,
-                    "metric": "other_loss_0",
+                    "metric": "other_loss",
                     "grace_period": 10,
                     "init_best_score": -1000000.0,
                     "mode": "max",
