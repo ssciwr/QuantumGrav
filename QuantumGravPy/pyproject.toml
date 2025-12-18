@@ -24,6 +24,7 @@ dependencies = [
     "PyYAML",
     "zarr",
     "optuna",
+    "huggingface-hub"
 ]
 
 [tool.hatch.build.targets.wheel]
