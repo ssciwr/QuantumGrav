@@ -123,6 +123,187 @@ function prepare_dataproduction(
 
     file = Zarr.DirectoryStore(filepath)
 
+    # create root group
+    Zarr.zgroup(file, "")
+
     return filepath, file
+
+end
+
+"""
+	setup_config(configpath::Union{String, Nothing})::Dict{Any,Any}
+
+Set up the configuration for data production.
+- Loads the default configuration from `configs/createdata_default.yaml`.
+- If a user-provided config path is given, loads it and merges with the default (overlapping keys in the user config override defaults).
+
+# Arguments
+- `configpath::Union{String, Nothing}`: Path to a YAML config file to merge with the defaults. If `nothing`, only the default config is used. Relative paths and paths with `~` are supported.
+
+# Returns
+- `Dict{Any,Any}`: The resulting configuration dictionary after applying defaults and optional overrides.
+"""
+function setup_config(configpath::Union{String,Nothing})::Dict{Any,Any}
+    defaultconfigpath = joinpath((dirname(@__DIR__)), "configs", "createdata_default.yaml")
+    default_config = YAML.load_file(defaultconfigpath)
+
+    if configpath === nothing
+        config = default_config
+        return config
+    else
+        # Normalize user-provided path to improve robustness
+        normalized = abspath(expanduser(configpath))
+        if isfile(normalized)
+            loaded_config = YAML.load_file(normalized)
+            # this replaces the overlapping entries (shallow merge is fine for our config structure)
+            return merge(default_config, loaded_config)
+        else
+            throw(ArgumentError("Error: Config file not found at $(normalized)"))
+        end
+    end
+end
+
+"""_setup_channel()::Channel{CsetFactory}
+Define this explicitly to avoid closure serialization in setup_multiprocessing
+"""
+function _setup_channel()::Channel{CsetFactory}
+    return Channel{CsetFactory}(1)
+end
+
+"""
+	setup_multiprocessing(config::Dict)
+
+Set up the multiprocessing environment for distributed computation.
+
+This function creates a dictionary mapping worker process IDs to RemoteChannels,
+each containing a process-local instance of `CsetFactory` initialized with a unique seed.
+The random seed for each worker is set to `config["seed"] + pid`, and the configuration
+is deep-copied and updated for each worker.
+
+# Arguments
+- `config::Dict`: Configuration dictionary containing at least a `"seed"` key.
+
+# Returns
+- `Dict{Any,Any}`: A dictionary mapping worker process IDs to RemoteChannels containing `CsetFactory` instances.
+"""
+function setup_multiprocessing(config::Dict)
+
+    # setup multiprocessing environment.
+    worker_factories = Dict()
+    for (idx, p) in enumerate(Distributed.workers())
+        @info "setting up worker_factory on pid=$(p)"
+
+        process_local_seed = config["seed"] + idx
+        process_local_config = deepcopy(config)
+        process_local_config["seed"] = process_local_seed
+
+        # set the rng seed on the worker
+        # this requires all imports to be done with @everywhere
+        Distributed.remotecall_eval(Main, p, :(Random.seed!($process_local_seed)))
+
+        # we need to use RemoteChannels here into which we can put the CsetFactory instances,
+        # one per process.
+        # then we can take them, use them, and put them back again which avoids
+        # conflicts or reuse between processes and avoids global variables
+        worker_factories[p] = Distributed.RemoteChannel(_setup_channel, p)
+        put!(worker_factories[p], CsetFactory(process_local_config))
+    end
+    return worker_factories
+end
+
+"""
+	produce_data(chunksize::Int64, configpath::String, make_data::Function)
+
+Produce data on num_workers in parallel using the supplied make_data function. This works by having the worker processes
+fill a Channel with data that is drained by a writer task concurrently. Therefore, data writing and data production happens at the same time. At most `chunksize` datapoints can be held in the queue. When it's full the workers will
+wait until a slot in it becomes free. In the same way, the writer task will wait until a new datapoint is available if the queue is empty.
+How many datapoints are written is defined in the config. See the documentation of the config file for this.
+This relies on worker tasks being spawned by the user and will error when there are none.
+
+# Arguments:
+- `chunksize`: Maximum datapoints to be held in memory at any one time. Note that setting this to a too small value can lead to deadlocks.
+- `configpath`: path on disk to the config file to load
+- `make_data`: Function for producing the data with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
+   This must return a Dictionary mapping names (strings) => Union{AbstractVector, Number, Bool, String}
+
+# Returns:
+Nothing
+"""
+function produce_data(
+    chunksize::Int64,
+    configpath::Union{String,Nothing},
+    make_data::Function
+)::Nothing
+    @info "Producing data with workers $(Distributed.nworkers()) and chunksize $(chunksize)"
+    if length(Distributed.workers()) < 2
+        throw(
+            ErrorException(
+                "At least 2 worker processes are required for data production. Please use `Distributed.addprocs(n)` to add n worker processes before calling `produce_data`.",
+            ),
+        )
+    end
+
+    @info "setup config"
+    config = setup_config(configpath)
+
+    # set the global rng seed in the main process
+    @info "set global random seed"
+    Random.seed!(config["seed"])
+
+    @info "set up multiprocessing environment"
+    worker_factories = setup_multiprocessing(config)
+
+    # get cset type
+    cset_type = config["cset_type"]
+    @info "generating data for cset type $(cset_type)"
+
+    # make file, prepare config, output dir
+    @info "preparing output zarr store"
+    filepath, file = prepare_dataproduction(config, [make_data], name = cset_type)
+
+    # get number of csets to create
+    n = config["num_datapoints"]
+
+    # split indices across workers and set up data queue
+    # only hold chunksize many csets in memory at any given time
+    queue = Distributed.RemoteChannel(
+        () -> Channel{Tuple{Int,Dict{String,Any}}}(max(1, chunksize)),
+    )
+
+    # start async writer task on the main process
+    writer = @async begin
+        @info "Writer started on pid=$(Distributed.myid())"
+        root = Zarr.zopen(file, "w"; path = "")
+        for i ∈ 1:n # write exactly n times => num_datasets write operations
+            i, cset_data = take!(queue) # blocks when queue is empty
+            csetdata = Dict("cset_$(i)" => cset_data)
+            dict_to_zarr(root, csetdata)
+        end
+        @info "Writer finished"
+    end
+
+    # start producers
+    @info "Producing data"
+    p = ProgressMeter.Progress(n, barglyphs = ProgressMeter.BarGlyphs("[=> ]"))
+    ProgressMeter.progress_pmap(1:n, progress = p, batch_size = 1) do i
+        # select worker
+        worker_factory = take!(worker_factories[Distributed.myid()]) # get the factory for this worker
+
+        # when determinism is required, we set the rng seeds per datapoint and
+        # this way, no matter how loadbalancing handles
+        # the allocation of datapoints to workers, the randomness sources are deterministic for each datapoint
+        Random.seed!(worker_factory.rng, worker_factory.conf["seed"] + i*10)
+        Random.seed!(worker_factory.conf["seed"] + i*10)
+
+        try
+            cset_data = make_data(worker_factory)
+            put!(queue, (i, cset_data)) # blocks when queue is full
+        finally
+            put!(worker_factories[Distributed.myid()], worker_factory) # return the factory back to the dict
+        end
+    end
+    @info "All producers finished. Waiting for writer to finish"
+    wait(writer)
+    @info "Finished cset type $(cset_type)"
 
 end

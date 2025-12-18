@@ -98,6 +98,19 @@ class Trainer(base.Configurable):
                         "description": "Optimizer keyword arguments",
                         "additionalProperties": {},
                     },
+                    "lr_scheduler_type": {
+                        "description": "type of the learning rate scheduler",
+                    },
+                    "lr_scheduler_args": {
+                        "type": "array",
+                        "description": "arguments to construct the learning rate scheduler",
+                        "items": {},
+                    },
+                    "lr_scheduler_kwargs": {
+                        "type": "object",
+                        "description": "keyword arguments for the construction of learning rate scheduler",
+                        "additionalProperties": {},
+                    },
                     "num_workers": {
                         "type": "integer",
                         "minimum": 0,
@@ -345,7 +358,12 @@ class Trainer(base.Configurable):
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
 
-        np.random.seed(self.seed)
+        np.random.seed(
+            self.seed
+        )  # legacy numpy rng, in case it is used in a downstream part.
+        self.nprng = np.random.default_rng(
+            self.seed
+        )  # current numpy rng api, used for shuffling.
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.seed)
@@ -471,6 +489,11 @@ class Trainer(base.Configurable):
             self.logger.info("No learning rate scheduler specified in config.")
             return None
         else:
+            if not hasattr(self, "optimizer") or self.optimizer is None:
+                raise RuntimeError(
+                    "Optimizer must be initialized before initializing learning rate scheduler."
+                )
+
             try:
                 self.lr_scheduler = self.config["training"].get("lr_scheduler_type")(
                     self.optimizer,
@@ -571,7 +594,7 @@ class Trainer(base.Configurable):
             if cfg.get("subset"):
                 num_points = ceil(len(dataset) * cfg["subset"])
                 dataset = dataset.index_select(
-                    np.random.randint(0, len(dataset), num_points).tolist(),
+                    self.nprng.integers(0, len(dataset), size=num_points).tolist()
                 )
 
             if cfg.get("shuffle"):
@@ -601,12 +624,6 @@ class Trainer(base.Configurable):
 
             train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
                 dataset, [train_size, val_size, test_size]
-            )
-        else:
-            train_dataset, val_dataset, test_dataset = (
-                train_dataset,
-                val_dataset,
-                test_dataset,
             )
 
         return train_dataset, val_dataset, test_dataset
@@ -756,11 +773,14 @@ class Trainer(base.Configurable):
         """Check the status of the model during training.
 
         Args:
-            eval_data (list[Any]): The evaluation data from the training epoch.
+            eval_data (pd.DataFrame): The evaluation data from the training epoch.
 
         Returns:
             bool: Whether the training should stop early.
         """
+        if self.model is None:
+            raise ValueError("Model must be initialized before saving checkpoints")
+
         if (
             self.checkpoint_at is not None
             and self.epoch % self.checkpoint_at == 0
@@ -807,11 +827,6 @@ class Trainer(base.Configurable):
         self.initialize_optimizer()
 
         self.initialize_lr_scheduler()
-
-        if self.optimizer is None:
-            raise AttributeError(
-                "Error, optimizer must be successfully initialized before running training"
-            )
 
         total_training_data = torch.zeros(num_epochs, 2, dtype=torch.float32)
 
