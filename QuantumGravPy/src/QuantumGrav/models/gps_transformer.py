@@ -2,6 +2,8 @@ import torch
 import torch_geometric
 from typing import Any
 
+from .. import base
+
 
 class RedrawProjection:
     """Model to fulfill performer need for redrawing random feature matrix every n steps to avoid bias"""
@@ -138,7 +140,7 @@ class GPSModel(torch.nn.Module):
         return x
 
 
-class GPSTransformer(torch.nn.Module):
+class GPSTransformer(torch.nn.Module, base.Configurable):
     """GPS Transformer wrapper for QuantumGravPy"""
 
     def __init__(
@@ -197,3 +199,23 @@ class GPSTransformer(torch.nn.Module):
         """
         self.transformer_model.redraw.redraw_projections()
         return self.transformer_model(x, edge_index, batch)
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "GPSTransformer":
+        """Instantiate a GPSTransformer model from a configuration dictionary
+
+        Args:
+            config (dict[str, Any]): configuration dictionary with model parameters
+        Returns:
+            GPSTransformer: instantiated GPSTransformer model
+        """
+        return cls(
+            in_features=config["in_features"],
+            out_features=config["out_features"],
+            channels=config["channels"],
+            num_heads=config["num_heads"],
+            num_layers=config["num_layers"],
+            attn_type=config["attn_type"],
+            attn_kwargs=config.get("attn_kwargs", {}),
+            redraw_interval=config.get("redraw_interval", None),
+        )
