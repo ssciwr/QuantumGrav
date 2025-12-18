@@ -53,8 +53,6 @@ class Evaluator(base.Configurable):
         "additionalProperties": False,
     }
 
-    # TODO:
-    # - add more tests
     def __init__(
         self,
         device: str | torch.device | int,
@@ -167,7 +165,7 @@ class Evaluator(base.Configurable):
         """
         jsonschema.validate(config, cls.schema)
         return cls(
-            config["device"],
+            torch.device(config["device"]),
             config["criterion"],
             config.get("evaluator_tasks"),
             config.get("apply_model"),

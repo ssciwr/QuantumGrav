@@ -112,17 +112,39 @@ def input():
 @pytest.fixture
 def tasks():
     return [
-        [
-            ("first", DummyMonitor1, [], {"offset": 0.2}),
-            ("second", dummymonitor_2, None, None),
-        ],
-        [
-            ("first", DummyMonitor1, [], {"offset": 0.1}),
-            ("second", DummyMonitor1, [], {"offset": 0.2}),
-            ("thrid", DummyMonitor1, [], {"offset": 0.3}),
-            ("fourth", dummymonitor_2, None, None),
-        ],
+        {
+            "name": "first",
+            "monitor": DummyMonitor1,
+            "args": [],
+            "kwargs": {"offset": 0.2},
+        },
+        {
+            "name": "second",
+            "monitor": dummymonitor_2,
+        },
+        {
+            "name": "third",
+            "monitor": DummyMonitor1,
+            "args": [],
+            "kwargs": {"offset": 0.1},
+        },
+        {
+            "name": "fourth",
+            "monitor": dummymonitor_2,
+        },
     ]
+
+
+@pytest.fixture
+def config(tasks):
+    config = {
+        "device": "cpu",
+        "criterion": compute_loss,
+        "evaluator_tasks": tasks,
+        "apply_model": lambda data: gnn_model_eval(data, data.edge_index, data.batch),
+    }
+
+    return config
 
 
 def test_default_validator_creation(gnn_model_eval, tasks):
@@ -139,27 +161,50 @@ def test_default_validator_creation(gnn_model_eval, tasks):
     assert evaluator.criterion is compute_loss
     assert evaluator.apply_model is not None
     assert set(evaluator.data.columns) == {
-        "first_0",
-        "second_0",
-        "first_1",
-        "second_1",
-        "thrid_1",
-        "fourth_1",
         "loss_avg",
-        "loss_min",
         "loss_max",
+        "loss_min",
+        "first",
+        "second",
+        "third",
+        "fourth",
     }
 
-    assert len(evaluator.tasks) == 2
-    assert len(evaluator.tasks[0]) == 2
-    assert len(evaluator.tasks[1]) == 4
-    assert isinstance(evaluator.tasks[0]["first"], DummyMonitor1)
-    assert evaluator.tasks[0]["second"] == dummymonitor_2
+    assert len(evaluator.tasks) == 4
+    assert evaluator.tasks[0][0] == "first"
 
-    assert isinstance(evaluator.tasks[1]["first"], DummyMonitor1)
-    assert isinstance(evaluator.tasks[1]["second"], DummyMonitor1)
-    assert isinstance(evaluator.tasks[1]["thrid"], DummyMonitor1)
-    assert evaluator.tasks[1]["fourth"] == dummymonitor_2
+    assert isinstance(evaluator.tasks[0][1], DummyMonitor1)
+    assert evaluator.tasks[1] == ("second", dummymonitor_2)
+
+    assert evaluator.tasks[2][0] == "third"
+    assert isinstance(evaluator.tasks[2][1], DummyMonitor1)
+    assert evaluator.tasks[3] == ("fourth", dummymonitor_2)
+
+
+def test_default_validator_fromconfig(gnn_model_eval, config):
+    evaluator = QG.Validator.from_config(config)
+    device = torch.device("cpu")
+    assert evaluator.device == device
+    assert evaluator.criterion is compute_loss
+    assert evaluator.apply_model is not None
+    assert set(evaluator.data.columns) == {
+        "loss_avg",
+        "loss_max",
+        "loss_min",
+        "first",
+        "second",
+        "third",
+        "fourth",
+    }
+    assert len(evaluator.tasks) == 4
+    assert evaluator.tasks[0][0] == "first"
+
+    assert isinstance(evaluator.tasks[0][1], DummyMonitor1)
+    assert evaluator.tasks[1] == ("second", dummymonitor_2)
+
+    assert evaluator.tasks[2][0] == "third"
+    assert isinstance(evaluator.tasks[2][1], DummyMonitor1)
+    assert evaluator.tasks[3] == ("fourth", dummymonitor_2)
 
 
 def test_default_validator_evaluate(make_dataloader, gnn_model_eval, tasks):
@@ -178,12 +223,10 @@ def test_default_validator_evaluate(make_dataloader, gnn_model_eval, tasks):
     assert len(evaluator.data) == 1
     assert len(current_data) == 1
     assert set(current_data.columns) == {
-        "first_0",
-        "second_0",
-        "first_1",
-        "second_1",
-        "thrid_1",
-        "fourth_1",
+        "first",
+        "second",
+        "third",
+        "fourth",
         "loss_avg",
         "loss_min",
         "loss_max",
@@ -193,7 +236,6 @@ def test_default_validator_evaluate(make_dataloader, gnn_model_eval, tasks):
 def test_default_validator_report(caplog, make_dataloader, gnn_model_eval, tasks):
     device = torch.device("cpu")
     dataloader = make_dataloader
-    device = torch.device("cpu")
     model = gnn_model_eval.to(device)
     evaluator = QG.Validator(
         device=device,
@@ -208,13 +250,14 @@ def test_default_validator_report(caplog, make_dataloader, gnn_model_eval, tasks
         evaluator.report(current_data)
         # Test specific content
         assert "Validation results:" in caplog.text
-        assert f" {current_data.tail(1)}" in caplog.text
+        assert "\n%s", (
+            current_data.tail(1).to_string(float_format="{:.4f}".format) in caplog.text
+        )
 
 
 def test_default_test_report(caplog, make_dataloader, gnn_model_eval, tasks):
     device = torch.device("cpu")
     dataloader = make_dataloader
-    device = torch.device("cpu")
     model = gnn_model_eval.to(device)
     evaluator = QG.Tester(
         device=device,
@@ -229,4 +272,6 @@ def test_default_test_report(caplog, make_dataloader, gnn_model_eval, tasks):
         evaluator.report(current_data)
         # Test specific content
         assert "Testing results:" in caplog.text
-        assert f" {current_data.tail(1)}" in caplog.text
+        assert "\n%s", (
+            current_data.tail(1).to_string(float_format="{:.4f}".format) in caplog.text
+        )
