@@ -102,7 +102,7 @@ early_stopping:
     patience: 5
 criterion: !pyobject mymodule.compute_loss
 ```
-```
+TODO: add comment on leaving out early stopping if not needed.
 The config includes `name`, `training`, `data`, `model`, `validation`, `testing`, `early_stopping`, and `criterion`. See [`Graph Neural Network models`](./models.md) for model schema details.
 
 ## Train a model
