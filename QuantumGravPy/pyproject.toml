@@ -20,7 +20,6 @@ dependencies = [
     "matplotlib",
     "scikit-learn",
     "joblib",
-    "juliacall",
     "PyYAML",
     "zarr",
     "optuna",
@@ -51,4 +50,17 @@ addopts = [
     "--import-mode=importlib",
     "-vvv",
     "-s",
+]
+
+[tool.coverage.run]
+source = ["src/QuantumGrav"]
+omit = [
+    "*/test/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+omit = [
+    "*/test/*",
+    "*/tests/*",
 ]
