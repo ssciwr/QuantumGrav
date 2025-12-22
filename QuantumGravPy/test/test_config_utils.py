@@ -63,6 +63,8 @@ def test_read_yaml(yaml_text):
     assert cfg["model"]["foo"][1]["x"]["type"] == "sweep"
     assert cfg["model"]["foo"][1]["x"]["values"] == [1, 2]
     assert cfg["model"]["foo"][1]["y"] == 2
+    assert cfg["model"]["listsweep"]["type"] == "sweep"
+    assert cfg["model"]["listsweep"]["values"] == [[1, 2], [3, 4, 5], [6]]
 
     # coupled-sweep nodes
     cs = cfg["model"]["bs"]
@@ -77,6 +79,9 @@ def test_read_yaml(yaml_text):
     assert cfg["model"]["baz"][0]["x"]["type"] == "coupled-sweep"
     assert cfg["model"]["baz"][0]["x"]["target"] == ["model", "foo", 1, "x"]
     assert cfg["model"]["baz"][0]["x"]["values"] == [-10, -20]
+    assert cfg["model"]["coupled_listsweep"]["type"] == "coupled-sweep"
+    assert cfg["model"]["coupled_listsweep"]["target"] == ["model", "listsweep"]
+    assert cfg["model"]["coupled_listsweep"]["values"] == [[10, 20], [30, 40, 50], [60]]
 
     # range nodes
     rn = cfg["trainer"]["epochs"]
@@ -189,11 +194,11 @@ def test_initialize_config_handler(yaml_text):
     loader = QG.config_utils.get_loader()
     base_cfg = yaml.load(yaml_text, Loader=loader)
 
-    ch = QG.ConfigHandler(base_cfg)
+    ch = QG.ConfigHandler(base_cfg, name_addition="run")
     run_cfgs = ch.run_configs
 
     assert isinstance(run_cfgs, list)
-    assert len(run_cfgs) == 12
+    assert len(run_cfgs) == 36
 
     # Verify coupling: for layers=1 -> bs=16, layers=2 -> bs=32
     observed = set()
@@ -204,25 +209,29 @@ def test_initialize_config_handler(yaml_text):
         foo = rc["model"]["foo"][1]
         bar = rc["model"]["bar"][0]
         baz = rc["model"]["baz"][0]
-
+        listsweep = rc["model"]["listsweep"]
         assert layers in [1, 2]
         assert lr in [0.1, 0.01, 0.001]
         assert bs == (16 if layers == 1 else 32)
         assert foo["x"] in [1, 2]
         assert bar["x"] in [-1, -2]
         assert baz["x"] in [-10, -20]
+        assert listsweep in [[1, 2], [3, 4, 5], [6]]
 
-        observed.add((layers, bs, lr, foo["x"], bar["x"], baz["x"]))
+        observed.add((layers, bs, lr, foo["x"], bar["x"], baz["x"], tuple(listsweep)))
 
-        name = rc["model"]["name"]
+        name = rc["name"]
         assert name.startswith("test_model_run_")
         assert name.endswith(f"run_{i}")
+
     # Ensure all combinations of (layers, lr) appear with the correct coupling for bs
     expected = set()
     for layers, bs in [(1, 16), (2, 32)]:
         for lr in [0.1, 0.01, 0.001]:
             for foo_x, bar_x, baz_x in [(1, -1, -10), (2, -2, -20)]:
-                expected.add((layers, bs, lr, foo_x, bar_x, baz_x))
+                for ls in [[1, 2], [3, 4, 5], [6]]:
+                    expected.add((layers, bs, lr, foo_x, bar_x, baz_x, tuple(ls)))
+
     assert observed == expected
 
 

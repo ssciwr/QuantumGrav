@@ -1,87 +1,119 @@
 # API Reference
 
-## Main model class
-The main model class `GNNModel` is there to tie together the Graph neural network backbone and a multilayer perceptron classifier model that can be configured for various tasks. 
-::: QuantumGrav.gnn_model 
+## Models
+
+### GNNModel
+Top-level model that ties together an encoder, optional graph-feature networks, pooling/aggregation, and downstream tasks. It is fully configurable via a JSON/YAML schema.
+
+::: QuantumGrav.gnn_model
     handler: python
     options:
       show_source: true
 
-## Graph Neural network submodels
-The submodel classes in this section comprise the graph neural network backbone of a QuantumGrav model. 
+### Sequential encoder
+Composable GNN encoder built from PyG layers with a declarative layer spec and optional skip connections.
 
-### Graph model block 
-This submodel is the main part of the graph neural network backbone, composed of a set of GNN layers from `pytorch-geometric` with dropout and `BatchNorm`. 
-::: QuantumGrav.models.gnn_block  
+::: QuantumGrav.models.sequential
     handler: python
     options:
       show_source: true
 
-### Base class for models composed of linear layers
-::: QuantumGrav.models.linear_sequential 
+### LinearSequential
+Lightweight MLP builder used for graph-feature nets and task heads.
+
+::: QuantumGrav.models.linear_sequential
     handler: python
     options:
       show_source: true
 
-## Model evaluation
-This module provides base classes that take the output of applying the model to a validation or training dataset, and derive useful quantities to evaluate the model quality. These do not do anything useful by default. Rather, you must derive your own class from them that implemements your desired evaluation, e.g., using an F1 score. 
+### GNN block (optional)
+Block-style GNN backbone. This can also be build with `Sequential`, but gives a useful example and baseline.
 
-::: QuantumGrav.evaluate 
+::: QuantumGrav.models.gnn_block
     handler: python
     options:
       show_source: true
 
-## Datasets 
-The package supports three kinds of datasets with a common baseclass `QGDatasetBase`. For the basics of how those work, check out [the pytorch-geometric documentation of dataset](https://pytorch-geometric.readthedocs.io/en/2.5.3/notes/create_dataset.html)
+## Training and Evaluation
 
-These are: 
-- `QGDataset`: A dataset that relies on an on-disk storage of the processed data. It lazily loads csets from disk when needed. 
-- `QGDatasetInMemory`: A dataset that holds the entire processed dataset in memory at once. 
-- `QGDatasetOnthefly`: This dataset does not hold anything on disk or in memory, but creates the data on demand from some supplied Julia code. 
+### Trainer
+Configuration-driven training loop: prepares datasets/dataloaders, initializes model/optimizer/scheduler, runs train/validate/test, and manages checkpoints.
+
+::: QuantumGrav.train
+    handler: python
+    options:
+      show_source: true
+
+### Distributed training (DDP)
+Data-parallel trainer built on PyTorch DDP.
+
+::: QuantumGrav.train_ddp
+    handler: python
+    options:
+      show_source: true
+
+### Evaluators
+Evaluation framework with `Evaluator`, `Validator`, and `Tester` plus configurable monitor tasks.
+
+::: QuantumGrav.evaluate
+    handler: python
+    options:
+      show_source: true
+
+### Early stopping
+Multi-task early-stopping utilities.
+
+::: QuantumGrav.early_stopping
+    handler: python
+    options:
+      show_source: true
+
+## Data
 
 ### Dataset base class
-::: QuantumGrav.dataset_base 
+Common interface and preprocessing pipeline.
+
+::: QuantumGrav.dataset_base
     handler: python
     options:
       show_source: true
 
-### Dataset loading data from disk
-::: QuantumGrav.dataset_ondisk 
+### On-disk dataset
+Persistent processed dataset with lazy loading.
+
+::: QuantumGrav.dataset_ondisk
     handler: python
     options:
       show_source: true
 
-## Julia-Python integration
-This class provides a bridge to some user-supplied Julia code and converts its output into something Python can work with. 
+### Zarr loaders
+Helpers for loading Zarr stores.
 
-::: QuantumGrav.julia_worker 
+::: QuantumGrav.load_zarr
     handler: python
     options:
       show_source: true
 
-## Model training
-This consists of two classes, one which provides the basic training functionality - `Trainer`, and a class derived from this, `TrainerDDP`, which provides functionality for distributed data parallel training. 
+## Configuration utilities
+YAML helpers for sweeps, references, ranges, and Python objects.
 
-### Trainer 
-This class provides wrapper functions for setting up a model and for training and evaluating it. The basic concept is that everything is defined in a yaml file and handed to this class together with evaluator classes. After construction, the `train` and `test` functions will take care of the training and testing of the model. 
-
-::: QuantumGrav.train 
+::: QuantumGrav.config_utils
     handler: python
     options:
       show_source: true
 
-### Distributed data parallel Trainer class
-This is based on [this part of the pytorch documentation](https://docs.pytorch.org/tutorials/beginner/ddp_series_theory.html) and is **untested** at the time of writing. 
+## Julia integration
+Bridge for user-supplied Julia code.
 
-::: QuantumGrav.train_ddp 
+::: QuantumGrav.julia_worker
     handler: python
     options:
       show_source: true
 
 ## Utilities
-General utilities that are used throughout this package. 
+General utilities used throughout the package.
 
-::: QuantumGrav.utils 
+::: QuantumGrav.utils
     handler: python
     options:
       show_source: true
