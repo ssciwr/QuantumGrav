@@ -4,6 +4,7 @@ from pathlib import Path
 import zarr
 import numpy as np
 from typing import Callable, Type, Dict, Any
+import shutil
 
 import QuantumGrav as QG
 
@@ -55,22 +56,6 @@ def basic_transform():
 
 
 @pytest.fixture
-def basic_converter():
-    def converter(raw: jcall.DictValue) -> dict:
-        # convert the raw data dictionary from Julia into a standard Python dictionary
-        return {
-            "dimension": int(raw["dimension"]),
-            "atomcount": int(raw["atomcount"]),
-            "adjacency_matrix": raw["adjacency_matrix"].to_numpy(),
-            "link_matrix": raw["link_matrix"].to_numpy(),
-            "max_pathlen_future": raw["max_pathlen_future"].to_numpy(),
-            "max_pathlen_past": raw["max_pathlen_past"].to_numpy(),
-        }
-
-    return converter
-
-
-@pytest.fixture
 def jlcall_args():
     onthefly_config = {
         "seed": 42,
@@ -94,59 +79,38 @@ def test_dir(project_root):
 
 
 @pytest.fixture(scope="session")
-def julia_paths(project_root, test_dir):
-    """Return paths to Julia code and dependencies."""
-    return {
-        "jl_code_path": test_dir / "julia_testmodule.jl",
-        "jl_base_module_path": project_root.parent / "QuantumGrav.jl",
-        "jl_constructor_name": "Generator",
-        "jl_dependencies": [
-            "Distributions",
-            "Random",
-        ],
-    }
+def create_data_zarr_basic(tmp_path_factory):
+    tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav", numbered=True)
 
-
-@pytest.fixture
-def jl_vars(julia_paths):
-    return julia_paths
-
-
-@pytest.fixture
-def create_data(tmp_path_factory, julia_paths):
     datafiles = []
-    tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav")
-
-    # make the julia module available
-    path = str(Path(__file__).parent.joinpath("julia_testmodule.jl"))
-
-    jl_module = jcall.newmodule("test_qg")
-
-    for dep in julia_paths["jl_dependencies"]:
-        jl_module.seval(f'using Pkg; Pkg.add("{dep}")')
-
-    jl_module.seval(
-        f'using Pkg; Pkg.develop(path="{julia_paths["jl_base_module_path"]}", name="QuantumGrav")'
-    )  # only for now -> get from package index later
-    jl_module.seval(f'include("{path}")')
-    generator_constructor = getattr(jl_module, "Generator")
-    jl_generator = generator_constructor(
-        {
-            "seed": 42,
-        }
-    )
-
-    return path, datafiles, tmpdir, jl_generator
-
-
-@pytest.fixture
-def create_data_zarr_basic(create_data):
-    path, datafiles, tmpdir, jl_generator = create_data
 
     for i in range(3):
-        data = jl_generator(5)
+        data = []
+        for _ in range(5):
+            num_nodes = np.random.randint(10, 15)
+            adjacency_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
+            link_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
+            max_pathlen_future = np.random.rand(num_nodes).astype("float32")
+            max_pathlen_past = np.random.rand(num_nodes).astype("float32")
+            dimension = np.random.randint(2, 10)
+            atomcount = num_nodes
+
+            data.append(
+                {
+                    "adjacency_matrix": adjacency_matrix,
+                    "link_matrix": link_matrix,
+                    "max_pathlen_future": max_pathlen_future,
+                    "max_pathlen_past": max_pathlen_past,
+                    "dimension": dimension,
+                    "atomcount": atomcount,
+                }
+            )
+
         # Save the data to an zarr file
         zarr_file = tmpdir / f"test_data_{i}.zarr"
+
+        if zarr_file.exists():
+            shutil.rmtree(zarr_file)
 
         store = zarr.storage.LocalStore(zarr_file, read_only=False)
 
@@ -191,10 +155,10 @@ def create_data_zarr_basic(create_data):
         )
 
         for j, d in enumerate(data):
-            adjmat = d["adjacency_matrix"].to_numpy()
-            linkmat = d["link_matrix"].to_numpy()
-            max_path_f = d["max_pathlen_future"].to_numpy()
-            max_path_p = d["max_pathlen_past"].to_numpy()
+            adjmat = d["adjacency_matrix"]
+            linkmat = d["link_matrix"]
+            max_path_f = d["max_pathlen_future"]
+            max_path_p = d["max_pathlen_past"]
             adj[j, 0 : adjmat.shape[0], 0 : adjmat.shape[1]] = adjmat
             link[j, 0 : linkmat.shape[0], 0 : linkmat.shape[1]] = linkmat
             maxpathlen_future[j, 0 : max_path_f.shape[0]] = max_path_f
@@ -203,10 +167,18 @@ def create_data_zarr_basic(create_data):
             atomcount[j] = d["atomcount"]
 
         datafiles.append(zarr_file)
-    return tmpdir, datafiles
+
+    yield tmpdir, datafiles
+
+    # remove created files again
+    for file in datafiles:
+        if file.exists():
+            shutil.rmtree(file)
+    if tmpdir.exists():
+        shutil.rmtree(tmpdir)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def create_data_zarr(create_data_zarr_basic):
     tmpdir, datafiles = create_data_zarr_basic
 
@@ -215,13 +187,13 @@ def create_data_zarr(create_data_zarr_basic):
         store = zarr.storage.LocalStore(file, read_only=False)
 
         dims = zarr.open_array(store, path="dimension")
+        if "num_samples" in store.root.iterdir() is False:
+            num_samples = zarr.create_array(
+                store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
+            )
+            num_samples[0] = dims.shape[0]
 
-        num_samples = zarr.create_array(
-            store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
-        )
-        num_samples[0] = dims.shape[0]
-
-    return tmpdir, datafiles
+    yield tmpdir, datafiles
 
 
 @pytest.fixture

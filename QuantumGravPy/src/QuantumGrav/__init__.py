@@ -1,4 +1,3 @@
-from .julia_worker import JuliaWorker
 from .utils import (
     assign_at_path,
     get_at_path,
@@ -25,8 +24,6 @@ from . import models
 __all__ = [
     # models subpackage
     "models",
-    # julia interface
-    "JuliaWorker",
     # datasets
     "QGDataset",
     # nested config helpers
