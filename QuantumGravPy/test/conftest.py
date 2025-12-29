@@ -1,6 +1,4 @@
 import pytest
-import juliacall as jcall
-from pathlib import Path
 import zarr
 import numpy as np
 from typing import Callable, Type, Dict, Any
@@ -15,69 +13,7 @@ from torch_geometric.utils import dense_to_sparse
 from torch_geometric.loader import DataLoader
 
 
-# data
-@pytest.fixture
-def basic_transform():
-    def transform(raw: jcall.DictValue) -> Data:
-        # this function will transform the raw data dictionary from Julia into a PyTorch Geometric Data object. Hence, we have to deal with julia objects here
-        adj_raw = raw["adjacency_matrix"]
-        adj_matrix = torch.tensor(adj_raw, dtype=torch.float32)
-        edge_index, edge_weight = dense_to_sparse(adj_matrix)
-        adj_matrix = adj_matrix.to_sparse()
-
-        node_features = []
-
-        max_path_future = torch.tensor(
-            raw["max_pathlen_future"], dtype=torch.float32
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-
-        max_path_past = torch.tensor(
-            raw["max_pathlen_past"], dtype=torch.float32
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-
-        node_features.extend([max_path_future, max_path_past])
-
-        # Concatenate all node features
-        x = torch.cat(node_features, dim=1)
-        classes = [
-            raw["dimension"],
-        ]
-        y = torch.tensor(classes, dtype=torch.long)
-        data = Data(
-            x=x,
-            edge_index=edge_index,
-            edge_attr=edge_weight,
-            y=y,
-        )
-
-        return data
-
-    return transform
-
-
-@pytest.fixture
-def jlcall_args():
-    onthefly_config = {
-        "seed": 42,
-        "n_processes": 1,
-        "batch_size": 5,
-    }
-    return onthefly_config
-
-
-@pytest.fixture(scope="session")
-def project_root():
-    """Return the project root directory as a Path object."""
-    test_dir = Path(__file__).parent
-    return test_dir.parent
-
-
-@pytest.fixture(scope="session")
-def test_dir(project_root):
-    """Return the test directory."""
-    return project_root / "test"
-
-
+# data fixtures
 @pytest.fixture(scope="session")
 def create_data_zarr_basic(tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav", numbered=True)
