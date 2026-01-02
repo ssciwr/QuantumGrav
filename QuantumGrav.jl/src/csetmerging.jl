@@ -156,6 +156,7 @@ end
 """
 insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64; 
                             rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
+                            n2_rel::Float64=0.05,
                             d::Int64=2, type::Type=Float32, p::Float64=0.5)
     -> Tuple{BitArrayCauset, Bool, Matrix{T}}
 
