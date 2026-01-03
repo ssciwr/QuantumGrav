@@ -137,7 +137,7 @@ function (m::PolynomialCsetMaker)(
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
 
-    o = convert(Int, ceil(rand(rng, m.order_distribution)))
+    o = max(convert(Int, round(rand(rng, m.order_distribution))), 0)
     r = rand(rng, m.r_distribution)
     if r < 1.0
         @warn "Warning, r value for GridCsetMakerPolynomial is less than 1.0, which may lead to numerical instability."
@@ -258,7 +258,7 @@ function (lm::LayeredCsetMaker)(
     config::Union{Dict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Int64}
     connectivity_goal = rand(rng, lm.connectivity_distribution)
-    layers = convert(Int, ceil(rand(rng, lm.layer_distribution)))
+    layers = max(convert(Int, round(rand(rng, lm.layer_distribution))), 2)
 
     s = rand(rng, lm.stddev_distribution)
 
@@ -507,7 +507,7 @@ function (dcm::DestroyedCsetMaker)(
     config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
-    o = convert(Int, ceil(rand(rng, dcm.order_distribution)))
+    o = max(convert(Int, round(rand(rng, dcm.order_distribution))), 0)
 
     r = rand(rng, dcm.r_distribution)
     if r < 1.0
@@ -515,7 +515,7 @@ function (dcm::DestroyedCsetMaker)(
         r = max(r, 1.0)
     end
 
-    f = convert(Int, ceil(rand(rng, dcm.flip_distribution) * n * (n - 1) / 2))
+    f = max(convert(Int, round(rand(rng, dcm.flip_distribution) * n * (n - 1) / 2)), 1)
 
     cset = destroy_manifold_cset(n, f, rng, o, r; d = 2, type = Float32)[1]
     return cset, f/(n * (n - 1) / 2)
@@ -781,7 +781,7 @@ function (gcm::GridCsetMakerPolynomial)(
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
     end
 
-    o = convert(Int, ceil(rand(rng, gcm.order_distribution)))
+    o = max(convert(Int, round(rand(rng, gcm.order_distribution))), 0)
     r = rand(rng, gcm.r_distribution)
     if r < 1.0
         @warn "Warning, r value for GridCsetMakerPolynomial is less than 1.0, which may lead to numerical instability."
@@ -955,13 +955,14 @@ function (ctm::ComplexTopCsetMaker)(
     derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Vector{Float64}}
 
-    n_vertical_cuts = convert(Int, rand(rng, ctm.vertical_cut_distribution))
+    n_vertical_cuts = convert(Int, round(rand(rng, ctm.vertical_cut_distribution)))
 
-    n_finite_cuts = convert(Int, rand(rng, ctm.finite_cut_distribution))
+    n_finite_cuts = convert(Int, round(rand(rng, ctm.finite_cut_distribution)))
 
-    order = convert(Int, ceil(rand(rng, ctm.order_distribution)))
+    order = max(convert(Int, round(rand(rng, ctm.order_distribution))), 0)
 
     r = rand(rng, ctm.r_distribution)
+
     if r < 1.0
         @warn "Warning, r value for ComplexTopCsetMaker is less than 1.0, which may lead to numerical instability."
         r = max(r, 1.0)
@@ -1123,7 +1124,8 @@ function (mcm::MergedCsetMaker)(
     config::Union{AbstractDict,Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset,Float64}
 
-    o = convert(Int, ceil(rand(rng, mcm.order_distribution)))
+    o = max(convert(Int, round(rand(rng, mcm.order_distribution))), 0)
+
     r = rand(rng, mcm.r_distribution)
     if r < 1.0
         @warn "Warning, r value for MergedCsetMaker is less than 1.0. setting to 1.0"
@@ -1134,7 +1136,8 @@ function (mcm::MergedCsetMaker)(
     l = max(rand(rng, mcm.link_prob_distribution), 0.0)
     p = max(rand(rng, mcm.connectivity_distribution), 0.0)
 
-    cset, success, sprinkling = a(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
+    cset, success, sprinkling =
+        insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
 
     return cset, n2rel
 end
