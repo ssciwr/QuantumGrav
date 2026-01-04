@@ -256,8 +256,11 @@ class Trainer(base.Configurable):
                         "description": "Shuffle validation dataset",
                     },
                     "validator": {
-                        "$ref": "#/definitions/constructor",
-                        "description": "Validator constructor spec: provides type, args, kwargs",
+                        "description": "Validator configuration: either constructor spec or Evaluator schema",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.Evaluator.schema,
+                        ],
                     },
                 },
                 "required": ["batch_size"],
@@ -295,16 +298,22 @@ class Trainer(base.Configurable):
                         "description": "Shuffle test dataset",
                     },
                     "tester": {
-                        "$ref": "#/definitions/constructor",
-                        "description": "Tester constructor spec: provides type, args, kwargs",
+                        "description": "Tester configuration: either constructor spec or Evaluator schema",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.Evaluator.schema,
+                        ],
                     },
                 },
                 "required": ["batch_size"],
                 "additionalProperties": True,
             },
             "early_stopping": {
-                "$ref": "#/definitions/constructor",
-                "description": "Early stopping constructor spec: provides type, args, kwargs",
+                "description": "Early stopping configuration: either constructor spec or DefaultEarlyStopping schema",
+                "anyOf": [
+                    {"$ref": "#/definitions/constructor"},
+                    early_stopping.DefaultEarlyStopping.schema,
+                ],
             },
             "apply_model": {
                 "description": "Optional method to call the model on data. Useful when using optional signatures for instance "
@@ -349,7 +358,12 @@ class Trainer(base.Configurable):
         self.seed = config["training"]["seed"]
         self.device = torch.device(config["training"]["device"])
 
-        self.nprng = np.random.default_rng(self.seed)
+        np.random.seed(
+            self.seed
+        )  # legacy numpy rng, in case it is used in a downstream part.
+        self.nprng = np.random.default_rng(
+            self.seed
+        )  # current numpy rng api, used for shuffling.
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.seed)
@@ -380,20 +394,22 @@ class Trainer(base.Configurable):
         self.optimizer = None
 
         # early stopping and evaluation functors
-        try:
-            self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
-                config["early_stopping"]
-            )
-        except Exception as e:
-            self.logger.debug(
-                f"from_config failed for early stopping, using direct instantiation: {e}"
-            )
-            self.early_stopping = config["early_stopping"]["type"](
-                *config["early_stopping"]["args"], **config["early_stopping"]["kwargs"]
-            )
+        if "early_stopping" in config:
+            try:
+                self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
+                    config["early_stopping"]
+                )
+            except Exception as e:
+                self.logger.debug(
+                    f"from_config failed for early stopping, using direct instantiation: {e}"
+                )
+                self.early_stopping = config["early_stopping"]["type"](
+                    *config["early_stopping"]["args"],
+                    **config["early_stopping"]["kwargs"],
+                )
 
         try:
-            self.validator = evaluate.DefaultValidator.from_config(
+            self.validator = evaluate.Validator.from_config(
                 config["validation"]["validator"]
             )
         except Exception as e:
@@ -406,9 +422,7 @@ class Trainer(base.Configurable):
             )
 
         try:
-            self.tester = evaluate.DefaultTester.from_config(
-                config["testing"]["tester"]
-            )
+            self.tester = evaluate.Tester.from_config(config["testing"]["tester"])
         except Exception as e:
             self.logger.debug(
                 f"from_config failed for tester, using direct instantiation: {e}"
@@ -450,13 +464,13 @@ class Trainer(base.Configurable):
             self.model = gnn_model.GNNModel.from_config(self.config["model"]).to(
                 self.device
             )
-
         except Exception:
             self.logger.debug(
                 "from_config for  model initialization failed, using direct initialization instead"
             )
             self.model = self.config["model"]["type"](
-                *self.config["model"]["args"], **self.config["model"]["kwargs"]
+                *self.config["model"].get("args", []),
+                **self.config["model"].get("kwargs", {}),
             ).to(self.device)
 
         self.logger.info("Model initialized to device: {}".format(self.device))
@@ -774,7 +788,7 @@ class Trainer(base.Configurable):
         ):
             self.save_checkpoint()
 
-        if self.early_stopping is not None:
+        if hasattr(self, "early_stopping") and self.early_stopping is not None:
             if self.early_stopping(eval_data):
                 self.logger.debug(f"Early stopping at epoch {self.epoch}.")
                 self.save_checkpoint(name_addition=f"_{self.epoch}_early_stopping")

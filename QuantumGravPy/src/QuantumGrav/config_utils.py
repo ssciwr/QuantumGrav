@@ -51,7 +51,7 @@ def coupled_sweep_constructor(
             sweep_target.append(index)
         else:
             sweep_target.append(token)
-
+    sweep_target = [utils.maybe_number(t, int) for t in sweep_target]
     values = loader.construct_sequence(node.value[1][1])
     return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
@@ -334,7 +334,7 @@ class ConfigHandler:
     The targets have to be given as full paths from the top level of the config
     """
 
-    def __init__(self, config: dict, name_addition="run"):
+    def __init__(self, config: dict, name_addition=""):
         """Initialize a new `ConfigHandler` class given a config.
 
         Args:
@@ -378,11 +378,13 @@ class ConfigHandler:
                 else:
                     sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
 
+            self.sweep_targets = list(sweep_targets.keys())
+
             # construct the configs
             self.run_configs = self._construct_run_configs(sweep_targets)
 
         for i, cfg in enumerate(self.run_configs):
-            cfg["model"]["name"] = f"{cfg['model']['name']}_{name_addition}_{i}"
+            cfg["name"] = f"{cfg.get('name', 'run_')}_{name_addition}_{i}"
 
     def _extract_sweep_dims(
         self,
@@ -401,13 +403,17 @@ class ConfigHandler:
             sweep_targets (dict[str, Any]): dict to store sweep dimensions in
             coupled_targets (dict[str, Any]): dict to store coupled-sweep dimension in
         """
-        # TODO: do we need list support on the outermost level?
-        if not isinstance(
-            cfg_node, dict
-        ):  # only dictionary nodes are interesting by design, others are not capable of storing the data structures needed
+        if (
+            not isinstance(cfg_node, dict) and not isinstance(cfg_node, list)
+        ):  # only collections are interesting by design, others are not capable of storing the data structures needed
             return
 
-        for key, node in cfg_node.items():
+        if isinstance(cfg_node, dict):
+            to_iterate = cfg_node.items()
+        else:
+            to_iterate = enumerate(cfg_node)
+
+        for key, node in to_iterate:
             if isinstance(node, dict) and "type" in node:
                 if node["type"] == "sweep":
                     # when a sweep dimension is found, we record its path and values
