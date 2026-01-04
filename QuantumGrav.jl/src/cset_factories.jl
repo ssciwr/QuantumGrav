@@ -139,9 +139,9 @@ function (m::PolynomialCsetMaker)(
 
     o = max(convert(Int, round(rand(rng, m.order_distribution))), 0)
     r = rand(rng, m.r_distribution)
-    if r < 1.0
-        @warn "Warning, r value for GridCsetMakerPolynomial is less than 1.0, which may lead to numerical instability."
-        r = max(r, 1.0)
+    if r < 1.01
+        @warn "Warning, r value for PolynomialCsetMaker is less than 1.0, which may lead to numerical instability."
+        r = max(r, 1.01)
     end
 
     cset, sprinkling, chebyshev_coefs =
@@ -510,9 +510,9 @@ function (dcm::DestroyedCsetMaker)(
     o = max(convert(Int, round(rand(rng, dcm.order_distribution))), 0)
 
     r = rand(rng, dcm.r_distribution)
-    if r < 1.0
-        @warn "Warning, r value for GridCsetMakerPolynomial is less than 1.0, which may lead to numerical instability."
-        r = max(r, 1.0)
+    if r < 1.01
+        @warn "Warning, r value for DestroyedCsetMaker is less than 1.0, which may lead to numerical instability."
+        r = max(r, 1.01)
     end
 
     f = max(convert(Int, round(rand(rng, dcm.flip_distribution) * n * (n - 1) / 2)), 1)
@@ -783,9 +783,9 @@ function (gcm::GridCsetMakerPolynomial)(
 
     o = max(convert(Int, round(rand(rng, gcm.order_distribution))), 0)
     r = rand(rng, gcm.r_distribution)
-    if r < 1.0
+    if r < 1.01
         @warn "Warning, r value for GridCsetMakerPolynomial is less than 1.0, which may lead to numerical instability."
-        r = max(r, 1.0)
+        r = max(r, 1.01)
     end
 
     rotate_angle_deg = rand(rng, gcm.rotate_distribution)
@@ -963,9 +963,9 @@ function (ctm::ComplexTopCsetMaker)(
 
     r = rand(rng, ctm.r_distribution)
 
-    if r < 1.0
+    if r < 1.01
         @warn "Warning, r value for ComplexTopCsetMaker is less than 1.0, which may lead to numerical instability."
-        r = max(r, 1.0)
+        r = max(r, 1.01)
     end
 
     cset, branched_sprinkling, branch_point_info, chebyshev_coefs =
@@ -1127,9 +1127,9 @@ function (mcm::MergedCsetMaker)(
     o = max(convert(Int, round(rand(rng, mcm.order_distribution))), 0)
 
     r = rand(rng, mcm.r_distribution)
-    if r < 1.0
+    if r < 1.01
         @warn "Warning, r value for MergedCsetMaker is less than 1.0. setting to 1.0"
-        r = max(r, 1.0)
+        r = max(r, 1.01)
     end
 
     n2rel = max(rand(rng, mcm.n2_rel_distribution), 0.0)
