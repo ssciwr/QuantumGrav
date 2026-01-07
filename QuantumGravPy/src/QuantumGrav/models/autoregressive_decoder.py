@@ -157,8 +157,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         Args:
             gru_type: Class or module implementing the decoder GNN backbone.
             parent_logit_mlp_type: Class or module producing parent logits.
-        
-        Kwargs:
             gru_args: Positional args for gru_type.
             gru_kwargs: Keyword args for gru_type.
             parent_logit_mlp_args: Positional args for parent_logit_mlp_type.
