@@ -54,18 +54,38 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         "title": "DecoderModule Configuration",
         "type": "object",
         "properties": {
-            "gru_type": {
-                "description": "GRU class for NodeUpdateGRU backbone."
-            },
             "gru_args": {
                 "type": "array",
-                "items": {},
-                "description": "Positional arguments for gru_type."
+                "description": "Positional arguments passed to the GRUCell. Must be [input_dim, hidden_dim].",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                    "type": "integer",
+                    "minimum": 1
+                    }
             },
             "gru_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments for gru_type."
-            },
+                "description": "Keyword arguments for the GRUCell.",
+                "properties": {
+                    "bias": {
+                    "type": "boolean"
+                    },
+                    "device": {
+                    "anyOf": [
+                        { "type": "null" },
+                        { "type": "string" }
+                    ]
+                    },
+                    "dtype": {
+                    "anyOf": [
+                        { "type": "null" },
+                        { "type": "string" }
+                    ]
+                    }
+                },
+                "additionalProperties": false
+                },
             "gru_aggregation_method": {
                 "type": "string",
                 "description": "Aggregation method for NodeUpdateGRU"
@@ -127,13 +147,12 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 "description": "Coefficient controlling multiplicative suppression of ancestors."
             },
         },
-        "required": ["gru_type", "parent_logit_mlp_type"],
+        "required": ["parent_logit_mlp_type"],
         "additionalProperties": False
     }
 
     def __init__(
         self,
-        gru_type: type | torch.nn.Module,
         parent_logit_mlp_type: type | torch.nn.Module,
         gru_args: Sequence[Any] | None = None,
         gru_kwargs: dict[str, Any] | None = None,
@@ -155,9 +174,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         Initialize an autoregressive decoder.
 
         Args:
-            gru_type: type | torch.nn.Module
-            Class or module implementing the decoder GNN backbone.
-            
             parent_logit_mlp_type: type | torch.nn.Module
             Class or module producing parent logits.
             
@@ -191,7 +207,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         super().__init__()
 
         # Store all inputs before building modules
-        self.gru_type = gru_type
         self.gru_args = gru_args
         self.gru_kwargs = gru_kwargs
         self.gru_aggregation_method = gru_aggregation_method
@@ -215,7 +230,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         # decoder backbone (NodeUpdateGRU)
         self.node_updater = NodeUpdateGRU(
-            gru_type=gru_type,
             gru_args=gru_args,
             gru_kwargs=gru_kwargs or {},
             aggregation_method=gru_aggregation_method,
@@ -525,7 +539,6 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         gru_p_mlp_kwargs = config.get("gru_pooling_mlp_kwargs", None)
 
         return cls(
-            gru_type=config["gru_type"],
             parent_logit_mlp_type=pl_type,
 
             gru_args=config.get("gru_args", None),

@@ -45,26 +45,55 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         "properties": {
             "gru_args": {
                 "type": "array",
-                "description": "Positional arguments passed to the GRU module"
+                "description": "Positional arguments passed to the GRUCell. Must be [input_dim, hidden_dim].",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                    "type": "integer",
+                    "minimum": 1
+                    }
             },
+
             "gru_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments for the GRU module"
-            },
+                "description": "Keyword arguments for the GRUCell.",
+                "properties": {
+                    "bias": {
+                    "type": "boolean"
+                    },
+                    "device": {
+                    "anyOf": [
+                        { "type": "null" },
+                        { "type": "string" }
+                    ]
+                    },
+                    "dtype": {
+                    "anyOf": [
+                        { "type": "null" },
+                        { "type": "string" }
+                    ]
+                    }
+                },
+                "additionalProperties": false
+                },
+
             "aggregation_method": {
                 "type": "string",
-                "description": "Aggregation method for parent states"
-            },
+                "description": "Aggregation method for parent states.",
+                "enum": ["mean", "sum", "max", "mlp"]
+                },
+
             "pooling_mlp_type": {
                 "description": "MLP used when aggregation='mlp'"
             },
             "pooling_mlp_args": {
                 "type": "array",
-                "description": "Arguments for pooling MLP"
+                "description": "Arguments for pooling MLP",
+                "items": {},
             },
             "pooling_mlp_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments for the pooling MLP"
+                "description": "Keyword arguments for the pooling MLP",
             }
         },
         "required": ["gru_args"],
