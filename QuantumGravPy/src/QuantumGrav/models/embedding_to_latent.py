@@ -20,6 +20,12 @@ class GraphEmbeddingToLatent(torch.nn.Module, base.Configurable):
     Pooling is mandatory because the latent representation must be defined at
     the graph level, not per node. Without pooling, dimensionalities would be
     inconsistent.
+
+    When VAE heads are present, latent sampling is implemented using the
+    reparameterization trick: a noise variable ε ∼ 𝒩(0, I) is sampled and the
+    latent vector is formed as z = μ + exp(½ log σ²) ⊙ ε. This reformulation
+    preserves differentiability with respect to μ and log σ², allowing gradients
+    to propagate through the stochastic sampling step during training.
     """
 
     schema = {
@@ -198,6 +204,11 @@ class GraphEmbeddingToLatent(torch.nn.Module, base.Configurable):
 
         if self.mu_head is None or self.logvar_head is None:
             return h, None, None
+
+        # Reparameterization trick:
+        # Sample eps ~ N(0, I) and form z = mu + std * eps so that gradients
+        # can flow through mu and logvar during backpropagation.
+        
         mu = self.mu_head(h)
         logvar = self.logvar_head(h)
         std = torch.exp(0.5 * logvar)
