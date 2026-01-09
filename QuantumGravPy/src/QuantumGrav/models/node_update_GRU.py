@@ -10,8 +10,32 @@ from jsonschema import validate
 
 class NodeUpdateGRU(torch.nn.Module, base.Configurable):
     """
-    Gated recurrent unit block.
-    Useful for decoders that update node states without full message passing.
+    Node-state update module for autoregressive graph decoding.
+
+    This module updates the hidden state of a newly generated node based on the
+    hidden states of its parent nodes. It is designed for decoders that grow
+    graphs sequentially and therefore do not require full message passing over
+    all edges at each step.
+
+    The update proceeds in two stages:
+        1. Aggregation of parent node states into a single vector using a
+           permutation-invariant operation (mean, sum, max, or learned pooling).
+        2. A GRU-style update that maps the aggregated parent information to the
+           hidden state of the new node.
+
+    Formally:
+        {h_p}_parents → aggregate → h_agg → GRU → h_new
+
+    where all hidden states live in the same hidden_dim space.
+
+    The module assumes:
+        - parent states are already computed and fixed,
+        - the aggregation output dimension matches the GRU input dimension,
+        - no explicit message passing or edge features are required.
+
+    This design mirrors causal-set sequential growth rules, where a node’s state
+    is determined solely by its immediate ancestors rather than by global graph
+    updates.
     """
 
     schema = {
@@ -63,16 +87,15 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         """
         Initialize a NodeUpdateGRU block.
 
-        Parameters
-        ----------
-        gru_type : type[torch.nn.Module]
+        Args:
+            gru_type : type[torch.nn.Module]
             A GRU-like class (e.g. torch.nn.GRUCell). The class MUST follow
             the PyTorch RNN convention where the first two positional arguments
             are:
                 - input_dim    (int): size of input vectors
                 - hidden_dim   (int): size of hidden state vectors
 
-        gru_args : list[Any]
+            gru_args : list[Any]
             Positional arguments passed to `gru_type`. The first arguments
             must be integers specifying:
                 gru_args[0] → input_dim
@@ -81,19 +104,19 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
             Example:
                 gru_args = [32, 32]  # input_dim = 32, hidden_dim = 32
 
-        gru_kwargs : dict[str, Any]
+            gru_kwargs : dict[str, Any]
             Keyword arguments for the GRU module.
 
-        aggregation_method : str
+            aggregation_method : str
             One of {"mean", "sum", "max", "mlp"}.
 
-        pooling_mlp_type : type | None
+            pooling_mlp_type : type | None
             Optional MLP class used when aggregation_method='mlp'.
 
-        pooling_mlp_args : list[Any] | None
+            pooling_mlp_args : list[Any] | None
             Positional arguments for the pooling MLP.
 
-        pooling_mlp_kwargs : dict[str, Any] | None
+            pooling_mlp_kwargs : dict[str, Any] | None
             Keyword arguments for the pooling MLP.
         """
 

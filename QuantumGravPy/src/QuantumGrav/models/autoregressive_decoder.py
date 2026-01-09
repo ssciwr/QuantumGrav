@@ -23,11 +23,9 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         • parent_logit_mlp:
             A module that computes logits for possible parents of the newly
-            generated node. Inputs typically include:
-                - provisional state of the new node,
+            generated node. Inputs are:
                 - states of existing nodes,
-                - latent vector z,
-                - positional embeddings.
+                - latent vector z.
 
         • decoder_init:
             Optional network mapping latent z → initial hidden state for node 0.
@@ -47,7 +45,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         - optional decoded node features,
         - optional total log‑likelihood (during teacher‑forcing training).
 
-    This decoder is configured exclusively through json‑schema–validated configs and
+    This decoder is configured best through json‑schema–validated configs and
     supports modular substitution of all internal components.
     """
 
@@ -154,20 +152,41 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         node_feature_decoder_kwargs: dict[str, Any] | None = None,
     ):
         """
+        Initialize an autoregressive decoder.
+
         Args:
-            gru_type: Class or module implementing the decoder GNN backbone.
-            parent_logit_mlp_type: Class or module producing parent logits.
-            gru_args: Positional args for gru_type.
-            gru_kwargs: Keyword args for gru_type.
-            parent_logit_mlp_args: Positional args for parent_logit_mlp_type.
-            parent_logit_mlp_kwargs: Keyword args for parent_logit_mlp_type.
-            decoder_init_type: Optional class for initializing decoder state.
-            decoder_init_args: Positional args.
-            decoder_init_kwargs: Keyword args.
-            ancestor_suppression_strength: Transitive-suppression coefficient.
-            node_feature_decoder_type: Optional class decoding node features.
-            node_feature_decoder_args: Positional args.
-            node_feature_decoder_kwargs: Keyword args.
+            gru_type: type | torch.nn.Module
+            Class or module implementing the decoder GNN backbone.
+            
+            parent_logit_mlp_type: type | torch.nn.Module
+            Class or module producing parent logits.
+            
+            gru_args: Sequence[Any] | None = None
+            Positional args for node updater GRU.
+            gru_kwargs: dict[str, Any] | None = None
+            Keyword args for node updater GRU.
+            
+            parent_logit_mlp_args: Sequence[Any] | None = None
+            Positional args for parent logit MLP.
+            parent_logit_mlp_kwargs: dict[str, Any] | None = None
+            Keyword args for parent logit MLP.
+            
+            decoder_init_type: type | torch.nn.Module | None = None
+            Optional class for initializing decoder state.
+            decoder_init_args: Sequence[Any] | None = None
+            Positional args for initialization module.
+            decoder_init_kwargs: dict[str, Any] | None = None
+            Keyword args for initialization module.
+            
+            ancestor_suppression_strength: float = 1.0
+            Coefficient governing strength of transitive reduction enforcement.
+            
+            node_feature_decoder_type: type | torch.nn.Module | None = None 
+            Optional class decoding node features.
+            node_feature_decoder_args: Sequence[Any] | None = None
+            Positional args for node feature decoder.
+            node_feature_decoder_kwargs: dict[str, Any] | None = None
+            Keyword args for node feature decoder.
         """
         super().__init__()
 

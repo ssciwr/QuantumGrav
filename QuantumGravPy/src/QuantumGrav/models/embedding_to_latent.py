@@ -109,49 +109,42 @@ class GraphEmbeddingToLatent(torch.nn.Module, base.Configurable):
         logvar_head_kwargs: dict[str, Any] | None = None,
     ):
         """
-        Initialize the latent module with pooling optional bottleneck and μ/logvar heads.
+        Initialize a graph-embeddings-to-latent module.
 
-        Parameters
-        ----------
-        pooling_layers : Sequence[tuple[type | torch.nn.Module, Sequence[Any] | None, dict[str, Any] | None]]
+        Args:
+            pooling_layers : Sequence[tuple[type | torch.nn.Module, Sequence[Any] | None, dict[str, Any] | None]]
             Mandatory sequence of pooling layers. Each tuple is (type, args, kwargs). Pooling converts node-level
             embeddings into a graph-level embedding.
 
-        aggregate_pooling_type : type | torch.nn.Module | Callable
+            aggregate_pooling_type : type | torch.nn.Module | Callable
             Mandatory module or callable that aggregates the outputs of all pooling layers into a single embedding.
 
-        aggregate_pooling_args : Sequence[Any] | None
+            aggregate_pooling_args : Sequence[Any] | None
             Positional arguments for the aggregate pooling constructor.
 
-        aggregate_pooling_kwargs : dict[str, Any] | None
+            aggregate_pooling_kwargs : dict[str, Any] | None
             Keyword arguments for the aggregate pooling constructor.
 
-        bottleneck_type : type | torch.nn.Module | None
+            bottleneck_type : type | torch.nn.Module | None
             Class or module used to reduce encoder output before producing mu/logvar.
-        bottleneck_args : Sequence[Any] | None
+            bottleneck_args : Sequence[Any] | None
             Positional arguments passed to `bottleneck_type`.
-        bottleneck_kwargs : dict[str, Any] | None
+            bottleneck_kwargs : dict[str, Any] | None
             Keyword arguments passed to `bottleneck_type`.
 
-        mu_head_type : type | torch.nn.Module | None
+            mu_head_type : type | torch.nn.Module | None
             Class or module that maps the bottleneck output to the latent mean vector μ.
-        mu_head_args : Sequence[Any] | None
+            mu_head_args : Sequence[Any] | None
             Positional arguments for `mu_head_type`.
-        mu_head_kwargs : dict[str, Any] | None
+            mu_head_kwargs : dict[str, Any] | None
             Keyword arguments for `mu_head_type`.
 
-        logvar_head_type : type | torch.nn.Module | None
+            logvar_head_type : type | torch.nn.Module | None
             Class or module that maps the bottleneck output to the latent log-variance vector log σ².
-        logvar_head_args : Sequence[Any] | None
+            logvar_head_args : Sequence[Any] | None
             Positional arguments for `logvar_head_type`.
-        logvar_head_kwargs : dict[str, Any] | None
+            logvar_head_kwargs : dict[str, Any] | None
             Keyword arguments for `logvar_head_type`.
-
-        Notes
-        -----
-        If both `mu_head_type` and `logvar_head_type` are provided, the module operates in
-        VAE mode and performs sampling. Otherwise, it acts as an identity latent module,
-        forwarding encoder embeddings directly as latent vectors.
         """
         super().__init__()
 
