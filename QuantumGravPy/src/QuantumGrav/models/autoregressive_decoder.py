@@ -335,13 +335,52 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         atom_count: int | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """
-        Autoregressive CST-style decoder:
-        - grows nodes sequentially
-        - uses bitset ancestor tracking
-        - processes candidate parents in inverse topological order
-        - applies stochastic sampling with ancestor suppression
-        - returns (adjacency, node_states)
+        Autoregressive CST-style decoder.
+
+        Sequentially generates a causal set by adding nodes one at a time and
+        sampling parent relations in inverse topological order. At each step,
+        parent probabilities are computed for all existing nodes, optionally
+        modified by ancestor-based suppression to enforce transitive reduction.
+
+        The method supports both training (teacher forcing) and generative
+        sampling modes.
+
+        Args:
+            z (torch.Tensor):
+                One-dimensional latent vector of shape [latent_dim]. Represents
+                global conditioning information for the entire decoded causal set.
+
+            teacher_forcing_targets (torch.Tensor | None, optional):
+                Binary target adjacency matrix of shape [N, N] used for
+                teacher-forced training. If provided, decoding follows the target
+                graph structure and accumulates the log-likelihood of the observed
+                parent choices. Required when the module is in training mode.
+
+            atom_count (int | None, optional):
+                Number of nodes to generate when operating in sampling mode
+                (i.e. when teacher_forcing_targets is None). Ignored if
+                teacher_forcing_targets is provided.
+
+        Returns:
+            tuple:
+                - links (torch.Tensor):
+                    Generated link matrix of shape [N, N], where links[t, j] = 1
+                    indicates that node j is a parent of node t.
+                - X_out (torch.Tensor | None):
+                    Decoded node feature matrix of shape [N, feature_dim] if a
+                    node_feature_decoder is configured, otherwise None.
+                - total_logprob (torch.Tensor | None):
+                    Total log-likelihood of the decoded graph under teacher forcing,
+                    or None when sampling.
+
+        Raises:
+            ValueError:
+                - If the decoder is in training mode and teacher_forcing_targets
+                is None.
+                - If z is not a one-dimensional tensor.
+                - If neither teacher_forcing_targets nor atom_count is provided.
         """
+
 
         # Enforce teacher forcing during training
         if self.training and teacher_forcing_targets is None:
