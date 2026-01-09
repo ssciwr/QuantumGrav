@@ -13,8 +13,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
     This module reconstructs a causal set link matrix (and optionally node
     features) from a latent vector. It operates sequentially: nodes are generated
-    one at a time, and parent relationships are inferred in inverse topological
-    order. This mirrors causal set sequential growth algorithms. The decoder consists 
+    one at a time. This mirrors causal set sequential growth algorithms. The decoder consists 
     of several components:
 
         • node-state creator backbone:
@@ -259,7 +258,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         # Warn if value is outside the interpretable range [0, 1]
         if self.ancestor_suppression_strength < 0 or self.ancestor_suppression_strength > 1:
-            print(
+            self.logger.warn(
                 f"Warning: ancestor_suppression_strength={self.ancestor_suppression_strength} "
                 "is outside the typical range [0, 1]. Values >1 or <0 are not theoretically well-understood "
                 "and may lead to unstable or unintuitive suppression behaviour."
@@ -267,7 +266,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         # Warn if suppression is fully disabled
         if not self.ancestor_suppression:
-            print(
+            self.logger.warn(
                 "Warning: ancestor_suppression_strength=0 → "
                 "ancestor-suppression pipeline is disabled (no transitivity-based suppression will occur)."
             )
@@ -341,7 +340,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         Autoregressive CST-style decoder.
 
         Sequentially generates a causal set by adding nodes one at a time and
-        sampling parent relations in inverse topological order. At each step,
+        sampling parent relations. At each step,
         parent probabilities are computed for all existing nodes, optionally
         modified by ancestor-based suppression to enforce transitive reduction.
 
@@ -421,7 +420,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         h0 = self.init_state(z)
         hprev = h0.clone()
         node_states = []                      # list of tensors
-        links = torch.zeros((N_max, N_max), dtype=torch.float32, device=h0.device)  # preallocated adjacency tensor
+        edge_index = [] # list of (child, parent) tuples
         step_logprobs = []                      # accumulate per-step log likelihoods during training
         parent_indices = torch.empty(0, dtype=torch.long, device=h0.device)
         if self.ancestor_suppression:
@@ -478,7 +477,10 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             parent_indices = (parent_mask == 1).nonzero(as_tuple=False).flatten()
 
             # update adjacency structure in preallocated tensor
-            links[t, :prev_count] = parent_mask.to(torch.float32)
+            if parent_indices.numel() > 0:
+                for j in parent_indices.tolist():
+                    edge_index.append((t, j))
+
 
             # update ancestor matrix A: row t
             # A[t] = OR over rows of parents; then set direct parents
@@ -514,6 +516,18 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             total_logprob = torch.stack(step_logprobs).sum()
         else:
             total_logprob = None
+
+        if edge_index:
+            idx = torch.tensor(edge_index, device=h0.device).T
+            vals = torch.ones(idx.size(1), device=h0.device)
+        else:
+            idx = torch.empty((2, 0), dtype=torch.long, device=h0.device)
+            vals = torch.empty((0,), device=h0.device)
+
+        links = torch.sparse_coo_tensor(
+            idx, vals, size=(N_max, N_max)
+        )
+
 
         return links, X_out, total_logprob
 
