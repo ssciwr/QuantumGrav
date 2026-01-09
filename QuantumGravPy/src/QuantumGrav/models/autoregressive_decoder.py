@@ -212,65 +212,11 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             parent_logit_mlp_kwargs,
         )
 
-        # ------------------------------------------------------------
-        # Validate that parent_logit_mlp outputs exactly one scalar
-        # ------------------------------------------------------------
-        # Construct test input of correct expected dimension:
-        # concat([h_prev, z_rep]) → 2 * hidden_dim
-        test_in = torch.zeros(1, 2 * self.node_updater.hidden_dim)
-
-        # Check that the MLP accepts the input
-        try:
-            test_out = self.parent_logit_mlp(test_in)
-        except Exception as e:
-            raise ValueError(
-                f"parent_logit_mlp failed when given an input of shape "
-                f"(1, {2 * self.node_updater.hidden_dim}). This indicates that the MLP input "
-                f"dimension is incompatible with the decoder design. The parent_logit_mlp "
-                f"must accept input_dim = 2 * hidden_dim = {2 * self.node_updater.hidden_dim}. "
-                f"Original error: {e}"
-            ) from e
-
-        # Ensure it returns a tensor
-        if not isinstance(test_out, torch.Tensor):
-            raise TypeError(
-                f"parent_logit_mlp must return a tensor, but got {type(test_out)} "
-                f"from module {self.parent_logit_mlp_type}."
-            )
-
-        # Ensure last dimension is 1 (one logit per parent)
-        if test_out.shape[-1] != 1:
-            raise ValueError(
-                f"parent_logit_mlp must return exactly one logit per candidate parent "
-                f"(i.e. final output dimension = 1). However, module "
-                f"{self.parent_logit_mlp_type} produced output of shape {tuple(test_out.shape)}. "
-                f"Ensure the final Linear layer has output dimension 1."
-            )
-
         # decoder initial state
         self.decoder_init = (
             instantiate_type(decoder_init_type, decoder_init_args, decoder_init_kwargs)
             if decoder_init_type is not None else None
         )
-
-        if self.decoder_init is not None:
-            test_z = torch.zeros(1, self.node_updater.hidden_dim)
-            try:
-                h0_test = self.decoder_init(test_z)
-            except Exception as e:
-                raise ValueError(
-                    f"decoder_init failed when applied to test latent vector. "
-                    f"Original error: {e}"
-                )
-            if not isinstance(h0_test, torch.Tensor):
-                raise TypeError(
-                    f"decoder_init must return a tensor, but returned {type(h0_test)}"
-                )
-            if h0_test.numel() != self.node_updater.hidden_dim:
-                raise ValueError(
-                    f"decoder_init must output a tensor of hidden dimension "
-                    f"{self.node_updater.hidden_dim}, but returned shape {tuple(h0_test.shape)}."
-                )
 
         # Boolean flag: whether ancestor suppression logic is active
         self.ancestor_suppression = (ancestor_suppression_strength != 0)
@@ -398,6 +344,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
         # initial structures
         h0 = self.init_state(z)
+        hprev = h0.clone()
         node_states = []                      # list of tensors
         links = torch.zeros((N_max, N_max), dtype=torch.float32, device=h0.device)  # preallocated adjacency tensor
         step_logprobs = []                      # accumulate per-step log likelihoods during training
@@ -419,11 +366,12 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 new_state = self.node_updater(parent_states)      # GRU creates node state from parent nodes
             node_states.append(new_state)
 
-            # compute parent logits for all previous nodes
             # Prepare inputs for parent_logit_mlp
             h_prev = torch.stack(node_states, dim=0)
             z_rep = z.unsqueeze(0).repeat(prev_count, 1)
             parent_mlp_in = torch.cat([h_prev, z_rep], dim=1)
+
+            # compute parent logits for all previous nodes
             logits = self.parent_logit_mlp(parent_mlp_in).squeeze(-1)
             probs = torch.sigmoid(logits)
 
