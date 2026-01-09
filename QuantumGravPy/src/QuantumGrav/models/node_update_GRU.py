@@ -151,8 +151,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
                 f"gru_args[0]={self.in_dim}, gru_args[1]={self.hidden_dim}."
             )
 
-        # Input projection removed: parent_agg is now passed directly to GRU.
-
         if aggregation_method == "mlp":
             if pooling_mlp_type is None:
                 raise ValueError("pooling_mlp_type must be provided when aggregation_method='mlp'.")
