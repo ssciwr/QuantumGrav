@@ -43,9 +43,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         "title": "NodeUpdateGRU Configuration",
         "type": "object",
         "properties": {
-            "gru_type": {
-                "description": "GRU-like class (e.g. torch.nn.GRUCell)"
-            },
             "gru_args": {
                 "type": "array",
                 "description": "Positional arguments passed to the GRU module"
@@ -70,14 +67,13 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
                 "description": "Keyword arguments for the pooling MLP"
             }
         },
-        "required": ["gru_type", "gru_args"],
+        "required": ["gru_args"],
         "additionalProperties": False,
     }
 
     def __init__(
         self,
-        gru_type: type[torch.nn.Module] = torch.nn.GRUCell,
-        gru_args: list[Any] | None = None,
+        gru_args: list[int],
         gru_kwargs: dict[str, Any] | None = None,
         aggregation_method: str = "mean",
         pooling_mlp_type: type[torch.nn.Module] | None = None,
@@ -88,15 +84,8 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
         Initialize a NodeUpdateGRU block.
 
         Args:
-            gru_type : type[torch.nn.Module]
-            A GRU-like class (e.g. torch.nn.GRUCell). The class MUST follow
-            the PyTorch RNN convention where the first two positional arguments
-            are:
-                - input_dim    (int): size of input vectors
-                - hidden_dim   (int): size of hidden state vectors
-
             gru_args : list[Any]
-            Positional arguments passed to `gru_type`. The first arguments
+            Positional arguments passed to torch.nn.GRUCell. They
             must be integers specifying:
                 gru_args[0] → input_dim
                 gru_args[1] → hidden_dim
@@ -122,7 +111,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
 
         super(NodeUpdateGRU, self).__init__()
 
-        self.gru_type = gru_type
         self.gru_args = gru_args
         self.gru_kwargs = gru_kwargs
 
@@ -176,7 +164,7 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
             self.pooling_mlp = None
 
         # GRU
-        self.gru = self.gru_type(
+        self.gru = self.torch.nn.GRUCell(
             *gru_args,
             **(gru_kwargs if gru_kwargs is not None else {})
         )
@@ -241,7 +229,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
     def from_config(cls, config: dict[str, Any]) -> "NodeUpdateGRU":
         validate(config, cls.schema)
         return cls(
-            gru_type=config["gru_type"],
             gru_args=config.get("gru_args", []),
             gru_kwargs=config.get("gru_kwargs", {}),
             aggregation_method=config.get("aggregation_method", "mean"),
@@ -253,7 +240,6 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
 
     def to_config(self) -> dict[str, Any]:
         return {
-            "gru_type": self.gru_type,
             "gru_args": self.gru_args if self.gru_args is not None else [],
             "gru_kwargs": self.gru_kwargs if self.gru_kwargs is not None else {},
             "aggregation_method": self.aggregation_method,
