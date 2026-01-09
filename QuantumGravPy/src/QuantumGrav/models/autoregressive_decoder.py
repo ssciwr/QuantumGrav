@@ -206,6 +206,9 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         """
         super().__init__()
 
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(config.get("log_level", logging.INFO)) # set log level to info. 
+
         # Store all inputs before building modules
         self.gru_args = gru_args
         self.gru_kwargs = gru_kwargs
@@ -401,7 +404,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         # Teacher forcing always determines N_max. If atom_count is also provided, warn and ignore it.
         if teacher_forcing_targets is not None:
             if atom_count is not None:
-                print(
+                self.logger.warn(
                     "Warning: Both atom_count and teacher_forcing_targets were provided. "
                     "teacher_forcing_targets determines N_max; atom_count is ignored."
                 )
