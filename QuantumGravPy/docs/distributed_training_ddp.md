@@ -195,6 +195,161 @@ if __name__ == "__main__":
     main()
 ```
 
+## Example Script for torchrun
+
+If you prefer to use `torchrun` or `torch.distributed.launch`, here's a simpler script that relies on environment variables set by the launcher:
+
+```python
+#!/usr/bin/env python3
+"""
+DDP training script for use with torchrun or torch.distributed.launch.
+
+Usage with torchrun:
+    export CUDA_VISIBLE_DEVICES=3,4,5
+    torchrun --nproc_per_node=3 train_ddp_torchrun.py
+
+Usage with torch.distributed.launch:
+    export CUDA_VISIBLE_DEVICES=3,4,5
+    python -m torch.distributed.launch --nproc_per_node=3 train_ddp_torchrun.py
+"""
+
+import os
+import sys
+from pathlib import Path
+import yaml
+import logging
+import torch
+
+# Add the src directory to Python path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+import QuantumGrav as QG
+from QuantumGrav.train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
+
+
+def setup_logging(rank: int) -> None:
+    """Setup logging for the current rank."""
+    logging.basicConfig(
+        level=logging.INFO if rank == 0 else logging.WARNING,
+        format=f"[RANK {rank}] %(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
+def main():
+    """
+    Main training function.
+
+    When launched with torchrun or torch.distributed.launch, the following
+    environment variables are automatically set:
+    - RANK: Global rank of this process
+    - LOCAL_RANK: Local rank on this node
+    - WORLD_SIZE: Total number of processes
+    - MASTER_ADDR: Address of master node
+    - MASTER_PORT: Port for communication
+    """
+    # Get DDP settings from environment (set by torchrun/torch.distributed.launch)
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
+
+    setup_logging(rank)
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"Process {rank}/{world_size} started")
+
+    try:
+        # Initialize DDP (environment variables are already set by launcher)
+        initialize_ddp(
+            rank=rank,
+            worldsize=world_size,
+            backend="nccl" if torch.cuda.is_available() else "gloo",
+        )
+
+        # Load configuration
+        config_path = Path(__file__).parent / "configs/train_ddp.yaml"
+
+        if not config_path.exists():
+            logger.error(f"Config file not found at {config_path}")
+            sys.exit(1)
+
+        with open(config_path, "r") as f:
+            config = yaml.load(f, QG.get_loader())
+
+        # Validate config
+        if "parallel" not in config:
+            logger.error("Config must have 'parallel' section for DDP training")
+            sys.exit(1)
+
+        # Update world_size in config
+        config["parallel"]["world_size"] = world_size
+
+        # Create DDP trainer
+        trainer = TrainerDDP(rank=rank, config=config)
+
+        # Prepare data loaders
+        if rank == 0:
+            logger.info("Preparing data loaders...")
+
+        train_loader, val_loader, test_loader = trainer.prepare_dataloaders()
+
+        if rank == 0:
+            logger.info(
+                f"Training set size: {len(train_loader.dataset)}, "
+                f"Validation set size: {len(val_loader.dataset)}, "
+                f"Test set size: {len(test_loader.dataset)}"
+            )
+
+        # Run training
+        if rank == 0:
+            logger.info("Starting distributed training...")
+
+        train_results, val_results = trainer.run_training(train_loader, val_loader)
+
+        # Only rank 0 performs testing
+        if rank == 0:
+            logger.info("Starting testing phase...")
+            test_results = trainer.run_test(test_loader)
+            logger.info("Training and testing completed successfully!")
+
+    finally:
+        # Cleanup
+        cleanup_ddp()
+        logger.info(f"Process {rank} cleanup completed")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Running the torchrun Script
+
+```bash
+# Set visible GPUs
+export CUDA_VISIBLE_DEVICES=3,4,5
+
+# Run with torchrun (recommended)
+torchrun --nproc_per_node=3 train_ddp_torchrun.py
+
+# Or with torch.distributed.launch
+python -m torch.distributed.launch --nproc_per_node=3 train_ddp_torchrun.py
+```
+
+### Key Differences Between torchrun and multiprocessing Scripts
+
+| Aspect | torchrun/launch | multiprocessing |
+|--------|-----------------|-----------------|
+| Process spawning | Handled by launcher | Manual with `mp.spawn()` |
+| Environment variables | Set by launcher | Set manually in script |
+| config["parallel"]["world_size"] | From launcher | Must be hardcoded |
+| Backend selection | In initialize_ddp() | In initialize_ddp() |
+| Easier for production | ✅ Yes | ❌ No |
+| Easier for local testing | ❌ No | ✅ Yes |
+
+The torchrun approach is recommended for production because:
+- The launcher handles process management
+- Environment variables are automatically set
+- Better error handling and logging
+- Easier to use on clusters
+
 ## Configuration for DDP Training
 
 The configuration file needs a `parallel` section with DDP-specific settings:
