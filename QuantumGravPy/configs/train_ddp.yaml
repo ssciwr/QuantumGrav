@@ -1,0 +1,89 @@
+# DDP Training Configuration Example
+# Use with TrainerDDP for distributed training across multiple GPUs
+#
+# Before running with DDP:
+# export CUDA_VISIBLE_DEVICES=3,4,5
+# torchrun --nproc_per_node=3 train_ddp_script.py
+
+criterion: !pyobject __main__.compute_loss
+
+# REQUIRED: Parallel training configuration for DDP
+parallel:
+  world_size: 3  # Number of GPUs to use (should match --nproc_per_node)
+  rank: null  # Will be set automatically by the launcher
+  master_addr: "localhost"  # localhost for single machine, node IP for clusters
+  master_port: "12355"  # Unique port for inter-process communication
+  output_device: null  # null = automatic, or specify GPU device ID
+  find_unused_parameters: false  # Set to true if model has unused parameters
+
+training:
+  seed: 42
+  device: "cuda"  # Use CUDA for distributed training (not "cpu")
+  path: /tmp/quantumgrav_ddp_output  # Output directory for checkpoints and logs
+  num_epochs: 3
+  batch_size: 64  # Batch size PER GPU (total batch size = batch_size × world_size)
+  optimizer_type: !pyobject torch.optim.AdamW
+  optimizer_args: []
+  optimizer_kwargs:
+    lr: 0.001
+    weight_decay: 0.00005
+  # DataLoader configuration
+  num_workers: 4  # Number of worker processes for data loading per GPU
+  pin_memory: true  # Pin GPU memory for faster data transfer
+  drop_last: true  # Drop last incomplete batch
+  prefetch_factor: 2  # Prefetch factor for data loading
+  checkpoint_at: 1  # Save checkpoint every N epochs (0 = never)
+
+# Data configuration (example - adjust for your dataset)
+data:
+  pre_transform: !pyobject __main__.collect_data
+  transform: null
+  pre_filter: null
+  reader: !pyobject __main__.read_data
+  files:
+    - /path/to/data1.zarr
+    - /path/to/data2.zarr
+  output: /tmp/quantumgrav_ddp_output
+  validate_data: true
+  n_processes: 8  # Processes for preprocessing
+  chunksize: 500
+  shuffle: true
+  split: [0.8, 0.1, 0.1]  # Train/val/test split
+
+# Model configuration (example - adjust for your model)
+model:
+  type: "GNNModel"
+  # Include your model-specific configuration here
+
+# Validation configuration
+validation:
+  batch_size: 64  # Batch size PER GPU for validation
+  num_workers: 2
+  pin_memory: true
+  drop_last: false
+  shuffle: false
+  validator:
+    type: "Validator"
+    device: "cuda"
+
+# Testing configuration
+testing:
+  batch_size: 64  # Batch size PER GPU for testing
+  num_workers: 2
+  pin_memory: true
+  drop_last: false
+  shuffle: false
+  tester:
+    type: "Tester"
+    device: "cuda"
+
+# Early stopping configuration (optional)
+early_stopping:
+  type: "DefaultEarlyStopping"
+  args: []
+  kwargs:
+    patience: 5
+    min_delta: 0.001
+
+# Optional: logging level
+log_level: INFO
