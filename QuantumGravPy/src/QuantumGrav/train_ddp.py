@@ -106,8 +106,8 @@ class TrainerDDP(train.Trainer):
             criterion (Callable): The loss function.
             apply_model (Callable | None, optional): The function to apply the model. Defaults to None.
             early_stopping (Callable[[list[dict[str, Any]]], bool] | None, optional): The early stopping function. Defaults to None.
-            validator (DefaultValidator | None, optional): The validator for model evaluation. Defaults to None.
-            tester (DefaultTester | None, optional): The tester for model testing. Defaults to None.
+            validator (Validator | None, optional): The validator for model evaluation. Defaults to None.
+            tester (Tester | None, optional): The tester for model testing. Defaults to None.
 
         Raises:
             ValueError: If the configuration is invalid.
@@ -133,6 +133,7 @@ class TrainerDDP(train.Trainer):
 
         self.rank = rank
         self.world_size = config["parallel"]["world_size"]
+        self.epoch = 0  # Initialize epoch counter for DDP
         self.logger.info("Initialized DDP trainer")
 
     def initialize_model(self) -> DDP:
@@ -146,12 +147,14 @@ class TrainerDDP(train.Trainer):
         if self.device.type == "cpu" or (
             isinstance(self.device, torch.device) and self.device.type == "cpu"
         ):
+            # For CPU training, device_ids should be None
             d_id = None
             o_id = None
         else:
-            d_id = [
-                self.device,
-            ]
+            # For CUDA, device_ids should be a list of device indices
+            # Extract device index from the device string (e.g., "cuda:0" -> 0)
+            device_idx = int(str(self.device).split(":")[1]) if ":" in str(self.device) else self.rank
+            d_id = [device_idx]
             o_id = self.config["parallel"].get("output_device", None)
         model = DDP(
             model,
@@ -348,14 +351,18 @@ class TrainerDDP(train.Trainer):
                         if trial.should_prune():
                             raise optuna.exceptions.TrialPruned()
 
-            dist.barrier()  # Ensure all processes have completed the epoch before checking status
-            should_stop = self._check_model_status(
-                self.validator.data if self.validator else total_training_data,
-            )
+            # Ensure all processes have completed the epoch before checking status
+            dist.barrier()
 
+            should_stop = False
+            if self.rank == 0:
+                should_stop = self._check_model_status(
+                    self.validator.data if self.validator else total_training_data,
+                )
+
+            # Broadcast early stopping decision from rank 0 to all ranks
             object_list = [should_stop]
-
-            should_stop = dist.broadcast_object_list(
+            dist.broadcast_object_list(
                 object_list, src=0, device=self.device
             )
             should_stop = object_list[0]

@@ -484,22 +484,10 @@ def test_gnn_model_creation_goes_wrong():
             downstream_tasks=[],
         )
 
-    # Test: pooling_layers without aggregate_pooling_type
-    with pytest.raises(
-        ValueError,
-        match="If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided.",
-    ):
-        QG.GNNModel(
-            encoder_type=torch.nn.Identity(),
-            downstream_tasks=[(torch.nn.Linear(10, 5), None, None)],
-            pooling_layers=[(torch_geometric.nn.global_mean_pool, None, None)],
-            aggregate_pooling_type=None,
-        )
-
     # Test: aggregate_pooling_type without pooling_layers
     with pytest.raises(
         ValueError,
-        match="If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided.",
+        match="If aggregate_pooling_type is provided, pooling_layers must also be provided.",
     ):
         QG.GNNModel(
             encoder_type=torch.nn.Identity(),

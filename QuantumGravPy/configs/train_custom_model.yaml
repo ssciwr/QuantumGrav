@@ -1,0 +1,72 @@
+criterion:  !pyobject __main__.compute_loss
+training:
+  seed: 42
+  device: "cuda"
+  checkpoint_at: 20
+  path: &output /mnt/dataLinux/machinelearning_data/v8/2048_5k/manifold_classifier
+  # optimizer
+  optimizer_type: !pyobject torch.optim.AdamW
+  optimizer_args: []
+  optimizer_kwargs:
+    lr: 0.001
+    weight_decay: 0.00005
+  # training loader
+  batch_size: 64
+  num_workers: 12
+  pin_memory: True
+  drop_last: True
+  num_epochs: 3
+  prefetch_factor: 8
+data:
+  pre_transform: !pyobject __main__.collect_data
+  transform: Null
+  pre_filter: Null
+  reader: !pyobject __main__.read_data
+  files:
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/polynomial_2273109_2025-12-08_16-37-43.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/polynomial_3340008_2025-12-09_13-16-35.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/complex_topology_3340008_2025-12-09_16-06-10.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/complex_topology_483288_2025-12-07_22-56-51.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/random_3340008_2025-12-09_19-29-20.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/destroyed_483288_2025-12-07_16-52-45.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/destroyed_ambiguous_483288_2025-12-07_19-33-07.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/grid_483288_2025-12-07_22-16-54.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/layered_483288_2025-12-07_16-20-26.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/merged_3365950_2025-12-06_23-13-24.zarr
+    - /mnt/dataLinux/machinelearning_data/v8/2048_5k/merged_ambiguous_483288_2025-12-07_13-38-33.zarr
+  output: *output
+  validate_data: True
+  n_processes: 20 # processes for data preprocessing
+  chunksize: 500
+  shuffle: True
+  split: [0.8, 0.1, 0.1]
+validation:
+  batch_size: 64
+  num_workers: 6
+  pin_memory: True
+  drop_last: False
+  shuffle: True
+  validator:
+    device: "cuda"
+    criterion: !pyobject  __main__.compute_loss
+  prefetch_factor: 8
+testing:
+  batch_size: 64
+  num_workers: 6
+  pin_memory: True
+  drop_last: False
+  shuffle: False
+  tester:
+    device: "cuda"
+    criterion: !pyobject  __main__.compute_loss
+  prefetch_factor: 8
+model:
+  type: !pyobject __main__.BidirectionalModel
+  args:
+    - !pyobject torch_geometric.nn.conv.SAGEConv
+    - [2, 32,]
+    - {
+      normalize: True,
+      root_weight: False
+    }
+  # explicitly no kwargs here

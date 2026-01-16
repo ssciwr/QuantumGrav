@@ -18,6 +18,60 @@ torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 # data transform functions
 
 
+# evaluator helpers (for DefaultValidator/DefaultTester)
+def eval_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
+    """Loss used by DefaultEvaluator: outputs + data -> loss.
+
+    Aggregates MSE across all active task outputs.
+    """
+    all_loss = torch.zeros(1)
+    for _, task_output in x.items():
+        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))  # type: ignore
+        all_loss += loss
+    return all_loss
+
+
+def monitor_dummy(preds, targets):
+    """Simple monitor that returns zero as a scalar."""
+    return 0.0
+
+
+# this is needed for testing the full training loop
+class DummyEvaluator:
+    def __init__(self):
+        self.data = pd.DataFrame(columns=["loss", "other_loss"])
+
+    def validate(self, model, data_loader):
+        # Dummy validate logic
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
+
+    def test(self, model, data_loader):
+        # Dummy test logic
+        losses = torch.rand(10)
+        avg1 = losses.mean().item()
+        avg2 = losses.mean().item()
+        self.data.loc[len(self.data), "loss"] = avg1
+        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
+
+    def report(self, losses: list):  # type: ignore
+        print("DummyEvaluator report:", losses, self.data.tail(1))
+
+
+def compute_loss(
+    x: dict[int, torch.Tensor], data: Data, trainer: QG.Trainer
+) -> torch.Tensor:
+    """Compute the loss between predictions and targets."""
+    all_loss = torch.zeros(1)
+    for _, task_output in x.items():
+        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))  # type: ignore
+        all_loss += loss
+    return all_loss
+
+
 # test fixtures
 @pytest.fixture
 def tmppath(tmp_path_factory):
@@ -177,6 +231,69 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
 
 
 @pytest.fixture
+def config_with_default_evaluators(config):
+    cfg = deepcopy(config)
+    cfg["validation"]["validator"] = {
+        "type": QG.Validator,
+        "args": [
+            "cpu",
+            eval_loss,
+            [
+                {
+                    "name": "loss",
+                    "monitor": monitor_dummy,
+                },
+                {"name": "other_loss", "monitor": monitor_dummy},
+            ],
+        ],
+        "kwargs": {},
+    }
+    cfg["testing"]["tester"] = {
+        "type": QG.Tester,
+        "args": [
+            "cpu",
+            eval_loss,
+            [
+                {
+                    "name": "loss",
+                    "monitor": monitor_dummy,
+                },
+                {"name": "other_loss", "monitor": monitor_dummy},
+            ],
+        ],
+        "kwargs": {},
+    }
+
+    cfg["early_stopping"] = {
+        "type": QG.early_stopping.DefaultEarlyStopping,
+        "args": [
+            {
+                0: {
+                    "delta": 1e-2,
+                    "metric": "loss",
+                    "grace_period": 8,
+                    "init_best_score": 1000000.0,
+                    "mode": "min",
+                },
+                1: {
+                    "delta": 1e-4,
+                    "metric": "other_loss",
+                    "grace_period": 10,
+                    "init_best_score": -1000000.0,
+                    "mode": "max",
+                },
+            },
+            12,
+        ],
+        "kwargs": {
+            "mode": "any",
+        },
+    }
+
+    return cfg
+
+
+@pytest.fixture
 def config_with_data(config, create_data_zarr, read_data):
     datadir, datafiles = create_data_zarr
     cfg = deepcopy(config)
@@ -238,42 +355,6 @@ def broken_config(model_config_eval):
     }
 
 
-# this is needed for testing the full training loop
-class DummyEvaluator:
-    def __init__(self):
-        self.data = pd.DataFrame(columns=["loss", "other_loss"])
-
-    def validate(self, model, data_loader):
-        # Dummy validate logic
-        losses = torch.rand(10)
-        avg1 = losses.mean().item()
-        avg2 = losses.mean().item()
-        self.data.loc[len(self.data), "loss"] = avg1
-        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
-
-    def test(self, model, data_loader):
-        # Dummy test logic
-        losses = torch.rand(10)
-        avg1 = losses.mean().item()
-        avg2 = losses.mean().item()
-        self.data.loc[len(self.data), "loss"] = avg1
-        self.data.loc[len(self.data) - 1, "other_loss"] = avg2
-
-    def report(self, losses: list):  # type: ignore
-        print("DummyEvaluator report:", losses, self.data.tail(1))
-
-
-def compute_loss(
-    x: dict[int, torch.Tensor], data: Data, trainer: QG.Trainer
-) -> torch.Tensor:
-    """Compute the loss between predictions and targets."""
-    all_loss = torch.zeros(1)
-    for _, task_output in x.items():
-        loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))  # type: ignore
-        all_loss += loss
-    return all_loss
-
-
 def test_trainer_creation_works(config):
     trainer = QG.Trainer(
         config,
@@ -305,6 +386,29 @@ def test_trainer_model_instantiation_works(config):
     trainer.initialize_model()
 
     assert isinstance(trainer.model, QG.GNNModel)
+    assert isinstance(trainer.validator, DummyEvaluator)
+    assert isinstance(trainer.tester, DummyEvaluator)
+
+
+def test_trainer_creation_with_default_evaluators(config_with_default_evaluators):
+    trainer = QG.Trainer(
+        config_with_default_evaluators,
+    )
+
+    assert isinstance(trainer.validator, QG.Validator)
+    assert isinstance(trainer.tester, QG.Tester)
+    assert trainer.device == torch.device("cpu")
+    assert trainer.seed == config_with_default_evaluators["training"]["seed"]
+
+
+def test_trainer_optimizer_instantiation_works(config):
+    trainer = QG.Trainer(
+        config,
+    )
+    assert trainer.model is None
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+    assert isinstance(trainer.optimizer, torch.optim.Adam)
 
 
 def test_trainer_creation_broken(broken_config):
@@ -533,6 +637,9 @@ def test_trainer_check_model_status(config):
         config,
     )
 
+    print(trainer.early_stopping.__class__)
+    print(trainer.validator.__class__)
+
     trainer.initialize_model()
 
     loss = np.random.rand(10).tolist()
@@ -679,6 +786,39 @@ def test_trainer_run_training_with_datasetconf(config_with_data):
     assert len(valid_data) == config_with_data["training"]["num_epochs"]
     assert training_data.shape[0] == config_with_data["training"]["num_epochs"]
     assert len(trainer.validator.data) == config_with_data["training"]["num_epochs"]
+
+
+def test_trainer_run_training_with_default_evaluators(
+    make_dataset, config_with_default_evaluators
+):
+    trainer = QG.Trainer(
+        config_with_default_evaluators,
+    )
+    trainer.initialize_model()
+    trainer.initialize_optimizer()
+
+    assert isinstance(trainer.validator, QG.Validator)
+    assert trainer.model is not None
+
+    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
+
+    original_weights = [param.clone() for param in trainer.model.parameters()]
+
+    training_data, valid_data = trainer.run_training(
+        test_loader,
+        validation_loader,
+    )
+    trained_weights = [param.clone() for param in trainer.model.parameters()]
+
+    for orig, trained in zip(original_weights, trained_weights):
+        assert not torch.all(torch.eq(orig, trained.data))
+
+    assert (
+        len(trainer.validator.data)
+        == config_with_default_evaluators["training"]["num_epochs"]
+    )
 
 
 def test_trainer_run_training_with_scheduler(make_dataset, config_with_scheduler):
