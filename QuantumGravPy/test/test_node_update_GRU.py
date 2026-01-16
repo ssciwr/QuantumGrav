@@ -2,16 +2,12 @@ import QuantumGrav as QG
 import pytest
 
 import torch
+import jsonschema
 
 
 # -------------------------------------------------------------------------
 # Fixtures
 # -------------------------------------------------------------------------
-
-@pytest.fixture
-def gru_type():
-    return torch.nn.GRUCell
-
 
 @pytest.fixture
 def input_dim():
@@ -41,13 +37,12 @@ def aggregation_method():
     return "mean"
 
 @pytest.fixture
-def config(gru_type, gru_args, gru_kwargs, aggregation_method):
+def config(gru_args, gru_kwargs, aggregation_method):
     """
     A manually-written configuration dictionary for NodeUpdateGRU,
     matching the JSON schema and not relying on to_config().
     """
     return {
-        "gru_type": gru_type,
         "gru_args": gru_args,
         "gru_kwargs": gru_kwargs,
         "aggregation_method": aggregation_method,
@@ -67,7 +62,7 @@ def config(gru_type, gru_args, gru_kwargs, aggregation_method):
 
 
 def test_gru_construction_basic(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim, hidden_dim,
 ):
     """
@@ -81,7 +76,6 @@ def test_gru_construction_basic(
     """
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -114,7 +108,6 @@ def test_gru_mlp_aggregation_instantiation(gru_args, gru_kwargs):
             return self.lin(x.mean(dim=0))
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=torch.nn.GRUCell,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method="mlp",
@@ -126,7 +119,7 @@ def test_gru_mlp_aggregation_instantiation(gru_args, gru_kwargs):
     assert isinstance(gru.pooling_mlp, DummyMLP)
         
 def test_gru_args_non_integer(
-    gru_type, gru_kwargs, aggregation_method,
+    gru_kwargs, aggregation_method,
 ):
     """
     NodeUpdateGRU requires that the first two elements of gru_args are
@@ -136,7 +129,6 @@ def test_gru_args_non_integer(
 
     with pytest.raises(TypeError):
         QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
             gru_args=bad_gru_args,
             gru_kwargs=gru_kwargs,
             aggregation_method=aggregation_method,
@@ -146,7 +138,6 @@ def test_gru_args_non_integer(
 
     with pytest.raises(TypeError):
         QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
             gru_args=bad_gru_args,
             gru_kwargs=gru_kwargs,
             aggregation_method=aggregation_method,
@@ -154,7 +145,7 @@ def test_gru_args_non_integer(
 
 
 def test_gru_args_non_positive(
-    gru_type, gru_kwargs, aggregation_method,
+    gru_kwargs, aggregation_method,
 ):
     """
     NodeUpdateGRU requires the first two gru_args to be strictly positive integers.
@@ -165,7 +156,6 @@ def test_gru_args_non_positive(
     bad_gru_args = [0, 32]
     with pytest.raises(ValueError):
         QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
             gru_args=bad_gru_args,
             gru_kwargs=gru_kwargs,
             aggregation_method=aggregation_method,
@@ -175,14 +165,13 @@ def test_gru_args_non_positive(
     bad_gru_args = [32, -1]
     with pytest.raises(ValueError):
         QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
             gru_args=bad_gru_args,
             gru_kwargs=gru_kwargs,
             aggregation_method=aggregation_method,
         )
 
 def test_invalid_gru_args_too_short(
-        gru_type, gru_kwargs, aggregation_method,
+    gru_kwargs, aggregation_method,
 ):
     """
     gru_args must contain at least [input_dim, hidden_dim].
@@ -190,7 +179,6 @@ def test_invalid_gru_args_too_short(
     bad_args = [32]  # missing hidden_dim
     with pytest.raises(ValueError):
         QG.models.NodeUpdateGRU(
-            gru_type=gru_type,
             gru_args=bad_args,
             gru_kwargs=gru_kwargs,
             aggregation_method=aggregation_method,
@@ -199,7 +187,6 @@ def test_invalid_gru_args_too_short(
 def test_gru_mlp_requires_pooling_mlp_type(gru_args, gru_kwargs):
     with pytest.raises(ValueError):
         QG.models.NodeUpdateGRU(
-            gru_type=torch.nn.GRUCell,
             gru_args=gru_args,
             gru_kwargs=gru_kwargs,
             aggregation_method="mlp",
@@ -211,7 +198,7 @@ def test_gru_mlp_requires_pooling_mlp_type(gru_args, gru_kwargs):
 # -------------------------------------------------------------------------
 
 def test_gru_forward_basic(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim, hidden_dim,
 ):
     """
@@ -221,7 +208,6 @@ def test_gru_forward_basic(
     """
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -237,7 +223,7 @@ def test_gru_forward_basic(
     assert out.shape == (hidden_dim,)
 
 def test_gru_forward_heterogeneous_parent_counts(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim, hidden_dim,
 ):
     """
@@ -250,7 +236,6 @@ def test_gru_forward_heterogeneous_parent_counts(
     """
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -271,7 +256,7 @@ def test_gru_forward_heterogeneous_parent_counts(
         )
 
 def test_gru_single_parent_case(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim, hidden_dim,
 ):
     """
@@ -279,7 +264,6 @@ def test_gru_single_parent_case(
     Must return a valid hidden state of shape (hidden_dim,).
     """
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -301,7 +285,6 @@ def test_gru_mlp_forward_works(gru_args, gru_kwargs):
             return self.lin(x.mean(dim=0))
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=torch.nn.GRUCell,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method="mlp",
@@ -317,9 +300,9 @@ def test_gru_mlp_forward_works(gru_args, gru_kwargs):
     assert out.shape == (gru_args[1],)
 
 def test_gru_zero_parents_raises(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim,
- ):
+):
     """
     A node with zero parents yields parent_states shape (0, input_dim).
     Current GRU design does not define a default aggregation rule for the empty
@@ -327,7 +310,6 @@ def test_gru_zero_parents_raises(
     """
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -339,7 +321,7 @@ def test_gru_zero_parents_raises(
         gru(parent_states)
 
 def test_gru_parent_state_feature_dim_mismatch_raises(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim,
 ):
     """
@@ -348,7 +330,6 @@ def test_gru_parent_state_feature_dim_mismatch_raises(
     """
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -367,7 +348,7 @@ def test_gru_parent_state_feature_dim_mismatch_raises(
 
 
 def test_gru_gradient_flow(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
+    gru_args, gru_kwargs, aggregation_method,
     input_dim,
 ):
     """
@@ -375,7 +356,6 @@ def test_gru_gradient_flow(
     """
 
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,
@@ -396,6 +376,18 @@ def test_gru_gradient_flow(
 # -------------------------------------------------------------------------
 # Instantiation from config tests
 # -------------------------------------------------------------------------
+
+def test_gru_from_config_missing_gru_args_raises(aggregation_method):
+    cfg = {
+        "gru_kwargs": {"bias": True},
+        "aggregation_method": aggregation_method,
+        "pooling_mlp_type": None,
+        "pooling_mlp_args": [],
+        "pooling_mlp_kwargs": {},
+    }
+
+    with pytest.raises(jsonschema.ValidationError):
+        QG.models.NodeUpdateGRU.from_config(cfg)
 
 def test_gru_from_config_equivalence(aggregation_method, gru_args, gru_kwargs):
     """
@@ -420,7 +412,6 @@ def test_gru_from_config_equivalence(aggregation_method, gru_args, gru_kwargs):
 
     # --- Build configuration dict ---
     cfg = {
-        "gru_type": torch.nn.GRUCell,
         "gru_args": gru_args,
         "gru_kwargs": gru_kwargs,
         "aggregation_method": aggregation_method,
@@ -463,7 +454,7 @@ def test_gru_from_config_equivalence(aggregation_method, gru_args, gru_kwargs):
 
 def test_gru_save_and_load(
     tmp_path,
-    gru_type, gru_args, gru_kwargs, aggregation_method, input_dim
+    gru_args, gru_kwargs, aggregation_method, input_dim
 ):
     """
     Test that NodeUpdateGRU.save() and NodeUpdateGRU.load() correctly
@@ -472,7 +463,6 @@ def test_gru_save_and_load(
 
     # ----- original model -----
     gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
         gru_args=gru_args,
         gru_kwargs=gru_kwargs,
         aggregation_method=aggregation_method,

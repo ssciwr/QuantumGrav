@@ -146,14 +146,14 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 "description": "Coefficient controlling multiplicative suppression of ancestors."
             },
         },
-        "required": ["parent_logit_mlp_type"],
+        "required": ["gru_args", "parent_logit_mlp_type"],
         "additionalProperties": False
     }
 
     def __init__(
         self,
         parent_logit_mlp_type: type | torch.nn.Module,
-        gru_args: Sequence[Any] | None = None,
+        gru_args: Sequence[int],
         gru_kwargs: dict[str, Any] | None = None,
         gru_aggregation_method: str = "mean",
         gru_pooling_mlp_type: type | torch.nn.Module | None = None,
