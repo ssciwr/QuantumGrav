@@ -83,7 +83,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                     ]
                     }
                 },
-                "additionalProperties": false
+                "additionalProperties": False
                 },
             "gru_aggregation_method": {
                 "type": "string",
