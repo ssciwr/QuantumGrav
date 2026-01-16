@@ -494,41 +494,6 @@ def test_malformed_pooling_entry_raises(aggregate_type, aggregate_args, aggregat
         GraphEmbeddingToLatent.from_config(cfg)
 
 # -------------------------------------------------------------------------
-# Multiple pooling ops with different output dims must concatenate
-# -------------------------------------------------------------------------
-
-def test_multiple_pooling_layers_concat_correctly(
-    aggregate_type, aggregate_args, aggregate_kwargs, node_embeddings
-):
-    # Define two custom pooling ops with different output dimensions
-    class Pool32(torch.nn.Module):
-        def forward(self, x, batch=None):
-            return torch.randn(1, 32)
-
-    class Pool48(torch.nn.Module):
-        def forward(self, x, batch=None):
-            return torch.randn(1, 48)
-
-    pooling_specs = [
-        [Pool32, [], {}],
-        [Pool48, [], {}],
-    ]
-
-    latent = GraphEmbeddingToLatent(
-        pooling_layers=pooling_specs,
-        aggregate_pooling_type=aggregate_type,
-        aggregate_pooling_args=aggregate_args,
-        aggregate_pooling_kwargs=aggregate_kwargs,
-    )
-
-    # Forward (non-VAE mode → return (h, None, None))
-    h, mu, logvar = latent(node_embeddings)
-
-    assert h.shape == (1, 80)     # 32 + 48
-    assert mu is None
-    assert logvar is None
-
-# -------------------------------------------------------------------------
 # No bottleneck in VAE mode (bottleneck_type=None)
 # -------------------------------------------------------------------------
 

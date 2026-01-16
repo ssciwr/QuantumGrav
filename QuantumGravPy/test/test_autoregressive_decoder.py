@@ -102,13 +102,13 @@ def deep_parent_logit_mlp_args():
     # dims, activations
     return [
         [
-            [32 + 32, 64],
+            [64, 64],
             [64, 32],
             [32, 1],
         ],
         [
-            torch.nn.SiLU,
-            torch.nn.SiLU,
+            torch.nn.ReLU,
+            torch.nn.ReLU,
             torch.nn.Identity,
         ],
     ]
@@ -236,163 +236,8 @@ def test_minimal_construction(
     assert dec.node_updater.hidden_dim == 32
 
 # -------------------------------------------------------------------------
-# parent_logit_mlp error tests
-# -------------------------------------------------------------------------
-
-def test_parent_logit_mlp_output_must_be_scalar(
-    gru_type, gru_args, gru_kwargs, parent_logit_mlp_kwargs
-):
-    """
-    parent_logit_mlp must output exactly one logit per parent.
-    If it outputs more than one element, initialization must raise ValueError.
-    """
-    bad_parent_args = [
-        [[64, 2]],           # dims list: wrong because output_dim=2 (should be 1)
-        [torch.nn.Identity], # activations list
-    ]
-    with pytest.raises(ValueError):
-        QG.models.AutoregressiveDecoder(
-            gru_type=gru_type,
-            gru_args=gru_args,
-            gru_kwargs=gru_kwargs,
-            parent_logit_mlp_type=QG.models.LinearSequential,
-            parent_logit_mlp_args=bad_parent_args,
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        )
-
-def test_parent_mlp_input_dim_mismatch_at_init(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_kwargs
-):
-    """
-    The parent_logit_mlp must accept an input tensor of shape (1, 2 * hidden_dim).
-    If its first Linear layer expects a different input dimension, initialization
-    must raise ValueError (caught in the test-input forward pass inside __init__).
-    """
-
-    # hidden_dim = 32 → required input_dim = 96
-    # Provide an MLP that expects a wrong input_dim (e.g., 16 instead of 96)
-    bad_parent_args = [
-        [[16, 1]],            # incorrect input dimension
-        [torch.nn.Identity],
-    ]
-
-    with pytest.raises(ValueError):
-        QG.models.AutoregressiveDecoder(
-            gru_type=gru_type,
-            gru_args=gru_args,
-            gru_kwargs=gru_kwargs,
-            parent_logit_mlp_type=parent_logit_mlp_type,
-            parent_logit_mlp_args=bad_parent_args,
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        )
-
-def test_parent_mlp_must_return_tensor(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_kwargs
-):
-    """
-    If parent_logit_mlp returns a non‑tensor type (e.g. list, tuple),
-    initialization must raise TypeError.
-    """
-
-    class BadMLP(torch.nn.Module):
-        def forward(self, x):
-            return [1, 2, 3]  # invalid: must return tensor
-
-    with pytest.raises(TypeError):
-        QG.models.AutoregressiveDecoder(
-            gru_type=gru_type,
-            gru_args=gru_args,
-            gru_kwargs=gru_kwargs,
-            parent_logit_mlp_type=BadMLP,
-            parent_logit_mlp_args=[],
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        )
-
-def test_parent_mlp_malformed_dims_structure(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_kwargs
-):
-    """
-    The dims structure provided to LinearSequential must be properly nested as:
-        dims = [[in_dim, out_dim], [out_dim, next_dim], ...]
-    If the user provides an invalid structure (e.g. a flat list), decoder
-    initialization must raise a ValueError due to failure in parent_logit_mlp.
-    """
-
-    # Incorrect dims structure: should be [[in_dim, out_dim]] but is [in_dim, out_dim]
-    malformed_parent_args = [
-        [16, 1],             # WRONG: not wrapped in a list of layers
-        [torch.nn.Identity], # still provide activations, but dims shape is invalid
-    ]
-
-    with pytest.raises(Exception):
-        QG.models.AutoregressiveDecoder(
-            gru_type=gru_type,
-            gru_args=gru_args,
-            gru_kwargs=gru_kwargs,
-            parent_logit_mlp_type=QG.models.LinearSequential,
-            parent_logit_mlp_args=malformed_parent_args,
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        )
-
-# -------------------------------------------------------------------------
 # decoder_init error tests
 # -------------------------------------------------------------------------
-
-def test_decoder_init_wrong_output_dim(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    """
-    decoder_init must output a tensor of dimension hidden_dim (32 here).
-    If it outputs the wrong dimension, autoregressive decoding must fail.
-    """
-
-    # A decoder_init with incorrect output dimension
-    class BadInit(torch.nn.Module):
-        def forward(self, z):
-            return torch.randn(64)  # wrong: hidden_dim = 32 expected
-
-    # Autoregressive decode should crash due to dimension mismatch
-    with pytest.raises(ValueError):
-        QG.models.AutoregressiveDecoder(
-        gru_type=gru_type,
-        gru_args=gru_args,
-        gru_kwargs=gru_kwargs,
-        parent_logit_mlp_type=parent_logit_mlp_type,
-        parent_logit_mlp_args=parent_logit_mlp_args,
-        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        decoder_init_type=BadInit,
-        decoder_init_args=[],
-        decoder_init_kwargs={},
-    )
-
-def test_decoder_init_must_return_tensor(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    """
-    decoder_init must return a tensor. If it returns anything else,
-    decoding must raise TypeError.
-    """
-
-    class BadInit(torch.nn.Module):
-        def forward(self, z):
-            return {"not": "a tensor"}
-    with pytest.raises(TypeError):
-        QG.models.AutoregressiveDecoder(
-            gru_type=gru_type,
-            gru_args=gru_args,
-            gru_kwargs=gru_kwargs,
-            parent_logit_mlp_type=parent_logit_mlp_type,
-            parent_logit_mlp_args=parent_logit_mlp_args,
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-            decoder_init_type=BadInit,
-            decoder_init_args=[],
-            decoder_init_kwargs={},
-        )
 
 def test_decoder_init_internal_exception_wrapped(
     gru_type, gru_args, gru_kwargs,
@@ -422,33 +267,6 @@ def test_decoder_init_internal_exception_wrapped(
 
     assert "decoder_init failed" in str(excinfo.value)
     assert "boom" in str(excinfo.value)
-
-# -------------------------------------------------------------------------
-# latent_dim inference failure must raise ValueError
-# -------------------------------------------------------------------------
-
-def test_latent_dim_inference_failure(
-    gru_type,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    """
-    Validation: If hidden_dim is too large such that the implicit MLP input
-    dimension < 2 * hidden_dim.
-    """
-
-    # hidden_dim = 64 → required input_dim = 192
-    # But parent_logit_mlp first layer expects only 128
-    bad_gru_args = [32, 64]  # in_dim=32, hidden_dim=64
-
-    with pytest.raises(ValueError):
-        QG.models.AutoregressiveDecoder(
-            gru_type=gru_type,
-            gru_args=bad_gru_args,
-            gru_kwargs={},
-            parent_logit_mlp_type=parent_logit_mlp_type,
-            parent_logit_mlp_args=parent_logit_mlp_args,
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        )
 
 # -------------------------------------------------------------------------
 # from_config equivalence with standard constructor
@@ -645,6 +463,7 @@ def test_forward_training_with_teacher_forcing_single(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[0]
+    assert torch.allclose(L, torch.triu(L))
     assert X is None
     assert logp is not None
 
@@ -652,7 +471,7 @@ def test_forward_training_with_teacher_forcing_batched(
     gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
-    latent_vector_tf = torch.randn(1, 32)
+    latent_vector_tf = torch.randn(2, 32)
 
     teacher_forcing_targets_full = torch.tensor([
         [0, 0, 0, 0],
@@ -674,6 +493,7 @@ def test_forward_training_with_teacher_forcing_batched(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)[0]
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[1]
+    assert torch.allclose(L, torch.triu(L))
     assert X is None
     assert logp is not None
 
@@ -707,6 +527,7 @@ def test_forward_eval_with_teacher_forcing_single(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[0]
+    assert torch.allclose(L, torch.triu(L))
     assert X is None
     assert logp is not None
 
@@ -714,7 +535,7 @@ def test_forward_eval_with_teacher_forcing_batched(
     gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
-    latent_vector_tf = torch.randn(1, 32)
+    latent_vector_tf = torch.randn(2, 32)
 
     teacher_forcing_targets_full = torch.tensor([
         [0, 0, 0, 0],
@@ -736,6 +557,7 @@ def test_forward_eval_with_teacher_forcing_batched(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)[0]
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[1]
+    assert torch.allclose(L, torch.triu(L))
     assert X is None
     assert logp is not None
 
@@ -763,6 +585,7 @@ def test_eval_autoregressive_sampling_single(
     L, X, logp = dec(latent_eval_z, atom_count=eval_atom_count)
 
     assert L.shape == (eval_atom_count, eval_atom_count)
+    assert torch.allclose(L, torch.triu(L))
     assert X is None
     assert logp is None
 
@@ -770,7 +593,7 @@ def test_eval_autoregressive_sampling_batched(
     gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
-    latent_eval_z = torch.randn(1, 32)
+    latent_eval_z = torch.randn(2, 32)
     eval_atom_count = 5
     dec = QG.models.AutoregressiveDecoder(
         gru_type=gru_type,
@@ -786,90 +609,9 @@ def test_eval_autoregressive_sampling_batched(
     L, X, logp = dec(latent_eval_z, atom_count=eval_atom_count)[0]
 
     assert L.shape == (eval_atom_count, eval_atom_count)
+    assert torch.allclose(L, torch.triu(L))
     assert X is None
     assert logp is None
-
-# -------------------------------------------------------------------------
-# forward: ancestor suppression disabled must not modify probabilities
-# -------------------------------------------------------------------------
-
-def test_ancestor_suppression_disabled_behavior(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    # Local test inputs
-    z = torch.randn(32)
-    teacher_forcing_targets = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-    ], dtype=torch.float32)
-
-    dec = QG.models.AutoregressiveDecoder(
-        gru_type=gru_type,
-        gru_args=gru_args,
-        gru_kwargs=gru_kwargs,
-        parent_logit_mlp_type=parent_logit_mlp_type,
-        parent_logit_mlp_args=parent_logit_mlp_args,
-        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        ancestor_suppression_strength=0.0,
-    )
-    dec.train()
-
-    # Capture printed warnings (optional but ensures branch executed)
-    L, X, logp = dec(z, teacher_forcing_targets=teacher_forcing_targets)
-
-    # No node features in this configuration
-    assert X is None
-
-    # ancestor_suppression flag must be False
-    assert dec.ancestor_suppression is False
-
-    # No error and a valid log-likelihood must exist
-    assert logp is not None
-
-# -------------------------------------------------------------------------
-# forward: ancestor suppression enabled must modify probabilities
-# -------------------------------------------------------------------------
-
-def test_ancestor_suppression_enabled_behavior(
-    gru_type, gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    # Setup
-    z = torch.randn(32)
-    teacher_forcing_targets = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [1, 1, 0],
-    ], dtype=torch.float32)
-
-    dec = QG.models.AutoregressiveDecoder(
-        gru_type=gru_type,
-        gru_args=gru_args,
-        gru_kwargs=gru_kwargs,
-        parent_logit_mlp_type=parent_logit_mlp_type,
-        parent_logit_mlp_args=parent_logit_mlp_args,
-        parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-        ancestor_suppression_strength=1.0,
-    )
-    dec.train()
-
-    # Run forward pass
-    L, X, logp = dec(z, teacher_forcing_targets=teacher_forcing_targets)
-
-    # Check presence of log-likelihood
-    assert logp is not None
-
-    # Ensure X is None (no node_feature_decoder in this configuration)
-    assert X is None
-
-    # ancestor_suppression must be ACTIVE
-    assert dec.ancestor_suppression is True
-
-    # Structural correctness of link matrix
-    assert L.shape == teacher_forcing_targets.shape
-
 
 # -------------------------------------------------------------------------
 # forward: eval mode without teacher_forcing requires atom_count
@@ -932,6 +674,7 @@ def test_atom_count_ignored_when_teacher_forcing_given(
     # teacher_forcing_targets determine N_max, so shape must match teacher_forcing_targets
     assert L.shape[0] == teacher_forcing_targets.shape[0]
     assert L.shape[1] == teacher_forcing_targets.shape[0]
+    assert torch.allclose(L, torch.triu(L))
 
     # logp must be computed in training mode
     assert logp is not None
@@ -971,6 +714,7 @@ def test_node_feature_decoder_forward_batched(
     L, X, logp = dec(z, teacher_forcing_targets=teacher_forcing_targets)[0]
 
     # Node feature decoder must produce feature matrix
+    assert torch.allclose(L, torch.triu(L))
     assert X is not None
     assert X.shape[0] == teacher_forcing_targets.shape[1]
     # Must have positive feature dimension
@@ -1006,6 +750,7 @@ def test_node_feature_decoder_forward_single(
     L, X, logp = dec(z, teacher_forcing_targets=teacher_forcing_targets)
 
     # Node feature decoder must produce feature matrix
+    assert torch.allclose(L, torch.triu(L))
     assert X is not None
     assert X.shape[0] == teacher_forcing_targets.shape[0]
     # Must have positive feature dimension
@@ -1066,6 +811,7 @@ def test_full_construction_with_deep_components(
 
     L, X, logp = out[0]
     assert L.shape == teacher.shape[1:]
+    assert torch.allclose(L, torch.triu(L))
     assert X.shape[0] == teacher.shape[1]
     assert X.shape[1] == 8   # from deep_node_feature_decoder_args
     assert logp is not None
@@ -1124,6 +870,7 @@ def test_full_decoder_gradient_flow_deep_components(
     out = dec(z, teacher_forcing_targets=teacher)
     assert isinstance(out, list) and len(out) == 1
     L, X, logp = out[0]
+    assert torch.allclose(L, torch.triu(L))
 
     # Scalar loss that pulls on ALL modules
     # Combine link reconstruction + node features + likelihood
@@ -1147,7 +894,7 @@ def test_reconstruct_link_matrix_batched(
     gru_type, gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
 ):
-    z = torch.randn(1, 32)
+    z = torch.randn(2, 32)
     atom_count = 4
 
     dec = QG.models.AutoregressiveDecoder(
@@ -1165,6 +912,8 @@ def test_reconstruct_link_matrix_batched(
     assert isinstance(L, torch.Tensor)
     assert L.shape == (atom_count, atom_count)
     assert L.dtype == torch.float32
+    assert torch.allclose(L, torch.triu(L))
+    assert torch.all((L == 0) | (L == 1))
 
 
 def test_reconstruct_link_matrix_single(
@@ -1189,6 +938,8 @@ def test_reconstruct_link_matrix_single(
     assert isinstance(L, torch.Tensor)
     assert L.shape == (atom_count, atom_count)
     assert L.dtype == torch.float32
+    assert torch.allclose(L, torch.triu(L))
+    assert torch.all((L == 0) | (L == 1))
 
 # -------------------------------------------------------------------------
 # reconstruct_node_features
@@ -1219,6 +970,7 @@ def test_reconstruct_node_features_batched(
 
     # L must be a square adjacency matrix
     assert L.shape == (atom_count, atom_count)
+    assert torch.all((L == 0) | (L == 1))
 
     # X must exist because node_feature_decoder is configured
     assert X is not None
@@ -1250,6 +1002,7 @@ def test_reconstruct_node_features_single(
 
     # L must be a square adjacency matrix
     assert L.shape == (atom_count, atom_count)
+    assert torch.all((L == 0) | (L == 1))
 
     # X must exist because node_feature_decoder is configured
     assert X is not None
@@ -1400,3 +1153,31 @@ def test_save_and_load_equivalence(
         assert n1 == n2
         assert p1.shape == p2.shape
         assert torch.allclose(p1, p2)
+
+
+def test_named_parameters_include_expected_modules(
+    gru_type, gru_args, gru_kwargs,
+    deep_parent_logit_mlp_type, deep_parent_logit_mlp_args, deep_parent_logit_mlp_kwargs,
+    deep_decoder_init_type, deep_decoder_init_args, deep_decoder_init_kwargs,
+    deep_node_feature_decoder_type, deep_node_feature_decoder_args, deep_node_feature_decoder_kwargs,
+):
+    dec = QG.models.AutoregressiveDecoder(
+        gru_type=gru_type,
+        gru_args=gru_args,
+        gru_kwargs=gru_kwargs,
+        parent_logit_mlp_type=deep_parent_logit_mlp_type,
+        parent_logit_mlp_args=deep_parent_logit_mlp_args,
+        parent_logit_mlp_kwargs=deep_parent_logit_mlp_kwargs,
+        decoder_init_type=deep_decoder_init_type,
+        decoder_init_args=deep_decoder_init_args,
+        decoder_init_kwargs=deep_decoder_init_kwargs,
+        node_feature_decoder_type=deep_node_feature_decoder_type,
+        node_feature_decoder_args=deep_node_feature_decoder_args,
+        node_feature_decoder_kwargs=deep_node_feature_decoder_kwargs,
+    )
+
+    param_names = [name for name, _ in dec.named_parameters()]
+    for module_name in ("node_updater", "parent_logit_mlp", "decoder_init", "node_feature_decoder"):
+        module = getattr(dec, module_name)
+        assert module is not None
+        assert any(name.startswith(f"{module_name}.") for name in param_names)

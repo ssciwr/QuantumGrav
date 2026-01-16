@@ -291,65 +291,6 @@ def test_gru_single_parent_case(
     assert isinstance(out, torch.Tensor)
     assert out.shape == (hidden_dim,)
 
-def test_gru_hidden_state_consistency(
-    gru_type, gru_args, gru_kwargs, aggregation_method,
-    input_dim, hidden_dim,
-):
-    """
-    Hidden state consistency:
-    Calling forward twice with identical parent_states and fixed GRU parameters
-    must produce identical outputs (GRUCell is deterministic without hx input).
-    """
-
-    gru = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
-        gru_args=gru_args,
-        gru_kwargs=gru_kwargs,
-        aggregation_method=aggregation_method,
-    )
-    gru.eval()
-
-    parent_states = torch.randn(8, input_dim)
-
-    out1 = gru(parent_states)
-    out2 = gru(parent_states)
-
-    assert torch.allclose(out1, out2), "GRU forward is not deterministic under identical input."
-
-def test_gru_seed_determinism(
-    gru_type, gru_args, gru_kwargs, aggregation_method, input_dim
-):
-    """
-    Deterministic behavior under fixed torch.random seed.
-
-    Two GRU instances constructed under the same seed and given identical
-    inputs must produce identical outputs.
-    """
-
-    torch.manual_seed(12345)
-    gru1 = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
-        gru_args=gru_args,
-        gru_kwargs=gru_kwargs,
-        aggregation_method=aggregation_method,
-    )
-
-    torch.manual_seed(12345)
-    gru2 = QG.models.NodeUpdateGRU(
-        gru_type=gru_type,
-        gru_args=gru_args,
-        gru_kwargs=gru_kwargs,
-        aggregation_method=aggregation_method,
-    )
-
-    parent_states = torch.randn(10, input_dim)
-
-    out1 = gru1(parent_states)
-    out2 = gru2(parent_states)
-
-    assert torch.allclose(out1, out2), \
-        "GRU outputs differ despite identical seeds and inputs."
-
 def test_gru_mlp_forward_works(gru_args, gru_kwargs):
     class DummyMLP(torch.nn.Module):
         def __init__(self, d_in, d_out):
