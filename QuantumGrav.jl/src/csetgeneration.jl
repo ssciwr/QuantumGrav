@@ -28,7 +28,7 @@ Chebyshev series with exponentially decaying coefficients.
 - A tuple `(cset, sprinkling, chebyshev_coefs)` where:
     - `cset`: The generated causal set.
     - `sprinkling`: The list of sprinkled points.
-    - `chebyshev_coefs`: The matrix of Chebyshev coefficients used to construct the manifold.
+    - `chebyshev_coefs`: The d-tensor of Chebyshev coefficients used to construct the manifold.
 
 # Throws
 - `ArgumentError` if `npoints <= 0`
