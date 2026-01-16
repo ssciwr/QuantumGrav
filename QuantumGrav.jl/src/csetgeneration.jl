@@ -11,7 +11,7 @@ Chebyshev series with exponentially decaying coefficients.
 - `r::Float64`: Decay base for Chebyshev coefficients. Must be > 1 to ensure exponential convergence; defines the radius of analyticity in the complex plane.
 
 # Keyword arguments
-- `d::Int64`: Dimension of the manifold, defaults to 2. Currently, only 2D is supported.
+- `d::Int64`: Dimension of the manifold, defaults to 2.
 - `type::Type{T}`: Type to which the sprinkling coordinates will be converted (default is Float32).
 
 # Returns
@@ -24,7 +24,6 @@ Chebyshev series with exponentially decaying coefficients.
 - `ArgumentError` if `npoints <= 0`
 - `ArgumentError` if `order <= 0`
 - `ArgumentError` if `r <= 1`
-- `ArgumentError` if `d != 2`. Currently, only 2D is supported.
 """
 function make_polynomial_manifold_cset(
     npoints::Int64,
