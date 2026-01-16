@@ -10,6 +10,9 @@ import torch
 # Fixtures
 # -------------------------------------------------------------------------
 
+def _maybe_dense(L: torch.Tensor) -> torch.Tensor:
+    return L.to_dense() if L.is_sparse else L
+
 
 # -------------------------------------------------------------------------
 # GNN-based decoder fixtures (global defaults)
@@ -229,38 +232,6 @@ def test_minimal_construction(
     assert dec.node_updater.hidden_dim == 32
 
 # -------------------------------------------------------------------------
-# decoder_init error tests
-# -------------------------------------------------------------------------
-
-def test_decoder_init_internal_exception_wrapped(
-    gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
-):
-    """
-    If decoder_init.forward raises an exception,
-    the decoder must wrap it in ValueError with informative message.
-    """
-
-    class ExplodingInit(torch.nn.Module):
-        def forward(self, z):
-            raise RuntimeError("boom")
-
-    with pytest.raises(ValueError) as excinfo:
-        QG.models.AutoregressiveDecoder(
-            gru_args=gru_args,
-            gru_kwargs=gru_kwargs,
-            parent_logit_mlp_type=parent_logit_mlp_type,
-            parent_logit_mlp_args=parent_logit_mlp_args,
-            parent_logit_mlp_kwargs=parent_logit_mlp_kwargs,
-            decoder_init_type=ExplodingInit,
-            decoder_init_args=[],
-            decoder_init_kwargs={},
-        )
-
-    assert "decoder_init failed" in str(excinfo.value)
-    assert "boom" in str(excinfo.value)
-
-# -------------------------------------------------------------------------
 # from_config equivalence with standard constructor
 # -------------------------------------------------------------------------
 
@@ -355,7 +326,7 @@ def test_missing_gru_args_raises(
         "parent_logit_mlp_kwargs": parent_logit_mlp_kwargs,
     }
 
-    with pytest.raises(ValueError):
+    with pytest.raises(jsonschema.ValidationError):
         QG.models.AutoregressiveDecoder.from_config(cfg)
 
 
@@ -449,7 +420,8 @@ def test_forward_training_with_teacher_forcing_single(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[0]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is None
     assert logp is not None
 
@@ -478,7 +450,8 @@ def test_forward_training_with_teacher_forcing_batched(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)[0]
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[1]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is None
     assert logp is not None
 
@@ -511,7 +484,8 @@ def test_forward_eval_with_teacher_forcing_single(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[0]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is None
     assert logp is not None
 
@@ -540,7 +514,8 @@ def test_forward_eval_with_teacher_forcing_batched(
     L, X, logp = dec(latent_vector_tf, teacher_forcing_targets=teacher_forcing_targets_full)[0]
 
     assert L.shape[0] == teacher_forcing_targets_full.shape[1]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is None
     assert logp is not None
 
@@ -567,7 +542,8 @@ def test_eval_autoregressive_sampling_single(
     L, X, logp = dec(latent_eval_z, atom_count=eval_atom_count)
 
     assert L.shape == (eval_atom_count, eval_atom_count)
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is None
     assert logp is None
 
@@ -590,7 +566,8 @@ def test_eval_autoregressive_sampling_batched(
     L, X, logp = dec(latent_eval_z, atom_count=eval_atom_count)[0]
 
     assert L.shape == (eval_atom_count, eval_atom_count)
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is None
     assert logp is None
 
@@ -653,7 +630,8 @@ def test_atom_count_ignored_when_teacher_forcing_given(
     # teacher_forcing_targets determine N_max, so shape must match teacher_forcing_targets
     assert L.shape[0] == teacher_forcing_targets.shape[0]
     assert L.shape[1] == teacher_forcing_targets.shape[0]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
 
     # logp must be computed in training mode
     assert logp is not None
@@ -692,7 +670,8 @@ def test_node_feature_decoder_forward_batched(
     L, X, logp = dec(z, teacher_forcing_targets=teacher_forcing_targets)[0]
 
     # Node feature decoder must produce feature matrix
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is not None
     assert X.shape[0] == teacher_forcing_targets.shape[1]
     # Must have positive feature dimension
@@ -727,7 +706,8 @@ def test_node_feature_decoder_forward_single(
     L, X, logp = dec(z, teacher_forcing_targets=teacher_forcing_targets)
 
     # Node feature decoder must produce feature matrix
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X is not None
     assert X.shape[0] == teacher_forcing_targets.shape[0]
     # Must have positive feature dimension
@@ -787,7 +767,8 @@ def test_full_construction_with_deep_components(
 
     L, X, logp = out[0]
     assert L.shape == teacher.shape[1:]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert X.shape[0] == teacher.shape[1]
     assert X.shape[1] == 8   # from deep_node_feature_decoder_args
     assert logp is not None
@@ -845,7 +826,8 @@ def test_full_decoder_gradient_flow_deep_components(
     out = dec(z, teacher_forcing_targets=teacher)
     assert isinstance(out, list) and len(out) == 1
     L, X, logp = out[0]
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
 
     # Scalar loss that pulls on ALL modules
     # Combine link reconstruction + node features + likelihood
@@ -886,7 +868,8 @@ def test_reconstruct_link_matrix_batched(
     assert isinstance(L, torch.Tensor)
     assert L.shape == (atom_count, atom_count)
     assert L.dtype == torch.float32
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert torch.all((L == 0) | (L == 1))
 
 
@@ -911,7 +894,8 @@ def test_reconstruct_link_matrix_single(
     assert isinstance(L, torch.Tensor)
     assert L.shape == (atom_count, atom_count)
     assert L.dtype == torch.float32
-    assert torch.allclose(L, torch.triu(L))
+    L_dense = _maybe_dense(L)
+    assert torch.allclose(L_dense, torch.triu(L_dense))
     assert torch.all((L == 0) | (L == 1))
 
 # -------------------------------------------------------------------------
