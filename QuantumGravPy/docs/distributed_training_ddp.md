@@ -6,26 +6,27 @@ This guide demonstrates how to use the `TrainerDDP` class for distributed traini
 
 DDP (Distributed Data Parallel) allows you to train models across multiple GPUs efficiently by:
 
-- **Parallelizing computation** across multiple GPUs
+- **Parallelizing computation** across multiple GPUs by giving each GPU its own copy of the model, training them simultaneously with different data and then aggregating gradients:
 - **Automatically distributing data** so each GPU processes a unique subset
 - **Synchronizing gradients** during backpropagation
 - **Scaling batch size** as total_batch_size = batch_size × world_size
+
+This allows more efficient training on large datasets, larger total batch sizes, and faster convergence.
 
 ### Key Concepts
 
 - **World Size**: Total number of processes (GPUs)
 - **Rank**: Unique identifier for each process (0 to world_size-1)
 - **Master Node**: Coordinates communication between processes
-- **DistributedSampler**: Automatically splits data across ranks
+- **DistributedSampler**: Automatically splits data across ranks. This is provided by torch.
 
 ## Setup Requirements
 
 This guide assumes:
 
-- Multiple NVIDIA GPUs are available (e.g., GPUs 3, 4, and 5)
-- `CUDA_VISIBLE_DEVICES` is set to limit visible GPUs
+- Multiple NVIDIA GPUs are available
+- `CUDA_VISIBLE_DEVICES` is set to limit visible GPUs: `export CUDA_VISIBLE_DEVICES=3,4,5`
 - PyTorch with CUDA support is installed
-- The training script will be launched using `torchrun` or `torch.distributed.launch`
 
 ## Running DDP Training
 
@@ -36,14 +37,7 @@ export CUDA_VISIBLE_DEVICES=3,4,5
 torchrun --nproc_per_node=3 your_training_script.py
 ```
 
-### Option 2: Using `torch.distributed.launch` (PyTorch < 1.10)
-
-```bash
-export CUDA_VISIBLE_DEVICES=3,4,5
-python -m torch.distributed.launch --nproc_per_node=3 your_training_script.py
-```
-
-### Option 3: Standalone Script with `torch.multiprocessing`
+### Option 2: Standalone Script with `torch.multiprocessing`
 
 For local development and testing, you can use `torch.multiprocessing.spawn()` without external launchers.
 
@@ -197,7 +191,7 @@ if __name__ == "__main__":
 
 ## Example Script for torchrun
 
-If you prefer to use `torchrun` or `torch.distributed.launch`, here's a simpler script that relies on environment variables set by the launcher:
+If you prefer to use `torchrun`, here's a simpler script that relies on environment variables set by the launcher:
 
 ```python
 #!/usr/bin/env python3
@@ -219,9 +213,6 @@ from pathlib import Path
 import yaml
 import logging
 import torch
-
-# Add the src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import QuantumGrav as QG
 from QuantumGrav.train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
@@ -488,13 +479,6 @@ The `TrainerDDP` class includes proper synchronization barriers. If processes ha
 2. Verify `master_addr` and `master_port` are correct
 3. Check logs for errors on individual ranks
 
-### Data Not Distributed Properly
-
-`DistributedSampler` is automatically used in `TrainerDDP.prepare_dataloaders()`. It ensures:
-
-- Each rank gets a unique subset of data
-- No data duplication or gaps
-- Independent shuffling per rank (with seed control)
 
 ## Environment Variables
 
@@ -572,4 +556,3 @@ torchrun --nproc_per_node=4 --nnodes=2 --node_rank=1 \
 
 - [PyTorch DDP Documentation](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html)
 - [Training Guide](training_a_model.md)
-- [Configuration Reference](../api.md)
