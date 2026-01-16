@@ -4,6 +4,7 @@ import torch
 from ..gnn_model import instantiate_type
 from .node_update_GRU import NodeUpdateGRU
 from .. import base
+import logging
 #
 import jsonschema
 

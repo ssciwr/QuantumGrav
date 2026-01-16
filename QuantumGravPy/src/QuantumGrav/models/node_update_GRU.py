@@ -191,7 +191,7 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
             self.pooling_mlp = None
 
         # GRU
-        self.gru = self.torch.nn.GRUCell(
+        self.gru = torch.nn.GRUCell(
             *gru_args,
             **(gru_kwargs if gru_kwargs is not None else {})
         )
