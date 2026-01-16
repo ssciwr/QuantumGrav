@@ -429,8 +429,8 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         # initial structures
         h0 = self.init_state(z)
         hprev = h0.clone()
-        node_states = []                      # list of tensors
-        edge_index = [] # list of (child, parent) tuples
+        node_states = []                        # list of tensors
+        edge_index = []                         # list of (parent, child) tuples
         step_logprobs = []                      # accumulate per-step log likelihoods during training
         parent_indices = torch.empty(0, dtype=torch.long, device=h0.device)
         if self.ancestor_suppression:
@@ -489,7 +489,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             # update adjacency structure in preallocated tensor
             if parent_indices.numel() > 0:
                 for j in parent_indices.tolist():
-                    edge_index.append((t, j))
+                    edge_index.append((j, t))
 
 
             # update ancestor matrix A: row t

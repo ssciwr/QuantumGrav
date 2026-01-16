@@ -49,6 +49,23 @@ def parent_logit_mlp_kwargs():
     }
 
 @pytest.fixture
+def teacher_forcing_targets_full():
+    return torch.tensor([
+        [0, 1, 0, 1],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1],
+        [0, 0, 0, 0],
+    ], dtype=torch.float32)
+
+@pytest.fixture
+def teacher_forcing_targets_small():
+    return torch.tensor([
+        [0, 1, 0],
+        [0, 0, 1],
+        [0, 0, 0],
+    ], dtype=torch.float32)
+
+@pytest.fixture
 def decoder_init_type():
     return QG.models.LinearSequential
 
@@ -241,7 +258,8 @@ def test_from_config_equivalence_full(
     gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
     decoder_init_type, decoder_init_args, decoder_init_kwargs,
-    node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
+    node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs,
+    teacher_forcing_targets_small
 ):
     # Direct construction
     direct = QG.models.AutoregressiveDecoder(
@@ -283,11 +301,7 @@ def test_from_config_equivalence_full(
 
     # Forward pass outputs must have matching shapes
     dummy_latent = torch.randn(1, 32)
-    teacher_forcing_targets = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-    ], dtype=torch.float32).unsqueeze(0)
+    teacher_forcing_targets = teacher_forcing_targets_small.unsqueeze(0)
 
     direct.train()
     cfg_model.train()
@@ -397,16 +411,10 @@ def test_training_requires_teacher_forcing(
 
 def test_forward_training_with_teacher_forcing_single(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_full
 ):
     latent_vector_tf = torch.randn(32)
-
-    teacher_forcing_targets_full = torch.tensor([
-        [0, 0, 0, 0],
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [1, 0, 1, 0],
-    ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -427,16 +435,12 @@ def test_forward_training_with_teacher_forcing_single(
 
 def test_forward_training_with_teacher_forcing_batched(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_full
 ):
     latent_vector_tf = torch.randn(2, 32)
 
-    teacher_forcing_targets_full = torch.tensor([
-        [0, 0, 0, 0],
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [1, 0, 1, 0],
-    ], dtype=torch.float32).unsqueeze(0)
+    teacher_forcing_targets_full = teacher_forcing_targets_full.unsqueeze(0).repeat(2, 1, 1)
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -461,16 +465,10 @@ def test_forward_training_with_teacher_forcing_batched(
 
 def test_forward_eval_with_teacher_forcing_single(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_full
 ):
     latent_vector_tf = torch.randn(32)
-
-    teacher_forcing_targets_full = torch.tensor([
-        [0, 0, 0, 0],
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [1, 0, 1, 0],
-    ], dtype=torch.float32)
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -491,16 +489,12 @@ def test_forward_eval_with_teacher_forcing_single(
 
 def test_forward_eval_with_teacher_forcing_batched(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_full
 ):
     latent_vector_tf = torch.randn(2, 32)
 
-    teacher_forcing_targets_full = torch.tensor([
-        [0, 0, 0, 0],
-        [1, 0, 0, 0],
-        [0, 1, 0, 0],
-        [1, 0, 1, 0],
-    ], dtype=torch.float32).unsqueeze(0)
+    teacher_forcing_targets_full = teacher_forcing_targets_full.unsqueeze(0).repeat(2, 1, 1)
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -602,15 +596,12 @@ def test_eval_requires_atom_count_when_no_teacher_forcing(
 
 def test_atom_count_ignored_when_teacher_forcing_given(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_small
 ):
     z = torch.randn(32)
 
-    teacher_forcing_targets = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-    ], dtype=torch.float32)
+    teacher_forcing_targets = teacher_forcing_targets_small
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -646,14 +637,11 @@ def test_atom_count_ignored_when_teacher_forcing_given(
 def test_node_feature_decoder_forward_batched(
     gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
-    node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
+    node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs,
+    teacher_forcing_targets_small
 ):
     z = torch.randn(1, 32)
-    teacher_forcing_targets = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-    ], dtype=torch.float32).unsqueeze(0)
+    teacher_forcing_targets = teacher_forcing_targets_small.unsqueeze(0)
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -682,14 +670,11 @@ def test_node_feature_decoder_forward_batched(
 def test_node_feature_decoder_forward_single(
     gru_args, gru_kwargs,
     parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
-    node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs
+    node_feature_decoder_type, node_feature_decoder_args, node_feature_decoder_kwargs,
+    teacher_forcing_targets_small
 ):
     z = torch.randn(32)
-    teacher_forcing_targets = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-    ], dtype=torch.float32)
+    teacher_forcing_targets = teacher_forcing_targets_small
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -724,13 +709,10 @@ def test_full_construction_with_deep_components(
     deep_parent_logit_mlp_type, deep_parent_logit_mlp_args, deep_parent_logit_mlp_kwargs,
     deep_decoder_init_type, deep_decoder_init_args, deep_decoder_init_kwargs,
     deep_node_feature_decoder_type, deep_node_feature_decoder_args, deep_node_feature_decoder_kwargs,
+    teacher_forcing_targets_small
 ):
     latent = torch.randn(1, 32)
-    teacher = torch.tensor([
-        [0,0,0],
-        [1,0,0],
-        [0,1,0]
-    ], dtype=torch.float32).unsqueeze(0)
+    teacher = teacher_forcing_targets_small.unsqueeze(0)
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -783,6 +765,7 @@ def test_full_decoder_gradient_flow_deep_components(
     deep_parent_logit_mlp_type, deep_parent_logit_mlp_args, deep_parent_logit_mlp_kwargs,
     deep_decoder_init_type, deep_decoder_init_args, deep_decoder_init_kwargs,
     deep_node_feature_decoder_type, deep_node_feature_decoder_args, deep_node_feature_decoder_kwargs,
+    teacher_forcing_targets_small
 ):
     """
     Ensure that the FULL decoder (deep parent MLP, deep init, deep node-feature decoder)
@@ -815,12 +798,7 @@ def test_full_decoder_gradient_flow_deep_components(
     z = torch.randn(1, 32, requires_grad=True)
 
     # Teacher forcing batch (must match N × N)
-    teacher = torch.tensor(
-        [[[0, 0, 0],
-          [1, 0, 0],
-          [0, 1, 0]]],
-        dtype=torch.float32,
-    )
+    teacher = teacher_forcing_targets_small.unsqueeze(0)
 
     # Forward
     out = dec(z, teacher_forcing_targets=teacher)
@@ -870,7 +848,7 @@ def test_reconstruct_link_matrix_batched(
     assert L.dtype == torch.float32
     L_dense = _maybe_dense(L)
     assert torch.allclose(L_dense, torch.triu(L_dense))
-    assert torch.all((L == 0) | (L == 1))
+    assert torch.all((L_dense == 0) | (L_dense == 1))
 
 
 def test_reconstruct_link_matrix_single(
@@ -896,7 +874,7 @@ def test_reconstruct_link_matrix_single(
     assert L.dtype == torch.float32
     L_dense = _maybe_dense(L)
     assert torch.allclose(L_dense, torch.triu(L_dense))
-    assert torch.all((L == 0) | (L == 1))
+    assert torch.all((L_dense == 0) | (L_dense == 1))
 
 # -------------------------------------------------------------------------
 # reconstruct_node_features
@@ -926,7 +904,8 @@ def test_reconstruct_node_features_batched(
 
     # L must be a square adjacency matrix
     assert L.shape == (atom_count, atom_count)
-    assert torch.all((L == 0) | (L == 1))
+    L_dense = _maybe_dense(L)
+    assert torch.all((L_dense == 0) | (L_dense == 1))
 
     # X must exist because node_feature_decoder is configured
     assert X is not None
@@ -957,7 +936,8 @@ def test_reconstruct_node_features_single(
 
     # L must be a square adjacency matrix
     assert L.shape == (atom_count, atom_count)
-    assert torch.all((L == 0) | (L == 1))
+    L_dense = _maybe_dense(L)
+    assert torch.all((L_dense == 0) | (L_dense == 1))
 
     # X must exist because node_feature_decoder is configured
     assert X is not None
@@ -996,15 +976,12 @@ def test_reconstruct_node_features_without_decoder_raises(
 
 def test_compute_normalized_log_likelihood_single(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_small
 ):
     z = torch.randn(32)
 
-    teacher = torch.tensor([
-        [0, 0, 0],
-        [1, 0, 0],
-        [0, 1, 0],
-    ], dtype=torch.float32)
+    teacher = teacher_forcing_targets_small
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
@@ -1031,22 +1008,14 @@ def test_compute_normalized_log_likelihood_single(
 
 def test_compute_normalized_log_likelihood_batched(
     gru_args, gru_kwargs,
-    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs
+    parent_logit_mlp_type, parent_logit_mlp_args, parent_logit_mlp_kwargs,
+    teacher_forcing_targets_small
 ):
     z = torch.randn(2, 32)
 
-    teacher_batch = torch.tensor([
-        [
-            [0, 0, 0],
-            [1, 0, 0],
-            [0, 1, 0],
-        ],
-        [
-            [0, 0, 0],
-            [0, 0, 0],
-            [1, 0, 0],
-        ],
-    ], dtype=torch.float32)
+    teacher_batch = torch.stack(
+        [teacher_forcing_targets_small, teacher_forcing_targets_small], dim=0
+    )
 
     dec = QG.models.AutoregressiveDecoder(
         gru_args=gru_args,
