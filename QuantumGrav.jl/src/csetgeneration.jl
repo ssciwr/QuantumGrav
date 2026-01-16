@@ -51,18 +51,13 @@ function make_polynomial_manifold_cset(
         )
     end
 
-    if d != 2
-        throw(ArgumentError("Currently, only 2D is supported, got $d"))
-    end
-
     # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
     # it has to be a (order x order)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order+1, order+1)
-    for i = 1:(order+1)
-        for j = 1:(order+1)
-            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
-        end
+    chebyshev_coefs = zeros(Float64, ntuple(_ -> order+1, d))
+    for I in CartesianIndices(chebyshev_coefs)
+        chebyshev_coefs[I] = r^(-sum(Tuple(I))) * randn(rng)
     end
+
 
     # Construct the Chebyshev-to-Taylor transformation matrix
     cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
@@ -77,7 +72,7 @@ function make_polynomial_manifold_cset(
     polym = CausalSets.PolynomialManifold{d}(squaretaylorcoefs)
 
     # Define the square box boundary in 2D -- this works only in 2D and with square box boundary at the moment
-    boundary = CausalSets.BoxBoundary{d}(((-1.0, -1.0), (1.0, 1.0)))
+    boundary = CausalSets.BoxBoundary{d}((ntuple(_ -> -1.0, d), ntuple(_ -> 1.0, d)))
 
     # Generate a sprinkling of npoints in the manifold within the boundary
     sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints; rng = rng)

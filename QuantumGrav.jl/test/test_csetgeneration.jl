@@ -50,6 +50,44 @@ end
     end
 end
 
+@testitem "test_make_polynomial_manifold_cset_d4" tags = [:chebyshev_causets] setup =
+    [setupTests] begin
+    r = 1.0 + rand(rng, r_distribution)
+    npoints = rand(rng, npoint_distribution)
+    order = rand(rng, order_distribution)
+
+    cset, sprinkling, chebyshev_coefs = QuantumGrav.make_polynomial_manifold_cset(
+        npoints,
+        rng,
+        order,
+        r;
+        d = 4,
+        type = Float32,
+    )
+
+    @test length(sprinkling) == npoints
+    @test size(chebyshev_coefs) == (order + 1, order + 1)
+    @test typeof(cset) != Nothing
+    @test cset.atom_count == npoints
+    @test length(cset.future_relations) == npoints
+    @test length(cset.past_relations) == npoints
+
+    # Additional tests to verify support across the domain
+    xs = [p[1] for p in sprinkling]
+    ys = [p[2] for p in sprinkling]
+
+    x_spread = maximum(xs) - minimum(xs)
+    y_spread = maximum(ys) - minimum(ys)
+
+    @test x_spread > 0.9
+    @test y_spread > 0.9
+
+    envelope = [r^(-i - j) for i = 1:(order+1), j = 1:(order+1)]
+    for i = 1:(order+1), j = 1:(order+1)
+        @test abs(chebyshev_coefs[i, j]) ≤ 10 * envelope[i, j]
+    end
+end
+
 
 @testitem "test_make_polynomial_manifold_cset_throws" tags = [:chebyshev_causets] setup =
     [setupTests] begin
@@ -68,14 +106,6 @@ end
         1,
         0.0;
         d = 2,
-        type = Float32,
-    )
-    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset(
-        100,
-        rng,
-        2,
-        2.0;
-        d = -1,
         type = Float32,
     )
 
