@@ -471,14 +471,14 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
 
             # teacher forcing vs. sampling
             if teacher_forcing_targets is not None:
-                gt_row = teacher_forcing_targets[t][:prev_count]
-                parent_mask = gt_row.to(torch.bool)
+                gt_col = teacher_forcing_targets[:prev_count, t]
+                parent_mask = gt_col.to(torch.bool)
 
                 # accumulate log likelihood for this step
                 eps = 1e-12
                 log_p = (
-                    gt_row * torch.log(adjusted_probs + eps)
-                    + (1 - gt_row) * torch.log(1 - adjusted_probs + eps)
+                    gt_col * torch.log(adjusted_probs + eps)
+                    + (1 - gt_col) * torch.log(1 - adjusted_probs + eps)
                 )
                 step_logprobs.append(log_p.sum())
             else:
