@@ -1,5 +1,6 @@
 from typing import Any, Sequence
 from pathlib import Path
+import logging
 import torch
 from ..gnn_model import instantiate_type
 from .node_update_GRU import NodeUpdateGRU
@@ -146,6 +147,10 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
                 "type": "number",
                 "description": "Coefficient controlling multiplicative suppression of ancestors."
             },
+            "log_level": {
+                "type": "integer",
+                "description": "Logging level for the decoder logger."
+            },
         },
         "required": ["gru_args", "parent_logit_mlp_type"],
         "additionalProperties": False
@@ -169,6 +174,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
         node_feature_decoder_type: type | torch.nn.Module | None = None,
         node_feature_decoder_args: Sequence[Any] | None = None,
         node_feature_decoder_kwargs: dict[str, Any] | None = None,
+        log_level: int = logging.INFO,
     ):
         """
         Initialize an autoregressive decoder.
@@ -203,11 +209,14 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             Positional args for node feature decoder.
             node_feature_decoder_kwargs: dict[str, Any] | None = None
             Keyword args for node feature decoder.
+
+            log_level: int = logging.INFO
+            Logging level for the decoder logger.
         """
         super().__init__()
 
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(config.get("log_level", logging.INFO)) # set log level to info. 
+        self.logger.setLevel(log_level)
 
         # Store all inputs before building modules
         self.gru_args = gru_args
@@ -617,6 +626,7 @@ class AutoregressiveDecoder(torch.nn.Module, base.Configurable):
             node_feature_decoder_type=nf_type,
             node_feature_decoder_args=nf_args,
             node_feature_decoder_kwargs=nf_kwargs,
+            log_level=config.get("log_level", logging.INFO),
         )
     
     def save(self, path: str | Path) -> None:
