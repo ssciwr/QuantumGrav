@@ -74,7 +74,7 @@ class NodeUpdateGRU(torch.nn.Module, base.Configurable):
                     ]
                     }
                 },
-                "additionalProperties": false
+                "additionalProperties": False
                 },
 
             "aggregation_method": {
