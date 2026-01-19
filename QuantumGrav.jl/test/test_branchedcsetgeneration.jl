@@ -169,6 +169,33 @@ end
     @test all(v -> v <= 1, values(counts))
 end
 
+@testitem "generate_random_branch_points_no_vertical_cuts" tags=[:branchedcsetgeneration] setup=[
+    branchedtests,
+] begin
+    import CausalSets
+
+    pts, cuts = QuantumGrav.generate_random_branch_points(
+        0,
+        10;
+        rng = rng,
+        consecutive_intersections = false,
+    )
+    @test length(pts) == 0
+    @test length(cuts) == 10
+    @test all(x -> x isa CausalSets.Coordinates{2}, pts)
+    @test all(t -> t[1][1] <= t[2][1], cuts)
+    @test issorted(pts, by = p->p[1])
+
+    # Check intersection condition: no cut intersects more than once
+    intersections = QuantumGrav.cut_intersections(cuts) # cut_intersections tested below
+    counts = Dict(i => 0 for i = 1:length(cuts))
+    for ((i, j), _) in intersections
+        counts[i] += 1
+        counts[j] += 1
+    end
+    @test all(v -> v <= 1, values(counts))
+end
+
 @testitem "generate_random_branch_points_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
     import CausalSets

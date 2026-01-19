@@ -418,10 +418,10 @@ function generate_random_branch_points(
     )
 
     # Generate random points in [-1,1]^N
-    single_points = [rand_point() for _ = 1:nPoints]
+    single_points = CausalSets.Coordinates{N}[rand_point() for _ = 1:nPoints]
 
     # Generate tuples of random points in [-1,1]^N iteratively with colinearity and (optionally) intersection check
-    tuple_points = [
+    tuple_points = Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}[
         (
             bound_cuts,
             CausalSets.Coordinates{N}((coordinate_hypercube_edges[2][1], bound_cuts[2])),
