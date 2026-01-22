@@ -66,25 +66,22 @@ end
     )
 
     @test length(sprinkling) == npoints
-    @test size(chebyshev_coefs) == (order + 1, order + 1)
+    @test size(chebyshev_coefs) == ntuple(_ -> order+1, 4)
     @test typeof(cset) != Nothing
     @test cset.atom_count == npoints
     @test length(cset.future_relations) == npoints
     @test length(cset.past_relations) == npoints
 
     # Additional tests to verify support across the domain
-    xs = [p[1] for p in sprinkling]
-    ys = [p[2] for p in sprinkling]
+    for k = 1:4
+        coords = [p[k] for p in sprinkling]
+        spread = maximum(coords) - minimum(coords)
+        @test spread > 0.9
+    end
 
-    x_spread = maximum(xs) - minimum(xs)
-    y_spread = maximum(ys) - minimum(ys)
-
-    @test x_spread > 0.9
-    @test y_spread > 0.9
-
-    envelope = [r^(-i - j) for i = 1:(order+1), j = 1:(order+1)]
-    for i = 1:(order+1), j = 1:(order+1)
-        @test abs(chebyshev_coefs[i, j]) ≤ 10 * envelope[i, j]
+    for I in CartesianIndices(chebyshev_coefs)
+        envelope = r^(-sum(Tuple(I)))
+        @test abs(chebyshev_coefs[I]) ≤ 10 * envelope
     end
 end
 
