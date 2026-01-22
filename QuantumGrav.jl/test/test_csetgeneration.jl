@@ -109,6 +109,15 @@ end
         type = Float32,
     )
 
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset(
+        100,
+        rng,
+        1,
+        2.0;
+        d = 0,
+        type = Float32,
+    )
+
 end
 
 @testitem "test_make_manifold_cset_positivity_of_squared_polynomial" tags =

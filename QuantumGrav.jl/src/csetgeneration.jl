@@ -18,12 +18,13 @@ Chebyshev series with exponentially decaying coefficients.
 - A tuple `(cset, sprinkling, chebyshev_coefs)` where:
     - `cset`: The generated causal set.
     - `sprinkling`: The list of sprinkled points.
-    - `chebyshev_coefs`: The matrix of Chebyshev coefficients used to construct the manifold.
+    - `chebyshev_coefs`: The rank-d tensor of Chebyshev coefficients used to construct the manifold.
 
 # Throws
 - `ArgumentError` if `npoints <= 0`
 - `ArgumentError` if `order <= 0`
 - `ArgumentError` if `r <= 1`
+- `ArgumentError` if `d < 1`
 """
 function make_polynomial_manifold_cset(
     npoints::Int64,
@@ -50,8 +51,12 @@ function make_polynomial_manifold_cset(
         )
     end
 
-    # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order x order)-matrix because we describe a function of two variables
+    if d < 1
+        throw(ArgumentError("dimension d must be at least 1, got $d"))
+    end
+
+    # Generate a rank-d tensor of random Chebyshev coefficients that decay exponentially with base r
+    # it has to be a (order x order x ... x order)-tensor because we describe a function of d variables
     chebyshev_coefs = zeros(Float64, ntuple(_ -> order+1, d))
     for I in CartesianIndices(chebyshev_coefs)
         chebyshev_coefs[I] = r^(-sum(Tuple(I))) * randn(rng)
@@ -70,7 +75,7 @@ function make_polynomial_manifold_cset(
     # Create a polynomial manifold from the squared Taylor coefficients
     polym = CausalSets.PolynomialManifold{d}(squaretaylorcoefs)
 
-    # Define the square box boundary in 2D -- this works only in 2D and with square box boundary at the moment
+    # Define the square box boundary
     boundary = CausalSets.BoxBoundary{d}((ntuple(_ -> -1.0, d), ntuple(_ -> 1.0, d)))
 
     # Generate a sprinkling of npoints in the manifold within the boundary
