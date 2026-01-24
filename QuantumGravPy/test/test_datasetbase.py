@@ -55,8 +55,9 @@ def test_dataset_base_creation_nonprocess(create_data_zarr, tmp_path):
         chunksize=300,
         preprocess=False,
     )
-    assert Path(dataset_nonprocess.processed_dir).exists() is False
-    assert (Path(dataset_nonprocess.processed_dir) / "metadata.yaml").exists() is False
+    assert Path(dataset_nonprocess.processed_dir).exists() is True
+    assert (Path(dataset_nonprocess.processed_dir) / "metadata.yaml").exists() is True
+    assert len(list(Path(dataset_nonprocess.processed_dir).iterdir())) == 1
 
 
 def test_dataset_base_creation_fails_bad_datafile(create_data_zarr, tmp_path):

@@ -196,19 +196,21 @@ class QGDataset(QGDatasetBase, Dataset):
             datapoint = torch.load(
                 Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
             )
-            if self.transform is not None:
-                datapoint = self.transform(datapoint)
         else:
             # TODO: this is inefficient, but it's the only robust way I could find
             dfile, idx = self.map_index(idx)
-            _, rootgroup = self._get_store_group(dfile)
+            store, _ = self._get_store_group(dfile)
+            # since julia Zarr files allow having no root groups, we need to open the store directly
             datapoint = self.data_reader(
-                rootgroup,
+                store,
                 idx,
                 self.float_type,
                 self.int_type,
                 self.validate_data,
             )
+
+        if self.transform is not None:
+            datapoint = self.transform(datapoint)
 
         return datapoint
 

@@ -46,11 +46,11 @@ function get_git_info!(config::AbstractDict)
 
     git_source = info.git_source
     git_branch = info.git_revision
-    git_tree_hash = info.tree_hash
+    git_commit_hash = readchomp(`git rev-parse HEAD`)
     config["QuantumGrav"] = Dict(
         "git_source" => git_source,
         "git_branch" => git_branch,
-        "git_tree_hash" => git_tree_hash,
+        "git_commit_hash" => git_commit_hash,
     )
 end
 
@@ -232,7 +232,7 @@ Nothing
 function produce_data(
     chunksize::Int64,
     configpath::Union{String,Nothing},
-    make_data::Function
+    make_data::Function,
 )::Nothing
     @info "Producing data with workers $(Distributed.nworkers()) and chunksize $(chunksize)"
     if length(Distributed.workers()) < 2

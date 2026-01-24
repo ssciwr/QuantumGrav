@@ -68,26 +68,32 @@ class QGDatasetBase:
         self.n_processes = n_processes
         self.chunksize = chunksize
         self.preprocess = preprocess
-
-        # get the number of samples in the dataset
-        self._num_samples = 0
-        num_samples_per_file = []
-        for filepath in self.input:
-            if not Path(filepath).exists():
-                raise FileNotFoundError(f"Input file {filepath} does not exist.")
-            n = self._get_num_samples_per_file(filepath)
-            num_samples_per_file.append(n)
-            self._num_samples += n
-
-        self._num_samples_per_file = np.stack(num_samples_per_file, axis=0)
-
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
                 self.metadata = yaml.load(f, Loader=yaml.FullLoader)
-        elif preprocess:
+
+            self._num_samples = self.metadata["num_samples"]
+            self._num_samples_per_file = np.array(
+                self.metadata["num_samples_per_file"], dtype=np.int64
+            )
+        else:
+            # get the number of samples in the dataset
+            self._num_samples = 0
+            num_samples_per_file = []
+            for filepath in self.input:
+                if not Path(filepath).exists():
+                    raise FileNotFoundError(f"Input file {filepath} does not exist.")
+                n = self._get_num_samples_per_file(filepath)
+                num_samples_per_file.append(n)
+                self._num_samples += n
+
+            self._num_samples_per_file = np.stack(num_samples_per_file, axis=0)
+
             Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
             self.metadata = {
+                "files": [str(Path(f).resolve().absolute()) for f in self.input],
+                "num_samples_per_file": [int(n) for n in self._num_samples_per_file],
                 "num_samples": int(self._num_samples),
                 "input": [str(Path(f).resolve().absolute()) for f in self.input],
                 "output": str(Path(self.output).resolve().absolute()),
@@ -101,9 +107,6 @@ class QGDatasetBase:
 
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
                 yaml.dump(self.metadata, f)
-        else:
-            # do nothing here b/c this branch doesn't need any action
-            pass
 
     def _get_num_samples_per_file(self, filepath: str | Path) -> int | np.ndarray:
         """Get the number of samples in a given file.
@@ -162,9 +165,11 @@ class QGDatasetBase:
             # we need an extra fallback for zarr b/c Julia Zarr and python Zarr
             # can differ in layout - Julia Zarr does not have to have a group
             try:
-                store = zarr.storage.LocalStore(filepath, read_only=True)
-                arr = zarr.open_array(store, path="adjacency_matrix")
-                s = max(arr.shape)
+                # count the number of samples
+                s = 0
+                for p in Path(filepath).resolve().absolute().iterdir():
+                    if "cset_" in p.name:
+                        s += 1
                 return s
             except Exception:
                 raise
@@ -224,11 +229,10 @@ class QGDatasetBase:
             list[Data]: The processed data or None if the chunk is empty.
         """
         N = self._get_num_samples_per_file(store.root)
-        rootgroup = zarr.open_group(store.root)
 
         def process_item(i: int):
             item = self.data_reader(
-                rootgroup,
+                store,
                 i,
                 self.float_type,
                 self.int_type,

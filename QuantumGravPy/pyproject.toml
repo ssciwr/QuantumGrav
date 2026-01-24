@@ -20,10 +20,10 @@ dependencies = [
     "matplotlib",
     "scikit-learn",
     "joblib",
-    "juliacall",
     "PyYAML",
     "zarr",
     "optuna",
+    "huggingface-hub"
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -50,4 +50,17 @@ addopts = [
     "--import-mode=importlib",
     "-vvv",
     "-s",
+]
+
+[tool.coverage.run]
+source = ["src/QuantumGrav"]
+omit = [
+    "*/test/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+omit = [
+    "*/test/*",
+    "*/tests/*",
 ]
