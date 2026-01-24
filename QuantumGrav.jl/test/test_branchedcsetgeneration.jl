@@ -142,14 +142,15 @@ end
     @test_throws ArgumentError QuantumGrav.segments_intersect(seg1, seg2; tolerance = -1.0)
 end
 
+
 @testitem "generate_random_branch_points" tags=[:branchedcsetgeneration] setup=[
     branchedtests,
 ] begin
     import CausalSets
 
     pts, cuts = QuantumGrav.generate_random_branch_points(
-        8,
-        10;
+        8;
+        n_finite_cuts = 10,
         rng = rng,
         consecutive_intersections = false,
     )
@@ -169,14 +170,55 @@ end
     @test all(v -> v <= 1, values(counts))
 end
 
+@testitem "generate_random_branch_points_with_genus" tags=[:branchedcsetgeneration] setup=[
+    branchedtests,
+] begin
+    import CausalSets
+
+    genus = 2
+    n_vertical = 5
+
+    pts, cuts = QuantumGrav.generate_random_branch_points(
+        n_vertical;
+        genus = genus,
+        rng = rng,
+        consecutive_intersections = false,
+    )
+
+    @test length(pts) == n_vertical
+    @test all(p -> p isa CausalSets.Coordinates{2}, pts)
+    @test all(t -> t[1][1] <= t[2][1], cuts)
+
+    # genus = #finite cuts - #intersections (including boundary intersections)
+    tmax = maximum(p[1] for p in pts)
+
+    finite_cuts = cuts
+    boundary_points = pts
+
+    n_fb = 0
+    for cut in finite_cuts
+        for b in boundary_points
+            vcut = (b, CausalSets.Coordinates{2}((tmax, b[2])))
+            ok, _ = QuantumGrav.segments_intersect(cut, vcut)
+            if ok
+                n_fb += 1
+            end
+        end
+    end
+
+    n_ff = length(QuantumGrav.cut_intersections(finite_cuts))
+
+    @test length(finite_cuts) - (n_ff + n_fb) == genus
+end
+
 @testitem "generate_random_branch_points_no_vertical_cuts" tags=[:branchedcsetgeneration] setup=[
     branchedtests,
 ] begin
     import CausalSets
 
     pts, cuts = QuantumGrav.generate_random_branch_points(
-        0,
-        10;
+        0;
+        n_finite_cuts = 10,
         rng = rng,
         consecutive_intersections = false,
     )
@@ -196,12 +238,28 @@ end
     @test all(v -> v <= 1, values(counts))
 end
 
+
 @testitem "generate_random_branch_points_throws" tags =
     [:branchedcsetgeneration, :branch_points, :throws] setup = [branchedtests] begin
     import CausalSets
 
-    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(-1, 1)
-    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(1, -2)
+    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(-1; n_finite_cuts = 1)
+    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(1; n_finite_cuts = -2)
+    # neither genus nor n_finite_cuts specified
+    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(5)
+
+    # both specified
+    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(
+        5;
+        genus = 1,
+        n_finite_cuts = 1,
+    )
+
+    # negative genus
+    @test_throws ArgumentError QuantumGrav.generate_random_branch_points(
+        5;
+        genus = -1,
+    )
 end
 
 @testitem "point_segment_distance" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
@@ -884,7 +942,7 @@ end
     @test cset.atom_count == npoints
 end
 
-@testitem "make_branched_manifold_cset" tags=[:branchedcsetgeneration, :throws] setup=[
+@testitem "make_branched_manifold_cset_throws" tags=[:branchedcsetgeneration, :throws] setup=[
     branchedtests,
 ] begin
     import CausalSets
@@ -929,6 +987,105 @@ end
         0.5,
     )
     @test_throws ArgumentError QuantumGrav.make_branched_manifold_cset(
+        10,
+        5,
+        1,
+        rng,
+        order,
+        r;
+        d = 3,
+    )
+end
+
+@testitem "make_polynomial_manifold_cset_with_nontrivial_topology" tags=[:branchedcsetgeneration] setup=[branchedtests] begin
+    import CausalSets
+
+    npoints = 30
+    n_vertical_cuts = 3
+    genus = 2
+    order = 3
+    r = 1.2
+    cset, sprinkling, branch_points, coefs = QuantumGrav.make_branched_manifold_cset(
+        npoints,
+        n_vertical_cuts,
+        genus,
+        rng,
+        order,
+        r;
+        type = Float64
+    )
+    @test cset isa CausalSets.BitArrayCauset
+    @test length(sprinkling) <= npoints
+    @test length(branch_points[1]) == 3
+
+    tmax = maximum(p[1] for p in sprinkling)
+
+    finite_cuts = [
+    (CausalSets.Coordinates{2}(c[1]), CausalSets.Coordinates{2}(c[2]))
+    for c in branch_points[2]]
+    boundary_points = branch_points[1]
+    n_fb = 0
+    for cut in finite_cuts
+        for b in boundary_points
+            vcut = (b, CausalSets.Coordinates{2}((tmax, b[2])))
+            ok, _ = QuantumGrav.segments_intersect(cut, vcut)
+            if ok
+                n_fb += 1
+            end
+        end
+    end
+    n_ff = length(QuantumGrav.cut_intersections(finite_cuts))
+    @test length(finite_cuts) - (n_ff + n_fb) == genus
+
+    @test size(coefs) == (order + 1, order + 1)
+    @test cset.atom_count == npoints
+end
+
+@testitem "make_polynomial_manifold_cset_with_nontrivial_topology_throws" tags=[:branchedcsetgeneration, :throws] setup=[
+    branchedtests,
+] begin
+    import CausalSets
+
+    # Throws for bad arguments
+    npoints = 30
+    n_vertical_cuts = 3
+    n_finite_cuts = 2
+    order = 3
+    r = 1.2
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(
+        0,
+        0,
+        1,
+        rng,
+        order,
+        r,
+    )
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(
+        10,
+        -3,
+        1,
+        rng,
+        order,
+        r,
+    )
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(
+        10,
+        0,
+        -1,
+        rng,
+        order,
+        r,
+    )
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(10, 5, 1, rng, -1, r)
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(
+        10,
+        5,
+        1,
+        rng,
+        order,
+        0.5,
+    )
+    @test_throws ArgumentError QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(
         10,
         5,
         1,
