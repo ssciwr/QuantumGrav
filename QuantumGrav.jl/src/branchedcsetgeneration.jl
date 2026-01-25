@@ -412,9 +412,14 @@ function generate_random_branch_points(
     if n_finite_cuts !== nothing && genus !== nothing
         throw(ArgumentError("Specify only one of n_finite_cuts or genus, not both."))
     end
-    target_finite_cuts = isnothing(n_finite_cuts) ? genus : n_finite_cuts
-    if target_finite_cuts < 0
-        throw(ArgumentError("Number of free cuts (or genus) must be ≥ 0, got $(target_finite_cuts)."))
+    if !isnothing(n_finite_cuts)
+        if n_finite_cuts < 0
+            throw(ArgumentError("n_finite_cuts must be ≥ 0, got $(n_finite_cuts)."))
+        end
+    else
+        if genus < 0
+            throw(ArgumentError("genus must be ≥ 0, got $(genus)."))
+        end
     end
 
     if isnothing(coordinate_hypercube_edges)
@@ -445,7 +450,16 @@ function generate_random_branch_points(
         num_intersections = zeros(nPoints)
     end
 
-    while length(tuple_points) < nPoints + target_finite_cuts
+    while (
+        (!isnothing(n_finite_cuts) && length(tuple_points) < nPoints + n_finite_cuts) ||
+        (!isnothing(genus) && begin
+            current_intersections = count(>(0), num_intersections) ÷ 2
+            n_finite = length(tuple_points) - nPoints
+            current_genus = n_finite - current_intersections
+            current_genus < genus
+        end)
+        )
+
         a = rand_point()
         b = rand_point()
         seg = a[1] <= b[1] ? (a, b) : (b, a)
@@ -480,15 +494,6 @@ function generate_random_branch_points(
             end
             if any(x -> x > 1, num_intersections_new) # Reject for more than one intersection.
                 continue
-            end
-            # If genus is specified, enforce genus dynamically (boundary cuts do not contribute)
-            if isnothing(n_finite_cuts)
-                current_intersections = count(>(0), num_intersections_new) ÷ 2
-                n_finite = length(num_intersections_new) - nPoints
-                current_genus = n_finite - current_intersections
-                if current_genus > genus
-                    continue
-                end
             end
             num_intersections = copy(num_intersections_new)
         end
