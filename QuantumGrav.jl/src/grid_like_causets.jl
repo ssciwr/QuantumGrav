@@ -376,7 +376,7 @@ function lattice_points_in_box(
     E = [ℓ * edges[j][i] for i in 1:N, j in 1:N]
 
     # Conservative bound on integer translations
-    max_extent = maximum(norm(E[:, j]) for j in 1:N)
+    max_extent = maximum(LinearAlgebra.norm(E[:, j]) for j in 1:N)
     kmax = ceil(Int, maximum(lengths) / max_extent) + 1
 
     pts = CausalSets.Coordinates{N}[]
