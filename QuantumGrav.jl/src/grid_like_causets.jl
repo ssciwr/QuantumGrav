@@ -386,11 +386,6 @@ function lattice_points_in_box(
     end
     return pts
 end
-import CausalSets
-import LinearAlgebra
-edges = ((a, 0.0), (0.0, a))
-test = lattice_points_in_box(((1., 0.0), (0.0, 1.)),((-1.,-1.),(1.,1.)), .1)
-using CairoMakie
 
 """
     count_lattice_points_in_box(edges, box, ℓ) -> Int
