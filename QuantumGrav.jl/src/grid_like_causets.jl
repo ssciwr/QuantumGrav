@@ -388,21 +388,6 @@ function lattice_points_in_box(
 end
 
 """
-    count_lattice_points_in_box(edges, box, ℓ) -> Int
-
-Return the number of lattice points inside `box` for scale `ℓ`
-without allocating the full point vector.
-"""
-function count_lattice_points_in_box(
-    edges::NTuple{N,CausalSets.Coordinates{N}},
-    box::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}},
-    ℓ::Float64,
-)::Int where {N}
-
-    return length(lattice_points_in_box(edges, box, ℓ))
-end
-
-"""
     boundary_shell_indices(points, box, thickness) -> Vector{Int}
 
 Return indices of points lying within distance `thickness` of any face
@@ -456,27 +441,28 @@ function generate_grid_in_box_from_bravais(
     lengths = ntuple(i -> upper[i] - lower[i], N)
 
     # Analytic estimate for lattice spacing ℓ from density
-    detE = abs(LinearAlgebra.det(reduce(hcat, edges)))
+    E = [edges[j][i] for i in 1:N, j in 1:N]
+    detE = abs(LinearAlgebra.det(E))
     Vbox = prod(lengths)
-    ℓ = (Vbox / (n * detE))^(1 / N) * 1.05  # safety factor
+    ℓ = (Vbox / (n * detE))^(1 / N)
 
-    # Enumerate once at estimated ℓ; increase ℓ if needed
+    # Ensure we have at least n points: decrease ℓ if necessary
     points = lattice_points_in_box(edges, box, ℓ)
-    if length(points) < n
-        ℓ *= 1.2
+    while length(points) < n
+        ℓ *= 0.99
         points = lattice_points_in_box(edges, box, ℓ)
     end
 
     Δn = length(points) - n
     Δn == 0 && return points
 
-    thickness = isnothing(shell_thickness) ? ℓ : shell_thickness
+    thickness = isnothing(shell_thickness) ? .1*ℓ : shell_thickness
     shell = boundary_shell_indices(points, box, thickness)
 
     length(shell) ≥ Δn ||
         throw(ArgumentError("Boundary shell too small to remove Δn = $Δn points"))
 
-    remove = rand(rng, shell, Δn; replace = false)
+    remove = shell[Random.randperm(rng, length(shell))[1:Δn]]
     keep = trues(length(points))
     keep[remove] .= false
 
