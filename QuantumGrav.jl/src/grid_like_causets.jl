@@ -446,7 +446,7 @@ function generate_grid_in_box_from_bravais(
     n::Int,
     edges::NTuple{N,CausalSets.Coordinates{N}},
     box::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}};
-    rng::AbstractRNG = Random.default_rng(),
+    rng::Random.AbstractRNG = Random.default_rng(),
     shell_thickness::Union{Nothing,Float64} = nothing,
 )::Vector{CausalSets.Coordinates{N}} where {N}
 
@@ -520,7 +520,7 @@ function generate_grid_2d_in_box(
     b::Float64 = 0.5,
     gamma_deg::Float64 = 60.0,
     rotate_deg = nothing,
-    rng::AbstractRNG = Random.default_rng(),
+    rng::Random.AbstractRNG = Random.default_rng(),
     shell_thickness::Union{Nothing,Float64} = nothing,
 )::Vector{CausalSets.Coordinates{2}}
 
