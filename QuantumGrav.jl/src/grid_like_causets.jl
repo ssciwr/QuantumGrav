@@ -386,6 +386,11 @@ function lattice_points_in_box(
     end
     return pts
 end
+import CausalSets
+import LinearAlgebra
+edges = ((a, 0.0), (0.0, a))
+test = lattice_points_in_box(((1., 0.0), (0.0, 1.)),((-1.,-1.),(1.,1.)), .1)
+using CairoMakie
 
 """
     count_lattice_points_in_box(edges, box, ℓ) -> Int
@@ -455,25 +460,17 @@ function generate_grid_in_box_from_bravais(
     lower, upper = box
     lengths = ntuple(i -> upper[i] - lower[i], N)
 
-    # Find minimal ℓ with N(ℓ) ≥ n
-    ℓ_lo = eps(Float64)
-    ℓ_hi = maximum(lengths)
+    # Analytic estimate for lattice spacing ℓ from density
+    detE = abs(LinearAlgebra.det(reduce(hcat, edges)))
+    Vbox = prod(lengths)
+    ℓ = (Vbox / (n * detE))^(1 / N) * 1.05  # safety factor
 
-    while count_lattice_points_in_box(edges, box, ℓ_hi) < n
-        ℓ_hi /= 2
-    end
-
-    for _ in 1:40
-        ℓ_mid = 0.5 * (ℓ_lo + ℓ_hi)
-        if count_lattice_points_in_box(edges, box, ℓ_mid) ≥ n
-            ℓ_hi = ℓ_mid
-        else
-            ℓ_lo = ℓ_mid
-        end
-    end
-
-    ℓ = ℓ_hi
+    # Enumerate once at estimated ℓ; increase ℓ if needed
     points = lattice_points_in_box(edges, box, ℓ)
+    if length(points) < n
+        ℓ *= 1.2
+        points = lattice_points_in_box(edges, box, ℓ)
+    end
 
     Δn = length(points) - n
     Δn == 0 && return points
