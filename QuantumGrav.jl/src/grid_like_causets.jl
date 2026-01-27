@@ -456,7 +456,7 @@ function generate_grid_in_box_from_bravais(
     Δn = length(points) - n
     Δn == 0 && return points
 
-    thickness = isnothing(shell_thickness) ? .1*ℓ : shell_thickness
+    thickness = isnothing(shell_thickness) ? ℓ : shell_thickness
     shell = boundary_shell_indices(points, box, thickness)
 
     length(shell) ≥ Δn ||
