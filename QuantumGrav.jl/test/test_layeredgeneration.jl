@@ -41,3 +41,49 @@ end
         rng = rng,
     )
 end
+
+
+@testitem "test_create_KR_order" tags = [:layeredgeneration] setup = [LayeredTests] begin
+
+    import CausalSets
+
+    cset, cuts = QuantumGrav.create_KR_order(1000; rng = rng)
+
+    @test cset.atom_count == 1000
+    @test length(cset.future_relations) == 1000
+    @test length(cset.past_relations) == 1000
+    @test CausalSets.count_chains(cset, 3) != 0
+    @test CausalSets.count_chains(cset, 4) == 0
+    @test CausalSets.count_chains(cset, 5) == 0
+    @test CausalSets.count_chains(cset, 6) == 0
+    @test CausalSets.count_chains(cset, 7) == 0
+
+    n1, n2, n3 = cuts
+
+    @test abs(n1/cset.atom_count - 0.25) < 0.02
+    @test abs(n2/cset.atom_count - 0.50) < 0.02
+    @test abs(n3/cset.atom_count - 0.25) < 0.02
+
+    A = cset.future_relations
+
+    n1, n2, n3 = cuts
+    idx1 = 1:n1
+    idx2 = (n1+1):(n1+n2)
+    idx3 = (n1+n2+1):(n1+n2+n3)
+
+    links =
+        sum(A[a][b] for a in idx1 for b in idx2) +
+        sum(A[a][b] for a in idx2 for b in idx3)
+
+    possible = n1*n2 + n2*n3
+    p̂ = links / possible
+
+    @test isapprox(p̂, 0.5; atol = 0.005)
+end
+
+@testitem "test_create_KR_order_throws" tags = [:layeredgeneration, :throws] setup = [LayeredTests] begin
+
+    import CausalSets
+
+    @test_throws ArgumentError QuantumGrav.create_KR_order(2)
+end
