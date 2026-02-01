@@ -156,10 +156,10 @@ end
 """
 insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64; 
                             rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
-                            d::Int64=2, type::Type=Float32, p::Float64=0.5)
+                            d::Int64=2, type::Type=Float32)
     -> Tuple{BitArrayCauset, Bool, Matrix{T}}
 
-Generate a manifoldlike causal set and insert into it a KR-order (random layered)
+Generate a manifoldlike causal set and insert into it a KR-order
 causal set. The insertion point is chosen randomly (or specified via `position`).
 Random links are added across the insertion boundary with probability `link_probability`.
 Transitive closure is applied to ensure consistency.
@@ -176,7 +176,6 @@ Returns the merged causet, a dummy `true`, and the coordinate matrix used for th
 - `position`: Optional insertion index in `0:npoints`; if `nothing`, insertion is random
 - `d`: Dimension of the manifoldlike causal set (default: 2)
 - `type`: Coordinate type (default: Float32)
-- `p`: Link-probability within KR-order (default: 0.5)
 
 # Returns
 - A tuple `(cset, true, coords)` where:
@@ -198,7 +197,6 @@ function insert_KR_into_manifoldlike(
     n2_rel::Float64 = 0.05,
     d::Int64 = 2,
     type::Type{T} = Float32,
-    p::Float64 = 0.5,
 )::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
 
     n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
@@ -209,7 +207,7 @@ function insert_KR_into_manifoldlike(
 
     cset1Raw, _, _ = make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
 
-    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p)
+    cset2Raw, _ = create_KR_order(n2; rng = rng)
 
     return insert_cset(
         cset1Raw,
