@@ -39,9 +39,6 @@
             "n2_rel_distribution" => "Uniform",
             "n2_rel_distribution_args" => [0.0, 1.0],
             "n2_rel_distribution_kwargs" => Dict(),
-            "connectivity_distribution" => "Beta",
-            "connectivity_distribution_args" => [0.5, 0.1],
-            "connectivity_distribution_kwargs" => Dict(),
             "link_prob_distribution" => "Normal",
             "link_prob_distribution_args" => [0.5, 0.001],
             "link_prob_distribution_kwargs" => Dict(),
@@ -458,10 +455,6 @@ end
     @test Distributions.params(csetmaker.n2_rel_distribution) ==
           tuple(factory_cfg["merged"]["n2_rel_distribution_args"]...)
 
-    @test csetmaker.connectivity_distribution isa Distributions.Beta
-    @test Distributions.params(csetmaker.connectivity_distribution) ==
-          tuple(factory_cfg["merged"]["connectivity_distribution_args"]...)
-
     @test csetmaker.link_prob_distribution isa Distributions.Normal
     @test Distributions.params(csetmaker.link_prob_distribution) ==
           tuple(factory_cfg["merged"]["link_prob_distribution_args"]...)
@@ -487,10 +480,6 @@ end
     @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
     broken_cfg = deepcopy(factory_cfg)
-    broken_cfg["merged"]["connectivity_distribution"] = nothing
-    @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
-
-    broken_cfg = deepcopy(factory_cfg)
     broken_cfg["merged"]["order_distribution_args"] = nothing
     @test_throws ArgumentError QuantumGrav.MergedCsetMaker(broken_cfg["merged"])
 
@@ -504,10 +493,6 @@ end
 
     broken_cfg = deepcopy(factory_cfg)
     broken_cfg["merged"]["link_prob_distribution_args"] = nothing
-    @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
-
-    broken_cfg = deepcopy(factory_cfg)
-    broken_cfg["merged"]["connectivity_distribution_args"] = nothing
     @test_throws ArgumentError MergedCsetMaker(broken_cfg["merged"])
 
 end
