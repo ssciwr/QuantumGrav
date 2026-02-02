@@ -982,14 +982,12 @@ end
 - `order_distribution::Distributions.Distribution`: distribution of order values
 - `r_distribution::Distributions.Distribution`: distribution of r values
 - `n2_rel_distribution::Distributions.Distribution`: distribution of n2 relative values
-- `connectivity_distribution::Distributions.Distribution`: distribution of connectivity values
 """
 struct MergedCsetMaker
     link_prob_distribution::Distributions.Distribution
     order_distribution::Distributions.Distribution
     r_distribution::Distributions.Distribution
     n2_rel_distribution::Distributions.Distribution
-    connectivity_distribution::Distributions.Distribution
 end
 
 const MergedCsetMaker_schema = JSONSchema.Schema("""{
@@ -1025,15 +1023,6 @@ const MergedCsetMaker_schema = JSONSchema.Schema("""{
                 "type": "object",
                 "additionalProperties": true
               },
-              "connectivity_distribution": { "type": "string" },
-              "connectivity_distribution_args": {
-                "type": "array",
-                "items": { "type": "number" }
-              },
-              "connectivity_distribution_kwargs": {
-                "type": "object",
-                "additionalProperties": true
-              },
               "link_prob_distribution": { "type": "string" },
               "link_prob_distribution_args": {
                 "type": "array",
@@ -1051,8 +1040,6 @@ const MergedCsetMaker_schema = JSONSchema.Schema("""{
               "r_distribution_args",
               "n2_rel_distribution",
               "n2_rel_distribution_args",
-              "connectivity_distribution",
-              "connectivity_distribution_args",
               "link_prob_distribution",
               "link_prob_distribution_args"
                ]
@@ -1071,14 +1058,12 @@ function MergedCsetMaker(config::AbstractDict)
     r_distr = build_distr(config, "r_distribution")
     link_prob_distr = build_distr(config, "link_prob_distribution")
     n2_rel_distr = build_distr(config, "n2_rel_distribution")
-    connectivity_distr = build_distr(config, "connectivity_distribution")
 
     return MergedCsetMaker(
         link_prob_distr,
         order_distr,
         r_distr,
         n2_rel_distr,
-        connectivity_distr,
     )
 end
 
@@ -1109,10 +1094,9 @@ function (mcm::MergedCsetMaker)(
     r = rand(rng, mcm.r_distribution)
     n2rel = rand(rng, mcm.n2_rel_distribution)
     l = rand(rng, mcm.link_prob_distribution)
-    p = rand(rng, mcm.connectivity_distribution)
 
     cset, success, sprinkling =
-        insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
+        insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel)
 
     return cset, n2rel
 end
