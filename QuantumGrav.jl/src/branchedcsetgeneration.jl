@@ -2154,9 +2154,9 @@ function make_branched_manifold_cset(
     # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
     # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
     chebyshev_coefs = zeros(Float64, order + 1, order + 1)
-    for i = 1:order
-        for j = 1:order
-            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
+    for i = 1:order+1
+        for j = 1:order+1-i
+            chebyshev_coefs[i, j] = r^(-i - j + 2) * Random.randn(rng)
         end
     end
 
