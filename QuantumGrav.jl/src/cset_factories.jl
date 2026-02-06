@@ -1112,7 +1112,7 @@ function (mcm::MergedCsetMaker)(
     p = rand(rng, mcm.connectivity_distribution)
 
     cset, success, sprinkling =
-        insert_KR_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
+        insert_layered_into_manifoldlike(n, o, r, l; rng = rng, n2_rel = n2rel, p = p)
 
     return cset, n2rel
 end
