@@ -65,8 +65,7 @@ end
     @test abs(n3/cset.atom_count - 0.25) < 0.02
 
     A = cset.future_relations
-
-    n1, n2, n3 = cuts
+    
     idx1 = 1:n1
     idx2 = (n1+1):(n1+n2)
     idx3 = (n1+n2+1):(n1+n2+n3)
