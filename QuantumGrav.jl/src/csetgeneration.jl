@@ -73,7 +73,10 @@ function make_polynomial_manifold_cset(
     # it has to be a (order x order x ... x order)-tensor because we describe a function of d variables
     chebyshev_coefs = zeros(Float64, ntuple(_ -> order+1, d))
     for I in CartesianIndices(chebyshev_coefs)
-        chebyshev_coefs[I] = r^(-sum(Tuple(I))) * randn(rng)
+        s = sum(Tuple(I)) - d
+        if s <= order
+            chebyshev_coefs[I] = r^(-s) * randn(rng)
+        end
     end
 
 
