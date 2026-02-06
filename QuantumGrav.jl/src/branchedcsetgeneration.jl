@@ -450,14 +450,12 @@ function generate_random_branch_points(
         num_intersections = zeros(nPoints)
     end
 
+    # Each entry is a tuple of finite-cut indices forming one handle
+    handles = Vector{Vector{Int}}()
+
     while (
         (!isnothing(n_finite_cuts) && length(tuple_points) < nPoints + n_finite_cuts) ||
-        (!isnothing(genus) && begin
-            current_intersections = count(>(0), num_intersections) ÷ 2
-            n_finite = length(tuple_points) - nPoints
-            current_genus = n_finite - current_intersections
-            current_genus < genus
-        end)
+        (!isnothing(genus) && length(handles) < genus)
         )
 
         a = rand_point()
@@ -496,6 +494,57 @@ function generate_random_branch_points(
                 continue
             end
             num_intersections = copy(num_intersections_new)
+        end
+
+        if !isnothing(genus)
+            new_idx = length(tuple_points)  # index of the newly added finite cut
+
+            # determine finite intersection partner (if any)
+            finite_partner = nothing
+            if !consecutive_intersections && num_intersections[end] == 1
+                for i = 1:(new_idx-1)
+                    if num_intersections[i] == 1
+                        finite_partner = i
+                        break
+                    end
+                end
+            end
+
+            # determine boundary hit
+            hits_boundary = false
+            for b in single_points
+                vcut = (b, CausalSets.Coordinates{N}((coordinate_hypercube_edges[2][1], b[2])))
+                ok, _ = segments_intersect(seg, vcut; tolerance = tolerance)
+                if ok
+                    hits_boundary = true
+                    break
+                end
+            end
+
+            if finite_partner === nothing && !hits_boundary
+                # Case 1: completely free cut → create new handle
+                push!(handles, [new_idx])
+
+            elseif finite_partner !== nothing && !hits_boundary
+                # Case 2: attach to existing handle
+                for h in handles
+                    if finite_partner in h
+                        push!(h, new_idx)
+                        break
+                    end
+                end
+
+            elseif finite_partner !== nothing && hits_boundary
+                # Case 3: kill existing handle
+                for k = length(handles):-1:1
+                    if finite_partner in handles[k]
+                        deleteat!(handles, k)
+                        break
+                    end
+                end
+
+            # Case 4 (free + boundary): do nothing
+            end
         end
 
         push!(tuple_points, seg)

@@ -1005,7 +1005,7 @@ end
     genus = 2
     order = 3
     r = 1.2
-    cset, sprinkling, branch_points, coefs = QuantumGrav.make_branched_manifold_cset(
+    cset, sprinkling, branch_points, coefs = QuantumGrav.make_polynomial_manifold_cset_with_nontrivial_topology(
         npoints,
         n_vertical_cuts,
         genus,
@@ -1021,21 +1021,55 @@ end
     tmax = maximum(p[1] for p in sprinkling)
 
     finite_cuts = [
-    (CausalSets.Coordinates{2}(c[1]), CausalSets.Coordinates{2}(c[2]))
-    for c in branch_points[2]]
-    boundary_points = branch_points[1]
-    n_fb = 0
-    for cut in finite_cuts
-        for b in boundary_points
-            vcut = (b, CausalSets.Coordinates{2}((tmax, b[2])))
-            ok, _ = QuantumGrav.segments_intersect(cut, vcut)
-            if ok
-                n_fb += 1
+        (CausalSets.Coordinates{2}(c[1]), CausalSets.Coordinates{2}(c[2]))
+        for c in branch_points[2]
+    ]
+
+    boundary_cuts = [
+        (b, CausalSets.Coordinates{2}((tmax, b[2])))
+        for b in branch_points[1]
+    ]
+
+    all_cuts = vcat(finite_cuts, boundary_cuts)
+
+    intersections = QuantumGrav.cut_intersections(all_cuts)
+
+    intersecting_pairs = Tuple{Int,Int}[]
+    used_finite = Set{Int}()
+    n_finite = length(finite_cuts)
+
+    for ((i, j), _) in intersections
+        # finite–finite intersection
+        if i <= n_finite && j <= n_finite
+            if (i in used_finite) || (j in used_finite)
+                continue
             end
+            push!(intersecting_pairs, (i, j))
+            continue
+        end
+
+        # finite–boundary (i finite)
+        if i <= n_finite
+            if i in used_finite
+                continue
+            end
+            push!(intersecting_pairs, (i, j))
+            push!(used_finite, i)
+            continue
+        end
+
+        # finite–boundary (j finite)
+        if j <= n_finite
+            if j in used_finite
+                continue
+            end
+            push!(intersecting_pairs, (i, j))
+            push!(used_finite, j)
+            continue
         end
     end
-    n_ff = length(QuantumGrav.cut_intersections(finite_cuts))
-    @test length(finite_cuts) - (n_ff + n_fb) == genus
+
+    @test length(finite_cuts) - length(intersecting_pairs) == genus
 
     @test size(coefs) == (order + 1, order + 1)
     @test cset.atom_count == npoints
