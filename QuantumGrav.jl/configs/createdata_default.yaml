@@ -39,6 +39,9 @@ merged:
   n2_rel_distribution: "Uniform"
   n2_rel_distribution_args: [0.0, 1.0]
   n2_rel_distribution_kwargs: {}
+  connectivity_distribution: "Uniform"
+  connectivity_distribution_args: [0.0, 1.0]
+  connectivity_distribution_kwargs: {}
   link_prob_distribution: "Uniform"
   link_prob_distribution_args: [0.0, 1.0]
   link_prob_distribution_kwargs: {}
