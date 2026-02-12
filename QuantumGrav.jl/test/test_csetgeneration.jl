@@ -44,7 +44,7 @@ end
     @test x_spread > 0.9
     @test y_spread > 0.9
 
-    envelope = [r^(-i - j) for i = 1:(order+1), j = 1:(order+1)]
+    envelope = [r^(-i - j + 2) for i = 1:(order+1), j = 1:(order+1)]
     for i = 1:(order+1), j = 1:(order+1)
         @test abs(chebyshev_coefs[i, j]) ≤ 10 * envelope[i, j]
     end
@@ -55,32 +55,33 @@ end
     r = 1.0 + rand(rng, r_distribution)
     npoints = rand(rng, npoint_distribution)
     order = rand(rng, order_distribution)
+    d = 4
 
     cset, sprinkling, chebyshev_coefs = QuantumGrav.make_polynomial_manifold_cset(
         npoints,
         rng,
         order,
         r;
-        d = 4,
+        d = d,
         type = Float32,
     )
 
     @test length(sprinkling) == npoints
-    @test size(chebyshev_coefs) == ntuple(_ -> order+1, 4)
+    @test size(chebyshev_coefs) == ntuple(_ -> order+1, d)
     @test typeof(cset) != Nothing
     @test cset.atom_count == npoints
     @test length(cset.future_relations) == npoints
     @test length(cset.past_relations) == npoints
 
     # Additional tests to verify support across the domain
-    for k = 1:4
+    for k = 1:d
         coords = [p[k] for p in sprinkling]
         spread = maximum(coords) - minimum(coords)
         @test spread > 0.9
     end
 
     for I in CartesianIndices(chebyshev_coefs)
-        envelope = r^(-sum(Tuple(I)))
+        envelope = r^(-sum(Tuple(I)) + d)
         @test abs(chebyshev_coefs[I]) ≤ 10 * envelope
     end
 end
