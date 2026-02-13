@@ -30,7 +30,72 @@ function gaussian_dist_cuts(N::Int64, n::Int64, σ::Float64; rng = Random.GLOBAL
 end
 
 """
-    layered_causet(N, n; p=0.5, rng=Random.GLOBAL_RNG)
+    create_KR_order(N; rng=Random.GLOBAL_RNG)
+
+Generate a Kleitman–Rothschild (KR) order with N elements.
+
+The causal set consists of exactly three layers with approximately fixed proportions
+(1/4, 1/2, 1/4) of the total size, and links are placed
+independently between adjacent layers with probability 1/2.
+
+Inputs:
+    N :: Int — total number of elements
+    rng :: AbstractRNG — random number generator (default: Random.GLOBAL_RNG)
+
+Returns:
+    tcg :: BitArrayCauset — generated KR-order causal set
+    atoms_per_layer :: Vector{Int64} — number of atoms per layer (length 3)
+"""
+function create_KR_order(
+    N::Int64;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+)
+    if N < 3
+        throw(ArgumentError("N must be at least 3 to construct a KR order, is $N."))
+    end
+
+    # assign each element independently to layers with probabilities (1/4, 1/2, 1/4)
+    layers = [Int[] for _ in 1:3]
+
+    for i in 1:N
+        u = rand(rng)
+        if u ≤ 0.25
+            push!(layers[1], i)
+        elseif u ≤ 0.75
+            push!(layers[2], i)
+        else
+            push!(layers[3], i)
+        end
+    end
+
+    atoms_per_layer = length.(layers)
+
+    # impose layer-respecting topological ordering
+    perm = vcat(layers[1], layers[2], layers[3])
+    invperm = zeros(Int, N)
+    for (new, old) in enumerate(perm)
+        invperm[old] = new
+    end
+
+    graph = CausalSets.empty_graph(N)
+    tcg = CausalSets.empty_graph(N)
+
+    # link probability 1/2 between adjacent layers, relabeled by invperm
+    for i = 1:2
+        for a in layers[i], b in layers[i+1]
+            if rand(rng) < 0.5
+                graph.edges[invperm[a]][invperm[b]] = true
+            end
+        end
+    end
+
+    CausalSets.transitive_closure!(graph, tcg)
+
+    return CausalSets.to_bitarray_causet(tcg), atoms_per_layer
+end
+
+"""
+    create_random_layered_causet(N, n; p=0.5, rng=Random.GLOBAL_RNG)
 
 Generate an n-layered causal set with N elements,
 randomly partitioned into n layers,

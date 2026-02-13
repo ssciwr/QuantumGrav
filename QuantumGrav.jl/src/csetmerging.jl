@@ -156,10 +156,10 @@ end
 """
 insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64; 
                             rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
-                            d::Int64=2, type::Type=Float32, p::Float64=0.5)
+                            d::Int64=2, type::Type=Float32)
     -> Tuple{BitArrayCauset, Bool, Matrix{T}}
 
-Generate a manifoldlike causal set and insert into it a KR-order (random layered)
+Generate a manifoldlike causal set and insert into it a KR-order
 causal set. The insertion point is chosen randomly (or specified via `position`).
 Random links are added across the insertion boundary with probability `link_probability`.
 Transitive closure is applied to ensure consistency.
@@ -176,7 +176,6 @@ Returns the merged causet, a dummy `true`, and the coordinate matrix used for th
 - `position`: Optional insertion index in `0:npoints`; if `nothing`, insertion is random
 - `d`: Dimension of the manifoldlike causal set (default: 2)
 - `type`: Coordinate type (default: Float32)
-- `p`: Link-probability within KR-order (default: 0.5)
 
 # Returns
 - A tuple `(cset, true, coords)` where:
@@ -198,7 +197,74 @@ function insert_KR_into_manifoldlike(
     n2_rel::Float64 = 0.05,
     d::Int64 = 2,
     type::Type{T} = Float32,
+)::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
+
+    n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
+
+    n2 = max(4, round(Int, n2_rel * npoints))  # Ensure at least 4
+
+    n1 = max(1, npoints - n2) # Ensure at least 1
+
+    cset1Raw, _, _ = make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
+
+    cset2Raw, _ = create_KR_order(n2; rng = rng)
+
+    return insert_cset(
+        cset1Raw,
+        cset2Raw,
+        link_probability;
+        rng = rng,
+        position = position,
+    ),
+    true,
+    stack(make_pseudosprinkling(npoints, d, -1.0, 1.0, type; rng = rng), dims = 1)
+end
+
+"""
+insert_layered_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64; 
+                            rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
+                            d::Int64=2, type::Type=Float32)
+    -> Tuple{BitArrayCauset, Bool, Matrix{T}}
+
+Generate a manifoldlike causal set and insert into it a layered order. The insertion point is chosen randomly (or specified via `position`).
+Random links are added across the insertion boundary with probability `link_probability`.
+Transitive closure is applied to ensure consistency.
+
+Returns the merged causet, a dummy `true`, and the coordinate matrix used for the manifoldlike causet.
+
+# Arguments
+- `npoints`: Total number of elements in the resulting causal set (may be off by 1 due to rounding errors)
+- `order`: Sprinkling order for the manifoldlike causet
+- `r`: Interaction scale for manifoldlike causet generation
+- `link_probability`: Probability for adding links across the insertion boundary (must be in [0, 1])
+- `rng`: Random number generator (default: `Random.GLOBAL_RNG`)
+- `n2_rel`: Size of KR order relative to total size of resulting causet
+- `position`: Optional insertion index in `0:npoints`; if `nothing`, insertion is random
+- `d`: Dimension of the manifoldlike causal set (default: 2)
+- `p`: Link-probability within KR-order (default: 0.5)
+- `type`: Coordinate type (default: Float32)
+
+# Returns
+- A tuple `(cset, true, coords)` where:
+    - `cset` is the merged and transitively completed `BitArrayCauset`
+    - `true` is a placeholder flag
+    - `coords` is a `Matrix{T}` of coordinates used for the manifoldlike causet
+
+# Throws
+- `ArgumentError` if `link_probability` is not in the interval [0, 1]
+- `ArgumentError` if `position` is not in the valid range `0 ≤ position ≤ npoints`
+"""
+function insert_layered_into_manifoldlike(
+    npoints::Int64,
+    order::Int64,
+    r::Float64,
+    link_probability::Float64;
+    rng::Random.AbstractRNG = Random.GLOBAL_RNG,
+    position::Union{Nothing,Int64} = nothing,
+    n2_rel::Float64 = 0.05,
+    d::Int64 = 2,
     p::Float64 = 0.5,
+    type::Type{T} = Float32,
 )::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
 
     n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))

@@ -326,8 +326,9 @@ end
 
 """
     generate_random_branch_points(
-        nPoints::Int,
-        nTuples::Int;
+        nPoints::Int;
+        n_finite_cuts::Union{Nothing,Int} = nothing,
+        genus::Union{Nothing,Int} = nothing,
         consecutive_intersections::Bool = false,
         coordinate_hypercube_edges::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}} = (CausalSets.Coordinates{2}((-1., -1.)), CausalSets.Coordinates{2}((1., 1.))),
         rng::AbstractRNG = Random.default_rng(),
@@ -336,16 +337,17 @@ end
 
 Generate random branch points for a branched manifold causal set. Produces two collections:
 - `nPoints` single branch points (each induces a vertical cut extending upward in the time direction),
-- `nTuples` finite cut segments (each is a pair of points joined by a straight line).
+- a number of finite cut segments (each is a pair of points joined by a straight line), determined by either `n_finite_cuts` or `genus`.
 
-The branch points are chosen uniformly at random from the coordinate hypercube defined by coordinate_hypercube_edges.
+The branch points are chosen uniformly at random from the coordinate hypercube defined by `coordinate_hypercube_edges`.
 Finite cut segments are generated iteratively to avoid colinear overlaps and, if requested, to limit intersections.
 
 # Arguments
 - `nPoints::Int`: Number of single branch points to generate (must be ≥ 0).
-- `nTuples::Int`: Number of finite topological cut segments to generate (must be ≥ 0).
 
 # Keyword Arguments
+- `n_finite_cuts::Union{Nothing,Int}=nothing`: Number of finite topological cut segments to generate (must be ≥ 0). Specify this or `genus`, not both.
+- `genus::Union{Nothing,Int}=nothing`: Target genus to enforce (must be ≥ 0). If specified, free cuts are added until the target genus is reached, respecting the constraint that each cut intersects at most one other cut. Under the current generator constraints (at most one intersection per cut), `genus = number of free cuts`.
 - `consecutive_intersections::Bool = false`: If `false`, reject new segments that intersect more than one existing segment to within tolerance. Colinear overlaps are always rejected.
 - `coordinate_hypercube_edges::Tuple{Tuple{CausalSets.Coordinates{d}},Tuple{CausalSets.Coordinates{d}}}=(CausalSets.Coordinates{d}(-1 .* ones(d)),CausalSets.Coordinates{d}(ones(d)))`: coordinates of the edges of the hypercube within which the points are sampled. The dimensionality is read off this argument.
 - `rng::AbstractRNG=Random.default_rng()`: Random number generator.
@@ -354,30 +356,35 @@ Finite cut segments are generated iteratively to avoid colinear overlaps and, if
 # Returns
 - `Tuple{Vector{Coordinates{N}}, Vector{Tuple{Coordinates{N}, Coordinates{N}}}}`:
   - A vector of `nPoints` coordinates, sorted by time (first coordinate).
-  - A vector of `nTuples` ordered pairs `(a,b)`, each representing a finite topological cut segment with `a[1] ≤ b[1]`.
-    The endpoints of each segment are time ordered. The list is sorted by time of the first, i. e., earlier point.
+  - A vector of finite cut segment pairs `(a,b)`, each representing a finite topological cut segment with `a[1] ≤ b[1]`.
+    The endpoints of each segment are time ordered. The list is sorted by time of the first, i.e., earlier point.
 
 # Throws
 - `ArgumentError`:
-    - If `nPoints < 0` or `nTuples < 0`.
+    - If neither `n_finite_cuts` nor `genus` is specified, or both are specified.
+    - If the chosen target is negative.
+    - If `nPoints < 0`.
     - If `tolerance <= 0`.
 
 # Notes
 - Colinear overlaps with existing cuts are always rejected using `is_colinear_overlapping_with_cuts`.
 - If `consecutive_intersections=false`, only segments with ≤ 1 intersection are allowed; those with ≥ 2 intersections are rejected.
+- If `genus` is specified, free cuts are added until the target genus is reached, enforcing that genus = number of free cuts under the current generator constraints (at most one intersection per cut).
 - Random coordinates are drawn from a given interval on each coordinate axis using the provided `rng`.
 
 # Example
 ```julia
 using Random, CausalSets
 rng = MersenneTwister(42)
-points, cuts = generate_random_branch_points(3, 2; rng=rng)
+points, cuts = generate_random_branch_points(3; n_finite_cuts=2, rng=rng)
 # `points` contains 3 random coordinates
 # `cuts` contains 2 random cut segments
+```
 """
 function generate_random_branch_points(
-    nPoints::Int,
-    nTuples::Int;
+    nPoints::Int;
+    n_finite_cuts::Union{Nothing,Int} = nothing,
+    genus::Union{Nothing,Int} = nothing,
     consecutive_intersections::Bool = false,
     coordinate_hypercube_edges::Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}} = (
         CausalSets.Coordinates{2}((-1.0, -1.0)),
@@ -394,13 +401,25 @@ function generate_random_branch_points(
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
-
     if nPoints < 0
         throw(ArgumentError("nPoints must be at least 0, got $(nPoints)."))
     end
 
-    if nTuples < 0
-        throw(ArgumentError("nTuples must be at least 0, got $(nTuples)."))
+    # Argument validation for n_finite_cuts / genus
+    if n_finite_cuts === nothing && genus === nothing
+        throw(ArgumentError("Either n_finite_cuts or genus must be specified."))
+    end
+    if n_finite_cuts !== nothing && genus !== nothing
+        throw(ArgumentError("Specify only one of n_finite_cuts or genus, not both."))
+    end
+    if !isnothing(n_finite_cuts)
+        if n_finite_cuts < 0
+            throw(ArgumentError("n_finite_cuts must be ≥ 0, got $(n_finite_cuts)."))
+        end
+    else
+        if genus < 0
+            throw(ArgumentError("genus must be ≥ 0, got $(genus)."))
+        end
     end
 
     if isnothing(coordinate_hypercube_edges)
@@ -417,10 +436,10 @@ function generate_random_branch_points(
     )
 
     # Generate random points in [-1,1]^N
-    single_points = [rand_point() for _ = 1:nPoints]
+    single_points = CausalSets.Coordinates{N}[rand_point() for _ = 1:nPoints]
 
     # Generate tuples of random points in [-1,1]^N iteratively with colinearity and (optionally) intersection check
-    tuple_points = [
+    tuple_points = Tuple{CausalSets.Coordinates{N},CausalSets.Coordinates{N}}[
         (
             bound_cuts,
             CausalSets.Coordinates{N}((coordinate_hypercube_edges[2][1], bound_cuts[2])),
@@ -431,7 +450,14 @@ function generate_random_branch_points(
         num_intersections = zeros(nPoints)
     end
 
-    while length(tuple_points) < nPoints + nTuples
+    # Each entry is a tuple of finite-cut indices forming one handle
+    handles = Vector{Vector{Int}}()
+
+    while (
+        (!isnothing(n_finite_cuts) && length(tuple_points) < nPoints + n_finite_cuts) ||
+        (!isnothing(genus) && length(handles) < genus)
+        )
+
         a = rand_point()
         b = rand_point()
         seg = a[1] <= b[1] ? (a, b) : (b, a)
@@ -468,6 +494,57 @@ function generate_random_branch_points(
                 continue
             end
             num_intersections = copy(num_intersections_new)
+        end
+
+        if !isnothing(genus)
+            new_idx = length(tuple_points)  # index of the newly added finite cut
+
+            # determine finite intersection partner (if any)
+            finite_partner = nothing
+            if !consecutive_intersections && num_intersections[end] == 1
+                for i = 1:(new_idx-1)
+                    if num_intersections[i] == 1
+                        finite_partner = i
+                        break
+                    end
+                end
+            end
+
+            # determine boundary hit
+            hits_boundary = false
+            for b in single_points
+                vcut = (b, CausalSets.Coordinates{N}((coordinate_hypercube_edges[2][1], b[2])))
+                ok, _ = segments_intersect(seg, vcut; tolerance = tolerance)
+                if ok
+                    hits_boundary = true
+                    break
+                end
+            end
+
+            if finite_partner === nothing && !hits_boundary
+                # Case 1: completely free cut → create new handle
+                push!(handles, [new_idx])
+
+            elseif finite_partner !== nothing && !hits_boundary
+                # Case 2: attach to existing handle
+                for h in handles
+                    if finite_partner in h
+                        push!(h, new_idx)
+                        break
+                    end
+                end
+
+            elseif finite_partner !== nothing && hits_boundary
+                # Case 3: kill existing handle
+                for k = length(handles):-1:1
+                    if finite_partner in handles[k]
+                        deleteat!(handles, k)
+                        break
+                    end
+                end
+
+            # Case 4 (free + boundary): do nothing
+            end
         end
 
         push!(tuple_points, seg)
@@ -810,6 +887,7 @@ y = CausalSets.Coordinates{2}((2.0, 0.0))
 left, right = diamond_corners(x, y)
 # left  = Coordinates{2}((1.0, -1.0))
 # right = Coordinates{2}((1.0,  1.0))
+```
 """
 function diamond_corners(
     manifold::CausalSets.AbstractManifold,
@@ -877,6 +955,7 @@ p2 = CausalSets.Coordinates{2}((3.0, 0.0))
 
 point_in_diamond(CausalSets.MinkowskiManifold{2}(), p1, x, y)  # true
 point_in_diamond(CausalSets.MinkowskiManifold{2}(), p2, x, y)  # false
+```
 """
 function point_in_diamond(
     manifold::CausalSets.AbstractManifold,
@@ -945,6 +1024,7 @@ manifold = CausalSets.MinkowskiManifold{2}()
 
 cut_crosses_diamond(manifold, x, y, cut1)  # true, cut passes through diamond
 cut_crosses_diamond(manifold, x, y, cut2)  # false, cut endpoint lies inside diamond
+```
 """
 function cut_crosses_diamond(
     manifold::CausalSets.AbstractManifold,
@@ -1055,6 +1135,7 @@ cut1 = (CausalSets.Coordinates{2}((1.0, -1.0)), CausalSets.Coordinates{2}((1.0, 
 cut2 = (CausalSets.Coordinates{2}((0.0, 0.0)), CausalSets.Coordinates{2}((2.0, 0.0)))
 intersection = CausalSets.Coordinates{2}((1.0, 0.0))
 intersected_cut_crosses_diamond(x, y, cut1, cut2, intersection)  # returns true
+```
 """
 function intersected_cut_crosses_diamond(
     manifold::CausalSets.AbstractManifold,
@@ -1172,6 +1253,7 @@ cut = (CausalSets.Coordinates{2}((1.0, -1.0)), CausalSets.Coordinates{2}((1.0, 1
 manifold = CausalSets.MinkowskiManifold{2}()
 path = propagate_ray(manifold, x, y, +1.0, [cut])
 # returns a path like [(0.0,0.0), (1.0,1.0), (2.0,0.0)]
+```
 """
 function propagate_ray(
     manifold::CausalSets.AbstractManifold,
@@ -1504,6 +1586,7 @@ y = CausalSets.Coordinates{2}((2.0, 0.0))
 cuts = [(CausalSets.Coordinates{2}((1.0, -1.1)), CausalSets.Coordinates{2}((1.0, 1.1)))]
 manifold = CausalSets.MinkowskiManifold{2}()
 in_wedge_of(manifold, cuts, x, y)  # returns false because the cut closes the wedge
+```
 """
 function in_wedge_of(
     manifold::CausalSets.AbstractManifold,
@@ -1687,6 +1770,7 @@ branch_info = (single_branch_points, finite_cuts)
 
 manifold = CausalSets.MinkowskiManifold{2}()
 in_past_of(manifold, branch_info, x, y)  # returns false (finite cut obstructs the path)
+```
 """
 function CausalSets.in_past_of(
     manifold::CausalSets.ConformallyTimesliceableManifold{N},
@@ -2065,6 +2149,7 @@ using Random, CausalSets
 rng = MersenneTwister(1234)
 cset, sprinkling, branch_info, coefs =
     make_branched_manifold_cset(50, 2, 3, rng, 5, 2.0)
+```
 """
 function make_branched_manifold_cset(
     npoints::Int64,
@@ -2140,11 +2225,170 @@ function make_branched_manifold_cset(
     boundary = CausalSets.BoxBoundary{d}(((-1.0, -1.0), (1.0, 1.0)))
 
     # Generate a sprinkling of npoints in the manifold within the boundary
+    sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints; rng = rng)
+
+    # Randomly promote nbranchpoints of the sprinkling points to branch points
+    branch_point_info =
+        generate_random_branch_points(n_vertical_cuts; n_finite_cuts = n_finite_cuts, tolerance = tolerance)
+
+    # Remove points on sprinkling on cuts
+    branched_sprinkling =
+        filter_sprinkling_near_cuts(sprinkling, branch_point_info; tolerance = tolerance)
+
+    # Construct the causal set from the manifold and sprinkling
+    cset = BranchedManifoldCauset(polym, branch_point_info, branched_sprinkling)
+
+    return CausalSets.BitArrayCauset(cset; tolerance = tolerance),
+    branched_sprinkling,
+    branch_point_info,
+    type.(chebyshev_coefs)
+end
+
+"""
+    make_polynomial_manifold_cset_with_nontrivial_topology(
+        npoints::Int64,
+        n_vertical_cuts::Int64,
+        genus::Int64,
+        rng::AbstractRNG,
+        order::Int64,
+        r::Float64;
+        d::Int64 = 2,
+        tolerance::Float64 = 1e-12,
+        type::Type{T} = Float32
+    ) -> Tuple{
+        CausalSets.BitArrayCauset,
+        Vector{Coordinates{2}},
+        Tuple{Vector{Coordinates{2}}, Vector{Tuple{Coordinates{2}, Coordinates{2}}}},
+        Matrix{T}
+    }
+
+Generate a branched causal set in a random polynomial manifold with timelike boundary-connecting and finite topological cuts.
+
+# Purpose
+This function builds a toy model of a branched spacetime:
+1. A random 2D polynomial manifold is generated from Chebyshev coefficients with exponential decay.
+2. A sprinkling of `npoints` events is placed into the manifold.
+3. Random **vertical cuts** (from single branch points extending upward in time) and **finite cuts** (segments between two points) are introduced.
+4. Points lying too close to cuts are filtered out.
+5. A [`BranchedManifoldCauset`](@ref) and its causal matrix (`BitArrayCauset`) are constructed.
+
+# Arguments
+- `npoints::Int64`: Number of sprinkled points. Must be > 0.
+- `n_vertical_cuts::Int64`: Number of vertical cuts (≥ 0).
+- `genus::Int64`: Target genus of sprinkled geometry.
+- `rng::AbstractRNG`: Random number generator.
+- `order::Int64`: Order of the Chebyshev expansion (must be > 0).
+- `r::Float64`: Decay base for Chebyshev coefficients (must be > 1).
+- `d::Int64`: Dimension of the spacetime. Only `d = 2` is supported (default).
+- `tolerance::Float64`: Minimal distance for filtering points too close to cuts and for computing spacetime distances (default: `1e-12`).
+- `type::Type{T}`: Numeric type for the returned Chebyshev coefficient matrix (default: `Float32`).
+
+# Returns
+A 4-tuple `(cset, sprinkling, branch_point_info, chebyshev_coefs)`:
+- `cset::BitArrayCauset`: The causal set with branch cuts encoded.
+- `sprinkling::Vector{Coordinates{2}}`: The filtered sprinkled points.
+- `branch_point_info::Tuple{Vector{Coordinates{2}}, Vector{Tuple{Coordinates{2}, Coordinates{2}}}}`:
+  - Single branch points (for timelike boundary-connecting cuts),
+  - Finite cut segments.
+- `chebyshev_coefs::Matrix{T}`: Chebyshev coefficients of the random polynomial manifold.
+
+# Throws
+- `ArgumentError` if any of:
+  - `npoints ≤ 0`
+  - `n_vertical_cuts < 0`
+  - `genus < 0`
+  - `order ≤ 0`
+  - `r ≤ 1`
+  - `d ≠ 2`
+  - `tolerance ≤ 0`
+
+# Example
+```julia
+using Random, CausalSets
+rng = MersenneTwister(1234)
+cset, sprinkling, branch_info, coefs =
+    make_polynomial_manifold_cset_with_nontrivial_topology(50, 2, 3, rng, 5, 2.0)
+```
+"""
+function make_polynomial_manifold_cset_with_nontrivial_topology(
+    npoints::Int64,
+    n_vertical_cuts::Int64,
+    genus::Int64,
+    rng::Random.AbstractRNG,
+    order::Int64,
+    r::Float64;
+    d::Int64 = 2,
+    tolerance::Float64 = 1e-12,
+    type::Type{T} = Float32,
+)::Tuple{
+    CausalSets.BitArrayCauset,
+    Vector{Tuple{T,Vararg{T}}},
+    Tuple{Vector{Tuple{T,Vararg{T}}},Vector{Tuple{Tuple{T,Vararg{T}},Tuple{T,Vararg{T}}}}},
+    Matrix{T},
+} where {T<:Number} #)::Tuple{CausalSets.BitArrayCauset, Vector{CausalSets.Coordinates{2}}, Tuple{Vector{CausalSets.Coordinates{2}}, Vector{Tuple{CausalSets.Coordinates{2}, CausalSets.Coordinates{2}}}},Matrix{T}} where {T<:Number}
+
+    if npoints <= 0
+        throw(ArgumentError("npoints must be greater than 0, got $npoints"))
+    end
+
+    if n_vertical_cuts < 0
+        throw(ArgumentError("n_vertical_cuts must be larger than 0, is $n_vertical_cuts"))
+    end
+
+    if genus < 0
+        throw(ArgumentError("n_finite_cuts must be larger than 0, is $genus"))
+    end
+
+    if order <= -1
+        throw(ArgumentError("order must be greater than -1, got $order"))
+    end
+
+    if r <= 1
+        throw(
+            ArgumentError(
+                "r must be greater than 1 for exponential convergence of the Chebyshev series, got $r",
+            ),
+        )
+    end
+
+    if d != 2
+        throw(ArgumentError("Currently, only 2D is supported, got $d"))
+    end
+
+    if tolerance <= 0
+        throw(ArgumentError("tolerance must be > 0, got $tolerance"))
+    end
+
+    # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
+    # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
+    chebyshev_coefs = zeros(Float64, order + 1, order + 1)
+    for i = 1:order
+        for j = 1:order
+            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
+        end
+    end
+
+    # Construct the Chebyshev-to-Taylor transformation matrix
+    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
+
+    # Transform Chebyshev coefficients to Taylor coefficients
+    taylorcoefs = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)
+
+    # Square the polynomial to ensure positivity
+    squaretaylorcoefs = CausalSets.polynomial_pow(taylorcoefs, 2)
+
+    # Create a polynomial manifold from the squared Taylor coefficients
+    polym = CausalSets.PolynomialManifold{d}(squaretaylorcoefs)
+
+    # Define the square box boundary in 2D -- this works only in 2D and with square box boundary at the moment
+    boundary = CausalSets.BoxBoundary{d}(((-1.0, -1.0), (1.0, 1.0)))
+
+    # Generate a sprinkling of npoints in the manifold within the boundary
     sprinkling = CausalSets.generate_sprinkling(polym, boundary, npoints)
 
     # Randomly promote nbranchpoints of the sprinkling points to branch points
     branch_point_info =
-        generate_random_branch_points(n_vertical_cuts, n_finite_cuts; tolerance = tolerance)
+        generate_random_branch_points(n_vertical_cuts; genus = genus, tolerance = tolerance)
 
     # Remove points on sprinkling on cuts
     branched_sprinkling =

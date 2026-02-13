@@ -11,6 +11,8 @@ import Zarr
 import Dates
 import Pkg
 import JSONSchema
+import Distributed
+import ProgressMeter
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -36,6 +38,7 @@ export make_adj,
     sample_bitarray_causet_by_connectivity,
     gaussian_dist_cuts,
     create_random_layered_causet,
+    create_KR_order,
     BranchedManifoldCauset,
     make_branched_manifold_cset,
     merge_csets,
@@ -51,6 +54,9 @@ export make_adj,
     prepare_dataproduction,
     copy_sourcecode,
     get_git_info!,
+    setup_config,
+    setup_multiprocessing,
+    produce_data,
     PolynomialCsetMaker,
     RandomCsetMaker,
     LayeredCsetMaker,

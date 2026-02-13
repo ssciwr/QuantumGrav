@@ -1,0 +1,6 @@
+seed: 21
+output: "./example_data"
+csetsize_distr: "Normal"
+csetsize_distr_args: [32, 96]
+
+# the rest will be taken over from the default config

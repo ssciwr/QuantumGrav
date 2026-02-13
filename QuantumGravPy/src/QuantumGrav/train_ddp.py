@@ -1,10 +1,9 @@
-from typing import Callable, Any, Tuple
+from typing import Any, Tuple
 from collections.abc import Collection
-
-import numpy as np
+import pandas as pd
 import os
+import jsonschema
 
-from .evaluate import DefaultValidator, DefaultTester
 from . import gnn_model
 from . import train
 
@@ -52,17 +51,52 @@ def cleanup_ddp() -> None:
 
 
 class TrainerDDP(train.Trainer):
+    """Distributed Data Parallel (DDP) Trainer for training GNN models across multiple processes."""
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Model trainer class Configuration",
+        "type": "object",
+        "definitions": train.Trainer.schema.get("definitions", {}),
+        "properties": {
+            "parallel": {
+                "type": "object",
+                "properties": {
+                    "world_size": {"type": "integer", "minimum": 1},
+                    "output_device": {"type": ["integer", "null"]},
+                    "find_unused_parameters": {"type": "boolean"},
+                    "rank": {"type": "integer", "minimum": 0},
+                    "master_addr": {"type": "string"},
+                    "master_port": {"type": "string"},
+                },
+                "required": ["world_size"],
+            },
+            "log_level": train.Trainer.schema["properties"]["log_level"],
+            "data": train.Trainer.schema["properties"]["data"],
+            "training": train.Trainer.schema["properties"]["training"],
+            "model": train.Trainer.schema["properties"]["model"],
+            "validation": train.Trainer.schema["properties"]["validation"],
+            "testing": train.Trainer.schema["properties"]["testing"],
+            "early_stopping": train.Trainer.schema["properties"]["early_stopping"],
+            "apply_model": train.Trainer.schema["properties"]["apply_model"],
+            "criterion": train.Trainer.schema["properties"]["criterion"],
+        },
+        "required": [
+            "parallel",
+            "training",
+            "model",
+            "validation",
+            "testing",
+            "criterion",
+        ],
+        "additionalProperties": False,
+    }
+
     def __init__(
         self,
         rank: int,
         config: dict[str, Any],
         # training and evaluation functions
-        criterion: Callable,
-        apply_model: Callable | None = None,
-        # training evaluation and reporting
-        early_stopping: Callable[[Collection[Any] | torch.Tensor], bool] | None = None,
-        validator: DefaultValidator | None = None,
-        tester: DefaultTester | None = None,
     ):
         """Initialize the distributed data parallel (DDP) trainer.
 
@@ -78,17 +112,14 @@ class TrainerDDP(train.Trainer):
         Raises:
             ValueError: If the configuration is invalid.
         """
-        if "parallel" not in config:
-            raise ValueError("Configuration must contain 'parallel' section for DDP.")
+        jsonschema.validate(instance=config, schema=self.schema)
 
         super().__init__(
             config,
-            criterion,
-            apply_model,
-            early_stopping,
-            validator,
-            tester,
         )
+
+        self.config = config  # keep the full config including parallel section
+
         # initialize the systems differently on each process/rank
         torch.manual_seed(self.seed + rank)
         if torch.cuda.is_available():
@@ -135,37 +166,37 @@ class TrainerDDP(train.Trainer):
         return self.model
 
     def prepare_dataloaders(
-        self, dataset: Dataset, split: list[float] = [0.8, 0.1, 0.1]
+        self,
+        dataset: Dataset | None = None,
+        split: list[float] = [0.8, 0.1, 0.1],
+        train_dataset: torch.utils.data.Dataset | torch.utils.data.Subset | None = None,
+        val_dataset: torch.utils.data.Dataset | torch.utils.data.Subset | None = None,
+        test_dataset: torch.utils.data.Dataset | torch.utils.data.Subset | None = None,
+        training_sampler: torch.utils.data.Sampler | None = None,
     ) -> Tuple[
         DataLoader,
         DataLoader,
         DataLoader,
     ]:
-        """Prepare the data loaders for training, validation, and testing.
+        """Prepare dataloader for distributed training.
 
         Args:
-            dataset (Dataset): The dataset to split.
-            split (list[float], optional): The proportions for train/val/test split. Defaults to [0.8, 0.1, 0.1].
+            dataset (Dataset | None, optional): Dataset to use. Defaults to None.
+            split (list[float], optional): Splits into train, validation and test datasets. Defaults to [0.8, 0.1, 0.1].
+            train_dataset (torch.utils.data.Subset | None, optional): Training dataset. Only used when Dataset is None. Defaults to None.
+            val_dataset (torch.utils.data.Subset | None, optional): Validation dataset. Only used when Dataset is None.. Defaults to None.
+            test_dataset (torch.utils.data.Subset | None, optional): Test dataset. Only used when Dataset is None.. Defaults to None.
+            training_sampler (torch.utils.data.Sampler | None, optional): Ignored here. Defaults to None.
 
         Returns:
-            Tuple[ DataLoader, DataLoader, DataLoader, ]: The data loaders for training, validation, and testing.
+            Tuple[ DataLoader, DataLoader, DataLoader, ]: Train, validation and test dataloaders
         """
-        train_size = int(len(dataset) * split[0])
-        val_size = int(len(dataset) * split[1])
-        test_size = len(dataset) - train_size - val_size
-        self.logger.info(
-            f"Preparing data loaders with split: {split}, train size: {train_size}, val size: {val_size}, test size: {test_size}"
-        )
-        if (
-            np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False)
-            is False
-        ):
-            raise ValueError(
-                "Split ratios must sum to 1.0. Provided split: {}".format(split)
-            )
-
-        self.train_dataset, self.val_dataset, self.test_dataset = (
-            torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
+        self.train_dataset, self.val_dataset, self.test_dataset = self.prepare_dataset(
+            dataset=dataset,
+            split=split,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            test_dataset=test_dataset,
         )
 
         # samplers are needed to distribute the data across processes in such a way that each process gets a unique subset of the data
@@ -225,11 +256,11 @@ class TrainerDDP(train.Trainer):
         )
         return train_loader, val_loader, test_loader
 
-    def _check_model_status(self, eval_data: list[Any] | torch.Tensor) -> bool:
+    def _check_model_status(self, eval_data: pd.DataFrame | list[torch.Tensor]) -> bool:
         """Check the status of the model during evaluation.
 
         Args:
-            eval_data (list[Any] | torch.Tensor): The evaluation data to check.
+            eval_data (pd.DataFrame): The evaluation data to check.
 
         Returns:
             bool: Whether the model training should stop.
@@ -295,7 +326,8 @@ class TrainerDDP(train.Trainer):
         for _ in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
-            train_loader.sampler.set_epoch(self.epoch)
+            if train_loader.sampler:
+                train_loader.sampler.set_epoch(self.epoch)
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
             total_training_data.append(epoch_data)
 
