@@ -36,10 +36,10 @@ function quasicrystal(ρ::Real)::Tuple{Vector{Float64},Vector{Float64}}
     ]
    
     # Minkowski metric η = diag(-1, 1, 1, 1)
-    η = Diagonal([-1.0, 1.0, 1.0, 1.0])
+    η = LinearAlgebra.Diagonal([-1.0, 1.0, 1.0, 1.0])
 
     # Minkowski inner product ⟨u, v⟩ = u† η v
-    minkowski(u, v) = dot(u, η * v)
+    minkowski(u, v) = LinearAlgebra.dot(u, η * v)
 
     # compute products
     vin_vout  = minkowski(vin, vout)
