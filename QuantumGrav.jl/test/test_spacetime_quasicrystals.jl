@@ -25,6 +25,73 @@ end
     @test all(0.0 .<= αout .<= 1.0)
 end
 
+@testitem "test_quasicrystal_exhaustive_enumeration_finds_all_points" tags = [:quasicrystal] setup =
+    [setupTestsQuasicrystal] begin
+    ρ = 2.0
+    xmax = 15
+    √ = sqrt
+
+    vout = ComplexF64[
+        -√(4 + √17) + (5 + √17)/2,
+        (5 + √17 - 2*√(53/2 + (13*√17)/2)) / 4,
+        (5 + √17 - 2*√(13/2 + (5*√17)/2)) / 4,
+        1.0,
+    ]
+
+    vin = ComplexF64[
+        √(4 + √17) + (5 + √17)/2,
+        (5 + √17 + 2*√(53/2 + (13*√17)/2)) / 4,
+        (5 + √17 + 2*√(13/2 + (5*√17)/2)) / 4,
+        1.0,
+    ]
+
+    v1 = ComplexF64[
+        (5 - √17 + 2im * √(-4 + √17)) / 2,
+        (5 - √17 - 1im * √(2 * (-53 + 13 * √17))) / 4,
+        (5 - √17 + 1im * √(2 * (-13 + 5 * √17))) / 4,
+        1.0,
+    ]
+
+    η = LinearAlgebra.Diagonal(ComplexF64[-1.0, 1.0, 1.0, 1.0])
+    MinkSp(x, y) = LinearAlgebra.dot(conj.(x), η * y)
+    den_causal = MinkSp(vin, vout)
+    den_window = MinkSp(v1, conj.(v1))
+
+    brute_set = Set{Tuple{Float64,Float64}}()
+    found_on_box_boundary = false
+
+    for x0 in -xmax:xmax, x1 in -xmax:xmax, x2 in -xmax:xmax, x3 in -xmax:xmax
+        xvec = ComplexF64[x0, x1, x2, x3]
+
+        αout_raw = MinkSp(xvec, vin) / den_causal
+        αin_raw = MinkSp(xvec, vout) / den_causal
+        window_raw =
+            (MinkSp(xvec, v1) / den_window) * (MinkSp(conj.(v1), xvec) / conj(den_window))
+
+        # Small numerical imaginary parts are expected from floating-point arithmetic.
+        if abs(imag(αin_raw)) > 1e-9 || abs(imag(αout_raw)) > 1e-9 || abs(imag(window_raw)) > 1e-9
+            continue
+        end
+
+        αin = real(αin_raw)
+        αout = real(αout_raw)
+        window_val = real(window_raw)
+
+        if 0.0 <= αin <= 1.0 && 0.0 <= αout <= 1.0 && window_val <= ρ^2
+            push!(brute_set, (round(αin, digits = 12), round(αout, digits = 12)))
+            if abs(x0) == xmax || abs(x1) == xmax || abs(x2) == xmax || abs(x3) == xmax
+                found_on_box_boundary = true
+            end
+        end
+    end
+
+    αin, αout = QuantumGrav.quasicrystal(ρ)
+    qc_set = Set((round(a, digits = 12), round(b, digits = 12)) for (a, b) in zip(αin, αout))
+
+    @test found_on_box_boundary == false
+    @test brute_set == qc_set
+end
+
 @testitem "test_translate_sub_spacetime_crystal_exact_size_from_precomputed_crystal" tags =
     [:quasicrystal] setup = [setupTestsQuasicrystal] begin
     npoints = 80
