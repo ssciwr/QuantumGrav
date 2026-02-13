@@ -275,7 +275,7 @@ function insert_layered_into_manifoldlike(
 
     cset1Raw, _, _ = make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
 
-    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p)
+    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p, rng = rng)
 
     return insert_cset(
         cset1Raw,
