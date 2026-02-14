@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -32,9 +33,15 @@ jobs:
       - name: Install package and dependencies
         working-directory: ./QuantumGravPy
         run: pip install -r docs/requirements.txt
-      - name: Deploy documentation
+      - name: Build documentation
         working-directory: ./QuantumGravPy
-        run: mkdocs gh-deploy
+        run: mkdocs build
+      - name: Deploy documentation
+        if: github.ref == 'refs/heads/main'
+        working-directory: ./QuantumGravPy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mkdocs gh-deploy --force
 
   build_and_deploy_julia:
     runs-on: ubuntu-latest
@@ -58,7 +65,18 @@ jobs:
           using Pkg
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
-      - name: Build and deploy
+      - name: Build documentation
+        working-directory: ./QuantumGrav.jl
+        run: |
+          julia --color=yes --project=docs -e '
+          using Documenter, QuantumGrav;
+          makedocs(
+            sitename = "QuantumGrav.jl",
+            repo = "ssciwr/QuantumGrav",
+            format = Documenter.HTML(prettyurls = true, repolink = "https://github.com/ssciwr/QuantumGrav"),
+          )'
+      - name: Deploy documentation
+        if: github.ref == 'refs/heads/main'
         working-directory: ./QuantumGrav.jl
         run: |
           set +e  # Don't exit on error immediately
@@ -79,7 +97,8 @@ jobs:
 
           echo "Deployment successful"
         env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 
 
