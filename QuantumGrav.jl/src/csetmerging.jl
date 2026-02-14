@@ -1,7 +1,7 @@
 
 
 """
-insert_cset(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64; rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing) 
+insert_cset(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64; rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing)
     -> BitArrayCauset
 
 Insert `cset2Raw` into `cset1Raw` at a random or specified position. All atoms are reindexed accordingly.
@@ -117,7 +117,7 @@ end
 
 
 """
-merge_csets(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64) 
+merge_csets(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64)
     -> BitArrayCauset
 
 Merge two causal sets `cset1Raw` and `cset2Raw` into a single causal set by placing them
@@ -154,7 +154,7 @@ function merge_csets(
 end
 
 """
-insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64; 
+insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64;
                             rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
                             n2_rel::Float64=0.05,
                             d::Int64=2, type::Type=Float32, p::Float64=0.5)
@@ -210,7 +210,7 @@ function insert_KR_into_manifoldlike(
 
     cset1Raw, _, _ = make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
 
-    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p)
+    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p; rng = rng)
 
     return insert_cset(
         cset1Raw,
