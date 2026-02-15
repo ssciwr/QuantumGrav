@@ -290,21 +290,16 @@ Construct a 2D grid of `size` points based on the given Bravais lattice, generat
 """
 function create_grid_causet_2D_polynomial_manifold(
     size::Int64,
-    lattice::AbstractString,
-    rng::Random.AbstractRNG,
-    order::Int64,
-    r::Float64;
+    lattice::AbstractString;
     type::Type{T} = Float32,
     a::Float64 = 1.0,
     b::Float64 = 0.5,
     gamma_deg::Float64 = 60.0,
     rotate_deg = nothing,
     origin = (0.0, 0.0),
-)::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T},Matrix{T}} where {T<:Number}
+)::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T<:Number}
 
     size ≥ 2 || throw(ArgumentError("size must be ≥ 2, is $(size)"))
-    order ≥ 0 || throw(ArgumentError("order must be ≥ 0, is $(order)"))
-    r > 1 || throw(ArgumentError("r must be > 1, is $(r)"))
 
     grid = generate_grid_2d(
         size,
@@ -315,36 +310,17 @@ function create_grid_causet_2D_polynomial_manifold(
         rotate_deg = rotate_deg,
         origin = origin,
     )
-
-    # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order + 1, order + 1)
-    for i = 1:order
-        for j = 1:order
-            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
-        end
-    end
-
-    # Construct the Chebyshev-to-Taylor transformation matrix
-    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
-
-    # Transform Chebyshev coefficients to Taylor coefficients
-    taylorcoefs = CausalSets.transform_polynomial(chebyshev_coefs, cheb_to_taylor_mat)
-
-    # Square the polynomial to ensure positivity
-    squaretaylorcoefs = CausalSets.polynomial_pow(taylorcoefs, 2)
-
-    # Create a polynomial manifold from the squared Taylor coefficients
-    polym = CausalSets.PolynomialManifold{2}(squaretaylorcoefs)
+    
+    # Create a Minkowski manifold for causal relations
+    mink = CausalSets.MinkowskiManifold{2}()
 
     # Create grid
-    grid = sort_grid_by_time_from_manifold(polym, grid)
+    grid = sort_grid_by_time_from_manifold(mink, grid)
 
     # Rescale and translate grid so it fits into Chebyshev domain
     pseudosprinkling = center_and_rescale_grid_to_box(grid, ((-1.0, -1.0), (1.0, 1.0)))
 
-    return CausalSets.BitArrayCauset(polym, pseudosprinkling),
+    return CausalSets.BitArrayCauset(mink, pseudosprinkling),
     true,
-    type.(stack(collect.(pseudosprinkling), dims = 1)),
-    type.(chebyshev_coefs)
+    type.(stack(collect.(pseudosprinkling), dims = 1))
 end

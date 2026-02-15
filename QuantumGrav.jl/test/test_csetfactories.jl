@@ -79,12 +79,6 @@
             "rotate_distribution" => "Uniform",
             "rotate_distribution_args" => [0.0, 180.0],
             "rotate_distribution_kwargs" => Dict(),
-            "order_distribution" => "DiscreteUniform",
-            "order_distribution_args" => [2, 8],
-            "order_distribution_kwargs" => Dict(),
-            "r_distribution" => "Uniform",
-            "r_distribution_args" => [4.0, 8.0],
-            "r_distribution_kwargs" => Dict(),
             "quadratic" => Dict(),
             "rectangular" => Dict(
                 "segment_ratio_distribution" => "Beta",
@@ -226,10 +220,9 @@ end
     @test cset.atom_count == n
     @test layers isa Int
 
-    cset, curvature_matrix, grid = csetfactory("grid", n, rng)
+    cset, grid = csetfactory("grid", n, rng)
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == n
-    @test curvature_matrix isa Vector{Float64}
     @test grid isa String
 
     cset, curvature_matrix = csetfactory("complex_topology", n, rng)
@@ -591,7 +584,7 @@ end
     [factories_config] begin
     using Distributions
 
-    csetmaker = QuantumGrav.GridCsetMakerPolynomial(factory_cfg["grid"])
+    csetmaker = QuantumGrav.GridCsetMaker(factory_cfg["grid"])
 
     @test csetmaker.grid_distribution isa Distributions.DiscreteUniform
     @test Distributions.params(csetmaker.grid_distribution) ==
@@ -601,14 +594,6 @@ end
     @test Distributions.params(csetmaker.rotate_distribution) ==
           tuple(factory_cfg["grid"]["rotate_distribution_args"]...)
 
-
-    @test csetmaker.order_distribution isa Distributions.DiscreteUniform
-    @test Distributions.params(csetmaker.order_distribution) ==
-          tuple(factory_cfg["grid"]["order_distribution_args"]...)
-
-    @test csetmaker.r_distribution isa Distributions.Uniform
-    @test Distributions.params(csetmaker.r_distribution) ==
-          tuple(factory_cfg["grid"]["r_distribution_args"]...)
 
     @test haskey(csetmaker.grid_lookup, 1)
     @test haskey(csetmaker.grid_lookup, 2)
@@ -623,35 +608,20 @@ end
 
     broken_cfg = deepcopy(factory_cfg)
     broken_cfg["grid"]["grid_distribution"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMaker(broken_cfg["grid"])
 
     broken_cfg = deepcopy(factory_cfg)
     broken_cfg["grid"]["rotate_distribution"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
-
-    broken_cfg = deepcopy(factory_cfg)
-    broken_cfg["grid"]["order_distribution"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
-
-    broken_cfg = deepcopy(factory_cfg)
-    broken_cfg["grid"]["r_distribution"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMaker(broken_cfg["grid"])
 
     broken_cfg = deepcopy(factory_cfg)
     broken_cfg["grid"]["grid_distribution_args"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMaker(broken_cfg["grid"])
 
     broken_cfg = deepcopy(factory_cfg)
     broken_cfg["grid"]["rotate_distribution_args"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
+    @test_throws ArgumentError QuantumGrav.GridCsetMaker(broken_cfg["grid"])
 
-    broken_cfg = deepcopy(factory_cfg)
-    broken_cfg["grid"]["order_distribution_args"] = nothing
-    @test_throws ArgumentError GridCsetMakerPolynomial(broken_cfg["grid"])
-
-    broken_cfg = deepcopy(factory_cfg)
-    broken_cfg["grid"]["r_distribution_args"] = nothing
-    @test_throws ArgumentError QuantumGrav.GridCsetMakerPolynomial(broken_cfg["grid"])
 end
 
 @testitem "test_grid_factory_produce_csets" tags = [:csetfactories] setup =
@@ -664,21 +634,19 @@ end
     rng = Random.Xoshiro(factory_cfg["seed"])
 
     for grid_type in grid_types
-        csetmaker = QuantumGrav.GridCsetMakerPolynomial(factory_cfg["grid"])
+        csetmaker = QuantumGrav.GridCsetMaker(factory_cfg["grid"])
 
         # Produce a cset for this grid type
-        cset, curvature_matrix, grid_type_out =
-            csetmaker(25, rng; config = factory_cfg["grid"], grid = grid_type)
+        cset, grid_type_out = csetmaker(25, rng; config = factory_cfg["grid"], grid = grid_type)
         @test isnothing(cset) === false
         @test cset.atom_count == 25
         @test grid_type == grid_type_out
     end
 
-    csetmaker = QuantumGrav.GridCsetMakerPolynomial(factory_cfg["grid"])
-    cset, curvature_matrix, grid_type_out = csetmaker(25, rng; config = factory_cfg["grid"]) # randomly chosen grid type
+    csetmaker = QuantumGrav.GridCsetMaker(factory_cfg["grid"])
+    cset, grid_type_out = csetmaker(25, rng; config = factory_cfg["grid"]) # randomly chosen grid type
     @test isnothing(cset) === false
     @test cset.atom_count == 25
-    @test length(curvature_matrix) == 25
     @test grid_type_out in grid_types
 
 end

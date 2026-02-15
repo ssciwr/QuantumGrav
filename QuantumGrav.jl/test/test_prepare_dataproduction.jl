@@ -78,12 +78,6 @@
 			"rotate_distribution" => "Uniform",
 			"rotate_distribution_args" => [0.0, 180.0],
 			"rotate_distribution_kwargs" => Dict(),
-			"order_distribution" => "DiscreteUniform",
-			"order_distribution_args" => [2, 8],
-			"order_distribution_kwargs" => Dict(),
-			"r_distribution" => "Uniform",
-			"r_distribution_args" => [4.0, 8.0],
-			"r_distribution_kwargs" => Dict(),
 			"quadratic" => Dict(),
 			"rectangular" => Dict(
 				"segment_ratio_distribution" => "Beta",

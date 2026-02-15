@@ -63,7 +63,6 @@ destroyed:
   flip_distribution_kwargs: {}
 
 grid:
-  <<: *poly_defaults
   grid_distribution: "DiscreteUniform"
   grid_distribution_args: [1, 6]
   grid_distribution_kwargs: {}

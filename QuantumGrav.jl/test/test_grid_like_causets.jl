@@ -191,15 +191,10 @@ end
 
     rng = Random.MersenneTwister(1234)
     size = 30
-    order = 3
-    r = 2.0
-    cset, converged, coords, chebyshev_coefs =
+    cset, converged, coords =
         QuantumGrav.create_grid_causet_2D_polynomial_manifold(
             size,
-            "square",
-            rng,
-            order,
-            r;
+            "square";
             a = 1.0,
             rotate_deg = 0.0,
         )
@@ -208,7 +203,6 @@ end
     @test cset.atom_count == size
     @test converged == true
     @test length(coords) == 2 * size
-    @test length(chebyshev_coefs) == (order + 1)^2
 end
 
 @testitem "grid_input_errors" tags=[:cset, :errors] begin
@@ -219,26 +213,7 @@ end
 
     @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
         1,
-        "square",
-        rng,
-        3,
-        2.0;
-        a = 1.0,
-    )
-    @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
-        10,
-        "square",
-        rng,
-        -1,
-        2.0;
-        a = 1.0,
-    )
-    @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
-        10,
-        "square",
-        rng,
-        3,
-        1.0;
+        "square";
         a = 1.0,
     )
 end

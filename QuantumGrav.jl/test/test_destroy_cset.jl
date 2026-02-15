@@ -45,8 +45,8 @@ end
     @test x_spread > 0.9
     @test y_spread > 0.9
 
-    envelope = [r^(-i - j) for i = 1:order, j = 1:order]
-    for i = 1:order, j = 1:order
+    envelope = [r^(-i - j + 2) for i = 1:(order+1), j = 1:(order+1)]
+    for i = 1:(order+1), j = 1:(order+1)
         @test abs(chebyshev_coefs[i, j]) ≤ 10 * envelope[i, j]
     end
 end
