@@ -2200,14 +2200,8 @@ function make_branched_manifold_cset(
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
-    # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order + 1, order + 1)
-    for i = 1:order
-        for j = 1:order
-            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
-        end
-    end
+    # Sample Chebyshev coefficients on degrees 0:order with isotropic decay envelope.
+    chebyshev_coefs = random_chebyshev_coefficients(rng, order, r, 2)
 
     # Construct the Chebyshev-to-Taylor transformation matrix
     cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)
@@ -2359,14 +2353,8 @@ function make_polynomial_manifold_cset_with_nontrivial_topology(
         throw(ArgumentError("tolerance must be > 0, got $tolerance"))
     end
 
-    # Generate a matrix of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order + 1 x order + 1)-matrix because we describe a function of two variables
-    chebyshev_coefs = zeros(Float64, order + 1, order + 1)
-    for i = 1:order
-        for j = 1:order
-            chebyshev_coefs[i, j] = r^(-i - j) * Random.randn(rng)
-        end
-    end
+    # Sample Chebyshev coefficients on degrees 0:order with isotropic decay envelope.
+    chebyshev_coefs = random_chebyshev_coefficients(rng, order, r, 2)
 
     # Construct the Chebyshev-to-Taylor transformation matrix
     cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(order)

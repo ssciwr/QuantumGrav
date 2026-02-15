@@ -1,62 +1,107 @@
 """
-    walk_simplex!(αmax, logr, Λ, f!)
+    weighted_simplex_indices(r_vec, npoints)
 
-Depth-first traversal of the weighted simplex
-    ∑ᵢ αᵢ log(rᵢ) ≤ Λ , 0 ≤ αᵢ ≤ αmax[i]
-
-Calls `f!(α)` for each admissible multi-index α (α is reused; copy if needed).
+Build weighted-simplex multi-indices `α` satisfying `sum(α[i] * log(r_vec[i])) <= Λ`
+with `Λ = 2 * log(npoints) + 1`. Returns `(order_inds, αmax)`, where `αmax[i]` is the
+largest admissible degree in dimension `i`.
 """
-function walk_simplex!(
-    αmax::NTuple{D,Int},
-    logr::NTuple{D,Float64},
-    Λ::Float64,
-    f!::Function,
-) where D
-    α = zeros(Int, D)
-
-    function rec!(i::Int, w::Float64)
-        if w > Λ
-            return
-        end
-        if i > D
-            f!(α)
-            return
-        end
-        for k = 0:αmax[i]
-            α[i] = k
-            rec!(i + 1, w + k * logr[i])
-        end
-        α[i] = 0
+function weighted_simplex_indices(
+    r_vec::NTuple{D,Float64},
+    npoints::Int,
+)::Tuple{Vector{NTuple{D,Int}},Vector{Int}} where D
+    if npoints <= 0
+        throw(ArgumentError("npoints must be greater than 0, got $npoints"))
+    end
+    if any(r_vec .<= 1.0)
+        throw(ArgumentError("all components of r_vec must be > 1, got $r_vec"))
     end
 
-    rec!(1, 0.0)
-    return nothing
+    logr = ntuple(i -> log(r_vec[i]), D)
+    Λ = 2 * log(npoints) + 1
+    αmax = [floor(Int, Λ / logr[i]) for i in 1:D]
+
+    order_inds = NTuple{D,Int}[]
+    for I in CartesianIndices(ntuple(i -> 0:αmax[i], D))
+        α = Tuple(I)
+        w = sum(α[i] * logr[i] for i in 1:D)
+        if w <= Λ
+            push!(order_inds, α)
+        end
+    end
+    return order_inds, αmax
+end
+
+"""
+    random_chebyshev_coefficients(rng, order, r, d)
+
+Sample a rank-`d` tensor of Chebyshev coefficients on degrees `0:order` in each axis,
+with isotropic envelope `r^(-|α|)` where `|α| = α₁ + ... + α_d`.
+"""
+function random_chebyshev_coefficients(
+    rng::Random.AbstractRNG,
+    order::Int64,
+    r::Float64,
+    d::Int64,
+)::Array{Float64}
+    dims = ntuple(_ -> order + 1, d)
+    chebyshev_coefs = zeros(Float64, dims)
+
+    inv_r = inv(r)
+    decay = ones(Float64, order + 1)
+    for k = 2:(order + 1)
+        decay[k] = decay[k - 1] * inv_r
+    end
+
+    for I in CartesianIndices(chebyshev_coefs)
+        coeff = randn(rng)
+        for idx in Tuple(I)
+            coeff *= decay[idx]
+        end
+        chebyshev_coefs[I] = coeff
+    end
+
+    return chebyshev_coefs
+end
+
+"""
+    random_weighted_chebyshev_coefficients(rng, αmax, logr, order_inds)
+
+Sample a tensor of Chebyshev coefficients on a weighted admissible index set.
+Entries outside `order_inds` are zero.
+"""
+function random_weighted_chebyshev_coefficients(
+    rng::Random.AbstractRNG,
+    αmax::NTuple{D,Int},
+    logr::NTuple{D,Float64},
+    order_inds::AbstractVector{NTuple{D,Int}},
+)::Array{Float64,D} where D
+    coefs = zeros(Float64, ntuple(i -> αmax[i] + 1, D))
+    for α in order_inds
+        w = sum(α[i] * logr[i] for i in 1:D)
+        coefs[(α .+ 1)...] = exp(-w) * randn(rng)
+    end
+    return coefs
 end
 
 function CausalSets.eval_polynomial(
     coefs::CausalSets.PolynomialCoefs{N},
     x::CausalSets.Coordinates,
     integrate::NTuple{N,Bool},
-    αmax::NTuple{N,Int},
-    logr::NTuple{N,Float64},
-    Λ::Float64,
+    order_inds::Vector{NTuple{N,Int}},
 )::Float64 where N
     val = 0.0
-
-    walk_simplex!(αmax, logr, Λ) do α
-        I = α .+ 1
+    for α in order_inds
         var_prod = 1.0
         pow_law_quotient = 1.0
         for i in 1:N
-            p = α[i]
+            p = α[i] + (integrate[i] ? 1 : 0)
             var_prod *= x[i]^p
             if integrate[i]
-                pow_law_quotient *= p
+                pow_law_quotient *= (α[i] + 1)
             end
         end
-        val += var_prod * coefs.c[(I .- integrate)...] / pow_law_quotient
+        val += var_prod * coefs.c[(α .+ 1)...] / pow_law_quotient
     end
-
     return val
 end
 
@@ -64,11 +109,11 @@ function CausalSets.transform_polynomial(
     cheb_coefs::Array{Float64, D},
     cheb_to_taylor_mat::AbstractMatrix,
     order_inds::Vector{NTuple{D,Int}};
-    αmax::Union{Nothing,Vector{Int64}},
+    αmax::Union{Nothing,AbstractVector{<:Integer}},
 )::Array{Float64, D} where D
 
-    αmax = isnothing(αmax) ? ntuple(i -> maximum(α[i] for α in order_inds), D) : αmax
-    taylor_coefs = zeros(Float64, ntuple(i -> αmax[i] + 1, D))
+    αmax_t = isnothing(αmax) ? ntuple(i -> maximum(α[i] for α in order_inds), D) : Tuple(αmax)
+    taylor_coefs = zeros(Float64, ntuple(i -> αmax_t[i] + 1, D))
 
     for α in order_inds
         Iα = α .+ 1
@@ -77,34 +122,9 @@ function CausalSets.transform_polynomial(
             βt = Tuple(β)
             coef = cα
             for i in 1:D
-                coef *= cheb_to_taylor_mat[α[i] + 1, βt[i] + 1]
+                coef *= cheb_to_taylor_mat[βt[i] + 1, α[i] + 1]
             end
             taylor_coefs[(βt .+ 1)...] += coef
-        end
-    end
-
-    return taylor_coefs
-end
-
-function CausalSets.transform_polynomial(
-    cheb_coefs::Array{Float64,D},
-    cheb_to_taylor_mat::AbstractMatrix,
-    αmax::NTuple{D,Int},
-    logr::NTuple{D,Float64},
-    Λ::Float64,
-)::Array{Float64,D} where D
-
-    taylor_coefs = zeros(Float64, ntuple(i -> αmax[i] + 1, D))
-
-    walk_simplex!(αmax, logr, Λ) do α
-        Iα = α .+ 1
-        cα = cheb_coefs[Iα...]
-        for β in CartesianIndices(ntuple(i -> 0:α[i], D))
-            coef = cα
-            for i in 1:D
-                coef *= cheb_to_taylor_mat[α[i] + 1, β[i] + 1]
-            end
-            taylor_coefs[(Tuple(β) .+ 1)...] += coef
         end
     end
 
@@ -115,16 +135,17 @@ function CausalSets.polynomial_pow(
     coefs::Array{Float64, D},
     n::Int64,
     order_inds::Vector{NTuple{D,Int}};
-    αmax::Union{Nothing,Vector{Int64}} = nothing,
+    αmax::Union{Nothing,AbstractVector{<:Integer}} = nothing,
 )::Array{Float64, D} where D
 
     @assert n > 1
 
-    αmax = isnothing(αmax) ?
+    αmax_t = isnothing(αmax) ?
         ntuple(i -> maximum(α[i] for α in order_inds), D) :
         Tuple(αmax)
 
-    new_coefs = zeros(Float64, ntuple(i -> αmax[i] + 1, D))
+    new_coefs = zeros(Float64, ntuple(i -> αmax_t[i] + 1, D))
+    admissible = Set(order_inds)
 
     # Convolution restricted to simplex structure
     for inds in Iterators.product(ntuple(_ -> order_inds, n)...)
@@ -134,34 +155,11 @@ function CausalSets.polynomial_pow(
             coef_prod *= coefs[(α .+ 1)...]
             αsum .+= α
         end
-        if all(αsum[i] <= αmax[i] for i in 1:D)
-            new_coefs[(αsum .+ 1)...] += coef_prod
-        end
-    end
-
-    return new_coefs
-end
-
-function CausalSets.polynomial_pow(
-    coefs::Array{Float64,D},
-    n::Int,
-    αmax::NTuple{D,Int},
-    logr::NTuple{D,Float64},
-    Λ::Float64,
-)::Array{Float64,D} where D
-
-    @assert n == 2  # only case currently used
-
-    new_coefs = zeros(Float64, ntuple(i -> αmax[i] + 1, D))
-
-    walk_simplex!(αmax, logr, Λ) do α
-        cα = coefs[(α .+ 1)...]
-        cα == 0.0 && return
-        walk_simplex!(αmax, logr, Λ) do β
-            γ = ntuple(i -> α[i] + β[i], D)
-            wγ = sum(γ[i] * logr[i] for i in 1:D)
-            wγ > Λ && return
-            new_coefs[(γ .+ 1)...] += cα * coefs[(β .+ 1)...]
+        if all(αsum[i] <= αmax_t[i] for i in 1:D)
+            αsum_t = ntuple(i -> αsum[i], D)
+            if αsum_t in admissible
+                new_coefs[(αsum .+ 1)...] += coef_prod
+            end
         end
     end
 
@@ -189,10 +187,14 @@ struct TruncatedPolynomialManifold{N} <: CausalSets.ConformallyMinkowskianManifo
 end
 
 function TruncatedPolynomialManifold{N}(coefs::AbstractArray{Float64, N}, order_inds::Vector{NTuple{N,Int}}) where N
-    return CausalSets.PolynomialManifold{N}(CausalSets.PolynomialCoefs(coefs), order_inds)
+    return TruncatedPolynomialManifold{N}(CausalSets.PolynomialCoefs(coefs), order_inds)
 end
 
-function is_in_boundary(manifold::TruncatedPolynomialManifold{N}, boundary::BoxBoundary{N}, coords::Coordinates{N}) where N
+function is_in_boundary(
+    manifold::TruncatedPolynomialManifold{N},
+    boundary::CausalSets.BoxBoundary{N},
+    coords::CausalSets.Coordinates{N},
+) where N
     return all(boundary.edges[1] .< coords .&& coords .< boundary.edges[2])
 end
 
@@ -208,7 +210,7 @@ function CausalSets.definite_integral(
     coefs::CausalSets.PolynomialCoefs{N}, 
     params::CausalSets.DimLimits, 
     integrate::NTuple{N, Bool},
-    order_inds::Vector{NTuple{D,Int}}
+    order_inds::Vector{NTuple{N,Int}}
     )::Float64 where N
     d = length(params.l)
     if all(isa.(params.l, Float64))
@@ -226,13 +228,13 @@ function CausalSets.definite_integral(
 end
 
 function CausalSets.sample_step(
-    rng::AbstractRNG, 
-    coefs::PolynomialCoefs{N}, 
-    params::DimLimits, 
+    rng::Random.AbstractRNG, 
+    coefs::CausalSets.PolynomialCoefs{N}, 
+    params::CausalSets.DimLimits, 
     i::Int64,
-    order_inds::Vector{NTuple{D,Int}};
+    order_inds::Vector{NTuple{N,Int}};
     αmax::Union{Nothing,Vector{Int64}} = nothing,
-    )::DimLimits where N
+    )::CausalSets.DimLimits where N
     d = length(params.l)
     lower_bound = CausalSets.DimLimits(ntuple(j -> j == i ? params.l[j][1] : params.l[j], d))
     upper_bound = CausalSets.DimLimits(ntuple(j -> j == i ? params.l[j][2] : params.l[j], d))
@@ -245,7 +247,7 @@ function CausalSets.sample_step(
 end
 
 CausalSets.min_max_primary_coords(seg::TruncatedPolynomialRectangularSegment) = (seg.edges[1][1], seg.edges[2][1])
-function partial_volume(seg::TruncatedPolynomialRectangularSegment{N}, t) where N
+function CausalSets.partial_volume(seg::TruncatedPolynomialRectangularSegment{N}, t) where N
     params = CausalSets.DimLimits(((seg.edges[1][1], t), ntuple(i -> (seg.edges[1][i+1], seg.edges[2][i+1]), N-1)...))
     return CausalSets.definite_integral(seg.coefs, params, ntuple(i -> true, N), seg.order_inds)
 end
@@ -255,7 +257,11 @@ function CausalSets.inverse_partial_volume(seg::TruncatedPolynomialRectangularSe
     return CausalSets.bisect_inverse(volf, vol, seg.edges[1][1], seg.edges[2][1])
 end
 
-function CausalSets.sample_at_primary_coord(rng::AbstractRNG, seg::TruncatedPolynomialRectangularSegment{N}, t)::CausalSets.Coordinates{N} where N
+function CausalSets.sample_at_primary_coord(
+    rng::Random.AbstractRNG,
+    seg::TruncatedPolynomialRectangularSegment{N},
+    t,
+)::CausalSets.Coordinates{N} where N
     params = CausalSets.DimLimits((t, ntuple(i -> (seg.edges[1][i+1], seg.edges[2][i+1]), N-1)...))
     for i in 2:N
         params = CausalSets.sample_step(rng, seg.coefs, params, i, seg.order_inds)
@@ -263,7 +269,10 @@ function CausalSets.sample_at_primary_coord(rng::AbstractRNG, seg::TruncatedPoly
     return params.l
 end
 
-function CausalSets.sprinkling_segment_sequence(manifold::TruncatedPolynomialManifold{N}, boundary::BoxBoundary) where N
+function CausalSets.sprinkling_segment_sequence(
+    manifold::TruncatedPolynomialManifold{N},
+    boundary::CausalSets.BoxBoundary,
+) where N
     return CausalSets.SprinklingSegmentSequence(
                                      TruncatedPolynomialRectangularSegment(boundary.edges, manifold.coefs, manifold.order_inds)
                                     )
@@ -340,12 +349,8 @@ function make_polynomial_manifold_cset(
         throw(ArgumentError("dimension d must be at least 1, got $d"))
     end
 
-    # Generate a rank-d tensor of random Chebyshev coefficients that decay exponentially with base r
-    # it has to be a (order x order x ... x order)-tensor because we describe a function of d variables
-    chebyshev_coefs = zeros(Float64, ntuple(_ -> order+1, d))
-    for I in CartesianIndices(chebyshev_coefs)
-        chebyshev_coefs[I] = r^(-sum(Tuple(I))) * randn(rng)
-    end
+    # Sample Chebyshev coefficients on degrees 0:order with isotropic decay envelope.
+    chebyshev_coefs = random_chebyshev_coefficients(rng, order, r, d)
 
 
     # Construct the Chebyshev-to-Taylor transformation matrix
@@ -413,14 +418,14 @@ Each must be > 1 to ensure exponential convergence; defines the radius of analyt
 function make_anisotropically_weighted_polynomial_manifold_cset(
     npoints::Int64,
     rng::Random.AbstractRNG,
-    r_vec::NTuple{d,Float64};
-    d::Int64 = 2,
+    r_vec::NTuple{D,Float64};
+    d::Int64 = D,
     type::Type{T} = Float32,
 )::Tuple{
     CausalSets.BitArrayCauset,
     Vector{Tuple{T,Vararg{T}}},
-    Array{T,d}
-} where {T<:Number}
+    Array{T,D}
+} where {T<:Number,D}
 
     if npoints <= 0
         throw(ArgumentError("npoints must be greater than 0, got $npoints"))
@@ -429,7 +434,7 @@ function make_anisotropically_weighted_polynomial_manifold_cset(
     if any(r_vec .<= 1)
         throw(
             ArgumentError(
-                "components of r_vec must be greater than 1 for exponential convergence of the Chebyshev series, got $r",
+                "components of r_vec must be greater than 1 for exponential convergence of the Chebyshev series, got $r_vec",
             ),
         )
     end
@@ -439,37 +444,27 @@ function make_anisotropically_weighted_polynomial_manifold_cset(
     end
 
     order_inds, αmax = weighted_simplex_indices(r_vec, npoints)
+    αmax_t = Tuple(αmax)
 
-    # Generate a rank-d tensor of random Chebyshev coefficients that decay exponentially with base r_i
-    # it has to be a (αmax[1]+1 x αmax[2]+1 x ... x αmax[d]+1)-tensor because we describe a function of d variables
-    chebyshev_coefs = zeros(Float64, ntuple(i -> αmax[i] + 1, d))
-    αmax = Tuple(αmax)
     logr = Tuple(log.(r_vec))
-    Λ = 2 * log(npoints) + 1
-
-    walk_simplex!(αmax, logr, Λ) do α
-        I = α .+ 1
-        w = sum(α[i] * logr[i] for i in 1:d)
-        chebyshev_coefs[I...] = exp(-w) * randn(rng)
-    end
+    chebyshev_coefs =
+        random_weighted_chebyshev_coefficients(rng, αmax_t, logr, order_inds)
 
     # Construct the Chebyshev-to-Taylor transformation matrices for each dimension
-    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(maximum(αmax))
+    cheb_to_taylor_mat = CausalSets.chebyshev_coef_matrix(maximum(αmax_t))
 
     taylorcoefs = CausalSets.transform_polynomial(
         chebyshev_coefs,
         cheb_to_taylor_mat,
-        αmax,
-        logr,
-        Λ,
+        order_inds;
+        αmax = αmax,
     )
 
     squaretaylorcoefs = CausalSets.polynomial_pow(
         taylorcoefs,
         2,
-        αmax,
-        logr,
-        Λ,
+        order_inds;
+        αmax = αmax,
     )
 
     # Create a polynomial manifold from the squared Taylor coefficients

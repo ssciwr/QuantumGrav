@@ -513,26 +513,22 @@ end
 
 
 """
-	GridCsetMakerPolynomial
+	GridCsetMaker
 
 	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 
 # Fields:
 	- grid_distribution::Distributions.Distribution: Random distribution to draw grid from
 	- rotate_distribution::Distributions.Distribution: Random distribution to draw rotation angle from
-	- order_distribution::Distributions.Distribution: Random distribution to draw order from
-	- r_distribution::Distributions.Distribution: Random distribution to draw exponent for Chebyshev expansionfrom
 	- grid_lookup::AbstractDict: grid lookup table by name
 """
-struct GridCsetMakerPolynomial
+struct GridCsetMaker
     grid_distribution::Distributions.Distribution
     rotate_distribution::Distributions.Distribution
-    order_distribution::Distributions.Distribution
-    r_distribution::Distributions.Distribution
     grid_lookup::Dict
 end
 
-const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
+const GridCsetMaker_schema = JSONSchema.Schema("""{
                  "\$schema": "http://json-schema.org/draft-06/schema#",
                  "title": "GridCsetMakerPolynomial config",
                  "type": "object",
@@ -553,24 +549,6 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
                   "items": { "type": "number" }
                 },
                 "rotate_distribution_kwargs": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "order_distribution": { "type": "string" },
-                "order_distribution_args": {
-                  "type": "array",
-                  "items": { "type": "integer" }
-                },
-                "order_distribution_kwargs": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "r_distribution": { "type": "string" },
-                "r_distribution_args": {
-                  "type": "array",
-                  "items": { "type": "number" }
-                },
-                "r_distribution_kwargs": {
                   "type": "object",
                   "additionalProperties": true
                 },
@@ -690,11 +668,7 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
                 "grid_distribution",
                 "grid_distribution_args",
                 "rotate_distribution",
-                "rotate_distribution_args",
-                "order_distribution",
-                "order_distribution_args",
-                "r_distribution",
-                "r_distribution_args"
+                "rotate_distribution_args"
                  ]
                 }
                """)
@@ -705,16 +679,12 @@ const GridCsetMakerPolynomial_schema = JSONSchema.Schema("""{
 
 	Create a new `grid` causal set maker object from the config dictionary for polynomial spacetimes.
 """
-function GridCsetMakerPolynomial(config::Dict)
-    validate_config(GridCsetMakerPolynomial_schema, config)
+function GridCsetMaker(config::Dict)
+    validate_config(GridCsetMaker_schema, config)
 
     grid_distribution = build_distr(config, "grid_distribution")
 
     rotate_distribution = build_distr(config, "rotate_distribution")
-
-    order_distribution = build_distr(config, "order_distribution")
-
-    r_distribution = build_distr(config, "r_distribution")
 
     grid_lookup = Dict(
         1 => "quadratic",
@@ -725,17 +695,15 @@ function GridCsetMakerPolynomial(config::Dict)
         6 => "oblique",
     )
 
-    return GridCsetMakerPolynomial(
+    return GridCsetMaker(
         grid_distribution,
         rotate_distribution,
-        order_distribution,
-        r_distribution,
         grid_lookup,
     )
 end
 
 """
-	gcm::GridCsetMakerPolynomial(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
+	gcm::GridCsetMaker(n::Int64, config::AbstractDict, rng::Random.AbstractRNG)
 
 	Create a new `grid` causal set using a `GridCsetMakerPolynomial` object.
 
@@ -746,33 +714,27 @@ end
 
 # Keyword arguments:
 - `grid`: name of the grid type to use
-- `derivation_matrix1`: optional derivation matrix transform characterising first derivative of chebyshev polynomials for curvature calculation
-- `derivation_matrix2`: optional derivation matrix transform characterising second derivative of chebyshev polynomials for curvature calculation
 
 # Returns
 - causal set (BitArrayCauset)
 - grid type
 
 """
-function (gcm::GridCsetMakerPolynomial)(
+function (gcm::GridCsetMaker)(
     n::Int64,
     rng::Random.AbstractRNG;
     config::Union{AbstractDict,Nothing} = nothing,
     grid::Union{String,Nothing} = nothing,
-    derivation_matrix1::Union{Nothing,Array{Float64,2}} = nothing,
-    derivation_matrix2::Union{Nothing,Array{Float64,2}} = nothing,
-)::Tuple{CausalSets.BitArrayCauset,Vector{Float64},String}
+)::Tuple{CausalSets.BitArrayCauset,String}
 
     if isnothing(config)
-        throw(ArgumentError("Config cannot be None for GridCsetMakerPolynomial"))
+        throw(ArgumentError("Config cannot be None for GridCsetMaker"))
     end
 
     if isnothing(grid)
         grid = gcm.grid_lookup[rand(rng, gcm.grid_distribution)]
     end
 
-    o = rand(rng, gcm.order_distribution)
-    r = rand(rng, gcm.r_distribution)
     rotate_angle_deg = rand(rng, gcm.rotate_distribution)
 
     gamma_deg =
@@ -783,12 +745,9 @@ function (gcm::GridCsetMakerPolynomial)(
         grid == "quadratic" ? 1.0 :
         rand(rng, build_distr(config[grid], "segment_ratio_distribution"))
 
-    cset, _, pseudosprinkling, chebyshev_coefs = create_grid_causet_2D_polynomial_manifold(
+    cset, _, _ = create_grid_causet_2D_polynomial_manifold(
         n,
-        grid,
-        rng,
-        o,
-        r;
+        grid;
         type = Float32,
         a = 1.0,
         b = b,
@@ -797,17 +756,7 @@ function (gcm::GridCsetMakerPolynomial)(
         origin = (0.0, 0.0),
     )
 
-    trans_pseudosprinkling =
-        [(Float64(x), Float64(y)) for (x, y) in eachrow(Float64.(pseudosprinkling))]
-
-    curvature_matrix = Ricci_scalar_2D_of_sprinkling(
-        Float64.(chebyshev_coefs),
-        trans_pseudosprinkling;
-        derivation_matrix1 = derivation_matrix1,
-        derivation_matrix2 = derivation_matrix2,
-    )
-
-    return cset, curvature_matrix, grid
+    return cset, grid
 end
 
 
@@ -1246,7 +1195,7 @@ function CsetFactory(config::AbstractDict)
             MergedCsetMaker(get(config, "merged_ambiguous", config["merged"])),
         "polynomial" => PolynomialCsetMaker(config["polynomial"]),
         "layered" => LayeredCsetMaker(config["layered"]),
-        "grid" => GridCsetMakerPolynomial(config["grid"]),
+        "grid" => GridCsetMaker(config["grid"]),
         "destroyed" => DestroyedCsetMaker(config["destroyed"]),
         "destroyed_ambiguous" =>
             DestroyedCsetMaker(get(config, "destroyed_ambiguous", config["destroyed"])),
