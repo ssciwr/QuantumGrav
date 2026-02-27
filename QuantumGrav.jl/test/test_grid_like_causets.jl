@@ -21,6 +21,28 @@
     rot(x, R) = (R[1][1]*x[1] + R[1][2]*x[2], R[2][1]*x[1] + R[2][2]*x[2])
 end
 
+@testsnippet bravaisFixtures begin
+    import Random
+    edges_square = ((1.0, 0.0), (0.0, 1.0))
+    box_unit = ((0.0, 0.0), (1.0, 1.0))
+    box_inner = ((0.1, 0.1), (0.9, 0.9))
+    rng_grid = Random.MersenneTwister(42)
+    rng_err = Random.MersenneTwister(1)
+end
+
+@testsnippet boundaryFixtures begin
+    import CausalSets
+    import Random
+    box_boundary = CausalSets.BoxBoundary{2}(((-1.0, -1.0), (1.0, 1.0)))
+    diamond_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+    manifold = CausalSets.MinkowskiManifold{2}()
+    rng_box = Random.MersenneTwister(123)
+    rng_diamond = Random.MersenneTwister(321)
+    rng_poly = Random.MersenneTwister(55)
+    struct DummyBoundary <: CausalSets.AbstractBoundary{2} end
+    struct DummyBoundaryPoly <: CausalSets.AbstractBoundary{2} end
+end
+
 # ---------------- generate_grid_from_brillouin_cell ----------------
 @testitem "brillouin_cell_points_in_unit_param_cube" tags=[:cell, :props] setup=[
     propHelpers,
@@ -233,12 +255,242 @@ end
         2.0;
         a = 1.0,
     )
-    @test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+@test_throws ArgumentError QuantumGrav.create_grid_causet_2D_polynomial_manifold(
+    10,
+    "square",
+    rng,
+    3,
+    1.0;
+    a = 1.0,
+)
+end
+
+# ---------------- lattice_points_in_box ----------------
+@testitem "lattice_points_in_box_includes_boundary" tags=[:bravais, :expected] setup=[
+    bravaisFixtures,
+] begin
+    pts = QuantumGrav.lattice_points_in_box(edges_square, box_unit, 1.0)
+    @test Set(pts) == Set([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)])
+end
+
+# ---------------- boundary_shell_indices ----------------
+@testitem "boundary_shell_indices_picks_boundary_points" tags=[:bravais, :expected] setup=[
+    bravaisFixtures,
+] begin
+    points = [(0.0, 0.5), (0.5, 0.5), (1.0, 0.5), (0.5, 1.0)]
+    idxs = QuantumGrav.boundary_shell_indices(points, box_unit, 0.0)
+    @test Set(idxs) == Set([1, 3, 4])
+end
+
+# ---------------- generate_grid_in_box_from_bravais ----------------
+@testitem "grid_in_box_from_bravais_counts_and_bounds" tags=[:bravais, :props] setup=[
+    bravaisFixtures,
+] begin
+    pts = QuantumGrav.generate_grid_in_box_from_bravais(9, edges_square, box_unit; rng = rng_grid)
+    @test length(pts) == 9
+    for p in pts
+        @test 0.0 <= p[1] <= 1.0
+        @test 0.0 <= p[2] <= 1.0
+    end
+end
+
+@testitem "grid_in_box_from_bravais_removes_only_shell_points" tags=[:bravais, :props] setup=[
+    bravaisFixtures,
+] begin
+    import Random
+    import LinearAlgebra
+
+    n = 12
+    rng = Random.MersenneTwister(99)
+
+    lengths = (box_unit[2][1] - box_unit[1][1], box_unit[2][2] - box_unit[1][2])
+    E = [edges_square[j][i] for i in 1:2, j in 1:2]
+    detE = abs(LinearAlgebra.det(E))
+    Vbox = prod(lengths)
+    ℓ = (Vbox / (n * detE))^(1 / 2)
+
+    points = QuantumGrav.lattice_points_in_box(edges_square, box_unit, ℓ)
+    while length(points) < n
+        ℓ *= 0.99
+        points = QuantumGrav.lattice_points_in_box(edges_square, box_unit, ℓ)
+    end
+
+    keep = QuantumGrav.generate_grid_in_box_from_bravais(
+        n,
+        edges_square,
+        box_unit;
+        rng = rng,
+    )
+    shell = QuantumGrav.boundary_shell_indices(points, box_unit, ℓ)
+
+    removed = setdiff(Set(points), Set(keep))
+    shell_pts = Set(points[shell])
+    @test all(in(shell_pts), removed)
+end
+
+@testitem "grid_in_box_from_bravais_errors" tags=[:bravais, :errors] setup=[
+    bravaisFixtures,
+] begin
+    @test_throws ArgumentError QuantumGrav.generate_grid_in_box_from_bravais(
+        0,
+        edges_square,
+        box_inner,
+    )
+    @test_throws ArgumentError QuantumGrav.generate_grid_in_box_from_bravais(
+        3,
+        edges_square,
+        box_inner;
+        rng = rng_err,
+        shell_thickness = 0.0,
+    )
+end
+
+# ---------------- generate_grid_2d_in_box ----------------
+@testitem "grid_2d_in_box_counts_and_bounds" tags=[:box, :props] setup=[
+    bravaisFixtures,
+] begin
+    pts = QuantumGrav.generate_grid_2d_in_box(
+        9,
+        "square",
+        box_unit;
+        a = 1.0,
+        rotate_deg = 0.0,
+        rng = rng_grid,
+    )
+    @test length(pts) == 9
+    for p in pts
+        @test 0.0 <= p[1] <= 1.0
+        @test 0.0 <= p[2] <= 1.0
+    end
+end
+
+@testitem "grid_2d_in_box_bad_name_throws" tags=[:box, :errors] setup=[
+    bravaisFixtures,
+] begin
+    @test_throws ArgumentError QuantumGrav.generate_grid_2d_in_box(
+        5,
+        "not-a-lattice",
+        box_unit,
+    )
+end
+
+# ---------------- create_grid_causet_in_boundary_2D ----------------
+@testitem "grid_causet_in_box_boundary_builds" tags=[:boundary, :cset] setup=[
+    boundaryFixtures,
+] begin
+    cset, converged, coords = QuantumGrav.create_grid_causet_in_boundary_2D(
+        25,
+        "square",
+        box_boundary,
+        manifold;
+        a = 1.0,
+        rotate_deg = 0.0,
+        rng = rng_box,
+    )
+    @test typeof(cset) == CausalSets.BitArrayCauset
+    @test cset.atom_count == 25
+    @test converged == true
+    @test length(coords) == 50
+end
+
+@testitem "grid_causet_in_diamond_boundary_coords_inside" tags=[:boundary, :props] setup=[
+    boundaryFixtures,
+] begin
+    _, _, coords = QuantumGrav.create_grid_causet_in_boundary_2D(
+        16,
+        "square",
+        diamond_boundary,
+        manifold;
+        a = 1.0,
+        rotate_deg = 0.0,
+        rng = rng_diamond,
+    )
+    for i = 1:size(coords, 1)
+        t = coords[i, 1]
+        x = coords[i, 2]
+        @test 0.0 <= t <= 1.0
+        @test abs(x) <= min(t, 1.0 - t)
+    end
+end
+
+@testitem "grid_causet_in_boundary_errors" tags=[:boundary, :errors] setup=[
+    boundaryFixtures,
+] begin
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_in_boundary_2D(
+        0,
+        "square",
+        box_boundary,
+        manifold;
+        a = 1.0,
+    )
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_in_boundary_2D(
+        5,
+        "square",
+        DummyBoundary(),
+        manifold;
+        a = 1.0,
+    )
+end
+
+# ---------------- create_grid_causet_in_boundary_2D_polynomial_manifold ----------------
+@testitem "grid_causet_in_boundary_polynomial_builds" tags=[:boundary, :polynomial] setup=[
+    boundaryFixtures,
+] begin
+    cset, converged, coords, chebyshev_coefs =
+        QuantumGrav.create_grid_causet_in_boundary_2D_polynomial_manifold(
+            20,
+            "square",
+            box_boundary,
+            rng_poly,
+            3,
+            2.0;
+            a = 1.0,
+            rotate_deg = 0.0,
+        )
+    @test typeof(cset) == CausalSets.BitArrayCauset
+    @test cset.atom_count == 20
+    @test converged == true
+    @test length(coords) == 40
+    @test length(chebyshev_coefs) == 16
+end
+
+@testitem "grid_causet_in_boundary_polynomial_errors" tags=[:boundary, :errors] setup=[
+    boundaryFixtures,
+] begin
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_in_boundary_2D_polynomial_manifold(
+        1,
+        "square",
+        box_boundary,
+        rng_poly,
+        3,
+        2.0;
+        a = 1.0,
+    )
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_in_boundary_2D_polynomial_manifold(
         10,
         "square",
-        rng,
+        box_boundary,
+        rng_poly,
+        -1,
+        2.0;
+        a = 1.0,
+    )
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_in_boundary_2D_polynomial_manifold(
+        10,
+        "square",
+        box_boundary,
+        rng_poly,
         3,
         1.0;
+        a = 1.0,
+    )
+    @test_throws ArgumentError QuantumGrav.create_grid_causet_in_boundary_2D_polynomial_manifold(
+        10,
+        "square",
+        DummyBoundaryPoly(),
+        rng_poly,
+        3,
+        2.0;
         a = 1.0,
     )
 end
