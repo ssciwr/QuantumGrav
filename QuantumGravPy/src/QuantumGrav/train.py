@@ -468,10 +468,14 @@ class Trainer(base.Configurable):
             self.logger.debug(
                 "from_config for  model initialization failed, using direct initialization instead"
             )
-            self.model = self.config["model"]["type"](
-                *self.config["model"].get("args", []),
-                **self.config["model"].get("kwargs", {}),
-            ).to(self.device)
+            try:
+                self.model = self.config["model"]["type"](
+                    *self.config["model"].get("args", []),
+                    **self.config["model"].get("kwargs", {}),
+                ).to(self.device)
+            except Exception as e:
+                self.logger.error(f"Error initializing model from constructor: {e}")
+                raise e
 
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
@@ -661,6 +665,7 @@ class Trainer(base.Configurable):
             pin_memory=self.config["training"].get("pin_memory", True),
             drop_last=self.config["training"].get("drop_last", False),
             prefetch_factor=self.config["training"].get("prefetch_factor", None),
+            persistent_workers=self.config["training"].get("persistent_workers", False),
             shuffle=self.config["training"].get("shuffle", True),
             sampler=training_sampler,
         )
@@ -672,6 +677,7 @@ class Trainer(base.Configurable):
             pin_memory=self.config["validation"].get("pin_memory", True),
             drop_last=self.config["validation"].get("drop_last", False),
             prefetch_factor=self.config["validation"].get("prefetch_factor", None),
+            persistent_workers=self.config["training"].get("persistent_workers", False),
             shuffle=self.config["validation"].get("shuffle", True),
         )
 
@@ -682,6 +688,7 @@ class Trainer(base.Configurable):
             pin_memory=self.config["testing"].get("pin_memory", True),
             drop_last=self.config["testing"].get("drop_last", False),
             prefetch_factor=self.config["testing"].get("prefetch_factor", None),
+            persistent_workers=self.config["training"].get("persistent_workers", False),
             shuffle=self.config["testing"].get("shuffle", True),
         )
 
