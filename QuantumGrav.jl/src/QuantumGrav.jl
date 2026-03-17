@@ -27,6 +27,7 @@ include("graph_utils.jl")
 include("curvature_on_manifold.jl")
 include("cset_factories.jl")
 include("save_data.jl")
+include("spacetime_quasicrystals.jl")
 
 export make_adj,
     max_pathlen,
@@ -67,5 +68,7 @@ export make_adj,
     encode_csettype,# data saving
     dict_to_zarr,
     validate_config,
-    make_pseudosprinkling
+    make_pseudosprinkling,
+    create_Minkowski_quasicrystal_cset,
+    quasicrystal
 end # module QuantumGrav
