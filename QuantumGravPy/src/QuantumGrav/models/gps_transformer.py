@@ -55,6 +55,8 @@ class GPSModel(torch.nn.Module):
         attn_type: str,
         attn_kwargs: dict[str, Any],
         redraw_interval: int | None = 1000,
+        normalizer_type: type | None = torch_geometric.nn.norm.BatchNorm,
+        norm_kwargs: dict[str, Any] | None = None,
     ):
         """Construct a new GPS Model instance
 
@@ -77,8 +79,8 @@ class GPSModel(torch.nn.Module):
 
         # convolutional part
         self.convs = torch.nn.ModuleList()
-
-        for _ in range(num_layers):
+        self.normalizer_type = normalizer_type
+        for i in range(num_layers):
             nn = torch.nn.Sequential(
                 torch.nn.Linear(channels, channels),
                 torch.nn.ReLU(),
@@ -98,6 +100,16 @@ class GPSModel(torch.nn.Module):
             )
 
             self.convs.append(conv)
+            # add normalizer every 3 layers (after the convolutional layer)
+            # this is useful for stabilizing training on highly diverse
+            # datasets
+            if i % 3 == 0 and i > 1:
+                normalizer = normalizer_type(
+                    channels,
+                    channels,
+                    **(norm_kwargs if norm_kwargs is not None else {}),
+                )
+                self.convs.append(normalizer)
 
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(channels, channels // 2),
@@ -132,10 +144,12 @@ class GPSModel(torch.nn.Module):
         x = self.input_proj(x)
 
         for conv in self.convs:
-            x = conv(x, edge_index, batch=batch)
-
+            # TODO: this must go away
+            if isinstance(conv, self.normalizer_type):
+                x = conv(x)
+            else:
+                x = conv(x, edge_index, batch=batch)
         x = torch_geometric.nn.global_add_pool(x, batch)
-
         x = self.mlp(x)
         return x
 
