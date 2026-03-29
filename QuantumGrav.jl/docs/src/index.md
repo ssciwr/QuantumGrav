@@ -128,7 +128,7 @@ For examples for how to write your own variant of this workflow e.g., for multip
 
 ### `produce_data.jl` example
 
-This example demonstrates how to generate a small dataset using the bundled script in [examples/produce_data.jl](QuantumGrav.jl/examples/produce_data.jl). It orchestrates multi-process and multi-threaded data generation, writes observables to a Zarr store, and cleans up worker processes afterwards.
+This example demonstrates how to generate a small dataset using the bundled script in [examples/produce_data.jl](https://github.com/ssciwr/QuantumGrav/blob/main/QuantumGrav.jl/examples/produce_data.jl). It orchestrates multi-process and multi-threaded data generation, writes observables to a Zarr store, and cleans up worker processes afterwards.
 
 **What it does**
 - Spawns `num_workers` Julia processes, each with `num_threads` threads, optionally setting BLAS threads.
@@ -154,7 +154,7 @@ CLI options
 - `--help | -h`: Prints usage information and exits.
 
 **Example configuration overrides**
-You can define a minimal override file such as [examples/example_config.yaml](QuantumGrav.jl/examples/example_config.yaml) to adjust selected parameters while inheriting the package defaults:
+You can define a minimal override file such as [examples/example_config.yaml](https://github.com/ssciwr/QuantumGrav/blob/main/QuantumGrav.jl/examples/example_config.yaml) to adjust selected parameters while inheriting the package defaults:
 
 ```yaml
 seed: 21
