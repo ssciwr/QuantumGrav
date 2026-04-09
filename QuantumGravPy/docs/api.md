@@ -37,9 +37,17 @@ Block-style GNN backbone. This can also be build with `Sequential`, but gives a 
 ## Training and Evaluation
 
 ### Trainer
-Configuration-driven training loop: prepares datasets/dataloaders, initializes model/optimizer/scheduler, runs train/validate/test, and manages checkpoints.
+Configuration-driven training loop: initializes model/optimizer/scheduler, runs train/validate/test, and manages checkpoints.
 
 ::: QuantumGrav.train
+    handler: python
+    options:
+      show_source: true
+
+### Data loader factories
+Configuration-driven dataset and dataloader helpers for single-process and DDP workflows.
+
+::: QuantumGrav.dataloaders
     handler: python
     options:
       show_source: true

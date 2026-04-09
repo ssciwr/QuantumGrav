@@ -64,7 +64,7 @@ mkdocs serve
 ```
 Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package [here](https://documenter.juliadocs.org/stable/).
 
-Training and evaluation are driven via configs and the `Trainer`. See [Model training](./training_a_model.md) for a minimal example.
+Training and evaluation are driven via configs, `DataLoaderFactory`, and the `Trainer`. See [Model training](./training_a_model.md) for a minimal example.
 
 ## Notes and troubleshooting
 
