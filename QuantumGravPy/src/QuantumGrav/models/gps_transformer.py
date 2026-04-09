@@ -144,7 +144,7 @@ class GPSModel(torch.nn.Module):
         x = self.input_proj(x)
 
         for conv in self.convs:
-            # TODO: this must go away
+            # TODO: this isinstance check must go away
             if isinstance(conv, self.normalizer_type):
                 x = conv(x)
             else:
