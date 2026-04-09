@@ -383,6 +383,19 @@ def make_injected_trainer(
     )
 
 
+def make_loader_factory(config):
+    """Create a data loader factory for tests."""
+    return QG.DataLoaderFactory.from_config(config)
+
+
+def make_data_config(base_config, files, output):
+    """Create a dataset config for a specific set of files."""
+    data_config = deepcopy(base_config)
+    data_config["files"] = [str(file) for file in files]
+    data_config["output"] = str(output)
+    return data_config
+
+
 def test_trainer_creation_works(config):
     trainer = QG.Trainer.from_config(config)
 
@@ -459,6 +472,16 @@ def test_trainer_creation_broken(broken_config):
         QG.Trainer.from_config(broken_config)
 
 
+def test_dataloader_factory_schema_owns_data_config():
+    assert "data" not in QG.Trainer.schema["properties"]
+    assert "data" in QG.DataLoaderFactory.schema["properties"]
+    assert "data" in QG.DataLoaderFactory.schema["properties"]["training"]["properties"]
+    assert (
+        "data" in QG.DataLoaderFactory.schema["properties"]["validation"]["properties"]
+    )
+    assert "data" in QG.DataLoaderFactory.schema["properties"]["testing"]["properties"]
+
+
 def test_trainer_init_model(config):
     trainer = QG.Trainer.from_config(config)
     model = trainer.initialize_model()
@@ -504,9 +527,9 @@ def test_trainer_init_lr_scheduler_fails(config_with_scheduler):
 
 
 def test_trainer_prepare_dataloader(make_dataset, config):
-    trainer = QG.Trainer.from_config(config)
+    factory = make_loader_factory(config)
 
-    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders(
         make_dataset, split=[0.8, 0.1, 0.1]
     )
 
@@ -538,26 +561,26 @@ def test_trainer_prepare_dataloader_broken(make_dataset, config):
         ),
     ):
         config["data"]["split"] = [0.9, 0.2, 0.1]
-        trainer = QG.Trainer.from_config(config)
-        trainer.prepare_dataloaders(make_dataset)
+        factory = make_loader_factory(config)
+        factory.prepare_dataloaders(make_dataset)
 
     with pytest.raises(ValueError, match=re.escape("validation size cannot be 0")):
         config["data"]["split"] = [0.95, 0.01, 0.04]
-        trainer = QG.Trainer.from_config(config)
-        trainer.prepare_dataloaders(make_dataset)
+        factory = make_loader_factory(config)
+        factory.prepare_dataloaders(make_dataset)
 
     with pytest.raises(ValueError, match=re.escape("test size cannot be 0")):
         config["data"]["split"] = [0.85, 0.14, 0.01]
-        trainer = QG.Trainer.from_config(config)
-        trainer.prepare_dataloaders(
+        factory = make_loader_factory(config)
+        factory.prepare_dataloaders(
             make_dataset,
         )
 
 
 def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
-    trainer = QG.Trainer.from_config(config_with_data)
+    factory = make_loader_factory(config_with_data)
 
-    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders(
         split=[0.8, 0.1, 0.1]
     )
 
@@ -577,9 +600,9 @@ def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
         assert batch.x.shape == (15, 2)
 
     config_with_data["data"]["shuffle"] = True
-    trainer = QG.Trainer.from_config(config_with_data)
+    factory = make_loader_factory(config_with_data)
 
-    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders(
         split=[0.8, 0.1, 0.1]
     )
 
@@ -599,9 +622,9 @@ def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
         assert batch.x.shape == (15, 2)
 
     config_with_data["data"]["subset"] = 0.5
-    trainer = QG.Trainer.from_config(config_with_data)
+    factory = make_loader_factory(config_with_data)
 
-    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders(
         split=[0.6, 0.2, 0.2]
     )
 
@@ -621,12 +644,103 @@ def test_trainer_prepare_dataloader_with_dataconf(config_with_data):
         assert batch.x.shape == (15, 2)
 
 
+def test_trainer_prepare_dataloader_with_shared_train_validation_data(
+    config, create_data_zarr
+):
+    datadir, datafiles = create_data_zarr
+    cfg = deepcopy(config)
+    cfg["data"] = make_data_config(
+        cfg["data"], datafiles[:2], Path(datadir) / "shared_train_validation"
+    )
+    cfg["data"]["split"] = [0.8, 0.2]
+    cfg["testing"]["data"] = make_data_config(
+        cfg["data"], [datafiles[2]], Path(datadir) / "shared_testing"
+    )
+
+    train_loader, val_loader, test_loader = make_loader_factory(
+        cfg
+    ).prepare_dataloaders()
+
+    assert len(train_loader.dataset) == 8
+    assert len(val_loader.dataset) == 2
+    assert len(test_loader.dataset) == 5
+    assert set(train_loader.dataset.indices).isdisjoint(val_loader.dataset.indices)
+
+
+def test_trainer_prepare_dataloader_with_stage_local_data(config, create_data_zarr):
+    datadir, datafiles = create_data_zarr
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["training"]["data"] = make_data_config(
+        config["data"], [datafiles[0]], Path(datadir) / "training_dataset"
+    )
+    cfg["training"]["data"].pop("split", None)
+    cfg["validation"]["data"] = make_data_config(
+        config["data"], [datafiles[1]], Path(datadir) / "validation_dataset"
+    )
+    cfg["validation"]["data"].pop("split", None)
+    cfg["testing"]["data"] = make_data_config(
+        config["data"], [datafiles[2]], Path(datadir) / "testing_dataset"
+    )
+    cfg["testing"]["data"].pop("split", None)
+
+    train_loader, val_loader, test_loader = make_loader_factory(
+        cfg
+    ).prepare_dataloaders()
+
+    assert len(train_loader.dataset) == 5
+    assert len(val_loader.dataset) == 5
+    assert len(test_loader.dataset) == 5
+
+
+def test_trainer_prepare_dataloader_rejects_mixed_data_configs(
+    config, create_data_zarr
+):
+    datadir, datafiles = create_data_zarr
+
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["training"]["data"] = make_data_config(
+        config["data"], [datafiles[0]], Path(datadir) / "broken_training_dataset"
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_loader_factory(cfg).prepare_dataloaders()
+
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["validation"]["data"] = make_data_config(
+        config["data"], [datafiles[1]], Path(datadir) / "broken_validation_dataset"
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_loader_factory(cfg).prepare_dataloaders()
+
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["training"]["data"] = make_data_config(
+        config["data"], [datafiles[0]], Path(datadir) / "broken_training_stage_dataset"
+    )
+    cfg["testing"]["data"] = make_data_config(
+        config["data"], [datafiles[2]], Path(datadir) / "broken_testing_stage_dataset"
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_loader_factory(cfg).prepare_dataloaders()
+
+    cfg = deepcopy(config)
+    cfg["validation"]["data"] = make_data_config(
+        config["data"],
+        [datafiles[1]],
+        Path(datadir) / "broken_mixed_validation_dataset",
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_loader_factory(cfg).prepare_dataloaders()
+
+
 def test_trainer_train_epoch(make_dataset, config):
     trainer = QG.Trainer.from_config(config)
     assert trainer.model is not None
     assert trainer.optimizer is not None
 
-    train_loader, _, _ = trainer.prepare_dataloaders(make_dataset)
+    train_loader, _, _ = make_loader_factory(config).prepare_dataloaders(make_dataset)
     trainer.model.train()
 
     eval_data = trainer._run_train_epoch(trainer.model, trainer.optimizer, train_loader)
@@ -657,7 +771,7 @@ def test_trainer_check_model_status(config):
     file_content = [f.name for f in trainer.data_path.iterdir()]
     assert "config.yaml" in file_content
     assert "checkpoints" in file_content
-    assert (trainer.checkpoint_path / "epoch_1").exists()
+    assert (trainer.checkpoint_path / "epoch_1_early_stopping").exists()
 
 
 def test_trainer_save_checkpoint_writes_snapshot(config):
@@ -695,7 +809,7 @@ def test_trainer_run_training(make_dataset, config):
     assert trainer.validator is not None
     assert trainer.model is not None
 
-    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
+    test_loader, validation_loader, _ = make_loader_factory(config).prepare_dataloaders(
         make_dataset, split=[0.8, 0.1, 0.1]
     )
 
@@ -725,9 +839,9 @@ def test_trainer_run_training_with_datasetconf(config_with_data):
     assert trainer.validator is not None
     assert trainer.model is not None
 
-    train_loader, validation_loader, _ = trainer.prepare_dataloaders(
-        split=[0.8, 0.1, 0.1]
-    )
+    train_loader, validation_loader, _ = make_loader_factory(
+        config_with_data
+    ).prepare_dataloaders(split=[0.8, 0.1, 0.1])
 
     original_weights = [param.clone() for param in trainer.model.parameters()]
 
@@ -757,9 +871,9 @@ def test_trainer_run_training_with_default_evaluators(
     assert isinstance(trainer.validator, QG.Validator)
     assert trainer.model is not None
 
-    test_loader, validation_loader, _ = trainer.prepare_dataloaders(
-        make_dataset, split=[0.8, 0.1, 0.1]
-    )
+    test_loader, validation_loader, _ = make_loader_factory(
+        config_with_default_evaluators
+    ).prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
 
     original_weights = [param.clone() for param in trainer.model.parameters()]
 
@@ -785,7 +899,9 @@ def test_trainer_run_training_with_scheduler(make_dataset, config_with_scheduler
     assert trainer.model is not None
     assert trainer.lr_scheduler is not None
 
-    train_loader, _, __ = trainer.prepare_dataloaders(split=[0.8, 0.1, 0.1])
+    train_loader, _, __ = make_loader_factory(
+        config_with_scheduler
+    ).prepare_dataloaders(split=[0.8, 0.1, 0.1])
 
     for epoch in range(0, 3):
         original_weights = [param.clone() for param in trainer.model.parameters()]
@@ -813,9 +929,9 @@ def test_trainer_run_training_without_validator_returns_empty_validation_data(
         early_stopper=None,
     )
 
-    train_loader, validation_loader, _ = trainer.prepare_dataloaders(
-        make_dataset, split=[0.8, 0.1, 0.1]
-    )
+    train_loader, validation_loader, _ = make_loader_factory(
+        config
+    ).prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
 
     training_data, validation_data = trainer.run_training(
         train_loader, validation_loader
@@ -836,7 +952,9 @@ def test_trainer_run_test_without_tester_returns_empty_dict(
         early_stopper=None,
     )
 
-    test_loader, _, _ = trainer.prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
+    test_loader, _, _ = make_loader_factory(config).prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
 
     test_data = trainer.run_test(test_loader)
 
