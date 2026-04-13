@@ -101,7 +101,7 @@ def model_config_eval():
             [
                 QG.models.LinearSequential,
                 [
-                    [(64, 24), (24, 18), (18, 2)],
+                    [(64, 24), (24, 18), (18, 1)],
                     [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
                 {
@@ -116,7 +116,7 @@ def model_config_eval():
             [
                 QG.models.LinearSequential,
                 [
-                    [(64, 24), (24, 18), (18, 3)],
+                    [(64, 24), (24, 18), (18, 1)],
                     [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
                 {

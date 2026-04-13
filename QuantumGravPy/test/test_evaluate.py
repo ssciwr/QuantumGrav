@@ -9,7 +9,7 @@ from functools import partial
 
 def compute_loss(x: torch.Tensor, data: Data) -> torch.Tensor:
     """Compute the loss between predictions and targets."""
-    loss = torch.nn.MSELoss()(x[0].unsqueeze(0), data.y.to(torch.float32))
+    loss = torch.nn.MSELoss()(x, data.y.to(torch.float32))
     return loss
 
 
@@ -19,7 +19,11 @@ class DummyMonitor1:
         self.loss = torch.nn.MSELoss()
 
     def __call__(self, predictions, targets):
-        return self.loss(torch.cat(predictions), torch.cat(targets)) + self.offset  #
+        loss = torch.tensor(0.0, dtype=torch.float32)
+        for k, p in enumerate(predictions):
+            t = targets[k]
+            loss += self.loss(p, t)
+        return loss + self.offset
 
 
 def dummymonitor_2(predictions, targets):
@@ -48,7 +52,7 @@ def model_config_eval():
             [
                 QG.models.LinearSequential,
                 [
-                    [(64, 24), (24, 18), (18, 2)],
+                    [(64, 24), (24, 18), (18, 1)],
                     [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
                 {
@@ -63,7 +67,7 @@ def model_config_eval():
             [
                 QG.models.LinearSequential,
                 [
-                    [(64, 24), (24, 18), (18, 3)],
+                    [(64, 24), (24, 18), (18, 1)],
                     [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
                 {
