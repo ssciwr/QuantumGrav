@@ -2,9 +2,9 @@
 This document explains how to get the project running for development and for usage. It covers the two supported ecosystems used in this repository: the Julia package (data generation and low-level causal-set utilities) and the Python package (model code, training and evaluation).
 
 ## Installation
-Note: Install PyTorch and PyTorch Geometric according to your platform and available CUDA version. Follow their official installers to ensure compatible wheels. There are currently two predefined requirements files, one for CPU-only installations and one for CUDA-enabled installations.
+Note: Install PyTorch and PyTorch Geometric according to your platform and accelerator backend. The repository includes predefined requirements files for CPU, macOS, ROCm, and CUDA. The default CUDA requirements file currently targets CUDA 13.0, and an explicit CUDA 12.8 file is provided as well.
 
-The Python package lives in `QuantumGravPy/` and follows a standard packaging layout (sources under `QuantumGravPy/src/QuantumGrav`). The project uses PyTorch and PyTorch Geometric; installation of those dependencies depends on your OS and available hardware (CUDA version).
+The Python package lives in `QuantumGravPy/` and follows a standard packaging layout (sources under `QuantumGravPy/src/QuantumGrav`). The project uses PyTorch and PyTorch Geometric; installation of those dependencies depends on your OS and available hardware backend.
 
 Basic steps (UNIX-like shells):
 
@@ -22,10 +22,14 @@ python -m pip install --upgrade pip
 ```
 
 
-5. Install torch and torch_geometric dependencies (here we use cpu requirements; for CUDA use `requirements-cuda.txt`):
+5. Install PyTorch and PyTorch Geometric dependencies using the requirements file that matches your platform:
 ```bash
 cd QuantumGravPy
-pip install -r requirements-cpu.txt  # or requirements-cuda.txt
+pip install -r requirements-cpu.txt
+# or requirements-cuda.txt       # default CUDA install, currently CUDA 13.0
+# or requirements-cuda12.8.txt   # explicit CUDA 12.8 install
+# or requirements-rocm.txt       # ROCm install
+# or requirements-macos.txt      # macOS install (uses PyTorch's MPS-capable wheel)
 python -m pip install -e .
 ```
 
