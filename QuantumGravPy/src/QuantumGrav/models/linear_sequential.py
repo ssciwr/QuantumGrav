@@ -80,7 +80,9 @@ class LinearSequential(torch.nn.Module, base.Configurable):
             raise ValueError("dims must not be empty")
 
         if len(dims) != len(activations):
-            raise ValueError("dims and activations must have the same length")
+            raise ValueError(
+                f"dims and activations must have the same length: len(dims) = {len(dims)}, len(activations) = {len(activations)}"
+            )
 
         if linear_kwargs is None:
             linear_kwargs = [{} for _ in range(len(dims))]
@@ -89,10 +91,14 @@ class LinearSequential(torch.nn.Module, base.Configurable):
             activation_kwargs = [{} for _ in range(len(dims))]
 
         if len(linear_kwargs) != len(dims):
-            raise ValueError("linear_kwargs must have the same length as dims")
+            raise ValueError(
+                f"linear_kwargs must have the same length as dims: len(linear_kwargs) = {len(linear_kwargs)}, len(dims) = {len(dims)}"
+            )
 
         if len(activation_kwargs) != len(dims):
-            raise ValueError("activation_kwargs must have the same length as dims")
+            raise ValueError(
+                f"activation_kwargs must have the same length as dims: len(activation_kwargs) = {len(activation_kwargs)}, len(dims) = {len(dims)}"
+            )
 
         # build backbone with Sequential
         layers = []
