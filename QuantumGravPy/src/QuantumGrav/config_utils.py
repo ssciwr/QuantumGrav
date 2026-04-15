@@ -303,18 +303,19 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
         return config
 
     for key, value in items:
-        is_dict = isinstance(value, dict)
-        is_list = isinstance(value, list)
-
         # recursive cases
-        if is_dict or is_list:
+        if isinstance(value, dict) or isinstance(value, list):
             new_value = convert_to_pyobject_tags(value)
             new_config[key] = new_value
 
         # base cases
         else:
+            # TODO: this should use the existing tag as a marker, not the type
             # convert only non-built-in types to pyobject tags
-            if not isinstance(value, (bool, str, float, int, list, dict)):
+            if (
+                not isinstance(value, (bool, str, float, int, list, dict))
+                and value is not None
+            ):
                 # convert to !pyobject name_of_class
                 module = value.__module__
                 class_name = value.__name__
