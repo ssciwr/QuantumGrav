@@ -55,8 +55,11 @@ class GPSModel(torch.nn.Module):
         attn_type: str,
         attn_kwargs: dict[str, Any],
         redraw_interval: int | None = 1000,
-        normalizer_type: type | None = torch_geometric.nn.norm.BatchNorm,
+        norm: str | type | None = "batch_norm",
         norm_kwargs: dict[str, Any] | None = None,
+        act: str | type | None = torch.nn.ReLU,
+        act_kwargs: dict[str, Any] | None = None,
+        dropout: float = 0.0,
     ):
         """Construct a new GPS Model instance
 
@@ -79,13 +82,22 @@ class GPSModel(torch.nn.Module):
 
         # convolutional part
         self.convs = torch.nn.ModuleList()
-        self.normalizer_type = normalizer_type
         for i in range(num_layers):
             nn = torch.nn.Sequential(
                 torch.nn.Linear(channels, channels),
                 torch.nn.ReLU(),
                 torch.nn.Linear(channels, channels),
             )
+
+            if norm is not None and not isinstance(norm, str):
+                norm = norm(
+                    channels, **(norm_kwargs if norm_kwargs is not None else {})
+                )
+                norm_kwargs = None
+
+            if act is not None and not isinstance(act, str):
+                act = act(**(act_kwargs if act_kwargs is not None else {}))
+                act_kwargs = None
 
             # this is the main part of the architecture
             conv = torch_geometric.nn.GPSConv(
@@ -95,21 +107,16 @@ class GPSModel(torch.nn.Module):
                     train_eps=True,
                 ),
                 heads=num_heads,
+                dropout=dropout,
+                act=act,
+                act_kwargs=act_kwargs if act_kwargs is not None else {},
                 attn_type=attn_type,
                 attn_kwargs=attn_kwargs,
+                norm=norm,
+                norm_kwargs=norm_kwargs if norm_kwargs is not None else {},
             )
 
             self.convs.append(conv)
-            # add normalizer every 3 layers (after the convolutional layer)
-            # this is useful for stabilizing training on highly diverse
-            # datasets
-            if i % 3 == 0 and i > 1:
-                normalizer = normalizer_type(
-                    channels,
-                    channels,
-                    **(norm_kwargs if norm_kwargs is not None else {}),
-                )
-                self.convs.append(normalizer)
 
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(channels, channels // 2),
@@ -144,11 +151,7 @@ class GPSModel(torch.nn.Module):
         x = self.input_proj(x)
 
         for conv in self.convs:
-            # TODO: this isinstance check must go away
-            if isinstance(conv, self.normalizer_type):
-                x = conv(x)
-            else:
-                x = conv(x, edge_index, batch=batch)
+            x = conv(x, edge_index, batch=batch)
         x = torch_geometric.nn.global_add_pool(x, batch)
         x = self.mlp(x)
         return x
@@ -167,6 +170,11 @@ class GPSTransformer(torch.nn.Module, base.Configurable):
         num_layers: int,
         attn_type: str,
         attn_kwargs: dict[str, Any],
+        norm: str | type | None = "batch_norm",
+        norm_kwargs: dict[str, Any] | None = None,
+        act: str | type | None = "relu",
+        act_kwargs: dict[str, Any] | None = None,
+        dropout: float = 0.0,
         # redraw attention random features matrix args
         redraw_interval: int | None = None,
     ):
@@ -193,6 +201,11 @@ class GPSTransformer(torch.nn.Module, base.Configurable):
             attn_type,
             attn_kwargs,
             redraw_interval=redraw_interval,
+            norm=norm,
+            norm_kwargs=norm_kwargs,
+            act=act,
+            act_kwargs=act_kwargs,
+            dropout=dropout,
         )
 
     def forward(
