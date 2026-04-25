@@ -7,6 +7,7 @@ import logging
 import yaml
 from datetime import datetime
 from pathlib import Path
+from copy import deepcopy
 
 from . import evaluate
 from . import early_stopping
@@ -148,9 +149,10 @@ class TrainerDDP(train.Trainer):
                     config["early_stopping"]
                 )
             except Exception:
+                early_stopping_kwargs = deepcopy(config["early_stopping"]["kwargs"])
                 early_stopper = config["early_stopping"]["type"](
                     *config["early_stopping"]["args"],
-                    **config["early_stopping"]["kwargs"],
+                    **early_stopping_kwargs,
                 )
         else:
             early_stopper = None

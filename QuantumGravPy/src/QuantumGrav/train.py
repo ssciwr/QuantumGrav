@@ -7,6 +7,7 @@ import tqdm
 import yaml
 from datetime import datetime
 import jsonschema
+from copy import deepcopy
 import pandas as pd
 from dataclasses import dataclass
 
@@ -14,7 +15,8 @@ from . import evaluate
 from . import early_stopping
 from . import gnn_model
 from . import base
-from .config_utils import get_loader
+from .config_utils import get_loader, convert_to_pyobject_tags
+from .utils import seed_all_rngs
 
 import torch
 from torch_geometric.data import Data
@@ -408,9 +410,7 @@ class Trainer(base.Configurable):
         seed = config["training"]["seed"]
         device = torch.device(config["training"]["device"])
 
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
+        seed_all_rngs(seed)
 
         # date and time of run:
         run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -425,17 +425,19 @@ class Trainer(base.Configurable):
 
         # early stopping and evaluation functors
         if "early_stopping" in config:
+            early_stopping_cfg = deepcopy(config["early_stopping"])
             try:
                 early_stopper = early_stopping.DefaultEarlyStopping.from_config(
-                    config["early_stopping"]
+                    early_stopping_cfg
                 )
             except Exception as e:
                 logger.debug(
                     f"from_config failed for early stopping, using direct instantiation: {e}"
                 )
-                early_stopper = config["early_stopping"]["type"](
-                    *config["early_stopping"]["args"],
-                    **config["early_stopping"]["kwargs"],
+
+                early_stopper = early_stopping_cfg["type"](
+                    *early_stopping_cfg["args"],
+                    **early_stopping_cfg["kwargs"],
                 )
         else:
             early_stopper = None
@@ -471,7 +473,7 @@ class Trainer(base.Configurable):
             tester = None
 
         with open(data_path / "config.yaml", "w") as f:
-            yaml.dump(config, f)
+            yaml.dump(convert_to_pyobject_tags(config), f, sort_keys=False)
 
         trainer = cls(
             config=config,
@@ -734,7 +736,7 @@ class Trainer(base.Configurable):
         train_loader: DataLoader,
         val_loader: DataLoader,
         trial: optuna.trial.Trial | None = None,
-    ) -> Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]:
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Run the training process.
 
         Args:
@@ -744,7 +746,7 @@ class Trainer(base.Configurable):
                 for hyperparameter tuning. Defaults to None.
 
         Returns:
-            Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]: The training and validation results.
+            Tuple[pd.DataFrame, pd.DataFrame]: The training and validation results.
         """
         self.logger.info("Starting training process.")
         # training loop
@@ -786,7 +788,7 @@ class Trainer(base.Configurable):
                 "std_loss": epoch_data.std().item(),
             }
             self.logger.info(
-                f"  Completed epoch {epoch}. training loss: {total_training_data.loc[epoch].to_dict()}"
+                f"  Completed epoch {epoch} \n {total_training_data.tail(1).to_string()}"
             )
 
             # evaluation run on validation set
@@ -818,7 +820,10 @@ class Trainer(base.Configurable):
             self.logger.error(f"Error saving final model: {e}")
             raise e
 
-        return total_training_data, self.validator.data if self.validator else []
+        return (
+            total_training_data,
+            self.validator.data if self.validator else pd.DataFrame(),
+        )
 
     def run_test(
         self, test_loader: DataLoader, model_name_addition: str = "_current_best"
@@ -858,9 +863,8 @@ class Trainer(base.Configurable):
 
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
 
-        checkpoint = self.load_checkpoint(best_of_the_best)
-        self.model = checkpoint.model
-        self.epoch = checkpoint.epoch
+        # load model:
+        self.model = self.load_model(best_of_the_best)
 
         self.model.eval()
         if self.tester is None:
@@ -868,7 +872,7 @@ class Trainer(base.Configurable):
         test_result = self.tester.test(self.model, test_loader)
         self.tester.report(test_result)
         self.logger.info("Testing process completed.")
-        self.save_checkpoint(name_addition="best_model_found")
+        self.save_checkpoint(name_addition="final_tested_model")
         return self.tester.data
 
     def save_checkpoint(self, name_addition: str = ""):
@@ -910,18 +914,16 @@ class Trainer(base.Configurable):
             )
 
         try:
-            self.model = gnn_model.GNNModel.load(
-                model_path, self.config["model"], device=self.device
+            self.model = gnn_model.GNNModel.from_config(self.config["model"]).to(
+                self.device
             )
+            snapshot = Snapshot.load(model_path)
+            state_dict = snapshot.model_state_dict
+            self.model.load_state_dict(state_dict)
+
         except Exception as e:
-            try:
-                # instantiate model first, then load state dict
-                self.initialize_model()
-                state_dict = torch.load(model_path, map_location=self.device)
-                self.model.load_state_dict(state_dict)
-            except Exception as e2:
-                self.logger.error(f"Error loading model for testing: {e}, {e2}")
-                raise RuntimeError(f"Error loading model for testing: {e}, {e2}")
+            self.logger.error(f"Error loading model for testing: {e}")
+            raise e
 
         self.logger.info("Model loaded from checkpoint: {}".format(model_path))
 
