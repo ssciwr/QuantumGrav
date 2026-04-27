@@ -4,6 +4,7 @@ from .utils import (
     import_and_get,
 )
 from .dataset_ondisk import QGDataset
+from .dataloaders import DataLoaderFactory, DistributedDataLoaderFactory
 from .gnn_model import GNNModel
 from .evaluate import (
     Evaluator,
@@ -26,6 +27,8 @@ __all__ = [
     "models",
     # datasets
     "QGDataset",
+    "DataLoaderFactory",
+    "DistributedDataLoaderFactory",
     # nested config helpers
     "assign_at_path",
     "get_at_path",

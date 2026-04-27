@@ -55,7 +55,7 @@ def model_config_eval():
             [
                 QG.models.LinearSequential,
                 [
-                    [(64, 24), (24, 18), (18, 2)],
+                    [(64, 24), (24, 18), (18, 1)],
                     [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
                 {
@@ -70,7 +70,7 @@ def model_config_eval():
             [
                 QG.models.LinearSequential,
                 [
-                    [(64, 24), (24, 18), (18, 3)],
+                    [(64, 24), (24, 18), (18, 1)],
                     [torch.nn.ReLU, torch.nn.ReLU, torch.nn.Identity],
                 ],
                 {
@@ -232,6 +232,19 @@ def compute_loss(x: dict[int, torch.Tensor], data: Data, trainer) -> torch.Tenso
     return all_losses
 
 
+def make_distributed_loader_factory(config, rank=0):
+    """Create a distributed data loader factory for tests."""
+    return QG.DistributedDataLoaderFactory(config, rank=rank)
+
+
+def make_data_config(base_config, files, output):
+    """Create a dataset config for a specific set of files."""
+    data_config = deepcopy(base_config)
+    data_config["files"] = [str(file) for file in files]
+    data_config["output"] = str(output)
+    return data_config
+
+
 def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
     adj_raw = f["adjacency_matrix"][idx, :, :]
     adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
@@ -342,24 +355,140 @@ def test_trainer_ddp_creation_broken(broken_config):
         )
 
 
-def test_trainer_ddp_prepare_dataloaders(make_dataset, config, setup_ddp):
-    """Test the prepare_dataloaders method of TrainerDDP."""
-    trainer = QG.TrainerDDP(
-        0,
-        config,
+def test_distributed_dataloader_factory_schema_owns_data_config():
+    assert "data" not in QG.TrainerDDP.schema["properties"]
+    assert "data" in QG.DistributedDataLoaderFactory.schema["properties"]
+    assert (
+        "data"
+        in QG.DistributedDataLoaderFactory.schema["properties"]["training"][
+            "properties"
+        ]
+    )
+    assert (
+        "data"
+        in QG.DistributedDataLoaderFactory.schema["properties"]["validation"][
+            "properties"
+        ]
+    )
+    assert (
+        "data"
+        in QG.DistributedDataLoaderFactory.schema["properties"]["testing"]["properties"]
     )
 
-    train_loader, val_loader, test_loader = trainer.prepare_dataloaders(
+
+def test_trainer_ddp_prepare_dataloaders(make_dataset, config, setup_ddp):
+    """Test distributed dataloader creation."""
+    factory = make_distributed_loader_factory(config, rank=0)
+
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders(
         make_dataset, split=[0.7, 0.15, 0.15]
     )
 
-    assert isinstance(trainer.train_sampler, torch.utils.data.DistributedSampler)
-    assert isinstance(trainer.val_sampler, torch.utils.data.DistributedSampler)
-    assert isinstance(trainer.test_sampler, torch.utils.data.DistributedSampler)
+    assert isinstance(factory.train_sampler, torch.utils.data.DistributedSampler)
+    assert isinstance(factory.val_sampler, torch.utils.data.DistributedSampler)
+    assert isinstance(factory.test_sampler, torch.utils.data.DistributedSampler)
 
     assert len(train_loader) == 3
     assert len(val_loader) == 1
     assert len(test_loader) == 2
+
+
+def test_trainer_ddp_prepare_dataloaders_with_shared_train_validation_data(
+    config, create_data_zarr, setup_ddp
+):
+    datadir, datafiles = create_data_zarr
+    cfg = deepcopy(config)
+    cfg["data"] = make_data_config(
+        cfg["data"], datafiles[:2], Path(datadir) / "shared_train_validation_ddp"
+    )
+    cfg["data"]["split"] = [0.8, 0.2]
+    cfg["testing"]["data"] = make_data_config(
+        cfg["data"], [datafiles[2]], Path(datadir) / "shared_testing_ddp"
+    )
+
+    factory = make_distributed_loader_factory(cfg, rank=0)
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders()
+
+    assert isinstance(factory.train_sampler, torch.utils.data.DistributedSampler)
+    assert isinstance(factory.val_sampler, torch.utils.data.DistributedSampler)
+    assert isinstance(factory.test_sampler, torch.utils.data.DistributedSampler)
+    assert len(train_loader.dataset) == 8
+    assert len(val_loader.dataset) == 2
+    assert len(test_loader.dataset) == 5
+    assert set(train_loader.dataset.indices).isdisjoint(val_loader.dataset.indices)
+
+
+def test_trainer_ddp_prepare_dataloaders_with_stage_local_data(
+    config, create_data_zarr, setup_ddp
+):
+    datadir, datafiles = create_data_zarr
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["training"]["data"] = make_data_config(
+        config["data"], [datafiles[0]], Path(datadir) / "training_dataset_ddp"
+    )
+    cfg["training"]["data"].pop("split", None)
+    cfg["validation"]["data"] = make_data_config(
+        config["data"], [datafiles[1]], Path(datadir) / "validation_dataset_ddp"
+    )
+    cfg["validation"]["data"].pop("split", None)
+    cfg["testing"]["data"] = make_data_config(
+        config["data"], [datafiles[2]], Path(datadir) / "testing_dataset_ddp"
+    )
+    cfg["testing"]["data"].pop("split", None)
+
+    factory = make_distributed_loader_factory(cfg, rank=0)
+    train_loader, val_loader, test_loader = factory.prepare_dataloaders()
+
+    assert len(train_loader.dataset) == 5
+    assert len(val_loader.dataset) == 5
+    assert len(test_loader.dataset) == 5
+
+
+def test_trainer_ddp_prepare_dataloaders_rejects_mixed_data_configs(
+    config, create_data_zarr, setup_ddp
+):
+    datadir, datafiles = create_data_zarr
+
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["training"]["data"] = make_data_config(
+        config["data"], [datafiles[0]], Path(datadir) / "broken_training_dataset_ddp"
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_distributed_loader_factory(cfg, rank=0).prepare_dataloaders()
+
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["validation"]["data"] = make_data_config(
+        config["data"], [datafiles[1]], Path(datadir) / "broken_validation_dataset_ddp"
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_distributed_loader_factory(cfg, rank=0).prepare_dataloaders()
+
+    cfg = deepcopy(config)
+    cfg.pop("data")
+    cfg["training"]["data"] = make_data_config(
+        config["data"],
+        [datafiles[0]],
+        Path(datadir) / "broken_training_stage_dataset_ddp",
+    )
+    cfg["testing"]["data"] = make_data_config(
+        config["data"],
+        [datafiles[2]],
+        Path(datadir) / "broken_testing_stage_dataset_ddp",
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_distributed_loader_factory(cfg, rank=0).prepare_dataloaders()
+
+    cfg = deepcopy(config)
+    cfg["validation"]["data"] = make_data_config(
+        config["data"],
+        [datafiles[1]],
+        Path(datadir) / "broken_mixed_validation_dataset_ddp",
+    )
+    with pytest.raises(ValueError, match="Unsupported data config"):
+        make_distributed_loader_factory(cfg, rank=0).prepare_dataloaders()
 
 
 def test_trainer_ddp_check_model_status(config, setup_ddp):
@@ -378,7 +507,7 @@ def test_trainer_ddp_check_model_status(config, setup_ddp):
     saved = trainer._check_model_status(data)
     assert saved is False
 
-    trainer.early_stopping = lambda x: True
+    trainer.early_stopper = lambda x: True
     saved = trainer._check_model_status(data)
 
     assert saved is True
@@ -393,7 +522,7 @@ def test_trainer_ddp_check_model_status(config, setup_ddp):
 
     file_content = [f.name for f in paths[0].iterdir()]
     assert "config.yaml" in file_content
-    assert "model_checkpoints" in file_content
+    assert "checkpoints" in file_content
 
 
 def test_trainer_ddp_run_training(config, make_dataset, setup_ddp):
@@ -403,7 +532,9 @@ def test_trainer_ddp_run_training(config, make_dataset, setup_ddp):
         config,
     )
 
-    train_loader, validation_loader, _ = trainer.prepare_dataloaders(
+    train_loader, validation_loader, _ = make_distributed_loader_factory(
+        config, rank=0
+    ).prepare_dataloaders(
         make_dataset,
     )
 

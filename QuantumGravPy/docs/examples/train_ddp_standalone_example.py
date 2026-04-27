@@ -17,24 +17,15 @@ for production/cluster setups.
 """
 
 import os
-import sys
-from pathlib import Path
-import yaml
 import logging
 from typing import Any
+from pathlib import Path
+import sys
+import QuantumGrav as QG
 import torch
 import torch.multiprocessing as mp
-
-# Add the src directory to Python path if needed
-# Adjust this path based on your project structure
-SCRIPT_DIR = Path(__file__).parent
-PROJECT_ROOT = SCRIPT_DIR.parent  # Assumes script is in QuantumGravPy/
-SRC_DIR = PROJECT_ROOT / "src"
-if SRC_DIR.exists():
-    sys.path.insert(0, str(SRC_DIR))
-
-import QuantumGrav as QG
-from QuantumGrav.train_ddp import TrainerDDP, initialize_ddp, cleanup_ddp
+import yaml
+from QuantumGrav.train_ddp import TrainerDDP, cleanup_ddp, initialize_ddp
 
 
 def setup_logging(rank: int) -> None:
@@ -98,9 +89,10 @@ def train_ddp(
         # ===== Step 2: Create DDP Trainer =====
         logger.info(f"Creating TrainerDDP for rank {rank}...")
         trainer = TrainerDDP(rank=rank, config=config)
+        loader_factory = QG.DistributedDataLoaderFactory(config=config, rank=rank)
 
         # ===== Step 3: Prepare Data Loaders for Distributed Training =====
-        # The DistributedSampler in prepare_dataloaders() automatically
+        # The distributed data loader factory wires the DistributedSampler automatically
         # distributes the dataset across all processes such that:
         # - Each rank gets a unique subset of the data
         # - No data is duplicated or missed
@@ -108,7 +100,7 @@ def train_ddp(
         if rank == 0:
             logger.info("Preparing data loaders...")
 
-        train_loader, val_loader, test_loader = trainer.prepare_dataloaders()
+        train_loader, val_loader, test_loader = loader_factory.prepare_dataloaders()
 
         if rank == 0:
             logger.info(
@@ -131,7 +123,7 @@ def train_ddp(
         # and to ensure a single, consistent test report
         if rank == 0:
             logger.info("Starting testing phase...")
-            test_results = trainer.run_test(test_loader)
+            trainer.run_test(test_loader)
             logger.info("Training and testing completed successfully!")
 
         # Ensure all processes wait before cleanup
@@ -166,12 +158,16 @@ def main():
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.INFO)
     logger.info(f"DDP Training with {world_size} processes")
-    logger.info(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+    logger.info(
+        f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}"
+    )
 
     # ===== Load Configuration =====
     if not config_path.exists():
         logger.error(f"Config file not found at {config_path}")
-        logger.error("Please create a DDP config file or adjust the path in this script.")
+        logger.error(
+            "Please create a DDP config file or adjust the path in this script."
+        )
         sys.exit(1)
 
     logger.info(f"Loading config from {config_path}")
@@ -214,5 +210,5 @@ parallel:
 
 if __name__ == "__main__":
     # This is important for Windows compatibility with multiprocessing
-    mp.set_start_method('spawn', force=True)
+    mp.set_start_method("spawn", force=True)
     main()

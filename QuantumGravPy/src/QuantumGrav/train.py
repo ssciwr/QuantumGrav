@@ -1,26 +1,99 @@
 from collections.abc import Collection
-from typing import Any, Tuple, Dict
+from typing import Any, Callable, Tuple, Dict
 
-import numpy as np
 from pathlib import Path
 import logging
 import tqdm
 import yaml
 from datetime import datetime
-from math import ceil, floor
 import jsonschema
+from copy import deepcopy
 import pandas as pd
+from dataclasses import dataclass
 
 from . import evaluate
 from . import early_stopping
 from . import gnn_model
-from . import dataset_ondisk
 from . import base
+from .config_utils import get_loader, convert_to_pyobject_tags
+from .utils import seed_all_rngs
 
 import torch
-from torch_geometric.data import Data, Dataset
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import optuna
+
+
+@dataclass
+class Snapshot:
+    epoch: int
+    model_state_dict: Dict[str, Any]
+    optimizer_state_dict: Dict[str, Any]
+    lr_scheduler_state_dict: Dict[str, Any] | None
+    score: float
+    config_path: Path | str
+    path: Path | str
+
+    @classmethod
+    def from_trainer(cls, trainer: "Trainer") -> "Snapshot":
+        """Create a Snapshot instance from a Trainer instance.
+
+        Args:
+            trainer (Trainer): The Trainer instance to create the snapshot from.
+        """
+
+        return cls(
+            epoch=trainer.epoch,
+            model_state_dict=trainer.model.state_dict() if trainer.model else None,
+            optimizer_state_dict=trainer.optimizer.state_dict()
+            if trainer.optimizer
+            else None,
+            lr_scheduler_state_dict=trainer.lr_scheduler.state_dict()
+            if trainer.lr_scheduler
+            else None,
+            score=trainer.validator.data if trainer.validator else None,
+            config_path=trainer.data_path / "config.yaml",
+            path=Path(trainer.checkpoint_path) / f"epoch_{trainer.epoch}",
+        )
+
+    def save(self):
+        """Save the snapshot to disk."""
+        self.path = Path(self.path)
+        if not self.path.parent.exists():
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        torch.save(
+            {
+                "epoch": self.epoch,
+                "model_state_dict": self.model_state_dict,
+                "optimizer_state_dict": self.optimizer_state_dict,
+                "lr_scheduler_state_dict": self.lr_scheduler_state_dict,
+                "score": self.score,
+                "config_path": str(self.config_path),
+            },
+            self.path,
+        )
+
+    @classmethod
+    def load(cls, path: Path | str) -> "Snapshot":
+        """Load a snapshot from disk.
+
+        Args:
+            path (Path | str): The path to the snapshot file.
+
+        Returns:
+            Snapshot: The loaded Snapshot instance.
+        """
+        checkpoint = torch.load(path, weights_only=False)
+        return Snapshot(
+            epoch=checkpoint["epoch"],
+            model_state_dict=checkpoint["model_state_dict"],
+            optimizer_state_dict=checkpoint["optimizer_state_dict"],
+            lr_scheduler_state_dict=checkpoint.get("lr_scheduler_state_dict", None),
+            score=checkpoint["score"],
+            config_path=checkpoint["config_path"],
+            path=path,
+        )
 
 
 class Trainer(base.Configurable):
@@ -154,69 +227,6 @@ class Trainer(base.Configurable):
                 ],
                 "additionalProperties": True,
             },
-            "data": {
-                "type": "object",
-                "description": "Dataset configuration",
-                "properties": {
-                    "pre_transform": {
-                        "description": "Name of the python object to use for the pre-transform function to use. Must refer to a callable"
-                    },
-                    "transform": {
-                        "description": "Name of the python object to use for the transform function to use. Must refer to a callable"
-                    },
-                    "pre_filter": {
-                        "description": "Name of the python object to use for the pre_filter function to use. Must refer to a callable"
-                    },
-                    "reader": {
-                        "description": "Name  of the python object to read raw data from file. Must be callable",
-                    },
-                    "files": {
-                        "type": "array",
-                        "description": "list of zarr stores to get data from",
-                        "minItems": 1,
-                        "items": {
-                            "type": "string",
-                            "description": "zarr file names to read data from",
-                        },
-                    },
-                    "output": {
-                        "type": "string",
-                        "description": "path to store preprocessed data at.",
-                    },
-                    "validate_data": {
-                        "type": "boolean",
-                        "description": "Whether to validate the transformed data objects or not",
-                    },
-                    "n_processes": {
-                        "type": "integer",
-                        "description": "number of processes to use for preprocessing the dataset",
-                        "minimum": 0,
-                    },
-                    "chunksize": {
-                        "type": "integer",
-                        "description": "Number of datapoints to process at once during preprocessing",
-                    },
-                    "shuffle": {
-                        "type": "boolean",
-                        "description": "Whether to shuffle the dataset or not",
-                    },
-                    "subset": {
-                        "type": "number",
-                        "description": "Fraction of the dataset to use. Full dataset is used when not given",
-                    },
-                    "split": {
-                        "type": "array",
-                        "description": "Split ratios of the dataset",
-                        "items": {
-                            "type": "number",
-                            "minItems": 3,
-                            "maxItems": 3,
-                        },
-                    },
-                },
-                "required": ["output", "files", "reader"],
-                "additionalProperties": False,
-            },
             "model": {
                 "description": "Model config: either constructor triple or full GNNModel schema",
                 "anyOf": [
@@ -335,108 +345,50 @@ class Trainer(base.Configurable):
     def __init__(
         self,
         config: Dict[str, Any],
+        logger: logging.Logger,
+        criterion: Callable,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        seed: int,
+        device: torch.device,
+        data_path: Path,
+        lr_scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+        early_stopper: early_stopping.DefaultEarlyStopping | None = None,
+        validator: evaluate.Evaluator | None = None,
+        tester: evaluate.Evaluator | None = None,
+        apply_model: Callable | None = None,
+        sampler: torch.utils.data.Sampler | None = None,
         # training and evaluation functions
     ):
-        """Initialize the trainer.
-
-        Args:
-            config (dict[str, Any]): The configuration dictionary.
-
-        Raises:
-            ValueError: If the configuration is invalid.
-        """
-
-        jsonschema.validate(instance=config, schema=self.schema)
-        self.config = config
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(config.get("log_level", logging.INFO))
-        self.logger.info("Initializing Trainer instance")
-
-        # functions for executing training and evaluation
-        self.criterion = config["criterion"]
-        self.apply_model = config.get("apply_model")
-        self.seed = config["training"]["seed"]
-        self.device = torch.device(config["training"]["device"])
-
-        np.random.seed(
-            self.seed
-        )  # legacy numpy rng, in case it is used in a downstream part.
-        self.nprng = np.random.default_rng(
-            self.seed
-        )  # current numpy rng api, used for shuffling.
-        torch.manual_seed(self.seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(self.seed)
-
-        # parameters for finding out which model is best
-        self.best_score = None
-        self.best_epoch = 0
-        self.epoch = 0
-
-        # date and time of run:
-        run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.data_path = (
-            Path(self.config["training"]["path"])
-            / f"{config.get('name', 'run')}_{run_date}"
-        )
-
-        # set up paths for storing model snapshots and data
-        if not self.data_path.exists():
-            self.data_path.mkdir(parents=True)
-        self.logger.info(f"Data path set to: {self.data_path}")
-
-        self.checkpoint_path = self.data_path / "model_checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.latest_checkpoint = None
 
-        # model and optimizer initialization placeholders
-        self.model = None
-        self.optimizer = None
+        self.sampler = None
 
-        # early stopping and evaluation functors
-        if "early_stopping" in config:
-            try:
-                self.early_stopping = early_stopping.DefaultEarlyStopping.from_config(
-                    config["early_stopping"]
-                )
-            except Exception as e:
-                self.logger.debug(
-                    f"from_config failed for early stopping, using direct instantiation: {e}"
-                )
-                self.early_stopping = config["early_stopping"]["type"](
-                    *config["early_stopping"]["args"],
-                    **config["early_stopping"]["kwargs"],
-                )
+        self.config = config
+        self.logger = logger
+        self.criterion = criterion
+        self.model = model
+        self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
+        self.apply_model = apply_model
+        self.validator = validator
+        self.early_stopper = early_stopper
+        self.tester = tester
+        self.seed = seed
+        self.device = device
+        self.epoch = 0
+        self.data_path = data_path
+        self.checkpoint_path = data_path / "checkpoints"
 
-        try:
-            self.validator = evaluate.Validator.from_config(
-                config["validation"]["validator"]
-            )
-        except Exception as e:
-            self.logger.debug(
-                f"from_config failed for validator, using direct instantiation: {e}"
-            )
-            self.validator = config["validation"]["validator"]["type"](
-                *config["validation"]["validator"]["args"],
-                **config["validation"]["validator"]["kwargs"],
-            )
+        if model is None:
+            self.initialize_model()
 
-        try:
-            self.tester = evaluate.Tester.from_config(config["testing"]["tester"])
-        except Exception as e:
-            self.logger.debug(
-                f"from_config failed for tester, using direct instantiation: {e}"
-            )
-            self.tester = config["testing"]["tester"]["type"](
-                *config["testing"]["tester"]["args"],
-                **config["testing"]["tester"]["kwargs"],
-            )
+        if optimizer is None:
+            self.initialize_optimizer()
 
-        with open(self.data_path / "config.yaml", "w") as f:
-            yaml.dump(self.config, f)
-
-        self.logger.info("Trainer initialized")
-        self.logger.debug(f"Configuration: {self.config}")
+        if lr_scheduler is None:
+            self.initialize_lr_scheduler()
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "Trainer":
@@ -445,9 +397,104 @@ class Trainer(base.Configurable):
         Args:
             config (Dict[str, Any]): The configuration dictionary.
         """
-        return cls(
-            config=config,
+        jsonschema.validate(instance=config, schema=cls.schema)
+
+        config = config
+        logger = logging.getLogger(__name__)
+        logger.setLevel(config.get("log_level", logging.INFO))
+        logger.info("Initializing Trainer instance")
+
+        # functions for executing training and evaluation
+        criterion = config["criterion"]
+        apply_model = config.get("apply_model")
+        seed = config["training"]["seed"]
+        device = torch.device(config["training"]["device"])
+
+        seed_all_rngs(seed)
+
+        # date and time of run:
+        run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        data_path = (
+            Path(config["training"]["path"]) / f"{config.get('name', 'run')}_{run_date}"
         )
+
+        # set up paths for storing model snapshots and data
+        if not data_path.exists():
+            data_path.mkdir(parents=True)
+        logger.info(f"Data path set to: {data_path}")
+
+        # early stopping and evaluation functors
+        if "early_stopping" in config:
+            early_stopping_cfg = deepcopy(config["early_stopping"])
+            try:
+                early_stopper = early_stopping.DefaultEarlyStopping.from_config(
+                    early_stopping_cfg
+                )
+            except Exception as e:
+                logger.debug(
+                    f"from_config failed for early stopping, using direct instantiation: {e}"
+                )
+
+                early_stopper = early_stopping_cfg["type"](
+                    *early_stopping_cfg["args"],
+                    **early_stopping_cfg["kwargs"],
+                )
+        else:
+            early_stopper = None
+
+        if "validation" in config:
+            try:
+                validator = evaluate.Validator.from_config(
+                    config["validation"]["validator"]
+                )
+            except Exception as e:
+                logger.debug(
+                    f"from_config failed for validator, using direct instantiation: {e}"
+                )
+                validator = config["validation"]["validator"]["type"](
+                    *config["validation"]["validator"]["args"],
+                    **config["validation"]["validator"]["kwargs"],
+                )
+        else:
+            validator = None
+
+        if "testing" in config:
+            try:
+                tester = evaluate.Tester.from_config(config["testing"]["tester"])
+            except Exception as e:
+                logger.debug(
+                    f"from_config failed for tester, using direct instantiation: {e}"
+                )
+                tester = config["testing"]["tester"]["type"](
+                    *config["testing"]["tester"]["args"],
+                    **config["testing"]["tester"]["kwargs"],
+                )
+        else:
+            tester = None
+
+        with open(data_path / "config.yaml", "w") as f:
+            yaml.dump(convert_to_pyobject_tags(config), f, sort_keys=False)
+
+        trainer = cls(
+            config=config,
+            logger=logger,
+            criterion=criterion,
+            model=None,
+            optimizer=None,
+            lr_scheduler=None,
+            apply_model=apply_model,
+            validator=validator,
+            early_stopper=early_stopper,
+            tester=tester,
+            seed=seed,
+            device=device,
+            data_path=data_path,
+        )
+
+        logger.info("Trainer initialized")
+        logger.debug(f"Configuration: {config}")
+
+        return trainer
 
     def initialize_model(self) -> Any:
         """Initialize the model for training.
@@ -468,10 +515,14 @@ class Trainer(base.Configurable):
             self.logger.debug(
                 "from_config for  model initialization failed, using direct initialization instead"
             )
-            self.model = self.config["model"]["type"](
-                *self.config["model"].get("args", []),
-                **self.config["model"].get("kwargs", {}),
-            ).to(self.device)
+            try:
+                self.model = self.config["model"]["type"](
+                    *self.config["model"].get("args", []),
+                    **self.config["model"].get("kwargs", {}),
+                ).to(self.device)
+            except Exception as e:
+                self.logger.error(f"Error initializing model from constructor: {e}")
+                raise e
 
         self.logger.info("Model initialized to device: {}".format(self.device))
         return self.model
@@ -539,158 +590,6 @@ class Trainer(base.Configurable):
             raise e
         return self.optimizer
 
-    def prepare_dataset(
-        self,
-        dataset: Dataset | None = None,
-        split: list[float] = [0.8, 0.1, 0.1],
-        train_dataset: torch.utils.data.Subset | None = None,
-        val_dataset: torch.utils.data.Subset | None = None,
-        test_dataset: torch.utils.data.Subset | None = None,
-    ) -> Tuple[Dataset, Dataset, Dataset]:
-        """Set up the split for training, validation, and testing datasets.
-
-        Args:
-            dataset (Dataset | None, optional): Dataset to be split. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
-            split (list[float], optional): split ratios for train, validation, and test datasets. Defaults to [0.8, 0.1, 0.1].
-            train_dataset (torch.utils.data.Subset | None, optional): Training subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
-            val_dataset (torch.utils.data.Subset | None, optional): Validation subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
-            test_dataset (torch.utils.data.Subset | None, optional): Testing subset of the dataset. Only one of dataset, train_dataset, val_dataset, test_dataset should be provided. Defaults to None.
-
-        Raises:
-            ValueError: If providing train, val, or test datasets, the full dataset must not be provided.
-            ValueError: If split ratios are not summing up to 1
-            ValueError: If train size is 0
-            ValueError: If validation size is 0
-            ValueError: If test size is 0
-
-        Returns:
-            Tuple[Dataset, Dataset, Dataset]: train, validation, and test datasets.
-        """
-        if dataset is not None and (
-            train_dataset is not None
-            or val_dataset is not None
-            or test_dataset is not None
-        ):
-            raise ValueError(
-                "If providing train, val, or test datasets, the full dataset must not be provided."
-            )
-
-        if dataset is None:
-            cfg = self.config["data"]
-            dataset = dataset_ondisk.QGDataset(
-                cfg["files"],
-                cfg["output"],
-                cfg["reader"],
-                float_type=cfg.get("float_type", torch.float32),
-                int_type=cfg.get("int_type", torch.int32),
-                validate_data=cfg.get("validate_data", True),
-                chunksize=cfg.get("chunksize", 1),
-                n_processes=cfg.get("n_processes", 1),
-                transform=cfg.get("transform"),
-                pre_transform=cfg.get("pre_transform"),
-                pre_filter=cfg.get("pre_filter"),
-            )
-
-            if cfg.get("subset"):
-                num_points = ceil(len(dataset) * cfg["subset"])
-                dataset = dataset.index_select(
-                    self.nprng.integers(0, len(dataset), size=num_points).tolist()
-                )
-
-            if cfg.get("shuffle"):
-                dataset.shuffle()
-
-        if train_dataset is None and val_dataset is None and test_dataset is None:
-            split = self.config.get("data", {}).get("split", split)
-            if not np.isclose(
-                np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False
-            ):
-                raise ValueError(
-                    f"Split ratios must sum to 1.0. Provided split: {split}"
-                )
-
-            train_size = ceil(len(dataset) * split[0])
-            val_size = floor(len(dataset) * split[1])
-            test_size = len(dataset) - train_size - val_size
-
-            if train_size == 0:
-                raise ValueError("train size cannot be 0")
-
-            if val_size == 0:
-                raise ValueError("validation size cannot be 0")
-
-            if test_size == 0:
-                raise ValueError("test size cannot be 0")
-
-            train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
-                dataset, [train_size, val_size, test_size]
-            )
-
-        return train_dataset, val_dataset, test_dataset
-
-    def prepare_dataloaders(
-        self,
-        dataset: Dataset | None = None,
-        split: list[float] = [0.8, 0.1, 0.1],
-        train_dataset: torch.utils.data.Subset | None = None,
-        val_dataset: torch.utils.data.Subset | None = None,
-        test_dataset: torch.utils.data.Subset | None = None,
-        training_sampler: torch.utils.data.Sampler | None = None,
-    ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-        """Prepare the data loaders for training, validation, and testing.
-
-        Args:
-            dataset (Dataset): The dataset to prepare.
-            split (list[float], optional): The split ratios for training, validation, and test sets. Defaults to [0.8, 0.1, 0.1].
-            training_sampler (torch.utils.data.Sampler, optional): The sampler for the training data loader. Defaults to None.
-
-        Returns:
-            Tuple[DataLoader, DataLoader, DataLoader]: The data loaders for training, validation, and testing.
-        """
-        self.train_dataset, self.val_dataset, self.test_dataset = self.prepare_dataset(
-            dataset=dataset,
-            split=split,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            test_dataset=test_dataset,
-        )
-        train_loader = DataLoader(
-            self.train_dataset,  # type: ignore
-            batch_size=self.config["training"]["batch_size"],
-            num_workers=self.config["training"].get("num_workers", 0),
-            pin_memory=self.config["training"].get("pin_memory", True),
-            drop_last=self.config["training"].get("drop_last", False),
-            prefetch_factor=self.config["training"].get("prefetch_factor", None),
-            shuffle=self.config["training"].get("shuffle", True),
-            sampler=training_sampler,
-        )
-
-        val_loader = DataLoader(
-            self.val_dataset,  # type: ignore
-            batch_size=self.config["validation"]["batch_size"],
-            num_workers=self.config["validation"].get("num_workers", 0),
-            pin_memory=self.config["validation"].get("pin_memory", True),
-            drop_last=self.config["validation"].get("drop_last", False),
-            prefetch_factor=self.config["validation"].get("prefetch_factor", None),
-            shuffle=self.config["validation"].get("shuffle", True),
-        )
-
-        test_loader = DataLoader(
-            self.test_dataset,  # type: ignore
-            batch_size=self.config["testing"]["batch_size"],
-            num_workers=self.config["testing"].get("num_workers", 0),
-            pin_memory=self.config["testing"].get("pin_memory", True),
-            drop_last=self.config["testing"].get("drop_last", False),
-            prefetch_factor=self.config["testing"].get("prefetch_factor", None),
-            shuffle=self.config["testing"].get("shuffle", True),
-        )
-
-        if dataset is not None:
-            self.logger.info(
-                f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
-            )
-        return train_loader, val_loader, test_loader
-
     # training helper functions
     def _evaluate_batch(
         self,
@@ -712,8 +611,6 @@ class Trainer(base.Configurable):
         else:
             outputs = model(data.x, data.edge_index, data.batch)
 
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
         return outputs
 
     def _run_train_epoch(
@@ -769,6 +666,39 @@ class Trainer(base.Configurable):
 
         return losses
 
+    def _run_validation_epoch(
+        self,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        val_loader: DataLoader,
+        trial: optuna.trial.Trial | None = None,
+    ) -> None:
+        """_summary_
+
+        Args:
+            model (torch.nn.Module): _description_
+            optimizer (torch.optim.Optimizer): _description_
+            val_loader (DataLoader): _description_
+            trial (optuna.trial.Trial | None, optional): An Optuna trial for hyperparameter tuning. Defaults to None.
+
+        """
+        if self.validator is None:
+            self.logger.info("No validator specified, skipping validation epoch.")
+            return
+
+        validation_result = self.validator.validate(self.model, val_loader)
+        self.validator.report(validation_result)
+
+        # integrate Optuna here for hyperparameter tuning
+        if trial is not None:
+            avg_sigma_loss = self.validator.data[self.epoch]
+            avg_loss = avg_sigma_loss[0]
+            trial.report(avg_loss, self.epoch)
+
+            # Handle pruning based on the intermediate value.
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
+
     def _check_model_status(self, eval_data: pd.DataFrame) -> bool:
         """Check the status of the model during training.
 
@@ -788,15 +718,15 @@ class Trainer(base.Configurable):
         ):
             self.save_checkpoint()
 
-        if hasattr(self, "early_stopping") and self.early_stopping is not None:
-            if self.early_stopping(eval_data):
+        if self.early_stopper is not None:
+            if self.early_stopper(eval_data):
                 self.logger.debug(f"Early stopping at epoch {self.epoch}.")
-                self.save_checkpoint(name_addition=f"_{self.epoch}_early_stopping")
+                self.save_checkpoint(name_addition="_early_stopping")
                 return True
 
-            if self.early_stopping.found_better_model:
-                self.logger.debug(f"Found better model at epoch {self.epoch}.")
-                self.save_checkpoint(name_addition=f"_{self.epoch}_current_best")
+            if self.early_stopper.found_better_model:
+                self.logger.debug(f"Saving better model at epoch {self.epoch}.")
+                self.save_checkpoint(name_addition="_current_best")
                 # not returning true because this is not the end of training
 
         return False
@@ -806,7 +736,7 @@ class Trainer(base.Configurable):
         train_loader: DataLoader,
         val_loader: DataLoader,
         trial: optuna.trial.Trial | None = None,
-    ) -> Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]:
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Run the training process.
 
         Args:
@@ -816,19 +746,31 @@ class Trainer(base.Configurable):
                 for hyperparameter tuning. Defaults to None.
 
         Returns:
-            Tuple[torch.Tensor | Collection[Any], torch.Tensor | Collection[Any]]: The training and validation results.
+            Tuple[pd.DataFrame, pd.DataFrame]: The training and validation results.
         """
         self.logger.info("Starting training process.")
         # training loop
         num_epochs = self.config["training"]["num_epochs"]
 
-        self.initialize_model()
+        if self.model is None:
+            self.initialize_model()
 
-        self.initialize_optimizer()
+        if self.optimizer is None:
+            self.initialize_optimizer()
 
-        self.initialize_lr_scheduler()
+        if self.lr_scheduler is None:
+            self.initialize_lr_scheduler()
 
-        total_training_data = torch.zeros(num_epochs, 2, dtype=torch.float32)
+        total_training_data = pd.DataFrame(
+            columns=[
+                "epoch",
+                "min_loss",
+                "mean_loss",
+                "max_loss",
+                "median_loss",
+                "std_loss",
+            ],
+        )
 
         for epoch in range(0, num_epochs):
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
@@ -837,28 +779,24 @@ class Trainer(base.Configurable):
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
 
             # collect mean and std for each epoch
-            total_training_data[epoch, :] = torch.Tensor(
-                [epoch_data.mean(dim=0).item(), epoch_data.std(dim=0).item()]
-            )
-
+            total_training_data.loc[epoch] = {
+                "epoch": epoch,
+                "min_loss": epoch_data.min().item(),
+                "mean_loss": epoch_data.mean().item(),
+                "max_loss": epoch_data.max().item(),
+                "median_loss": epoch_data.median().item(),
+                "std_loss": epoch_data.std().item(),
+            }
             self.logger.info(
-                f"  Completed epoch {epoch}. training loss: {total_training_data[epoch, 0]:.8f} +/- {total_training_data[epoch, 1]:.8f}."
+                f"  Completed epoch {epoch} \n {total_training_data.tail(1).to_string()}"
             )
 
             # evaluation run on validation set
             if self.validator is not None:
-                validation_result = self.validator.validate(self.model, val_loader)
-                self.validator.report(validation_result)
-
-                # integrate Optuna here for hyperparameter tuning
-                if trial is not None:
-                    avg_sigma_loss = self.validator.data[self.epoch]
-                    avg_loss = avg_sigma_loss[0]
-                    trial.report(avg_loss, self.epoch)
-
-                    # Handle pruning based on the intermediate value.
-                    if trial.should_prune():
-                        raise optuna.exceptions.TrialPruned()
+                self.model.eval()
+                self._run_validation_epoch(
+                    self.model, self.optimizer, val_loader, trial
+                )
 
             should_stop = self._check_model_status(
                 self.validator.data if self.validator else total_training_data,
@@ -871,13 +809,24 @@ class Trainer(base.Configurable):
         self.logger.info("Training process completed.")
         self.logger.info("Saving model")
 
-        outpath = self.data_path / f"final_model_epoch={self.epoch}.pt"
-        self.model.save(outpath)
+        outpath = self.checkpoint_path / f"final_model_epoch={self.epoch}"
 
-        return total_training_data, self.validator.data if self.validator else []
+        snapshot = Snapshot.from_trainer(self)
+        snapshot.path = outpath
+
+        try:
+            snapshot.save()
+        except Exception as e:
+            self.logger.error(f"Error saving final model: {e}")
+            raise e
+
+        return (
+            total_training_data,
+            self.validator.data if self.validator else pd.DataFrame(),
+        )
 
     def run_test(
-        self, test_loader: DataLoader, model_name_addition: str = "current_best.pt"
+        self, test_loader: DataLoader, model_name_addition: str = "_current_best"
     ) -> Collection[Any]:
         """Run testing phase.
 
@@ -891,6 +840,10 @@ class Trainer(base.Configurable):
         Returns:
             Collection[Any]: A collection of test results that can be scalars, tensors, lists, dictionaries or any other data type that the tester might return.
         """
+        if self.tester is None:
+            self.logger.info("No tester specified, skipping testing phase.")
+            return {}
+
         self.logger.info("Starting testing process.")
         # get the best model again
 
@@ -910,16 +863,16 @@ class Trainer(base.Configurable):
 
         self.logger.info(f"loading best model found: {str(best_of_the_best)}")
 
-        self.model = gnn_model.GNNModel.load(
-            best_of_the_best, self.config["model"], device=self.device
-        )
+        # load model:
+        self.model = self.load_model(best_of_the_best)
+
         self.model.eval()
         if self.tester is None:
             raise RuntimeError("Tester must be initialized before testing.")
         test_result = self.tester.test(self.model, test_loader)
         self.tester.report(test_result)
         self.logger.info("Testing process completed.")
-        self.save_checkpoint(name_addition="best_model_found")
+        self.save_checkpoint(name_addition="final_tested_model")
         return self.tester.data
 
     def save_checkpoint(self, name_addition: str = ""):
@@ -933,41 +886,95 @@ class Trainer(base.Configurable):
         self.logger.info(
             f"Saving checkpoint for model at epoch {self.epoch} to {self.checkpoint_path}"
         )
-        outpath = self.checkpoint_path / f"model_{name_addition}.pt"
 
-        if outpath.exists() is False:
-            outpath.parent.mkdir(parents=True, exist_ok=True)
-            self.logger.debug(f"Created directory {outpath.parent} for checkpoint.")
+        snapshot = Snapshot.from_trainer(self)
+        if name_addition:
+            snapshot.path = self.checkpoint_path / f"epoch_{self.epoch}{name_addition}"
 
-        self.latest_checkpoint = outpath
-        self.model.save(outpath)
+        try:
+            snapshot.save()
+            self.logger.info(f"Checkpoint saved to {snapshot.path}")
+        except Exception as e:
+            self.logger.error(f"Error saving checkpoint: {e}")
+            raise e
 
-    def load_checkpoint(self, name_addition: str = "") -> None:
+    def load_model(self, model_path: str | Path) -> torch.nn.Module:
+        """Load a model from a checkpoint.
+
+        Args:
+            model_path (str | Path): The path to the model checkpoint.
+
+        Returns:
+            torch.nn.Module: The loaded model.
+        """
+
+        if self.model is not None:
+            self.logger.warning(
+                "Model is already initialized. This will replace it with the loaded model from checkpoint."
+            )
+
+        try:
+            self.model = gnn_model.GNNModel.from_config(self.config["model"]).to(
+                self.device
+            )
+            snapshot = Snapshot.load(model_path)
+            state_dict = snapshot.model_state_dict
+            self.model.load_state_dict(state_dict)
+
+        except Exception as e:
+            self.logger.error(f"Error loading model for testing: {e}")
+            raise e
+
+        self.logger.info("Model loaded from checkpoint: {}".format(model_path))
+
+        return self.model
+
+    @classmethod
+    def load_checkpoint(cls, path: Path | str) -> "Trainer":
         """Load model checkpoint to the device given
 
         Args:
-            name_addition (str): An optional string to append to the checkpoint filename.
+            path (Path | str): The path to the checkpoint file.
 
         Raises:
             RuntimeError: If the model is not initialized.
         """
+        path = Path(path)
 
-        if self.model is None:
+        # load snapshot
+        snapshot = Snapshot.load(path)
+
+        with open(snapshot.config_path) as f:
+            config = yaml.load(f, Loader=get_loader())
+
+        trainer = cls.from_config(config)
+
+        # initialize model
+        if trainer.model is not None:
+            trainer.model.load_state_dict(snapshot.model_state_dict)
+        else:
             raise RuntimeError("Model must be initialized before loading checkpoint.")
 
-        if Path(self.checkpoint_path).exists() is False:
-            raise RuntimeError("Checkpoint path does not exist.")
+        # initialize optimizer
+        if trainer.optimizer is not None and snapshot.optimizer_state_dict is not None:
+            trainer.optimizer.load_state_dict(snapshot.optimizer_state_dict)
+        else:
+            raise RuntimeError(
+                "Optimizer must be initialized before loading checkpoint."
+            )
 
-        self.logger.info(
-            "available checkpoints: %s", list(Path(self.checkpoint_path).iterdir())
-        )
+        # initialize lr scheduler
+        if (
+            trainer.lr_scheduler is not None
+            and snapshot.lr_scheduler_state_dict is not None
+        ):
+            trainer.lr_scheduler.load_state_dict(snapshot.lr_scheduler_state_dict)
 
-        loadpath = Path(self.checkpoint_path) / f"model_{name_addition}.pt"
+        # set data for validator
+        if trainer.validator is not None and snapshot.score is not None:
+            trainer.validator.data = snapshot.score
+            trainer.validator.device = trainer.device
 
-        if not loadpath.exists():
-            raise FileNotFoundError(f"Checkpoint file {loadpath} does not exist.")
-
-        self.model = gnn_model.GNNModel.load(
-            loadpath,
-            self.config["model"],
-        )
+        # set epoch
+        trainer.epoch = snapshot.epoch
+        return trainer

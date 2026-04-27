@@ -1,5 +1,8 @@
 import importlib
 from typing import Sequence, Any
+import torch
+import numpy as np
+import random
 
 
 def import_and_get(importpath: str) -> Any:
@@ -72,3 +75,18 @@ def maybe_number(s: str, type: type = float) -> Any:
         return type(s)
     except ValueError:
         return s
+
+
+def seed_all_rngs(seed: int) -> None:
+    """Seed Python, NumPy, and PyTorch RNGs.
+
+    Args:
+        seed: Integer seed to apply. If ``None``, this function is a no-op.
+    """
+
+    seed = int(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)

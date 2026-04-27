@@ -1,15 +1,20 @@
 # Training a Model
 
-After the data processing, we can set up the training process. This is done using the `Trainer` class.
+After the data processing, we can set up the training process. This is done using the `Trainer` class together with the `DataLoaderFactory`.
 
 The `Trainer` class follows a pattern in which code and training parameters are separated: It expects a dictionary containing all the parameters, and a set of objects that take care of evaluation of the training process.
 
 The config `dict` allows us to store the parameters in an external file (YAML would be the preferable option) and read it in from there, such that we can have different configs for different runs that can be stored alongside the experiments. This is helpful for reproducibility of experiments.
 
 ## The Trainer class
-`Trainer` is fully config-driven. Build a config dict (or YAML) matching `Trainer.schema`, then construct with `Trainer.from_config(config)`. The loss (`criterion`), optional `apply_model`, validation/test evaluators, early stopping, optimizer, learning rate schedulers and data loading are all specified in the config.
+`Trainer` is fully config-driven. Build a config dict (or YAML) matching `Trainer.schema`, then construct with `Trainer.from_config(config)`. The loss (`criterion`), optional `apply_model`, validation/test evaluators, early stopping, optimizer, and learning rate schedulers are all specified in the trainer config.
 
 The `criterion` must be callable as `criterion(outputs, data)` and return a scalar tensor. If your model has a custom forward signature, set `apply_model` in the config.
+
+## The DataLoaderFactory class
+Dataset creation, dataset splitting, and dataloader creation are handled by `DataLoaderFactory`. It consumes the same top-level config dictionary, validates the dataset-related sections, and returns ready-made train, validation, and test loaders that can be passed into the trainer methods.
+
+This keeps the trainer focused on the training loop while the dataloader factory owns the data config schema.
 
 ## The evaluators
 The next three arguments are needed to evaluate and test the model and to implement a stopping criterion, so they deserve their own little section.
@@ -103,7 +108,17 @@ early_stopping:
 criterion: !pyobject mymodule.compute_loss
 ```
 TODO: add comment on leaving out early stopping if not needed.
-The config includes `name`, `training`, `data`, `model`, `validation`, `testing`, `early_stopping`, and `criterion`. See [`Graph Neural Network models`](./models.md) for model schema details.
+The full training workflow config includes `name`, `training`, `model`, `validation`, `testing`, `early_stopping`, and `criterion`. Dataset and dataloader creation additionally use `data`, and optionally `training.data`, `validation.data`, and `testing.data`. See [`Graph Neural Network models`](./models.md) for model schema details.
+
+### Data config modes
+
+`DataLoaderFactory` supports three dataset configuration modes:
+
+1. Top-level `data` with `split: [train, validation, test]`
+2. Top-level `data` with `split: [train, validation]` plus a separate `testing.data`
+3. Fully stage-local `training.data`, `validation.data`, and `testing.data`
+
+The shared train/validation mode is useful when training and validation should come from the same source files while still being split once into disjoint subsets.
 
 ## Train a model
 
@@ -148,7 +163,8 @@ cfg = {  # use YAML with !pyobject tags for types if preferred
 }
 
 trainer = QG.Trainer.from_config(cfg)
-train_loader, val_loader, test_loader = trainer.prepare_dataloaders()
+loader_factory = QG.DataLoaderFactory.from_config(cfg)
+train_loader, val_loader, test_loader = loader_factory.prepare_dataloaders()
 training_result, validation_result = trainer.run_training(train_loader, val_loader)
 test_result = trainer.run_test(test_loader)
 ```

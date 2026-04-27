@@ -190,3 +190,68 @@ end
         n2_rel = 0.0,
     )
 end
+
+@testitem "test_insert_layered_into_manifoldlike" tags = [:csetmerging] setup =
+    [TestsCSetMerging] begin
+
+    import CausalSets
+
+    n2_rel = 0.05
+    cset, flag, coords = QuantumGrav.insert_layered_into_manifoldlike(
+        200,
+        10,
+        1.5,
+        0.2;
+        rng = rng,
+        n2_rel = n2_rel,
+    )
+
+    @test is_toposorted(cset)
+    @test flag === true
+    @test isa(cset, CausalSets.BitArrayCauset)
+    @test cset.atom_count == 200
+    @test size(coords, 1) == 200
+end
+
+@testitem "test_insert_layered_into_manifoldlike_throws" tags = [:csetmergingthrows] setup =
+    [TestsCSetMerging] begin
+
+    @test_throws ArgumentError QuantumGrav.insert_layered_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        -0.1;
+        rng = rng,
+    )
+    @test_throws ArgumentError QuantumGrav.insert_layered_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        1.1;
+        rng = rng,
+    )
+    @test_throws ArgumentError QuantumGrav.insert_layered_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        0.5;
+        rng = rng,
+        position = -1,
+    )
+    @test_throws ArgumentError QuantumGrav.insert_layered_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        0.5;
+        rng = rng,
+        position = 101,
+    )
+    @test_throws ArgumentError QuantumGrav.insert_layered_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        0.5;
+        rng = rng,
+        n2_rel = 0.0,
+    )
+end

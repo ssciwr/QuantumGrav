@@ -20,6 +20,8 @@ This allows more efficient training on large datasets, larger total batch sizes,
 - **Master Node**: Coordinates communication between processes
 - **DistributedSampler**: Automatically splits data across ranks. This is provided by torch.
 
+`TrainerDDP` consumes ready-made dataloaders. Use `DistributedDataLoaderFactory` to build the train, validation, and test loaders from the config before calling the trainer methods.
+
 ## Setup Requirements
 
 This guide assumes:
@@ -114,14 +116,15 @@ def train_ddp(
             backend="nccl" if torch.cuda.is_available() else "gloo",
         )
 
-        # Create DDP trainer
+        # Create DDP trainer and loader factory
         trainer = TrainerDDP(rank=rank, config=config)
+        loader_factory = QG.DistributedDataLoaderFactory(config=config, rank=rank)
 
         # Prepare data loaders for distributed training
         if rank == 0:
             logger.info("Preparing data loaders...")
 
-        train_loader, val_loader, test_loader = trainer.prepare_dataloaders()
+        train_loader, val_loader, test_loader = loader_factory.prepare_dataloaders()
 
         if rank == 0:
             logger.info(
@@ -273,14 +276,15 @@ def main():
         # Update world_size in config
         config["parallel"]["world_size"] = world_size
 
-        # Create DDP trainer
+        # Create DDP trainer and loader factory
         trainer = TrainerDDP(rank=rank, config=config)
+        loader_factory = QG.DistributedDataLoaderFactory(config=config, rank=rank)
 
         # Prepare data loaders
         if rank == 0:
             logger.info("Preparing data loaders...")
 
-        train_loader, val_loader, test_loader = trainer.prepare_dataloaders()
+        train_loader, val_loader, test_loader = loader_factory.prepare_dataloaders()
 
         if rank == 0:
             logger.info(

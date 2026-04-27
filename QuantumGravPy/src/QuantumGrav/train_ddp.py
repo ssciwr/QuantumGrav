@@ -3,14 +3,20 @@ from collections.abc import Collection
 import pandas as pd
 import os
 import jsonschema
+import logging
+import yaml
+from datetime import datetime
+from pathlib import Path
+from copy import deepcopy
 
+from . import evaluate
+from . import early_stopping
 from . import gnn_model
 from . import train
 
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch_geometric.data import Dataset
 from torch_geometric.loader import DataLoader
 import optuna
 
@@ -72,7 +78,6 @@ class TrainerDDP(train.Trainer):
                 "required": ["world_size"],
             },
             "log_level": train.Trainer.schema["properties"]["log_level"],
-            "data": train.Trainer.schema["properties"]["data"],
             "training": train.Trainer.schema["properties"]["training"],
             "model": train.Trainer.schema["properties"]["model"],
             "validation": train.Trainer.schema["properties"]["validation"],
@@ -89,7 +94,7 @@ class TrainerDDP(train.Trainer):
             "testing",
             "criterion",
         ],
-        "additionalProperties": False,
+        "additionalProperties": True,
     }
 
     def __init__(
@@ -113,28 +118,108 @@ class TrainerDDP(train.Trainer):
             ValueError: If the configuration is invalid.
         """
         jsonschema.validate(instance=config, schema=self.schema)
+        logger = logging.getLogger(__name__)
+        logger.setLevel(config.get("log_level", logging.INFO))
+        logger.info("Initializing TrainerDDP instance")
 
-        super().__init__(
-            config,
-        )
+        criterion = config["criterion"]
+        apply_model = config.get("apply_model")
+        seed = config["training"]["seed"]
 
-        self.config = config  # keep the full config including parallel section
-
-        # initialize the systems differently on each process/rank
-        torch.manual_seed(self.seed + rank)
+        torch.manual_seed(seed + rank)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(self.seed + rank)
+            torch.cuda.manual_seed_all(seed + rank)
 
         if torch.cuda.is_available() and config["training"]["device"] != "cpu":
             torch.cuda.set_device(rank)
-            self.device = torch.device(f"cuda:{rank}")
+            device = torch.device(f"cuda:{rank}")
         else:
-            self.device = torch.device("cpu")
+            device = torch.device("cpu")
 
+        run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        data_path = (
+            Path(config["training"]["path"]) / f"{config.get('name', 'run')}_{run_date}"
+        )
+        if not data_path.exists():
+            data_path.mkdir(parents=True)
+
+        if "early_stopping" in config:
+            try:
+                early_stopper = early_stopping.DefaultEarlyStopping.from_config(
+                    config["early_stopping"]
+                )
+            except Exception:
+                early_stopping_kwargs = deepcopy(config["early_stopping"]["kwargs"])
+                early_stopper = config["early_stopping"]["type"](
+                    *config["early_stopping"]["args"],
+                    **early_stopping_kwargs,
+                )
+        else:
+            early_stopper = None
+
+        if "validation" in config:
+            try:
+                validator = evaluate.Validator.from_config(
+                    config["validation"]["validator"]
+                )
+            except Exception:
+                validator = config["validation"]["validator"]["type"](
+                    *config["validation"]["validator"]["args"],
+                    **config["validation"]["validator"]["kwargs"],
+                )
+        else:
+            validator = None
+
+        if "testing" in config:
+            try:
+                tester = evaluate.Tester.from_config(config["testing"]["tester"])
+            except Exception:
+                tester = config["testing"]["tester"]["type"](
+                    *config["testing"]["tester"]["args"],
+                    **config["testing"]["tester"]["kwargs"],
+                )
+        else:
+            tester = None
+
+        with open(data_path / "config.yaml", "w") as f:
+            yaml.dump(config, f)
+
+        self.checkpoint_at = config["training"].get("checkpoint_at", None)
+        self.latest_checkpoint = None
+        self.sampler = None
+        self.config = config
+        self.logger = logger
+        self.criterion = criterion
+        self.model = None
+        self.optimizer = None
+        self.lr_scheduler = None
+        self.apply_model = apply_model
+        self.validator = validator
+        self.early_stopper = early_stopper
+        self.tester = tester
+        self.seed = seed
+        self.device = device
+        self.epoch = 0
+        self.data_path = data_path
+        self.checkpoint_path = data_path / "checkpoints"
+
+        # initialize the systems differently on each process/rank
         self.rank = rank
         self.world_size = config["parallel"]["world_size"]
-        self.epoch = 0  # Initialize epoch counter for DDP
         self.logger.info("Initialized DDP trainer")
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "TrainerDDP":
+        """Create a DDP trainer from configuration.
+
+        Args:
+            config (dict[str, Any]): The configuration dictionary.
+
+        Returns:
+            TrainerDDP: Configured trainer instance.
+        """
+        rank = config.get("parallel", {}).get("rank", 0)
+        return cls(rank=rank, config=config)
 
     def initialize_model(self) -> DDP:
         """Initialize the model for training.
@@ -153,7 +238,11 @@ class TrainerDDP(train.Trainer):
         else:
             # For CUDA, device_ids should be a list of device indices
             # Extract device index from the device string (e.g., "cuda:0" -> 0)
-            device_idx = int(str(self.device).split(":")[1]) if ":" in str(self.device) else self.rank
+            device_idx = (
+                int(str(self.device).split(":")[1])
+                if ":" in str(self.device)
+                else self.rank
+            )
             d_id = [device_idx]
             o_id = self.config["parallel"].get("output_device", None)
         model = DDP(
@@ -167,97 +256,6 @@ class TrainerDDP(train.Trainer):
         self.model = model.to(self.device, non_blocking=True)
         self.logger.info(f"Model initialized on device: {self.device}")
         return self.model
-
-    def prepare_dataloaders(
-        self,
-        dataset: Dataset | None = None,
-        split: list[float] = [0.8, 0.1, 0.1],
-        train_dataset: torch.utils.data.Dataset | torch.utils.data.Subset | None = None,
-        val_dataset: torch.utils.data.Dataset | torch.utils.data.Subset | None = None,
-        test_dataset: torch.utils.data.Dataset | torch.utils.data.Subset | None = None,
-        training_sampler: torch.utils.data.Sampler | None = None,
-    ) -> Tuple[
-        DataLoader,
-        DataLoader,
-        DataLoader,
-    ]:
-        """Prepare dataloader for distributed training.
-
-        Args:
-            dataset (Dataset | None, optional): Dataset to use. Defaults to None.
-            split (list[float], optional): Splits into train, validation and test datasets. Defaults to [0.8, 0.1, 0.1].
-            train_dataset (torch.utils.data.Subset | None, optional): Training dataset. Only used when Dataset is None. Defaults to None.
-            val_dataset (torch.utils.data.Subset | None, optional): Validation dataset. Only used when Dataset is None.. Defaults to None.
-            test_dataset (torch.utils.data.Subset | None, optional): Test dataset. Only used when Dataset is None.. Defaults to None.
-            training_sampler (torch.utils.data.Sampler | None, optional): Ignored here. Defaults to None.
-
-        Returns:
-            Tuple[ DataLoader, DataLoader, DataLoader, ]: Train, validation and test dataloaders
-        """
-        self.train_dataset, self.val_dataset, self.test_dataset = self.prepare_dataset(
-            dataset=dataset,
-            split=split,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            test_dataset=test_dataset,
-        )
-
-        # samplers are needed to distribute the data across processes in such a way that each process gets a unique subset of the data
-        self.train_sampler = torch.utils.data.DistributedSampler(
-            self.train_dataset,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=True,
-        )
-
-        self.val_sampler = torch.utils.data.DistributedSampler(
-            self.val_dataset,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=False,
-        )
-
-        self.test_sampler = torch.utils.data.DistributedSampler(
-            self.test_dataset,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=False,
-        )
-
-        # make the data loaders
-        train_loader = DataLoader(
-            self.train_dataset,
-            batch_size=self.config["training"]["batch_size"],
-            sampler=self.train_sampler,
-            num_workers=self.config["training"].get("num_workers", 0),
-            pin_memory=self.config["training"].get("pin_memory", True),
-            drop_last=self.config["training"].get("drop_last", False),
-            prefetch_factor=self.config["training"].get("prefetch_factor", None),
-        )
-
-        val_loader = DataLoader(
-            self.val_dataset,
-            sampler=self.val_sampler,
-            batch_size=self.config["validation"]["batch_size"],
-            num_workers=self.config["validation"].get("num_workers", 0),
-            pin_memory=self.config["validation"].get("pin_memory", True),
-            drop_last=self.config["validation"].get("drop_last", False),
-            prefetch_factor=self.config["validation"].get("prefetch_factor", None),
-        )
-
-        test_loader = DataLoader(
-            self.test_dataset,
-            sampler=self.test_sampler,
-            batch_size=self.config["testing"]["batch_size"],
-            num_workers=self.config["testing"].get("num_workers", 0),
-            pin_memory=self.config["testing"].get("pin_memory", True),
-            drop_last=self.config["testing"].get("drop_last", False),
-            prefetch_factor=self.config["testing"].get("prefetch_factor", None),
-        )
-        self.logger.info(
-            f"Data loaders prepared with splits: {split} and dataset sizes: {len(self.train_dataset)}, {len(self.val_dataset)}, {len(self.test_dataset)}"
-        )
-        return train_loader, val_loader, test_loader
 
     def _check_model_status(self, eval_data: pd.DataFrame | list[torch.Tensor]) -> bool:
         """Check the status of the model during evaluation.
@@ -274,29 +272,13 @@ class TrainerDDP(train.Trainer):
         return should_stop
 
     def save_checkpoint(self, name_addition: str = ""):
-        """Save model checkpoint.
+        """Save model checkpoint on rank 0 only.
 
-        Raises:
-            ValueError: If the model is not initialized.
-            ValueError: If the model configuration does not contain 'name'.
-            ValueError: If the training configuration does not contain 'checkpoint_path'.
+        Args:
+            name_addition (str): Optional checkpoint suffix.
         """
-        # TODO: check if this works really - it should save the best model that is there
         if self.rank == 0:
-            if self.model is None:
-                raise ValueError("Model must be initialized before saving checkpoint.")
-
-            self.logger.info(
-                f"Saving checkpoint for model model at epoch {self.epoch} to {self.checkpoint_path}"
-            )
-            outpath = self.checkpoint_path / f"model_{name_addition}.pt"
-
-            if outpath.exists() is False:
-                outpath.parent.mkdir(parents=True, exist_ok=True)
-                self.logger.info(f"Created directory {outpath.parent} for checkpoint.")
-
-            self.latest_checkpoint = outpath
-            torch.save(self.model, outpath)
+            super().save_checkpoint(name_addition=name_addition)
 
     def run_training(
         self,
@@ -362,9 +344,7 @@ class TrainerDDP(train.Trainer):
 
             # Broadcast early stopping decision from rank 0 to all ranks
             object_list = [should_stop]
-            dist.broadcast_object_list(
-                object_list, src=0, device=self.device
-            )
+            dist.broadcast_object_list(object_list, src=0, device=self.device)
             should_stop = object_list[0]
 
             if should_stop:
