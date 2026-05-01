@@ -800,7 +800,9 @@ def test_snapshot_from_trainer_collects_expected_state(config):
 
 
 def test_snapshot_save_and_load_round_trip(config_with_default_evaluators):
-    trainer = QG.Trainer.from_config(config_with_default_evaluators)
+    config = deepcopy(config_with_default_evaluators)
+    config.pop("data", None)
+    trainer = QG.Trainer.from_config(config)
 
     assert isinstance(trainer.validator, QG.Validator)
     assert isinstance(trainer.tester, QG.Tester)
@@ -843,31 +845,26 @@ def test_snapshot_save_and_load_round_trip(config_with_default_evaluators):
     assert loaded_trainer.epoch == trainer.epoch
 
     assert loaded_trainer.model is not None
-    assert trainer.model is not None
     assert loaded_trainer.model.state_dict().keys() == trainer.model.state_dict().keys()
     for key, value in trainer.model.state_dict().items():
         assert torch.equal(loaded_trainer.model.state_dict()[key], value)
 
     assert loaded_trainer.optimizer is not None
-    assert trainer.optimizer is not None
     assert loaded_trainer.optimizer.state_dict() == trainer.optimizer.state_dict()
 
     assert loaded_trainer.validator is not None
-    assert trainer.validator is not None
     pd.testing.assert_frame_equal(
         loaded_trainer.validator.data.reset_index(drop=True),
         trainer.validator.data.reset_index(drop=True),
     )
 
     assert loaded_trainer.tester is not None
-    assert trainer.tester is not None
     pd.testing.assert_frame_equal(
         loaded_trainer.tester.data.reset_index(drop=True),
         trainer.tester.data.reset_index(drop=True),
     )
 
     assert loaded_trainer.early_stopper is not None
-    assert trainer.early_stopper is not None
     assert (
         loaded_trainer.early_stopper.current_patience
         == trainer.early_stopper.current_patience

@@ -506,7 +506,11 @@ class Trainer(base.Configurable):
             tester = None
 
         with open(data_path / "config.yaml", "w") as f:
-            yaml.dump(convert_to_pyobject_tags(config), f, sort_keys=False)
+            yaml.safe_dump(
+                convert_to_pyobject_tags(config, emit_yaml_tags=True),
+                f,
+                sort_keys=False,
+            )
 
         trainer = cls(
             config=config,
