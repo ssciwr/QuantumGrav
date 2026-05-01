@@ -799,37 +799,84 @@ def test_snapshot_from_trainer_collects_expected_state(config):
     assert snapshot.early_stopping_state_dict is not None
 
 
-def test_snapshot_save_and_load_round_trip(tmppath):
-    snapshot_path = tmppath / "nested" / "epoch_3"
-    config_path = tmppath / "config.yaml"
-    config_path.write_text("training: {}\n")
-    original = Snapshot(
-        epoch=3,
-        model_state_dict={"weight": torch.tensor([1.0, 2.0])},
-        optimizer_state_dict={"lr": 1e-3, "step": 5},
-        lr_scheduler_state_dict={"last_lr": [1e-3]},
-        config_path=config_path,
-        path=snapshot_path,
-        validator_state_dict={"metrics": {"loss": 0.1}},
-        tester_state_dict={"metrics": {"loss": 0.2}},
-        early_stopping_state_dict={"counter": 2},
-    )
+def test_snapshot_save_and_load_round_trip(config_with_default_evaluators):
+    trainer = QG.Trainer.from_config(config_with_default_evaluators)
 
+    assert isinstance(trainer.validator, QG.Validator)
+    assert isinstance(trainer.tester, QG.Tester)
+    assert isinstance(trainer.early_stopper, QG.DefaultEarlyStopping)
+
+    trainer.epoch = 3
+    trainer.validator.data.loc[0] = {
+        "loss_avg": 0.2,
+        "loss_min": 0.1,
+        "loss_max": 0.3,
+        "loss": 0.22,
+        "other_loss": 0.55,
+    }
+    trainer.tester.data.loc[0] = {
+        "loss_avg": 0.5,
+        "loss_min": 0.4,
+        "loss_max": 0.8,
+        "loss": 0.52,
+        "other_loss": 0.61,
+    }
+    trainer.early_stopper.current_patience = 4
+    trainer.early_stopper.tasks[0]["best_score"] = 0.123
+    trainer.early_stopper.tasks[0]["current_grace_period"] = 3
+    trainer.early_stopper.tasks[0]["found_better"] = True
+    trainer.early_stopper.tasks[1]["best_score"] = 9.876
+    trainer.early_stopper.tasks[1]["current_grace_period"] = 1
+    trainer.early_stopper.tasks[1]["found_better"] = False
+
+    original = Snapshot.from_trainer(trainer)
+    original.path = trainer.checkpoint_path / "epoch_3_roundtrip"
     original.save()
-    loaded = Snapshot.load(snapshot_path)
 
-    assert snapshot_path.exists()
-    assert loaded.epoch == original.epoch
-    assert torch.equal(
-        loaded.model_state_dict["weight"], original.model_state_dict["weight"]
+    loaded_trainer = QG.Trainer.load_checkpoint(
+        trainer.checkpoint_path / "epoch_3_roundtrip"
     )
-    assert loaded.optimizer_state_dict == original.optimizer_state_dict
-    assert loaded.lr_scheduler_state_dict == original.lr_scheduler_state_dict
-    assert loaded.config_path == str(config_path)
-    assert loaded.path == snapshot_path
-    assert loaded.validator_state_dict == original.validator_state_dict
-    assert loaded.tester_state_dict == original.tester_state_dict
-    assert loaded.early_stopping_state_dict == original.early_stopping_state_dict
+
+    assert isinstance(loaded_trainer.validator, QG.Validator)
+    assert isinstance(loaded_trainer.tester, QG.Tester)
+    assert isinstance(loaded_trainer.early_stopper, QG.DefaultEarlyStopping)
+    assert loaded_trainer.epoch == trainer.epoch
+
+    assert loaded_trainer.model is not None
+    assert trainer.model is not None
+    assert loaded_trainer.model.state_dict().keys() == trainer.model.state_dict().keys()
+    for key, value in trainer.model.state_dict().items():
+        assert torch.equal(loaded_trainer.model.state_dict()[key], value)
+
+    assert loaded_trainer.optimizer is not None
+    assert trainer.optimizer is not None
+    assert loaded_trainer.optimizer.state_dict() == trainer.optimizer.state_dict()
+
+    assert loaded_trainer.validator is not None
+    assert trainer.validator is not None
+    pd.testing.assert_frame_equal(
+        loaded_trainer.validator.data.reset_index(drop=True),
+        trainer.validator.data.reset_index(drop=True),
+    )
+
+    assert loaded_trainer.tester is not None
+    assert trainer.tester is not None
+    pd.testing.assert_frame_equal(
+        loaded_trainer.tester.data.reset_index(drop=True),
+        trainer.tester.data.reset_index(drop=True),
+    )
+
+    assert loaded_trainer.early_stopper is not None
+    assert trainer.early_stopper is not None
+    assert (
+        loaded_trainer.early_stopper.current_patience
+        == trainer.early_stopper.current_patience
+    )
+    for task_id, task in trainer.early_stopper.tasks.items():
+        loaded_task = loaded_trainer.early_stopper.tasks[task_id]
+        assert loaded_task["best_score"] == task["best_score"]
+        assert loaded_task["current_grace_period"] == task["current_grace_period"]
+        assert loaded_task["found_better"] == task["found_better"]
 
 
 def test_snapshot_load_sets_missing_optional_fields_to_none(tmppath):
