@@ -85,9 +85,11 @@ class Evaluator(base.Configurable):
         # store as list of (metric_name, monitor_callable) tuples for simple iteration
         self.tasks: list[tuple[str, Callable]] = []
         columns = ["loss_avg", "loss_min", "loss_max"]
-
-        if evaluator_tasks is not None:
-            for task_spec in evaluator_tasks:
+        self.task_specs = evaluator_tasks
+        if self.task_specs is None:
+            self.task_specs = dict()
+        else:
+            for task_spec in self.task_specs:
                 monitor = task_spec["monitor"]
                 if task_spec.get("args") or task_spec.get("kwargs"):
                     monitor = monitor(
@@ -170,6 +172,24 @@ class Evaluator(base.Configurable):
             config.get("evaluator_tasks"),
             config.get("apply_model"),
         )
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        """Build the evaluator from a config dictionary
+
+        Args:
+            state_dict   (Dict[str, Any]): Config dictionary to build the evaluator from.
+        """
+        self.data = state_dict["data"]
+
+    def to_state_dict(self) -> dict[str, Any]:
+        """Convert the evaluator to a state dictionary for saving.
+
+        Returns:
+            dict[str, Any]: A dictionary containing the evaluator's configuration and data.
+        """
+        return {
+            "data": self.data,
+        }
 
 
 class Tester(Evaluator):

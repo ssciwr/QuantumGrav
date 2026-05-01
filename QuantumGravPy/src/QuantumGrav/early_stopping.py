@@ -7,7 +7,7 @@ from . import base
 
 
 class DefaultEarlyStopping(base.Configurable):
-    """Early stopping based on a validation metric."""
+    """Early stopping based on a validation metric. The tasks supplied to this class have to be stateless."""
 
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -254,3 +254,35 @@ class DefaultEarlyStopping(base.Configurable):
         }
 
         return conf
+
+    def to_state_dict(self) -> dict[str, Any]:
+        """Convert the early stopping instance to a state dictionary for saving.
+
+        Returns:
+            dict[str, Any]: A dictionary containing the early stopping's configuration and state.
+        """
+        d = dict()
+
+        for _, task in self.tasks.items():
+            d["current_grace_period"] = task["grace_period"]
+            d["best_score"] = task["init_best_score"]
+
+        d["mode"] = self.mode
+        d["patience"] = self.patience
+        d["current_patience"] = self.current_patience
+
+        return d
+
+    def load_state_dict(self, state_dict: dict[str, Any]):
+        """Load the early stopping instance from a state dictionary.
+
+        Args:
+            state_dict (dict[str, Any]): A dictionary containing the early stopping's configuration and state.
+        """
+        for _, task in self.tasks.items():
+            task["current_grace_period"] = state_dict["current_grace_period"]
+            task["best_score"] = state_dict["best_score"]
+
+        self.mode = state_dict["mode"]
+        self.patience = state_dict["patience"]
+        self.current_patience = state_dict["current_patience"]

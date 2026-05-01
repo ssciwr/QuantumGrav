@@ -522,7 +522,6 @@ def test_trainer_ddp_check_model_status(config, setup_ddp):
 
     file_content = [f.name for f in paths[0].iterdir()]
     assert "config.yaml" in file_content
-    assert "checkpoints" in file_content
 
 
 def test_trainer_ddp_run_training(config, make_dataset, setup_ddp):

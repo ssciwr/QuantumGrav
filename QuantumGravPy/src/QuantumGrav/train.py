@@ -1,5 +1,5 @@
 from collections.abc import Collection
-from typing import Any, Callable, Tuple, Dict
+from typing import Any, Callable, Tuple
 
 from pathlib import Path
 import logging
@@ -27,12 +27,14 @@ import optuna
 @dataclass
 class Snapshot:
     epoch: int
-    model_state_dict: Dict[str, Any]
-    optimizer_state_dict: Dict[str, Any]
-    lr_scheduler_state_dict: Dict[str, Any] | None
-    score: float
+    model_state_dict: dict[str, Any]
+    optimizer_state_dict: dict[str, Any]
+    lr_scheduler_state_dict: dict[str, Any] | None
     config_path: Path | str
     path: Path | str
+    early_stopping_state_dict: dict[str, Any] | None = None
+    validator_state_dict: dict[str, Any] | None = None
+    tester_state_dict: dict[str, Any] | None = None
 
     @classmethod
     def from_trainer(cls, trainer: "Trainer") -> "Snapshot":
@@ -51,9 +53,17 @@ class Snapshot:
             lr_scheduler_state_dict=trainer.lr_scheduler.state_dict()
             if trainer.lr_scheduler
             else None,
-            score=trainer.validator.data if trainer.validator else None,
             config_path=trainer.data_path / "config.yaml",
             path=Path(trainer.checkpoint_path) / f"epoch_{trainer.epoch}",
+            validator_state_dict=trainer.validator.to_state_dict()
+            if trainer.validator
+            else None,
+            tester_state_dict=trainer.tester.to_state_dict()
+            if trainer.tester
+            else None,
+            early_stopping_state_dict=trainer.early_stopper.to_state_dict()
+            if trainer.early_stopper
+            else None,
         )
 
     def save(self):
@@ -68,31 +78,58 @@ class Snapshot:
                 "model_state_dict": self.model_state_dict,
                 "optimizer_state_dict": self.optimizer_state_dict,
                 "lr_scheduler_state_dict": self.lr_scheduler_state_dict,
-                "score": self.score,
                 "config_path": str(self.config_path),
+                "validator_state_dict": self.validator_state_dict,
+                "tester_state_dict": self.tester_state_dict,
+                "early_stopping_state_dict": self.early_stopping_state_dict,
             },
             self.path,
         )
 
     @classmethod
-    def load(cls, path: Path | str) -> "Snapshot":
+    def load(cls, load_path: Path | str) -> "Snapshot":
         """Load a snapshot from disk.
 
         Args:
-            path (Path | str): The path to the snapshot file.
+            load_path (Path | str): The path to the snapshot file.
 
         Returns:
             Snapshot: The loaded Snapshot instance.
         """
-        checkpoint = torch.load(path, weights_only=False)
+        checkpoint = torch.load(load_path, weights_only=False)
+
+        if not all(
+            key in checkpoint
+            for key in [
+                "epoch",
+                "model_state_dict",
+                "optimizer_state_dict",
+                "config_path",
+            ]
+        ):
+            raise ValueError(
+                f"Checkpoint file {load_path} is missing required keys. Found keys: {
+                    list(checkpoint.keys())
+                }. Needs keys: {
+                    [
+                        'epoch',
+                        'model_state_dict',
+                        'optimizer_state_dict',
+                        'config_path',
+                    ]
+                }"
+            )
+
         return Snapshot(
             epoch=checkpoint["epoch"],
             model_state_dict=checkpoint["model_state_dict"],
             optimizer_state_dict=checkpoint["optimizer_state_dict"],
             lr_scheduler_state_dict=checkpoint.get("lr_scheduler_state_dict", None),
-            score=checkpoint["score"],
             config_path=checkpoint["config_path"],
-            path=path,
+            path=load_path,
+            validator_state_dict=checkpoint.get("validator_state_dict", None),
+            tester_state_dict=checkpoint.get("tester_state_dict", None),
+            early_stopping_state_dict=checkpoint.get("early_stopping_state_dict", None),
         )
 
 
@@ -344,7 +381,7 @@ class Trainer(base.Configurable):
 
     def __init__(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         logger: logging.Logger,
         criterion: Callable,
         model: torch.nn.Module,
@@ -357,14 +394,7 @@ class Trainer(base.Configurable):
         validator: evaluate.Evaluator | None = None,
         tester: evaluate.Evaluator | None = None,
         apply_model: Callable | None = None,
-        sampler: torch.utils.data.Sampler | None = None,
-        # training and evaluation functions
     ):
-        self.checkpoint_at = config["training"].get("checkpoint_at", None)
-        self.latest_checkpoint = None
-
-        self.sampler = None
-
         self.config = config
         self.logger = logger
         self.criterion = criterion
@@ -380,6 +410,9 @@ class Trainer(base.Configurable):
         self.epoch = 0
         self.data_path = data_path
         self.checkpoint_path = data_path / "checkpoints"
+        self.checkpoint_at = config["training"].get("checkpoint_at", None)
+
+        self.checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         if model is None:
             self.initialize_model()
@@ -391,11 +424,11 @@ class Trainer(base.Configurable):
             self.initialize_lr_scheduler()
 
     @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> "Trainer":
+    def from_config(cls, config: dict[str, Any]) -> "Trainer":
         """Create a Trainer instance from a configuration dictionary.
 
         Args:
-            config (Dict[str, Any]): The configuration dictionary.
+            config (dict[str, Any]): The configuration dictionary.
         """
         jsonschema.validate(instance=config, schema=cls.schema)
 
@@ -721,12 +754,10 @@ class Trainer(base.Configurable):
         if self.early_stopper is not None:
             if self.early_stopper(eval_data):
                 self.logger.debug(f"Early stopping at epoch {self.epoch}.")
-                self.save_checkpoint(name_addition="_early_stopping")
                 return True
 
             if self.early_stopper.found_better_model:
                 self.logger.debug(f"Saving better model at epoch {self.epoch}.")
-                self.save_checkpoint(name_addition="_current_best")
                 # not returning true because this is not the end of training
 
         return False
@@ -772,15 +803,15 @@ class Trainer(base.Configurable):
             ],
         )
 
-        for epoch in range(0, num_epochs):
+        while self.epoch < num_epochs:
             self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
             self.model.train()
 
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
 
             # collect mean and std for each epoch
-            total_training_data.loc[epoch] = {
-                "epoch": epoch,
+            total_training_data.loc[self.epoch] = {
+                "epoch": self.epoch,
                 "min_loss": epoch_data.min().item(),
                 "mean_loss": epoch_data.mean().item(),
                 "max_loss": epoch_data.max().item(),
@@ -788,7 +819,7 @@ class Trainer(base.Configurable):
                 "std_loss": epoch_data.std().item(),
             }
             self.logger.info(
-                f"  Completed epoch {epoch} \n {total_training_data.tail(1).to_string()}"
+                f"  Completed epoch {self.epoch} \n {total_training_data.tail(1).to_string()}"
             )
 
             # evaluation run on validation set
@@ -803,8 +834,12 @@ class Trainer(base.Configurable):
             )
             if should_stop:
                 self.logger.info("Stopping training early.")
+                self.save_checkpoint(name_addition="_current_best")
                 break
-            self.epoch += 1
+
+            if self.early_stopper is not None and self.early_stopper.found_better_model:
+                self.save_checkpoint(name_addition="_current_best")
+            self.epoch += 1  # this means that the epoch number in the checkpoint will be the last completed epoch, which is intuitive for resuming training from checkpoints
 
         self.logger.info("Training process completed.")
         self.logger.info("Saving model")
@@ -922,7 +957,7 @@ class Trainer(base.Configurable):
             self.model.load_state_dict(state_dict)
 
         except Exception as e:
-            self.logger.error(f"Error loading model for testing: {e}")
+            self.logger.error(f"Error loading model: {e}")
             raise e
 
         self.logger.info("Model loaded from checkpoint: {}".format(model_path))
@@ -930,16 +965,24 @@ class Trainer(base.Configurable):
         return self.model
 
     @classmethod
-    def load_checkpoint(cls, path: Path | str) -> "Trainer":
+    def load_checkpoint(
+        cls, load_path: Path | str, new_path: Path | str | None = None
+    ) -> "Trainer":
         """Load model checkpoint to the device given
 
         Args:
-            path (Path | str): The path to the checkpoint file.
+            load_path (Path | str): The path to the checkpoint file.
+            new_path (Path | str | None): The path to the new checkpoint file.
 
         Raises:
             RuntimeError: If the model is not initialized.
         """
-        path = Path(path)
+        path = Path(load_path)
+
+        if new_path is not None:
+            new_path = Path(new_path)
+            if not new_path.parent.exists():
+                new_path.parent.mkdir(parents=True)
 
         # load snapshot
         snapshot = Snapshot.load(path)
@@ -971,9 +1014,17 @@ class Trainer(base.Configurable):
             trainer.lr_scheduler.load_state_dict(snapshot.lr_scheduler_state_dict)
 
         # set data for validator
-        if trainer.validator is not None and snapshot.score is not None:
-            trainer.validator.data = snapshot.score
-            trainer.validator.device = trainer.device
+        if trainer.validator is not None and snapshot.validator_state_dict is not None:
+            trainer.validator.load_state_dict(snapshot.validator_state_dict)
+
+        if trainer.tester is not None and snapshot.tester_state_dict is not None:
+            trainer.tester.load_state_dict(snapshot.tester_state_dict)
+
+        if (
+            trainer.early_stopper is not None
+            and snapshot.early_stopping_state_dict is not None
+        ):
+            trainer.early_stopper.load_state_dict(snapshot.early_stopping_state_dict)
 
         # set epoch
         trainer.epoch = snapshot.epoch

@@ -2,10 +2,10 @@ import pytest
 import torch
 import torch_geometric
 from torch_geometric.data import Data
+from QuantumGrav.train import Snapshot
 
 import QuantumGrav as QG
 import numpy as np
-from functools import partial
 import jsonschema
 from pathlib import Path
 import re
@@ -15,7 +15,10 @@ import logging
 
 torch.multiprocessing.set_start_method("spawn", force=True)  # for dataloader
 
+
 # data transform functions
+def cat1(x):
+    return torch.cat(x, dim=1)
 
 
 # evaluator helpers (for DefaultValidator/DefaultTester)
@@ -37,7 +40,7 @@ def monitor_dummy(preds, targets):
 
 
 # this is needed for testing the full training loop
-class DummyEvaluator:
+class DummyEvaluator(QG.Evaluator):
     def __init__(self):
         self.data = pd.DataFrame(columns=["loss", "other_loss"])
 
@@ -133,7 +136,7 @@ def model_config_eval():
             [torch_geometric.nn.global_mean_pool, [], {}],
             [torch_geometric.nn.global_max_pool, [], {}],
         ],
-        "aggregate_pooling_type": partial(torch.cat, dim=1),
+        "aggregate_pooling_type": cat1,
         "active_tasks": {0: True, 1: True},
     }
     return config
@@ -410,7 +413,6 @@ def test_trainer_creation_works(config):
     assert trainer.seed == config["training"]["seed"]
     assert trainer.epoch == 0
     assert trainer.checkpoint_at == config["training"].get("checkpoint_at", None)
-    assert trainer.latest_checkpoint is None
     assert trainer.data_path.exists()
     assert trainer.checkpoint_path == trainer.data_path / "checkpoints"
 
@@ -771,7 +773,6 @@ def test_trainer_check_model_status(config):
     file_content = [f.name for f in trainer.data_path.iterdir()]
     assert "config.yaml" in file_content
     assert "checkpoints" in file_content
-    assert (trainer.checkpoint_path / "epoch_1_early_stopping").exists()
 
 
 def test_trainer_save_checkpoint_writes_snapshot(config):
@@ -782,19 +783,103 @@ def test_trainer_save_checkpoint_writes_snapshot(config):
     assert (trainer.checkpoint_path / "epoch_0").exists()
 
 
+def test_snapshot_from_trainer_collects_expected_state(config):
+    trainer = QG.Trainer.from_config(config)
+
+    snapshot = Snapshot.from_trainer(trainer)
+
+    assert snapshot.epoch == trainer.epoch
+    assert snapshot.path == trainer.checkpoint_path / f"epoch_{trainer.epoch}"
+    assert snapshot.config_path == trainer.data_path / "config.yaml"
+    assert snapshot.model_state_dict is not None
+    assert snapshot.optimizer_state_dict is not None
+    assert snapshot.lr_scheduler_state_dict is None
+    assert snapshot.validator_state_dict is not None
+    assert snapshot.tester_state_dict is not None
+    assert snapshot.early_stopping_state_dict is not None
+
+
+def test_snapshot_save_and_load_round_trip(tmppath):
+    snapshot_path = tmppath / "nested" / "epoch_3"
+    config_path = tmppath / "config.yaml"
+    config_path.write_text("training: {}\n")
+    original = Snapshot(
+        epoch=3,
+        model_state_dict={"weight": torch.tensor([1.0, 2.0])},
+        optimizer_state_dict={"lr": 1e-3, "step": 5},
+        lr_scheduler_state_dict={"last_lr": [1e-3]},
+        config_path=config_path,
+        path=snapshot_path,
+        validator_state_dict={"metrics": {"loss": 0.1}},
+        tester_state_dict={"metrics": {"loss": 0.2}},
+        early_stopping_state_dict={"counter": 2},
+    )
+
+    original.save()
+    loaded = Snapshot.load(snapshot_path)
+
+    assert snapshot_path.exists()
+    assert loaded.epoch == original.epoch
+    assert torch.equal(
+        loaded.model_state_dict["weight"], original.model_state_dict["weight"]
+    )
+    assert loaded.optimizer_state_dict == original.optimizer_state_dict
+    assert loaded.lr_scheduler_state_dict == original.lr_scheduler_state_dict
+    assert loaded.config_path == str(config_path)
+    assert loaded.path == snapshot_path
+    assert loaded.validator_state_dict == original.validator_state_dict
+    assert loaded.tester_state_dict == original.tester_state_dict
+    assert loaded.early_stopping_state_dict == original.early_stopping_state_dict
+
+
+def test_snapshot_load_sets_missing_optional_fields_to_none(tmppath):
+    snapshot_path = tmppath / "legacy" / "epoch_1"
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "epoch": 1,
+            "model_state_dict": {"weight": torch.tensor([0.5])},
+            "optimizer_state_dict": {"lr": 1e-3},
+            "config_path": str(tmppath / "config.yaml"),
+        },
+        snapshot_path,
+    )
+
+    loaded = Snapshot.load(snapshot_path)
+
+    assert loaded.lr_scheduler_state_dict is None
+    assert loaded.validator_state_dict is None
+    assert loaded.tester_state_dict is None
+    assert loaded.early_stopping_state_dict is None
+
+
+def test_snapshot_load_raises_for_missing_required_keys(tmppath):
+    snapshot_path = tmppath / "broken" / "epoch_0"
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {"epoch": 0, "model_state_dict": {}, "config_path": "config.yaml"},
+        snapshot_path,
+    )
+
+    with pytest.raises(ValueError, match="missing required keys"):
+        Snapshot.load(snapshot_path)
+
+
 def test_trainer_load_model(config, tmppath):
     trainer = QG.Trainer.from_config(config)
 
     assert trainer.model is not None
 
-    model_path = tmppath / "saved_model.pt"
-    trainer.model.save(model_path)
     original_weights = [param.clone() for param in trainer.model.parameters()]
+
+    trainer.save_checkpoint("_model_snapshot")
 
     for param in trainer.model.parameters():
         param.data.zero_()
 
-    loaded_model = trainer.load_model(model_path)
+    loaded_model = trainer.load_model(
+        trainer.checkpoint_path / "epoch_0_model_snapshot"
+    )
 
     assert loaded_model is trainer.model
     assert isinstance(loaded_model, QG.GNNModel)
@@ -938,7 +1023,7 @@ def test_trainer_run_training_without_validator_returns_empty_validation_data(
     )
 
     assert training_data.shape[0] == config["training"]["num_epochs"]
-    assert validation_data == []
+    assert validation_data.empty
 
 
 def test_trainer_run_test_without_tester_returns_empty_dict(

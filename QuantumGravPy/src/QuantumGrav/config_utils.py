@@ -313,7 +313,7 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
             # TODO: this should use the existing tag as a marker, not the type
             # convert only non-built-in types to pyobject tags
             if (
-                not isinstance(value, (bool, str, float, int, list, dict))
+                not isinstance(value, (bool, str, float, int, list, dict, tuple, set))
                 and value is not None
             ):
                 # convert to !pyobject name_of_class

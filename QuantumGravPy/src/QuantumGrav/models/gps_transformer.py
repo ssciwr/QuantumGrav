@@ -1,3 +1,5 @@
+from inspect import isclass
+
 import torch
 import torch_geometric
 from typing import Any
@@ -95,7 +97,7 @@ class GPSModel(torch.nn.Module):
                 )
                 norm_kwargs = None
 
-            if act is not None and not isinstance(act, str):
+            if act is not None and not isinstance(act, str) and isclass(act):
                 act = act(**(act_kwargs if act_kwargs is not None else {}))
                 act_kwargs = None
 
