@@ -799,9 +799,12 @@ def test_snapshot_from_trainer_collects_expected_state(config):
     assert snapshot.early_stopping_state_dict is not None
 
 
-def test_snapshot_save_and_load_round_trip(config_with_default_evaluators):
+def test_snapshot_save_and_load_round_trip(
+    config_with_default_evaluators, make_dataset
+):
     config = deepcopy(config_with_default_evaluators)
     config.pop("data", None)
+    config["training"]["num_epochs"] = 4
     trainer = QG.Trainer.from_config(config)
 
     assert isinstance(trainer.validator, QG.Validator)
@@ -874,6 +877,18 @@ def test_snapshot_save_and_load_round_trip(config_with_default_evaluators):
         assert loaded_task["best_score"] == task["best_score"]
         assert loaded_task["current_grace_period"] == task["current_grace_period"]
         assert loaded_task["found_better"] == task["found_better"]
+
+    train_loader, validation_loader, _ = make_loader_factory(
+        config_with_default_evaluators
+    ).prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
+    training_data, validation_data = loaded_trainer.run_training(
+        train_loader, validation_loader
+    )
+
+    assert loaded_trainer.epoch == 4
+    assert training_data.shape[0] == 1
+    assert training_data["epoch"].tolist() == [3]
+    assert len(validation_data) == 2
 
 
 def test_snapshot_load_sets_missing_optional_fields_to_none(tmppath):
