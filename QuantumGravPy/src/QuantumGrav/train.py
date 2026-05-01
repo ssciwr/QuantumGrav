@@ -676,7 +676,12 @@ class Trainer(base.Configurable):
         if optimizer is None:
             raise RuntimeError("Optimizer must be initialized before training.")
 
-        losses = torch.zeros(len(train_loader), dtype=torch.float32, device=self.device)
+        losses = torch.zeros(
+            len(train_loader),
+            dtype=torch.float32,
+            device=self.device,
+            requires_grad=False,
+        )
         self.logger.info(f"  Starting training epoch {self.epoch}")
         # training run
         for i, batch in enumerate(
@@ -696,7 +701,7 @@ class Trainer(base.Configurable):
 
             optimizer.step()
 
-            losses[i] = loss
+            losses[i] = loss.detach().clone()
 
         if hasattr(self, "lr_scheduler") and self.lr_scheduler is not None:
             self.lr_scheduler.step()
