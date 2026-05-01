@@ -7,6 +7,20 @@ import numpy as np
 from . import utils
 
 
+class PyObjectTag(str):
+    """String-like value emitted as a real !pyobject YAML scalar."""
+
+
+def pyobject_tag_representer(
+    dumper: yaml.Dumper | yaml.SafeDumper, value: PyObjectTag
+) -> yaml.nodes.ScalarNode:
+    return dumper.represent_scalar("!pyobject", str(value))
+
+
+yaml.Dumper.add_representer(PyObjectTag, pyobject_tag_representer)
+yaml.SafeDumper.add_representer(PyObjectTag, pyobject_tag_representer)
+
+
 def sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
 ) -> Dict[str, Any]:
@@ -262,13 +276,7 @@ def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> 
     return tpe
 
 
-def get_loader():
-    """Integrate custom tags into the loader system of the PyYAML library
-
-    Returns:
-        loader: yaml.SafeLoader instance
-    """
-    loader = yaml.SafeLoader
+def _add_common_constructors(loader: type[yaml.Loader]) -> type[yaml.Loader]:
     loader.add_constructor("!sweep", sweep_constructor)
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
@@ -278,7 +286,23 @@ def get_loader():
     return loader
 
 
-def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
+_add_common_constructors(yaml.Loader)
+_add_common_constructors(yaml.FullLoader)
+_add_common_constructors(yaml.SafeLoader)
+
+
+def get_loader():
+    """Integrate custom tags into the loader system of the PyYAML library
+
+    Returns:
+        loader: yaml.SafeLoader instance
+    """
+    return yaml.SafeLoader
+
+
+def convert_to_pyobject_tags(
+    config: Dict[str, Any], *, emit_yaml_tags: bool = False
+) -> Dict[str, Any]:
     """Convert specific values in the configuration dictionary to `pyobject` YAML tags.
     This is useful for saving the best configuration back to a YAML file,
     and make sure that these tags are converted back to the original structures
@@ -288,6 +312,9 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
 
     Args:
         config (Dict[str, Any]): The configuration dictionary.
+        emit_yaml_tags (bool): When true, return tagged scalar values that PyYAML
+            emits as real !pyobject tags. When false, keep the historic string
+            marker behavior.
 
     Returns:
         Dict[str, Any]: The configuration dictionary with converted custom tags.
@@ -299,15 +326,21 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
     elif isinstance(config, list):
         items = enumerate(config)
         new_config = [None] * len(config)
+    elif isinstance(config, tuple):
+        items = enumerate(config)
+        new_config = [None] * len(config)
     else:
         return config
 
     for key, value in items:
         # recursive cases
-        if isinstance(value, dict) or isinstance(value, list):
-            new_value = convert_to_pyobject_tags(value)
+        if (
+            isinstance(value, dict)
+            or isinstance(value, list)
+            or isinstance(value, tuple)
+        ):
+            new_value = convert_to_pyobject_tags(value, emit_yaml_tags=emit_yaml_tags)
             new_config[key] = new_value
-
         # base cases
         else:
             # TODO: this should use the existing tag as a marker, not the type
@@ -320,8 +353,12 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
                 module = value.__module__
                 class_name = value.__name__
                 full_class_name = f"{module}.{class_name}"
-                pyobject_tag = f"!pyobject {full_class_name}"
-                new_config[key] = pyobject_tag
+                if emit_yaml_tags:
+                    new_config[key] = PyObjectTag(full_class_name)
+                else:
+                    new_config[key] = f"!pyobject {full_class_name}"
+            elif isinstance(value, tuple):
+                new_config[key] = list(value)
             else:
                 new_config[key] = value
 

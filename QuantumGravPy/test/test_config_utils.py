@@ -182,6 +182,24 @@ def test_convert_to_pyobject_tags():
     assert config_with_tags["trainer"]["epochs"] == 5
 
 
+def test_convert_to_pyobject_tags_can_emit_loadable_yaml_tags():
+    config = {"model": {"type": QG.models.GNNBlock}}
+
+    yaml_text = yaml.safe_dump(
+        QG.config_utils.convert_to_pyobject_tags(config, emit_yaml_tags=True)
+    )
+
+    assert "type: !pyobject" in yaml_text
+    assert "'!pyobject" not in yaml_text
+    assert (
+        yaml.load(yaml_text, Loader=QG.config_utils.get_loader())["model"]["type"]
+        is QG.models.GNNBlock
+    )
+    assert (
+        yaml.load(yaml_text, Loader=yaml.Loader)["model"]["type"] is QG.models.GNNBlock
+    )
+
+
 def test_initialize_config_handler_nonsweep(yaml_text_nonsweep):
     loader = QG.config_utils.get_loader()
     cfg = yaml.load(yaml_text_nonsweep, Loader=loader)
