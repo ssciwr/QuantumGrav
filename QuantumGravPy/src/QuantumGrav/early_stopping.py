@@ -261,17 +261,19 @@ class DefaultEarlyStopping(base.Configurable):
         Returns:
             dict[str, Any]: A dictionary containing the early stopping's configuration and state.
         """
-        d = dict()
-
-        for _, task in self.tasks.items():
-            d["current_grace_period"] = task["grace_period"]
-            d["best_score"] = task["init_best_score"]
-
-        d["mode"] = self.mode
-        d["patience"] = self.patience
-        d["current_patience"] = self.current_patience
-
-        return d
+        return {
+            "tasks": {
+                key: {
+                    "current_grace_period": task["current_grace_period"],
+                    "best_score": task["best_score"],
+                    "found_better": task["found_better"],
+                }
+                for key, task in self.tasks.items()
+            },
+            "mode": self.mode,
+            "patience": self.patience,
+            "current_patience": self.current_patience,
+        }
 
     def load_state_dict(self, state_dict: dict[str, Any]):
         """Load the early stopping instance from a state dictionary.
@@ -279,9 +281,15 @@ class DefaultEarlyStopping(base.Configurable):
         Args:
             state_dict (dict[str, Any]): A dictionary containing the early stopping's configuration and state.
         """
-        for _, task in self.tasks.items():
-            task["current_grace_period"] = state_dict["current_grace_period"]
-            task["best_score"] = state_dict["best_score"]
+        tasks_state = state_dict["tasks"]
+
+        for key, task in self.tasks.items():
+            key_state = tasks_state.get(key, tasks_state.get(str(key), {}))
+            task["current_grace_period"] = key_state.get(
+                "current_grace_period", task["current_grace_period"]
+            )
+            task["best_score"] = key_state.get("best_score", task["best_score"])
+            task["found_better"] = key_state.get("found_better", task["found_better"])
 
         self.mode = state_dict["mode"]
         self.patience = state_dict["patience"]
