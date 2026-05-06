@@ -843,7 +843,7 @@ class Trainer(base.Configurable):
             )
             if should_stop:
                 self.logger.info("Stopping training early.")
-                self.save_checkpoint(name_addition="_current_best")
+                self.save_checkpoint(name_addition="_final")
                 break
 
             if self.early_stopper is not None and self.early_stopper.found_better_model:
@@ -987,12 +987,6 @@ class Trainer(base.Configurable):
             RuntimeError: If the model is not initialized.
         """
         path = Path(load_path)
-
-        if new_path is not None:
-            new_path = Path(new_path)
-            if not new_path.parent.exists():
-                new_path.parent.mkdir(parents=True)
-
         # load snapshot
         snapshot = Snapshot.load(path)
 

@@ -237,7 +237,7 @@ class Tester(Evaluator):
     def report(self, data: pd.DataFrame) -> None:
         """Report the monitoring data"""
         self.logger.info("Testing results: ")
-        self.logger.info("\n%s", data.tail(1).to_string(float_format="{:.4f}".format))
+        self.logger.info("\n%s", data.tail(1).to_string(float_format="{:e}".format))
 
 
 class Validator(Evaluator):
@@ -284,4 +284,4 @@ class Validator(Evaluator):
     def report(self, data: pd.DataFrame) -> None:
         """Report the monitoring data"""
         self.logger.info("Validation results: ")
-        self.logger.info("\n%s", data.tail(1).to_string(float_format="{:.4f}".format))
+        self.logger.info("\n%s", data.tail(1).to_string(float_format="{:e}".format))
