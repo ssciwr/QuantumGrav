@@ -248,6 +248,18 @@ class Trainer(base.Configurable):
                         "minimum": 1,
                         "description": "Checkpoint every N epochs (or None to disable)",
                     },
+                    "continue_from_snapshot": {
+                        "type": "boolean",
+                        "description": "Continue training from a saved trainer snapshot",
+                    },
+                    "snapshot_path": {
+                        "type": "string",
+                        "description": "Path to the snapshot to continue from",
+                    },
+                    "continuation_path": {
+                        "type": "string",
+                        "description": "Output path for artifacts produced by the continuation run",
+                    },
                 },
                 "required": [
                     "seed",
@@ -261,6 +273,16 @@ class Trainer(base.Configurable):
                     "num_workers",
                     "drop_last",
                     "checkpoint_at",
+                    "continue_from_snapshot",
+                ],
+                "allOf": [
+                    {
+                        "if": {
+                            "properties": {"continue_from_snapshot": {"const": True}},
+                            "required": ["continue_from_snapshot"],
+                        },
+                        "then": {"required": ["snapshot_path", "continuation_path"]},
+                    }
                 ],
                 "additionalProperties": True,
             },
@@ -413,6 +435,7 @@ class Trainer(base.Configurable):
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
 
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
+        self._configure_file_logging()
 
         if model is None:
             self.initialize_model()
@@ -422,6 +445,48 @@ class Trainer(base.Configurable):
 
         if lr_scheduler is None:
             self.initialize_lr_scheduler()
+
+    def _configure_file_logging(self) -> None:
+        """Attach the run log file to the trainer and optional child loggers."""
+        log_file = (self.data_path / "training.log").resolve()
+        formatter = logging.Formatter(
+            fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+
+        loggers = [self.logger]
+        if self.validator is not None:
+            loggers.append(self.validator.logger)
+        if self.tester is not None:
+            loggers.append(self.tester.logger)
+        if self.early_stopper is not None:
+            loggers.append(self.early_stopper.logger)
+
+        for logger in loggers:
+            has_current_handler = False
+            for handler in list(logger.handlers):
+                if not isinstance(handler, logging.FileHandler):
+                    continue
+
+                if Path(handler.baseFilename).resolve() == log_file:
+                    handler._quantumgrav_training_log = True
+                    has_current_handler = True
+                    continue
+
+                if not getattr(handler, "_quantumgrav_training_log", False):
+                    continue
+
+                logger.removeHandler(handler)
+                handler.close()
+
+            if has_current_handler:
+                continue
+
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.INFO)
+            file_handler.setFormatter(formatter)
+            file_handler._quantumgrav_training_log = True
+            logger.addHandler(file_handler)
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "Trainer":
@@ -450,12 +515,36 @@ class Trainer(base.Configurable):
         data_path = (
             Path(config["training"]["path"]) / f"{config.get('name', 'run')}_{run_date}"
         )
+        config["training"]["path"] = str(data_path)
 
         # set up paths for storing model snapshots and data
         if not data_path.exists():
             data_path.mkdir(parents=True)
         logger.info(f"Data path set to: {data_path}")
 
+        return cls._from_validated_config(
+            config=config,
+            logger=logger,
+            criterion=criterion,
+            apply_model=apply_model,
+            seed=seed,
+            device=device,
+            data_path=data_path,
+        )
+
+    @classmethod
+    def _from_validated_config(
+        cls,
+        *,
+        config: dict[str, Any],
+        logger: logging.Logger,
+        criterion: Callable,
+        apply_model: Callable | None,
+        seed: int,
+        device: torch.device,
+        data_path: Path,
+    ) -> "Trainer":
+        """Build a trainer once schema validation, seeding, and data_path are settled."""
         # early stopping and evaluation functors
         if "early_stopping" in config:
             early_stopping_cfg = deepcopy(config["early_stopping"])
@@ -993,7 +1082,36 @@ class Trainer(base.Configurable):
         with open(snapshot.config_path) as f:
             config = yaml.load(f, Loader=get_loader())
 
-        trainer = cls.from_config(config)
+        logger = logging.getLogger(__name__)
+        logger.setLevel(config.get("log_level", logging.INFO))
+
+        data_path = (
+            Path(new_path)
+            if new_path is not None
+            else Path(snapshot.config_path).parent
+        )
+        config["training"]["path"] = str(data_path)
+        config["training"].setdefault("continue_from_snapshot", False)
+        jsonschema.validate(instance=config, schema=cls.schema)
+        data_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Data path set to: {data_path}")
+
+        criterion = config["criterion"]
+        apply_model = config.get("apply_model")
+        seed = config["training"]["seed"]
+        device = torch.device(config["training"]["device"])
+
+        seed_all_rngs(seed)
+
+        trainer = cls._from_validated_config(
+            config=config,
+            logger=logger,
+            criterion=criterion,
+            apply_model=apply_model,
+            seed=seed,
+            device=device,
+            data_path=data_path,
+        )
 
         # initialize model
         if trainer.model is not None:

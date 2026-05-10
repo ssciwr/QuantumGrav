@@ -102,6 +102,7 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
             # training loop
             "device": "cpu",
             "checkpoint_at": 20,
+            "continue_from_snapshot": False,
             "path": str(tmppath),
             # optimizer
             "optimizer_type": torch.optim.Adam,

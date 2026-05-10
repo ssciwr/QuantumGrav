@@ -33,6 +33,7 @@ training:
   drop_last: true  # Drop last incomplete batch
   prefetch_factor: 2  # Prefetch factor for data loading
   checkpoint_at: 1  # Save checkpoint every N epochs (0 = never)
+  continue_from_snapshot: false
 
 # Data configuration (example - adjust for your dataset)
 data:
