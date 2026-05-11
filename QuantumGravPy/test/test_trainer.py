@@ -43,6 +43,7 @@ def monitor_dummy(preds, targets):
 class DummyEvaluator(QG.Evaluator):
     def __init__(self):
         self.data = pd.DataFrame(columns=["loss", "other_loss"])
+        self.logger = logging.getLogger("DummyEvaluator")
 
     def validate(self, model, data_loader):
         # Dummy validate logic
@@ -151,6 +152,7 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
             # training loop
             "device": "cpu",
             "checkpoint_at": 20,
+            "continue_from_snapshot": False,
             "path": str(tmppath),
             # optimizer
             "optimizer_type": torch.optim.Adam,
@@ -415,6 +417,8 @@ def test_trainer_creation_works(config):
     assert trainer.checkpoint_at == config["training"].get("checkpoint_at", None)
     assert trainer.data_path.exists()
     assert trainer.checkpoint_path == trainer.data_path / "checkpoints"
+    assert config["training"]["path"] == str(trainer.data_path)
+    assert (trainer.data_path / "training.log").exists()
 
     assert isinstance(trainer.optimizer, torch.optim.Adam)
     assert isinstance(trainer.model, QG.GNNModel)
@@ -472,6 +476,29 @@ def test_trainer_creation_broken(broken_config):
         match="'validation' is a required property",
     ):
         QG.Trainer.from_config(broken_config)
+
+
+def test_trainer_schema_requires_continuation_paths_when_enabled(config):
+    cfg = deepcopy(config)
+    cfg["training"]["continue_from_snapshot"] = True
+
+    with pytest.raises(
+        jsonschema.ValidationError,
+        match="'snapshot_path' is a required property",
+    ):
+        jsonschema.validate(instance=cfg, schema=QG.Trainer.schema)
+
+    cfg["training"]["snapshot_path"] = "checkpoints/epoch_20"
+
+    with pytest.raises(
+        jsonschema.ValidationError,
+        match="'continuation_path' is a required property",
+    ):
+        jsonschema.validate(instance=cfg, schema=QG.Trainer.schema)
+
+    cfg["training"]["continuation_path"] = "continued_run"
+
+    jsonschema.validate(instance=cfg, schema=QG.Trainer.schema)
 
 
 def test_dataloader_factory_schema_owns_data_config():
@@ -846,6 +873,8 @@ def test_snapshot_save_and_load_round_trip(
     assert isinstance(loaded_trainer.tester, QG.Tester)
     assert isinstance(loaded_trainer.early_stopper, QG.DefaultEarlyStopping)
     assert loaded_trainer.epoch == trainer.epoch
+    assert loaded_trainer.data_path == trainer.data_path
+    assert loaded_trainer.checkpoint_path == trainer.checkpoint_path
 
     assert loaded_trainer.model is not None
     assert loaded_trainer.model.state_dict().keys() == trainer.model.state_dict().keys()
@@ -889,6 +918,27 @@ def test_snapshot_save_and_load_round_trip(
     assert training_data.shape[0] == 1
     assert training_data["epoch"].tolist() == [3]
     assert len(validation_data) == 2
+
+
+def test_load_checkpoint_can_write_continuation_to_new_path(
+    config_with_default_evaluators, tmppath
+):
+    config = deepcopy(config_with_default_evaluators)
+    config.pop("data", None)
+    trainer = QG.Trainer.from_config(config)
+    trainer.save_checkpoint("_for_continuation")
+
+    continuation_path = tmppath / "continued_run"
+    loaded_trainer = QG.Trainer.load_checkpoint(
+        trainer.checkpoint_path / "epoch_0_for_continuation",
+        continuation_path,
+    )
+
+    assert loaded_trainer.data_path == continuation_path
+    assert loaded_trainer.checkpoint_path == continuation_path / "checkpoints"
+    assert loaded_trainer.config["training"]["path"] == str(continuation_path)
+    assert (continuation_path / "config.yaml").exists()
+    assert (continuation_path / "training.log").exists()
 
 
 def test_snapshot_load_sets_missing_optional_fields_to_none(tmppath):
