@@ -2,7 +2,7 @@
 
 """
 insert_cset(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64; rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing)
-    -> BitArrayCauset
+	-> BitArrayCauset
 
 Insert `cset2Raw` into `cset1Raw` at a random or specified position. All atoms are reindexed accordingly.
 Random links are added *across* the insertion boundary — i.e. from atoms before the inserted block
@@ -60,7 +60,7 @@ function insert_cset(
     # Atoms before insert_pos stay the same
     # Then cset2 atoms
     # Then remaining cset1 atoms get shifted by n2
-    idx_map_cset1 = [i <= insert_pos ? i : i + n2 for i = 1:n1]
+    idx_map_cset1 = [i <= insert_pos ? i : i + n2 for i ∈ 1:n1]
     idx_map_cset2 = insert_pos .+ (1:n2)
 
     graph_merged = CausalSets.empty_graph(N)
@@ -94,7 +94,7 @@ function insert_cset(
     inserted_range = insert_pos .+ (1:n2)
 
     # Links from before to inserted
-    for i = 1:insert_pos
+    for i ∈ 1:insert_pos
         for j in inserted_range
             if !graph_merged.edges[i][j] && rand(rng) < link_probability
                 graph_merged.edges[i][j] = true
@@ -104,7 +104,7 @@ function insert_cset(
 
     # Links from inserted to after
     for i in inserted_range
-        for j = (insert_pos+n2+1):N
+        for j ∈ (insert_pos+n2+1):N
             if !graph_merged.edges[i][j] && rand(rng) < link_probability
                 graph_merged.edges[i][j] = true
             end
@@ -118,7 +118,7 @@ end
 
 """
 merge_csets(cset1Raw::AbstractCauset, cset2Raw::AbstractCauset, link_probability::Float64)
-    -> BitArrayCauset
+	-> BitArrayCauset
 
 Merge two causal sets `cset1Raw` and `cset2Raw` into a single causal set by placing them
 on the diagonal of a larger causet and connecting them with random links in the upper-right
@@ -155,9 +155,9 @@ end
 
 """
 insert_KR_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64;
-                            rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
-                            d::Int64=2, type::Type=Float32)
-    -> Tuple{BitArrayCauset, Bool, Matrix{T}}
+							rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
+							d::Int64=2, type::Type=Float32)
+	-> Tuple{BitArrayCauset, Bool, Matrix{T}}
 
 Generate a manifoldlike causal set and insert into it a KR-order
 causal set. The insertion point is chosen randomly (or specified via `position`).
@@ -179,9 +179,9 @@ Returns the merged causet, a dummy `true`, and the coordinate matrix used for th
 
 # Returns
 - A tuple `(cset, true, coords)` where:
-    - `cset` is the merged and transitively completed `BitArrayCauset`
-    - `true` is a placeholder flag
-    - `coords` is a `Matrix{T}` of coordinates used for the manifoldlike causet
+	- `cset` is the merged and transitively completed `BitArrayCauset`
+	- `true` is a placeholder flag
+	- `coords` is a `Matrix{T}` of coordinates used for the manifoldlike causet
 
 # Throws
 - `ArgumentError` if `link_probability` is not in the interval [0, 1]
@@ -221,10 +221,10 @@ function insert_KR_into_manifoldlike(
 end
 
 """
-insert_layered_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64; 
-                            rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
-                            d::Int64=2, type::Type=Float32)
-    -> Tuple{BitArrayCauset, Bool, Matrix{T}}
+insert_layered_into_manifoldlike(npoints::Int64, order::Int64, r::Float64, link_probability::Float64;
+							rng::AbstractRNG=Random.GLOBAL_RNG, position::Union{Nothing, Int64}=nothing,
+							d::Int64=2, type::Type=Float32)
+	-> Tuple{BitArrayCauset, Bool, Matrix{T}}
 
 Generate a manifoldlike causal set and insert into it a layered order. The insertion point is chosen randomly (or specified via `position`).
 Random links are added across the insertion boundary with probability `link_probability`.
@@ -246,9 +246,9 @@ Returns the merged causet, a dummy `true`, and the coordinate matrix used for th
 
 # Returns
 - A tuple `(cset, true, coords)` where:
-    - `cset` is the merged and transitively completed `BitArrayCauset`
-    - `true` is a placeholder flag
-    - `coords` is a `Matrix{T}` of coordinates used for the manifoldlike causet
+	- `cset` is the merged and transitively completed `BitArrayCauset`
+	- `true` is a placeholder flag
+	- `coords` is a `Matrix{T}` of coordinates used for the manifoldlike causet
 
 # Throws
 - `ArgumentError` if `link_probability` is not in the interval [0, 1]
@@ -275,7 +275,7 @@ function insert_layered_into_manifoldlike(
 
     cset1Raw, _, _ = make_polynomial_manifold_cset(n1, rng, order, r; d = d, type = type)
 
-    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p; rng = rng)
+    cset2Raw, _ = create_random_layered_causet(n2, 3; p = p, rng = rng)
 
     return insert_cset(
         cset1Raw,

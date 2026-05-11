@@ -164,14 +164,14 @@ function sample_bitarray_causet_by_connectivity(
         flips_per_step = max(flips_per_step, 1)  # Ensure at least one flip per step
 
         # Randomly select edges to flip
-        i = [rand(rng, 1:(size-1)) for flip = 1:flips_per_step]
-        j = [rand(rng, (i[flip]+1):size) for flip = 1:flips_per_step]
+        i = [rand(rng, 1:(size-1)) for flip ∈ 1:flips_per_step]
+        j = [rand(rng, (i[flip]+1):size) for flip ∈ 1:flips_per_step]
 
         # Store previous edge states for possible rollback
-        prev_edges = [graph.edges[i[flip]][j[flip]] for flip = 1:flips_per_step]
+        prev_edges = [graph.edges[i[flip]][j[flip]] for flip ∈ 1:flips_per_step]
 
         # Flip selected edges
-        for flip = 1:flips_per_step
+        for flip ∈ 1:flips_per_step
             graph.edges[i[flip]][j[flip]] = !prev_edges[flip]
         end
 
@@ -202,7 +202,7 @@ function sample_bitarray_causet_by_connectivity(
             prev_connectivity = new_connectivity
         else
             # Reject the modification: revert flipped edges
-            for flip = 1:flips_per_step
+            for flip ∈ 1:flips_per_step
                 graph.edges[i[flip]][j[flip]] = prev_edges[flip]
             end
         end
@@ -244,6 +244,7 @@ function random_causet_by_connectivity_distribution(
     rng::Random.AbstractRNG;
     rel_tol::Union{Float64,Nothing} = nothing,
     abs_tol::Union{Float64,Nothing} = nothing,
+    flip_param::Union{Float64,Nothing} = nothing,
     acceptance::Float64 = 5e5,
 )::Tuple{CausalSets.BitArrayCauset,Bool}
     if size < 1
@@ -290,6 +291,7 @@ function random_causet_by_connectivity_distribution(
         markov_steps,
         rng;
         rel_tol = rel_tol,
+        flip_param = flip_param,
         abs_tol = abs_tol,
         acceptance = acceptance,
     )
