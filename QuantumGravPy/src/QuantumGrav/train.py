@@ -424,11 +424,14 @@ class Trainer(base.Configurable):
             self.initialize_lr_scheduler()
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> "Trainer":
+    def from_config(
+        cls, config: dict[str, Any], path_overwrite: Path | str | None = None
+    ) -> "Trainer":
         """Create a Trainer instance from a configuration dictionary.
 
         Args:
             config (dict[str, Any]): The configuration dictionary.
+            path_overwrite (Path | str | None): The path to overwrite the default data path.
         """
         jsonschema.validate(instance=config, schema=cls.schema)
 
@@ -445,11 +448,15 @@ class Trainer(base.Configurable):
 
         seed_all_rngs(seed)
 
-        # date and time of run:
-        run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        data_path = (
-            Path(config["training"]["path"]) / f"{config.get('name', 'run')}_{run_date}"
-        )
+        if path_overwrite is None:
+            # date and time of run:
+            run_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            data_path = (
+                Path(config["training"]["path"])
+                / f"{config.get('name', 'run')}_{run_date}"
+            )
+        else:
+            data_path = Path(path_overwrite)
 
         # set up paths for storing model snapshots and data
         if not data_path.exists():
@@ -505,12 +512,13 @@ class Trainer(base.Configurable):
         else:
             tester = None
 
-        with open(data_path / "config.yaml", "w") as f:
-            yaml.safe_dump(
-                convert_to_pyobject_tags(config, emit_yaml_tags=True),
-                f,
-                sort_keys=False,
-            )
+        if path_overwrite is not None:
+            with open(data_path / "config.yaml", "w") as f:
+                yaml.safe_dump(
+                    convert_to_pyobject_tags(config, emit_yaml_tags=True),
+                    f,
+                    sort_keys=False,
+                )
 
         trainer = cls(
             config=config,
@@ -527,6 +535,23 @@ class Trainer(base.Configurable):
             device=device,
             data_path=data_path,
         )
+
+        logging_formatter = logging.Formatter(
+            fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+
+        logging.basicConfig(  # or logging.INFO if you want less verbosity
+            # TODO: use logging level from config, default to INFO
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+
+        log_file = Path(trainer.data_path) / "training.log"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging_formatter)
+        trainer.logger.addHandler(file_handler)
+        trainer.validator.logger.addHandler(file_handler)
+        trainer.tester.logger.addHandler(file_handler)
 
         logger.info("Trainer initialized")
         logger.debug(f"Configuration: {config}")
@@ -813,7 +838,10 @@ class Trainer(base.Configurable):
         )
 
         while self.epoch < num_epochs:
-            self.logger.info(f"  Current epoch: {self.epoch}/{num_epochs}")
+            self.logger.info(
+                f"  Current epoch: {self.epoch}/{num_epochs}, patience: {self.early_stopper.patience if self.early_stopper else 'N/A'} epochs"
+            )
+
             self.model.train()
 
             epoch_data = self._run_train_epoch(self.model, self.optimizer, train_loader)
@@ -975,13 +1003,13 @@ class Trainer(base.Configurable):
 
     @classmethod
     def load_checkpoint(
-        cls, load_path: Path | str, new_path: Path | str | None = None
+        cls, load_path: Path | str, continue_path: Path | str | None = None
     ) -> "Trainer":
         """Load model checkpoint to the device given
 
         Args:
             load_path (Path | str): The path to the checkpoint file.
-            new_path (Path | str | None): The path to the new checkpoint file.
+            continue_path (Path | str | None): The path to the new checkpoint file.
 
         Raises:
             RuntimeError: If the model is not initialized.
@@ -993,7 +1021,7 @@ class Trainer(base.Configurable):
         with open(snapshot.config_path) as f:
             config = yaml.load(f, Loader=get_loader())
 
-        trainer = cls.from_config(config)
+        trainer = cls.from_config(config, path_overwrite=continue_path)
 
         # initialize model
         if trainer.model is not None:
