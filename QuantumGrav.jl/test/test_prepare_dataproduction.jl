@@ -119,6 +119,7 @@
         "csetsize_distr_args" => [10, 20],
         "csetsize_distr" => "DiscreteUniform",
         "cset_type" => "polynomial",
+        "zip" => false,
         "output" => "./",
     )
 
@@ -174,6 +175,54 @@ end
         rmprocs(workers()...)
     end
     return targetpath
+end
+
+@testsnippet run_dataproduction_zip begin
+    using Distributed
+
+    # add processes
+    addprocs(4; exeflags = ["--threads=2", "--optimize=3"], enable_threaded_blas = true)
+
+    # use @everywhere to include necessary modules on all workers
+    @everywhere using QuantumGrav
+    @everywhere using Random
+    @everywhere using YAML
+    @everywhere using Zarr
+    @everywhere using LinearAlgebra
+    @everywhere using Dates
+    @everywhere using CausalSets
+
+    @everywhere @eval Main function make_data_zip(factory::CsetFactory)
+        n = rand(factory.rng, factory.npoint_distribution)
+        cset, _ = factory(factory.conf["cset_type"], n, factory.rng)
+        return Dict("n" => cset.atom_count)
+    end
+    # make a temporary output path
+    targetpath_zip = mktempdir()
+
+    try
+        # read the default config and modify it to use the temporary output path
+        # and produce more data. This serves as a dummy user config
+        defaultconfigpath =
+            joinpath(dirname(@__DIR__), "configs", "createdata_default.yaml")
+        cfg = YAML.load_file(defaultconfigpath)
+        cfg["output"] = targetpath_zip
+        cfg["num_datapoints"] = 9
+
+        configpath = joinpath(targetpath_zip, "config.yaml")
+
+        # .. then write back again
+        open(configpath, "w") do io
+            YAML.write(io, cfg)
+        end
+
+        # produce 9 data points using multiprocessing and zip the resulting zarr store
+        QuantumGrav.produce_data(3, configpath, Main.make_data_zip; zip = true)
+
+    finally
+        rmprocs(workers()...)
+    end
+    return targetpath_zip
 end
 
 
@@ -486,6 +535,34 @@ end
     @test 7 < length(unique(ns)) <= 9 # generally expected to have high uniqueness
 end
 
+@testitem "test_mp_dataproduction_zipstore" tags = [:dataproduction] setup=[
+    run_dataproduction_zip,
+] begin
+    using Mmap
+    using Zarr
+    # check that data was produced as a directory store and packaged as a zip store
+    zarr_files = filter(x -> endswith(x, ".zarr"), readdir(targetpath_zip))
+    zip_files = filter(x -> endswith(x, ".zarr.zip"), readdir(targetpath_zip))
+    @test length(zarr_files) == 1
+    @test length(zip_files) == 1
+    @test first(zip_files) == first(zarr_files) * ".zip"
+
+    # test data content through the ZipStore reader
+    zip_store = Zarr.ZipStore(Mmap.mmap(joinpath(targetpath_zip, first(zip_files))))
+    group = Zarr.zopen(zip_store; zarr_format = 2)
+    @test group isa Zarr.ZGroup
+    @test length(keys(group.groups)) == 9 # 9 datapoints produced
+
+    ns = []
+    for i ∈ 1:9
+        @test "cset_$i" in keys(group.groups)
+        @test "n" in keys(group.groups["cset_$i"].arrays)
+        n = group.groups["cset_$i"].arrays["n"][1]
+        push!(ns, n)
+    end
+    @test 7 < length(unique(ns)) <= 9 # generally expected to have high uniqueness
+end
+
 
 @testitem "test_mp_dataproduction_throws" tags=[:dataproduction] setup=[run_dataproduction] begin
     @eval Main function make_data(factory::CsetFactory)
@@ -543,7 +620,7 @@ end
     # find repetitions that start after a non-repeating offset. this is, however,
     # not necessary b/c if repetition is possible, it starts from the begining.
     # also, we don't count single characters b/c they may repeat at random.
-    for i = 2:12 # sequences of length 2 to length 12 = num_datapoints / 2 checked
+    for i ∈ 2:12 # sequences of length 2 to length 12 = num_datapoints / 2 checked
         @test ns[1:i] != ns[(i+1):(2*i)]
     end
 

@@ -312,6 +312,7 @@ function produce_data(
 
     if zip
         @info "Zipping the zarr store into a single file"
+        zip_path = filepath * ".zip"
         open(zip_path, "w") do io
             Zarr.writezip(io, file)
         end
