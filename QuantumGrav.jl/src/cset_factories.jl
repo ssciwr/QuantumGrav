@@ -287,7 +287,7 @@ struct RandomCsetMaker
     num_tries::Int64
     abs_tol::Union{Float64,Nothing}
     rel_tol::Union{Float64,Nothing}
-    flip_param::Union{Float64,Nothing}
+    acceptance::Union{Float64,Nothing}
 end
 
 const RandomCsetMaker_schema = JSONSchema.Schema("""{
@@ -309,7 +309,7 @@ const RandomCsetMaker_schema = JSONSchema.Schema("""{
   "num_tries": { "type": "integer", "minimum": 1 },
   "abs_tol": { "type": ["number", "null"] },
   "rel_tol": { "type": ["number", "null"] },
-   "flip_param": { "type": ["number", "null"] }
+   "acceptance": { "type": ["number", "null"] }
    },
    "required": [
   "connectivity_distribution",
@@ -353,7 +353,7 @@ function RandomCsetMaker(config::AbstractDict)
         config["num_tries"],
         haskey(config, "abs_tol") ? config["abs_tol"] : nothing,
         haskey(config, "rel_tol") ? config["rel_tol"] : nothing,
-        haskey(config, "flip_param") ? config["flip_param"] : nothing,
+        haskey(config, "acceptance") ? config["acceptance"] : nothing,
     )
 end
 
@@ -396,7 +396,7 @@ function (rcm::RandomCsetMaker)(
             rng;
             abs_tol = rcm.abs_tol,
             rel_tol = rcm.rel_tol,
-            flip_param = rcm.flip_param,
+            acceptance = rcm.acceptance,
         )
         tries += 1
 
