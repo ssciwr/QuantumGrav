@@ -3,6 +3,7 @@ training:
   seed: 42
   device: "cuda"
   checkpoint_at: 20
+  continue_from_snapshot: false
   path: &output /mnt/dataLinux/machinelearning_data/v8/2048_5k/manifold_classifier
   # optimizer
   optimizer_type: !pyobject torch.optim.AdamW
