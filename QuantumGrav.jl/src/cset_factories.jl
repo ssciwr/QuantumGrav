@@ -1203,6 +1203,7 @@ csetfactory_schema = JSONSchema.Schema("""
   			"additionalProperties": true
   		},
   		"csetsize_distr": {"type": "string"},
+  "zip" : { "type": "boolean" },
   	"coarse_graining_distribution": {"type": "string"},
   	"coarse_graining_distribution_args": {
   			"type": "array",
