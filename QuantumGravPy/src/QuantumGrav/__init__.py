@@ -7,9 +7,9 @@ from .utils import (
 from .dataset_ondisk import QGDataset
 from .gnn_model import GNNModel
 from .evaluate import (
-    DefaultEvaluator,
-    DefaultTester,
-    DefaultValidator,
+    Evaluator,
+    Tester,
+    Validator,
 )
 
 from .config_utils import ConfigHandler, get_loader
@@ -42,9 +42,9 @@ __all__ = [
     "initialize_ddp",
     "cleanup_ddp",
     # evaluation
-    "DefaultEvaluator",
-    "DefaultValidator",
-    "DefaultTester",
+    "Evaluator",
+    "Validator",
+    "Tester",
     "DefaultEarlyStopping",
     # config handler
     "get_loader",
