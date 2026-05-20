@@ -19,7 +19,7 @@ class Evaluator(base.Configurable):
         "type": "object",
         "properties": {
             "device": {"type": "string", "description": "The device to work on"},
-            "criterion": {"desccription": "Loss function for the model evaluation"},
+            "criterion": {"description": "Loss function for the model evaluation"},
             "evaluator_tasks": {
                 "type": "array",
                 "description": "Flat list of monitor specs as objects: {name, monitor, args?, kwargs?}",
@@ -87,18 +87,15 @@ class Evaluator(base.Configurable):
         columns = ["loss_avg", "loss_min", "loss_max"]
         self.task_specs = evaluator_tasks
         if self.task_specs is None:
-            self.task_specs = dict()
+            self.task_specs = [
+                dict(),
+            ]
         else:
             for task_spec in self.task_specs:
                 monitor = task_spec["monitor"]
-                if task_spec.get("args") or task_spec.get("kwargs"):
+                if "args" in task_spec or "kwargs" in task_spec:
                     monitor = monitor(
-                        *(task_spec.get("args", []) if task_spec.get("args") else []),
-                        **(
-                            task_spec.get("kwargs", {})
-                            if task_spec.get("kwargs")
-                            else {}
-                        ),
+                        *(task_spec.get("args", [])), **task_spec.get("kwargs", {})
                     )
                 columns.append(task_spec["name"])
                 self.tasks.append((task_spec["name"], monitor))
@@ -174,10 +171,10 @@ class Evaluator(base.Configurable):
         )
 
     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
-        """Build the evaluator from a config dictionary
+        """Load the evaluator's state from a state dictionary.
 
         Args:
-            state_dict   (Dict[str, Any]): Config dictionary to build the evaluator from.
+            state_dict   (Dict[str, Any]): State dictionary to load the evaluator's state from.
         """
         self.data = state_dict["data"]
 
@@ -200,24 +197,6 @@ class Tester(Evaluator):
     using a specified criterion and optional model application function.
     """
 
-    def __init__(
-        self,
-        device: str | torch.device | int,
-        criterion: Callable,
-        evaluator_tasks: Sequence[Dict[str, Any]],
-        apply_model: Callable | None = None,
-    ):
-        """Default tester for model testing.
-
-        Args:
-            device (str | torch.device | int): The device to run the testing on.
-            criterion (Callable): The loss function to use for testing.
-            evaluator_tasks (Sequence[Dict[str, Any]]):
-                List of task objects with keys {name, monitor, args?, kwargs?}. See `Evaluator.__init__` for details.
-            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
-        """
-        super().__init__(device, criterion, evaluator_tasks, apply_model)
-
     def test(
         self,
         model: torch.nn.Module,
@@ -235,7 +214,11 @@ class Tester(Evaluator):
         return self.evaluate(model, data_loader)
 
     def report(self, data: pd.DataFrame) -> None:
-        """Report the monitoring data"""
+        """Report the testing results.
+
+        Args:
+            data (pd.DataFrame): Testing results to report.
+        """
         self.logger.info("Testing results: ")
         self.logger.info("\n%s", data.tail(1).to_string(float_format="{:e}".format))
 
@@ -247,24 +230,6 @@ class Validator(Evaluator):
         Evaluator (Class): Inherits from Evaluator and provides functionality for validating models
     using a specified criterion and optional model application function.
     """
-
-    def __init__(
-        self,
-        device: str | torch.device | int,
-        criterion: Callable,
-        evaluator_tasks: Sequence[Dict[str, Any]],
-        apply_model: Callable | None = None,
-    ):
-        """Default validator for model validation.
-
-        Args:
-            device (str | torch.device | int): The device to run the validation on.
-            criterion (Callable): The loss function to use for validation.
-            evaluator_tasks (Sequence[Dict[str, Any]]):
-                List of task objects with keys {name, monitor, args?, kwargs?}. See `Evaluator.__init__` for details.
-            apply_model (Callable | None, optional): A function to apply the model to the data. Defaults to None.
-        """
-        super().__init__(device, criterion, evaluator_tasks, apply_model)
 
     def validate(
         self,
@@ -282,6 +247,10 @@ class Validator(Evaluator):
         return self.evaluate(model, data_loader)
 
     def report(self, data: pd.DataFrame) -> None:
-        """Report the monitoring data"""
+        """Report the validation results.
+
+        Args:
+            data (pd.DataFrame): Validation results to report.
+        """
         self.logger.info("Validation results: ")
         self.logger.info("\n%s", data.tail(1).to_string(float_format="{:e}".format))

@@ -1,5 +1,6 @@
 import logging
 import QuantumGrav as QG
+import pandas as pd
 from torch_geometric.data import Data
 import torch
 import torch_geometric
@@ -249,14 +250,22 @@ def test_default_validator_report(caplog, make_dataloader, gnn_model_eval, tasks
     )
     assert len(evaluator.data) == 0
     current_data = evaluator.evaluate(model, dataloader)
-
+    datadict = {
+        "loss_avg": 43.1708,
+        "loss_min": 23.6407,
+        "loss_max": 59.5675,
+        "first": 129.7124,
+        "second": 3.1400,
+        "third": 129.6124,
+        "fourth": 3.1400,
+    }
+    data = pd.DataFrame(datadict, index=[0])
+    datastring = data.tail(1).to_string(float_format="{:.4f}".format)
     with caplog.at_level(logging.INFO):
         evaluator.report(current_data)
         # Test specific content
         assert "Validation results:" in caplog.text
-        assert "\n%s", (
-            current_data.tail(1).to_string(float_format="{:.4f}".format) in caplog.text
-        )
+        assert "\n%s", datastring in caplog.text
 
 
 def test_default_test_report(caplog, make_dataloader, gnn_model_eval, tasks):
@@ -279,3 +288,18 @@ def test_default_test_report(caplog, make_dataloader, gnn_model_eval, tasks):
         assert "\n%s", (
             current_data.tail(1).to_string(float_format="{:.4f}".format) in caplog.text
         )
+
+
+def test_to_state_dict(gnn_model_eval, config):
+    evaluator = QG.Validator.from_config(config)
+    state_dict = evaluator.to_state_dict()
+    assert "data" in state_dict
+    assert isinstance(state_dict["data"], pd.DataFrame)
+
+
+def test_load_state_dict(gnn_model_eval, config):
+    evaluator = QG.Validator.from_config(config)
+    state_dict = evaluator.to_state_dict()
+    new_evaluator = QG.Validator.from_config(config)
+    new_evaluator.load_state_dict(state_dict)
+    assert new_evaluator.data.equals(evaluator.data)
