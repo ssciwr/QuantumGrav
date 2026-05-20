@@ -47,6 +47,11 @@ using TestItemRunner
 julia --project=QuantumGrav.jl -e "using Pkg; Pkg.test()"
 ```
 
+run test coverage report:
+```bash
+julia --project=QuantumGrav.jl -e "using Pkg; Pkg.test(coverage=true)"
+```
+
 ### Linting and formatting
 ```bash
 # Run all pre-commit hooks (ruff format/lint for Python, julia-format for Julia, nbstripout)

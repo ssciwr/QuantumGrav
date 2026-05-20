@@ -46,6 +46,10 @@ using TestItemRunner
 # Or from terminal (activating the QuantumGrav.jl environment):
 julia --project=QuantumGrav.jl -e "using Pkg; Pkg.test()"
 ```
+run test coverage report:
+```bash
+julia --project=QuantumGrav.jl -e "using Pkg; Pkg.test(coverage=true)"
+```
 
 ### Linting and formatting
 ```bash
