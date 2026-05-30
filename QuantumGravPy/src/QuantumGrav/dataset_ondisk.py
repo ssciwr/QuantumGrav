@@ -304,7 +304,11 @@ class QGDataset(Dataset):
             else:
                 store = zarr.storage.LocalStore(file, read_only=True)
 
-            rootgroup = zarr.open_group(store.root)
+            rootgroup = zarr.open_group(
+                store,
+                path="",
+                mode="r",
+            )
             self.stores[file] = (store, rootgroup)
 
         return self.stores[file]
@@ -349,8 +353,6 @@ class QGDataset(Dataset):
 
     def get(self, idx: int) -> Data:
         """Get a single data sample by index."""
-        if self._num_samples is None:
-            raise ValueError("Dataset has not been processed yet.")
 
         # Load the data from the processed files
         if self.preprocess:
@@ -360,15 +362,21 @@ class QGDataset(Dataset):
         else:
             # TODO: this is inefficient, but it's the only robust way I could find
             dfile, idx = self.map_index(idx)
-            store, _ = self._get_store_group(dfile)
+            store, root = self._get_store_group(dfile)
             # since julia Zarr files allow having no root groups, we need to open the store directly
-            datapoint = self.read_data(zarr.open_group(store, path=f"cset_{idx}"))
+            datapoint = self.read_data(
+                zarr.open_group(
+                    store,
+                    path=f"cset_{idx + 1}",
+                    mode="r",
+                )
+            )
         datapoint = self.transform(datapoint)
 
         return datapoint
 
     def __getitem__(
-        self, idx: int | Sequence[int]
+        self, idx: int | Sequence[int] | slice
     ) -> Data | Sequence[Data] | Collection[Any]:
         """_summary_
 
@@ -380,6 +388,8 @@ class QGDataset(Dataset):
         """
         if isinstance(idx, int):
             return self.get(idx)
+        elif isinstance(idx, slice):
+            return [self.get(i) for i in range(idx.start, idx.stop, idx.step or 1)]
         else:
             return [self.get(i) for i in idx]
 

@@ -87,7 +87,7 @@ def test_ondisk_dataset_creation_processing_no_pre_transform(create_data_zarr):
         validate_data=True,
         n_processes=1,
         chunksize=4,
-        transform=lambda x: x,
+        transform=QG.utils.identity,
     )
 
     assert dataset.input == datafiles
@@ -96,7 +96,6 @@ def test_ondisk_dataset_creation_processing_no_pre_transform(create_data_zarr):
     assert dataset.float_type == torch.float32
     assert dataset.int_type == torch.int64
     assert dataset.validate_data is True
-    assert dataset.data_reader is not None
     assert dataset.chunksize == 4
     assert dataset.n_processes == 1
     assert len(dataset) == 15  # Assuming 15 samples in the datafiles
@@ -162,6 +161,12 @@ def test_ondisk_dataset_get(create_data_zarr):
 
     _ = dataset[12]
     assert len(dataset.stores) == 3
+
+    _ = dataset[14]
+    assert len(dataset.stores) == 3
+
+    datarange = dataset[3:8]
+    assert len(datarange) == 5
 
     for file in dataset.input:
         assert file in dataset.stores
