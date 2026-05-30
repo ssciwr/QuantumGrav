@@ -12,6 +12,9 @@ from collections.abc import Callable, Collection
 from joblib import delayed, Parallel
 from typing import Sequence
 import numpy as np
+from zarr.storage import ZipStore, LocalStore
+
+from .utils import ZarrStore
 
 
 class QGDatasetBase:
@@ -108,11 +111,11 @@ class QGDatasetBase:
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
                 yaml.dump(self.metadata, f)
 
-    def _get_num_samples_per_file(self, filepath: str | Path) -> int | np.ndarray:
+    def _get_num_samples_per_file(self, filepath: Path) -> int:
         """Get the number of samples in a given file.
 
         Args:
-            filepath (str | Path): The path to the file.
+            filepath (Path): path to zarr store
 
         Raises:
             ValueError: If the file is not a valid Zarr file.
@@ -121,58 +124,16 @@ class QGDatasetBase:
             int: The number of samples in the file.
         """
 
-        # try to find the sample number from a dedicated dataset
-        def try_find_numsamples(f):
-            s = None
-            for name in ["num_causal_sets", "num_samples"]:
-                if name in f:
-                    s = f[name]
-                    break
-            return s
-
-        # ... if that fails, we try to read it from any scalar dataset.
-        # ... if we can´t because they are of unequal sizes, we return None
-        # ... to indicate an unresolvable state
-        def fallback(f) -> int | None:
-            # find scalar datasets and use their sizes to determine size
-            shapes = [f[k].shape[0] for k in f.keys() if len(f[k].shape) == 1]
-            max_shape = max(shapes)
-            min_shape = min(shapes)
-            if max_shape != min_shape:
-                return None
-            else:
-                return max_shape
-
-        # same logic for Zarr
-        try:
+        with ZarrStore(filepath, mode="r") as store:
+            # same logic for Zarr
             group = zarr.open_group(
-                zarr.storage.LocalStore(filepath, read_only=True),
+                store,
                 path="",
                 mode="r",
             )
-            # note that fallback returns an int directly,
-            # while for try_find_numsamples we need to index into the result
-            s = try_find_numsamples(group)
-            if s is not None:
-                return s[0]
-            else:
-                s = fallback(group)
-                if s is not None:
-                    return s
-                else:
-                    raise RuntimeError("Unable to determine number of samples.")
-        except Exception:
-            # we need an extra fallback for zarr b/c Julia Zarr and python Zarr
-            # can differ in layout - Julia Zarr does not have to have a group
-            try:
-                # count the number of samples
-                s = 0
-                for p in Path(filepath).resolve().absolute().iterdir():
-                    if "cset_" in p.name:
-                        s += 1
-                return s
-            except Exception:
-                raise
+            num_samples = len(group)
+
+        return num_samples
 
     @property
     def processed_dir(self) -> str:
@@ -212,23 +173,24 @@ class QGDatasetBase:
 
     def process_chunk(
         self,
-        store: zarr.storage.LocalStore,
+        store: ZipStore | LocalStore,
         start: int,
+        N: int,
         pre_transform: Callable[[Data | Collection], Data] | None = None,
         pre_filter: Callable[[Data | Collection], bool] | None = None,
     ) -> Sequence[Data]:
         """Process a chunk of data from the raw file. This method is intended to be used in the data loading pipeline to read a chunk of data, apply transformations, and filter the read data, and thus should not be called directly.
 
         Args:
-            store (zarr.storage.LocalStore): local zarr storage
+            store (zarr.storage.LocalStore | zarr.storage.ZipStore): local zarr storage
             start (int): start index
+            N (int): number of csets in the zarr store
             pre_transform (Callable[[Data], Data] | None, optional): Transformation that adds additional features to the data. Defaults to None.
             pre_filter (Callable[[Data], bool] | None, optional): A function that filters the data. Defaults to None.
 
         Returns:
             list[Data]: The processed data or None if the chunk is empty.
         """
-        N = self._get_num_samples_per_file(store.root)
 
         def process_item(i: int):
             item = self.data_reader(

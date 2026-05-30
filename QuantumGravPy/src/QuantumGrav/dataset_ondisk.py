@@ -10,8 +10,7 @@ from pathlib import Path
 
 from collections.abc import Callable, Sequence, Collection
 from typing import Any, Tuple
-
-# for progress bars
+from .utils import ZarrStore
 
 # internals
 from .dataset_base import QGDatasetBase
@@ -102,35 +101,34 @@ class QGDataset(QGDatasetBase, Dataset):
             return
 
         for file in self.input:
-            N = self._get_num_samples_per_file(Path(file).resolve().absolute())
+            file = Path(file).resolve()
+
+            N = self._get_num_samples_per_file(Path(file).resolve())
 
             num_chunks = N // self.chunksize
 
-            raw_file = zarr.storage.LocalStore(
-                str(Path(file).resolve().absolute()), read_only=True
-            )
+            with ZarrStore(file=file, mode="r") as raw_file:
+                for i in range(0, num_chunks * self.chunksize, self.chunksize):
+                    data = self.process_chunk(
+                        raw_file,
+                        i,
+                        N,
+                        pre_transform=self.pre_transform,
+                        pre_filter=self.pre_filter,
+                    )
 
-            for i in range(0, num_chunks * self.chunksize, self.chunksize):
+                    k = self.write_data(data, k)
+
+                # final chunk processing
                 data = self.process_chunk(
                     raw_file,
-                    i,
+                    N,
+                    num_chunks * self.chunksize,
                     pre_transform=self.pre_transform,
                     pre_filter=self.pre_filter,
                 )
 
                 k = self.write_data(data, k)
-
-            # final chunk processing
-            data = self.process_chunk(
-                raw_file,
-                num_chunks * self.chunksize,
-                pre_transform=self.pre_transform,
-                pre_filter=self.pre_filter,
-            )
-
-            k = self.write_data(data, k)
-
-            raw_file.close()
 
     def _get_store_group(
         self, file: Path | str
@@ -144,7 +142,11 @@ class QGDataset(QGDatasetBase, Dataset):
             Tuple[zarr.storage.LocalStore, zarr.Group]: tuple containing the opened store and its root group
         """
         if file not in self.stores:
-            store = zarr.storage.LocalStore(file, read_only=True)
+            if Path(file).suffix == ".zip":
+                store = zarr.storage.ZipStore(file, mode="r")
+            else:
+                store = zarr.storage.LocalStore(file, read_only=True)
+
             rootgroup = zarr.open_group(store.root)
             self.stores[file] = (store, rootgroup)
 

@@ -3,6 +3,22 @@ from typing import Sequence, Any
 import torch
 import numpy as np
 import random
+from pathlib import Path
+import zarr
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def ZarrStore(file: Path | str, mode: str = "r"):
+    if Path(file).suffix == ".zip":
+        raw_file = zarr.storage.ZipStore(file, mode=mode)
+    else:
+        raw_file = zarr.storage.LocalStore(file, read_only=mode == "r")
+
+    yield raw_file
+
+    raw_file.close()
 
 
 def import_and_get(importpath: str) -> Any:
