@@ -9,16 +9,26 @@ import zarr
 from contextlib import contextmanager
 
 
+def tautology(x):
+    return True
+
+
+def identity(x):
+    return x
+
+
 @contextmanager
 def ZarrStore(file: Path | str, mode: str = "r"):
     if Path(file).suffix == ".zip":
         raw_file = zarr.storage.ZipStore(file, mode=mode)
     else:
-        raw_file = zarr.storage.LocalStore(file, read_only=mode == "r")
+        raw_file = zarr.storage.LocalStore(
+            file, read_only=True if mode == "r" else False
+        )
 
     yield raw_file
 
-    raw_file.close()
+    # raw_file.close()
 
 
 def import_and_get(importpath: str) -> Any:
