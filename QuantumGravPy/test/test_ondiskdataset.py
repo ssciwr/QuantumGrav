@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import pytest
 import zarr
+from zarr.storage import ZipStore
 import numpy as np
 import torch
 from torch_geometric.data import Data
@@ -168,10 +169,100 @@ def test_ondisk_dataset_get(create_data_zarr):
     datarange = dataset[3:8]
     assert len(datarange) == 5
 
+    datarange = dataset[[3, 4, 5, 6]]
+    assert len(datarange) == 4
+
     for file in dataset.input:
         assert file in dataset.stores
     dataset.close()
     assert len(dataset.stores) == 0
+
+
+def test_ondisk_dataset_zip_store_get(create_data_zarr_zip, tmp_path):
+    """Covers ZipStore branch in _get_store_group (preprocess=False reads live from zip)."""
+    _, datafiles = create_data_zarr_zip
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        n_processes=1,
+        chunksize=4,
+        transform=lambda x: x,
+    )
+
+    assert len(dataset) == 15
+    _ = dataset[0]
+    store, _ = dataset.stores[dataset.input[0]]
+    assert isinstance(store, ZipStore)
+    _ = dataset[6]  # second file
+    assert len(dataset.stores) == 2
+    assert isinstance(dataset[13], dict)
+    dataset.close()
+    assert len(dataset.stores) == 0
+
+
+def test_ondisk_dataset_creation_processing_zip(create_data_zarr_zip, tmp_path):
+    """Covers processing pipeline with zip inputs; uses n_processes=3 for actual parallel run."""
+    _, datafiles = create_data_zarr_zip
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=3,
+        chunksize=5,
+        transform=QG.utils.identity,
+        pre_transform=pre_transform,
+        pre_filter=QG.utils.tautology,
+    )
+
+    assert len(dataset) == 15
+    assert all(f"data_{i}.pt" in dataset.processed_file_names for i in range(15))
+    assert isinstance(dataset[0], Data)
+
+
+def test_ondisk_dataset_file_not_found(tmp_path):
+    """Covers the FileNotFoundError branch in __init__."""
+    with pytest.raises(FileNotFoundError):
+        QG.QGDataset(
+            input=[tmp_path / "nonexistent.zarr"],
+            output=tmp_path,
+            float_type=torch.float32,
+            int_type=torch.int64,
+        )
+
+
+def test_ondisk_dataset_getitem_list(create_data_zarr):
+    """Covers the list-of-indices branch in __getitem__."""
+    datadir, datafiles = create_data_zarr
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=datadir,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        n_processes=1,
+        chunksize=4,
+        transform=lambda x: x,
+    )
+    result = dataset[[0, 3, 7, 12]]
+    assert len(result) == 4
+    assert all(isinstance(item, dict) for item in result)
+
+
+def test_ondisk_dataset_default_transform(create_data_zarr):
+    """Covers the transform=None branch in __init__ (identity applied implicitly)."""
+    datadir, datafiles = create_data_zarr
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=datadir,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        n_processes=1,
+        chunksize=4,
+    )
+    assert isinstance(dataset[0], dict)
 
 
 def test_ondisk_dataset_with_dataloader(create_data_zarr):

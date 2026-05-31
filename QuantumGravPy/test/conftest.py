@@ -74,6 +74,53 @@ def create_data_zarr(tmp_path_factory):
         shutil.rmtree(tmpdir)
 
 
+@pytest.fixture(scope="session")
+def create_data_zarr_zip(tmp_path_factory):
+    tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav_zip", numbered=True)
+
+    datafiles = []
+
+    for i in range(3):
+        data = []
+        for _ in range(5):
+            num_nodes = np.random.randint(10, 15)
+            adjacency_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
+            link_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
+            max_pathlen_future = np.random.rand(num_nodes).astype("float32")
+            max_pathlen_past = np.random.rand(num_nodes).astype("float32")
+            dimension = np.array([np.random.randint(2, 10)])
+            atomcount = np.array([num_nodes])
+
+            data.append(
+                {
+                    "adjacency_matrix": adjacency_matrix,
+                    "link_matrix": link_matrix,
+                    "max_pathlen_future": max_pathlen_future,
+                    "max_pathlen_past": max_pathlen_past,
+                    "dimension": dimension,
+                    "atomcount": atomcount,
+                }
+            )
+
+        zarr_file = tmpdir / f"test_data_{i}.zip"
+        store = zarr.storage.ZipStore(zarr_file, mode="w")
+        root = zarr.open_group(store, path="", mode="w")
+        for j, d in enumerate(data):
+            grp = root.create_group(f"cset_{j + 1}")
+            for k, values in d.items():
+                grp.create_array(k, data=values)
+        store.close()
+        datafiles.append(zarr_file)
+
+    yield tmpdir, datafiles
+
+    for file in datafiles:
+        if file.exists():
+            file.unlink()
+    if tmpdir.exists():
+        shutil.rmtree(tmpdir)
+
+
 @pytest.fixture
 def make_dataset(create_data_zarr, pre_transform):
     datadir, datafiles = create_data_zarr
