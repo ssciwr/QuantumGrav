@@ -7,12 +7,12 @@ name = "QuantumGrav"
 version = "0.1.0"
 description = "Graph neural networks for the causal set approach to quantum gravity"
 authors = [
-    {name = "Fabian Wagner", email = "f.wagner@thphys.uni-heidelberg.de"},
+    { name = "Fabian Wagner", email = "f.wagner@thphys.uni-heidelberg.de" },
     { name = "Harald Mack", email = "harald.mack@protonmail.com" },
     { name = "Tuyen Le", email = "tuyen.le@iwr.uni-heidelberg.de" },
 ]
 requires-python = ">= 3.12"
-license = { file = "../LICENSE"}
+license = { file = "../LICENSE" }
 readme = { file = "../README.md", content-type = "text/markdown" }
 
 dependencies = [
@@ -20,10 +20,12 @@ dependencies = [
     "matplotlib",
     "scikit-learn",
     "joblib",
-    "juliacall",
     "PyYAML",
     "zarr",
     "optuna",
+
+    "jsonschema>=4.26.0",
+    "pyarrow>=24.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -34,20 +36,14 @@ allow-direct-references = true
 
 # Optional dependencies
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "pytest-mock",
-]
-docs = [
-    "mkdocs",
-    "mkdocstrings[python]",
-    "mkdocs-material",
-    "mkdocs-jupyter"
-]
+dev = ["pytest", "pytest-cov", "pytest-mock"]
+docs = ["mkdocs", "mkdocstrings[python]", "mkdocs-material", "mkdocs-jupyter"]
 [tool.pytest.ini_options]
-addopts = [
-    "--import-mode=importlib",
-    "-vvv",
-    "-s",
-]
+addopts = ["-vvv", "-s"]
+
+[tool.coverage.run]
+source = ["src/QuantumGrav"]
+omit = ["*/test/*", "*/tests/*"]
+
+[tool.coverage.report]
+omit = ["*/test/*", "*/tests/*"]
