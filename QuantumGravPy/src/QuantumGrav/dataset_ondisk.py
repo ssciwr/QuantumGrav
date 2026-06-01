@@ -12,12 +12,16 @@ from collections.abc import Callable, Sequence, Collection
 from typing import Any, Tuple
 import numpy as np
 import yaml
-from torch.multiprocessing import Process, Queue, Event
+from torch.multiprocessing import Process, Queue, Event, Pool
 import time
+from math import ceil
+from tqdm import tqdm
 
 # internals
 from .utils import ZarrStore, identity, tautology
 from .load_zarr import zarr_group_to_dict
+
+global _READER_QUEUE
 
 
 def _process_data(
@@ -58,6 +62,19 @@ def _write_data(
         out_idx += 1
 
 
+def _init_reader(task_queue: Queue) -> None:
+    global _READER_TASK_QUEUE
+    _READER_TASK_QUEUE = task_queue
+
+
+def _read_data(root_and_path: tuple[zarr.Group, str]) -> None:
+    root, path = root_and_path
+    group = root[path]
+    tgt = dict()
+    zarr_group_to_dict(group=group, target=tgt)
+    _READER_TASK_QUEUE.put(tgt)
+
+
 class QGDataset(Dataset):
     """A dataset class for QuantumGrav data that is designed to handle large datasets stored on disk. This class provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
 
@@ -74,6 +91,8 @@ class QGDataset(Dataset):
         transform: Callable[[Data | Collection[Any]], Data] | None = None,
         pre_transform: Callable[[Data | Collection[Any]], Data] | None = None,
         pre_filter: Callable[[Data | Collection[Any]], bool] | None = None,
+        logfile: str | None = None,
+        name: str = "dataset",
     ):
         """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. When there is no pre_transform and no pre_filter is given, the system will not create a `processed` directory.
 
@@ -88,6 +107,8 @@ class QGDataset(Dataset):
             transform (Callable[[Data], Data] | None, optional): Function to transform the data. Defaults to None.
             pre_transform (Callable[[Data], Data] | None, optional): Function to pre-transform the data. Defaults to None.
             pre_filter (Callable[[Data], bool] | None, optional): Function to pre-filter the data. Defaults to None.
+            logfile: (str, None, optional): Logfile to attach to
+            name (str, optional): name of the dataset to identify it in logging output, defaults to 'dataset'.
         """
         preprocess = pre_transform is not None or pre_filter is not None
 
@@ -115,6 +136,8 @@ class QGDataset(Dataset):
         self.n_processes = n_processes
         self.chunksize = chunksize
         self.preprocess = preprocess
+        self.name = name
+
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
@@ -205,23 +228,6 @@ class QGDataset(Dataset):
             if f.is_file() and f.suffix == ".pt" and "data" in f.name
         ]
 
-    def read_data(self, group: zarr.Group | None = None) -> Collection[Any]:
-        """_summary_
-
-        Args:
-            group (zarr.Group | None, optional): _description_. Defaults to None.
-            idx (int, optional): _description_. Defaults to 0.
-
-        Raises:
-            ValueError: _description_
-
-        Returns:
-            Collection[Any]: _description_
-        """
-        tgt = dict()
-        zarr_group_to_dict(group=group, target=tgt)
-        return tgt
-
     def process(self) -> None:
         """Process the dataset from the read rawdata into its final form."""
         if self.pre_filter is None and self.pre_transform is None:
@@ -232,6 +238,12 @@ class QGDataset(Dataset):
 
         all_written_event = Event()
 
+        n_readers = max(1, int(ceil(self.n_processes * 0.1)))
+        n_writers = max(1, int(ceil(self.n_processes * 0.3)))
+        n_workers = max(1, self.n_processes - n_writers - n_readers)
+        print(
+            f"running data preprocessing with {n_readers} reader processes, {n_workers} worker processes and {n_writers} writer processes"
+        )
         workers = [
             Process(
                 target=_process_data,
@@ -243,25 +255,29 @@ class QGDataset(Dataset):
                     all_written_event,
                 ),
             )
-            for i in range(self.n_processes)
+            for i in range(n_workers)
         ]
 
-        writer = Process(
-            target=_write_data,
-            args=(
-                writer_queue,
-                self.processed_dir,
-                all_written_event,
-                self._num_samples,
-            ),
-        )
+        writers = [
+            Process(
+                target=_write_data,
+                args=(
+                    writer_queue,
+                    self.processed_dir,
+                    all_written_event,
+                    self._num_samples,
+                ),
+            )
+            for _ in range(n_writers)
+        ]
+
+        for writer in writers:
+            writer.start()
 
         for worker in workers:
             worker.start()
 
-        writer.start()
-
-        for file in self.input:
+        for file in tqdm(self.input, desc="zarr stores"):
             with ZarrStore(file, mode="r") as store:
                 root = zarr.open_group(
                     store,
@@ -270,11 +286,21 @@ class QGDataset(Dataset):
                 )
 
                 datapoints = len(root)
-                for i in range(datapoints):
-                    data = self.read_data(
-                        root[f"cset_{i + 1}"],
-                    )
-                    task_queue.put(data)
+                reading_tasks = ((root, f"cset_{i + 1}") for i in range(datapoints))
+                # we use a pool for reading to parallelize any data transformation work. This doesn't have to be async b/c we have a fixed amount of work
+                with (
+                    Pool(
+                        processes=n_readers,
+                        initializer=_init_reader,
+                        initargs=(task_queue,),
+                    ) as pool,
+                    tqdm(total=datapoints, desc="csets") as pbar,
+                ):
+                    for _ in pool.imap_unordered(
+                        _read_data, reading_tasks, chunksize=self.chunksize
+                    ):
+                        pbar.update()
+                        pbar.refresh()
 
         # add stop signals
         for _ in workers:
@@ -282,7 +308,8 @@ class QGDataset(Dataset):
 
         # do not reverse this or the shared memory of torch processes
         # can be gone and you loose part of your data
-        writer.join()
+        for writer in writers:
+            writers.join()
 
         for worker in workers:
             worker.join()
@@ -364,7 +391,7 @@ class QGDataset(Dataset):
             dfile, idx = self.map_index(idx)
             store, root = self._get_store_group(dfile)
             # since julia Zarr files allow having no root groups, we need to open the store directly
-            datapoint = self.read_data(
+            datapoint = _read_data(
                 zarr.open_group(
                     store,
                     path=f"cset_{idx + 1}",
@@ -378,14 +405,6 @@ class QGDataset(Dataset):
     def __getitem__(
         self, idx: int | Sequence[int] | slice
     ) -> Data | Sequence[Data] | Collection[Any]:
-        """_summary_
-
-        Args:
-            idx (int | Sequence[int]): _description_
-
-        Returns:
-            Data | Sequence[Data] | Collection[Any]: _description_
-        """
         if isinstance(idx, int):
             return self.get(idx)
         elif isinstance(idx, slice):
