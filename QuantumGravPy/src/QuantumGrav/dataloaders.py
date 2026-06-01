@@ -69,7 +69,10 @@ DATA_CONFIG_SCHEMA = {
             "maxItems": 3,
         },
     },
-    "required": ["output", "files", "reader"],
+    "required": [
+        "output",
+        "files",
+    ],
     "additionalProperties": False,
 }
 
@@ -263,9 +266,8 @@ class DataLoaderFactory(base.Configurable):
 
         cfg = data_config
         dataset = dataset_ondisk.QGDataset(
-            cfg["files"],
-            cfg["output"],
-            cfg["reader"],
+            input=cfg["files"],
+            output=cfg["output"],
             float_type=cfg.get("float_type", torch.float32),
             int_type=cfg.get("int_type", torch.int32),
             validate_data=cfg.get("validate_data", True),
