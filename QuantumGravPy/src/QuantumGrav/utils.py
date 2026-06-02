@@ -28,7 +28,7 @@ def ZarrStore(file: Path | str, mode: str = "r"):
 
     yield raw_file
 
-    # raw_file.close()
+    raw_file.close()
 
 
 def import_and_get(importpath: str) -> Any:
