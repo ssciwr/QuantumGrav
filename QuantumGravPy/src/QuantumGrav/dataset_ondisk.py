@@ -12,8 +12,8 @@ from collections.abc import Callable, Sequence, Collection
 from typing import Any, Tuple
 import numpy as np
 import yaml
-from torch.multiprocessing import Process, Queue, Event
-import time
+from tqdm import tqdm
+from joblib import Parallel, delayed
 
 # internals
 from .utils import ZarrStore, identity, tautology
@@ -21,41 +21,20 @@ from .load_zarr import zarr_group_to_dict
 
 
 def _process_data(
-    task_queue: Queue,
-    write_queue: Queue,
+    file: Path | str,
     pre_filter: Callable,
     pre_transform: Callable,
-    writer_done: Event,
+    data_chunk: list[str],
 ):
-    while True:
-        data = task_queue.get()
-
-        if data is None:
-            break
-
-        if pre_filter(data):
-            processed = pre_transform(data)
-            write_queue.put(processed)
-
-    while not writer_done.is_set():
-        # keep busy until writer_done is set
-        time.sleep(1)
-
-
-# this only works with a single writer process. if more are needed at one point, we need to use an atomic,external out_idx with shared_mem or a lock
-def _write_data(
-    write_queue: Queue, processed_dir: Path | str, writer_done: Event, n: int
-):
-    out_idx = 0
-    while True:
-        if out_idx < n:
-            item = write_queue.get()
-        else:
-            writer_done.set()
-            break
-
-        torch.save(item, Path(processed_dir) / f"data_{out_idx}.pt")
-        out_idx += 1
+    out = []
+    with ZarrStore(file, mode="r") as store:
+        root = zarr.open_group(store, path="", mode="r")
+        for path in data_chunk:
+            data = dict()
+            zarr_group_to_dict(root[path], data)
+            if pre_filter(data):
+                out.append(pre_transform(data))
+    return out
 
 
 class QGDataset(Dataset):
@@ -74,6 +53,8 @@ class QGDataset(Dataset):
         transform: Callable[[Data | Collection[Any]], Data] | None = None,
         pre_transform: Callable[[Data | Collection[Any]], Data] | None = None,
         pre_filter: Callable[[Data | Collection[Any]], bool] | None = None,
+        logfile: str | None = None,
+        name: str = "dataset",
     ):
         """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. When there is no pre_transform and no pre_filter is given, the system will not create a `processed` directory.
 
@@ -88,8 +69,10 @@ class QGDataset(Dataset):
             transform (Callable[[Data], Data] | None, optional): Function to transform the data. Defaults to None.
             pre_transform (Callable[[Data], Data] | None, optional): Function to pre-transform the data. Defaults to None.
             pre_filter (Callable[[Data], bool] | None, optional): Function to pre-filter the data. Defaults to None.
+            logfile: (str, None, optional): Logfile to attach to
+            name (str, optional): name of the dataset to identify it in logging output, defaults to 'dataset'.
         """
-        preprocess = pre_transform is not None or pre_filter is not None
+        does_preprocessing = pre_transform is not None or pre_filter is not None
 
         if pre_transform is None:
             pre_transform = identity
@@ -114,23 +97,27 @@ class QGDataset(Dataset):
         self.validate_data = validate_data
         self.n_processes = n_processes
         self.chunksize = chunksize
-        self.preprocess = preprocess
+        self.does_preprocessing = does_preprocessing
+        self.name = name
+
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
             with open(Path(self.processed_dir) / "metadata.yaml", "r") as f:
                 self.metadata = yaml.load(f, Loader=yaml.FullLoader)
 
             self._num_samples = self.metadata["num_samples"]
-            self._num_samples_per_file = np.array(
+            self._num_samples_per_file = dict(
                 self.metadata["num_samples_per_file"], dtype=np.int64
             )
         else:
             # get the number of samples in the dataset
             self._num_samples = 0
-            num_samples_per_file = []
+            self._num_samples_per_file = {}
+
             for filepath in self.input:
                 if not Path(filepath).exists():
                     raise FileNotFoundError(f"Input file {filepath} does not exist.")
+
                 with ZarrStore(filepath, mode="r") as store:
                     root = zarr.open_group(
                         store,
@@ -138,15 +125,13 @@ class QGDataset(Dataset):
                         mode="r",
                     )
                     n = len(root)
-                    num_samples_per_file.append(n)
+                    self._num_samples_per_file[filepath] = n
                 self._num_samples += n
-
-            self._num_samples_per_file = np.stack(num_samples_per_file, axis=0)
 
             Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
             self.metadata = {
                 "files": [str(Path(f).resolve().absolute()) for f in self.input],
-                "num_samples_per_file": [int(n) for n in self._num_samples_per_file],
+                "num_samples_per_file": self._num_samples_per_file,
                 "num_samples": int(self._num_samples),
                 "input": [str(Path(f).resolve().absolute()) for f in self.input],
                 "output": str(Path(self.output).resolve().absolute()),
@@ -155,7 +140,7 @@ class QGDataset(Dataset):
                 "validate_data": self.validate_data,
                 "n_processes": self.n_processes,
                 "chunksize": self.chunksize,
-                "preprocess": self.preprocess,
+                "does_preprocessing": self.does_preprocessing,
             }
 
             with open(Path(self.processed_dir) / "metadata.yaml", "w") as f:
@@ -205,91 +190,51 @@ class QGDataset(Dataset):
             if f.is_file() and f.suffix == ".pt" and "data" in f.name
         ]
 
-    def read_data(self, group: zarr.Group | None = None) -> Collection[Any]:
-        """_summary_
-
-        Args:
-            group (zarr.Group | None, optional): _description_. Defaults to None.
-            idx (int, optional): _description_. Defaults to 0.
-
-        Raises:
-            ValueError: _description_
-
-        Returns:
-            Collection[Any]: _description_
-        """
-        tgt = dict()
-        zarr_group_to_dict(group=group, target=tgt)
-        return tgt
-
     def process(self) -> None:
         """Process the dataset from the read rawdata into its final form."""
         if self.pre_filter is None and self.pre_transform is None:
             return
 
-        task_queue = Queue(maxsize=self.chunksize)
-        writer_queue = Queue(maxsize=self.chunksize)
+        def chunks(xs, n):
+            for i in range(0, len(xs), n):
+                yield xs[i : i + n]
 
-        all_written_event = Event()
+        out_idx = 0
 
-        workers = [
-            Process(
-                target=_process_data,
-                args=(
-                    task_queue,
-                    writer_queue,
-                    self.pre_filter,
-                    self.pre_transform,
-                    all_written_event,
-                ),
+        for filepath in tqdm(self.input, desc="zarr stores"):
+            datapoints = self._num_samples_per_file[str(filepath)]
+
+            datagroups = list(
+                chunks([f"cset_{i + 1}" for i in range(datapoints)], self.chunksize)
             )
-            for i in range(self.n_processes)
-        ]
 
-        writer = Process(
-            target=_write_data,
-            args=(
-                writer_queue,
-                self.processed_dir,
-                all_written_event,
-                self._num_samples,
-            ),
-        )
+            n_datagroups = len(datagroups)
 
-        for worker in workers:
-            worker.start()
+            reading_groups = chunks(
+                [
+                    (filepath, self.pre_filter, self.pre_transform, chunk)
+                    for chunk in datagroups
+                ],
+                10 if n_datagroups > 10 else 1,
+            )
 
-        writer.start()
+            parallel = Parallel(
+                n_jobs=self.n_processes,
+            )
+            for chunk in reading_groups:
+                processed = parallel(delayed(_process_data)(*args) for args in chunk)
 
-        for file in self.input:
-            with ZarrStore(file, mode="r") as store:
-                root = zarr.open_group(
-                    store,
-                    path="",
-                    mode="r",
-                )
-
-                datapoints = len(root)
-                for i in range(datapoints):
-                    data = self.read_data(
-                        root[f"cset_{i + 1}"],
-                    )
-                    task_queue.put(data)
-
-        # add stop signals
-        for _ in workers:
-            task_queue.put(None)
-
-        # do not reverse this or the shared memory of torch processes
-        # can be gone and you loose part of your data
-        writer.join()
-
-        for worker in workers:
-            worker.join()
+                for datalist in processed:
+                    for data in datalist:
+                        if data is not None:
+                            torch.save(
+                                data, Path(self.processed_dir) / f"data_{out_idx}.pt"
+                            )
+                            out_idx += 1
 
     def _get_store_group(
         self, file: Path | str
-    ) -> Tuple[zarr.storage.LocalStore, zarr.Group]:
+    ) -> Tuple[zarr.storage.LocalStore | zarr.storage.ZipStore, zarr.Group]:
         """Get a requested open store and add it to an internal cache if not open yet.
 
         Args:
@@ -355,7 +300,7 @@ class QGDataset(Dataset):
         """Get a single data sample by index."""
 
         # Load the data from the processed files
-        if self.preprocess:
+        if self.does_preprocessing:
             datapoint = torch.load(
                 Path(self.processed_dir) / f"data_{idx}.pt", weights_only=False
             )
@@ -364,12 +309,14 @@ class QGDataset(Dataset):
             dfile, idx = self.map_index(idx)
             store, root = self._get_store_group(dfile)
             # since julia Zarr files allow having no root groups, we need to open the store directly
-            datapoint = self.read_data(
+            datapoint = dict()
+            zarr_group_to_dict(
                 zarr.open_group(
                     store,
                     path=f"cset_{idx + 1}",
                     mode="r",
-                )
+                ),
+                datapoint,
             )
         datapoint = self.transform(datapoint)
 
@@ -378,14 +325,6 @@ class QGDataset(Dataset):
     def __getitem__(
         self, idx: int | Sequence[int] | slice
     ) -> Data | Sequence[Data] | Collection[Any]:
-        """_summary_
-
-        Args:
-            idx (int | Sequence[int]): _description_
-
-        Returns:
-            Data | Sequence[Data] | Collection[Any]: _description_
-        """
         if isinstance(idx, int):
             return self.get(idx)
         elif isinstance(idx, slice):
@@ -399,7 +338,7 @@ class QGDataset(Dataset):
         Returns:
             int: The number of samples in the dataset.
         """
-        if self.preprocess:
+        if self.does_preprocessing:
             return len(self.processed_file_names)
         else:
             return self._num_samples
