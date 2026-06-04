@@ -7,6 +7,20 @@ import numpy as np
 from . import utils
 
 
+class PyObjectTag(str):
+    """String-like value emitted as a real !pyobject YAML scalar."""
+
+
+def pyobject_tag_representer(
+    dumper: yaml.Dumper | yaml.SafeDumper, value: PyObjectTag
+) -> yaml.nodes.ScalarNode:
+    return dumper.represent_scalar("!pyobject", str(value))
+
+
+yaml.Dumper.add_representer(PyObjectTag, pyobject_tag_representer)
+yaml.SafeDumper.add_representer(PyObjectTag, pyobject_tag_representer)
+
+
 def sweep_constructor(
     loader: yaml.SafeLoader, node: yaml.nodes.MappingNode
 ) -> Dict[str, Any]:
@@ -51,7 +65,7 @@ def coupled_sweep_constructor(
             sweep_target.append(index)
         else:
             sweep_target.append(token)
-
+    sweep_target = [utils.maybe_number(t, int) for t in sweep_target]
     values = loader.construct_sequence(node.value[1][1])
     return {"target": sweep_target, "values": values, "type": "coupled-sweep"}
 
@@ -262,13 +276,7 @@ def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> 
     return tpe
 
 
-def get_loader():
-    """Integrate custom tags into the loader system of the PyYAML library
-
-    Returns:
-        loader: yaml.SafeLoader instance
-    """
-    loader = yaml.SafeLoader
+def _add_common_constructors(loader: type[yaml.Loader]) -> type[yaml.Loader]:
     loader.add_constructor("!sweep", sweep_constructor)
     loader.add_constructor("!coupled-sweep", coupled_sweep_constructor)
     loader.add_constructor("!range", range_constructor)
@@ -278,7 +286,23 @@ def get_loader():
     return loader
 
 
-def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
+_add_common_constructors(yaml.Loader)
+_add_common_constructors(yaml.FullLoader)
+_add_common_constructors(yaml.SafeLoader)
+
+
+def get_loader():
+    """Integrate custom tags into the loader system of the PyYAML library
+
+    Returns:
+        loader: yaml.SafeLoader instance
+    """
+    return yaml.SafeLoader
+
+
+def convert_to_pyobject_tags(
+    config: Dict[str, Any], *, emit_yaml_tags: bool = False
+) -> Dict[str, Any]:
     """Convert specific values in the configuration dictionary to `pyobject` YAML tags.
     This is useful for saving the best configuration back to a YAML file,
     and make sure that these tags are converted back to the original structures
@@ -288,6 +312,9 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
 
     Args:
         config (Dict[str, Any]): The configuration dictionary.
+        emit_yaml_tags (bool): When true, return tagged scalar values that PyYAML
+            emits as real !pyobject tags. When false, keep the historic string
+            marker behavior.
 
     Returns:
         Dict[str, Any]: The configuration dictionary with converted custom tags.
@@ -299,28 +326,39 @@ def convert_to_pyobject_tags(config: Dict[str, Any]) -> Dict[str, Any]:
     elif isinstance(config, list):
         items = enumerate(config)
         new_config = [None] * len(config)
+    elif isinstance(config, tuple):
+        items = enumerate(config)
+        new_config = [None] * len(config)
     else:
         return config
 
     for key, value in items:
-        is_dict = isinstance(value, dict)
-        is_list = isinstance(value, list)
-
         # recursive cases
-        if is_dict or is_list:
-            new_value = convert_to_pyobject_tags(value)
+        if (
+            isinstance(value, dict)
+            or isinstance(value, list)
+            or isinstance(value, tuple)
+        ):
+            new_value = convert_to_pyobject_tags(value, emit_yaml_tags=emit_yaml_tags)
             new_config[key] = new_value
-
         # base cases
         else:
+            # TODO: this should use the existing tag as a marker, not the type
             # convert only non-built-in types to pyobject tags
-            if not isinstance(value, (bool, str, float, int, list, dict)):
+            if (
+                not isinstance(value, (bool, str, float, int, list, dict, tuple, set))
+                and value is not None
+            ):
                 # convert to !pyobject name_of_class
                 module = value.__module__
                 class_name = value.__name__
                 full_class_name = f"{module}.{class_name}"
-                pyobject_tag = f"!pyobject {full_class_name}"
-                new_config[key] = pyobject_tag
+                if emit_yaml_tags:
+                    new_config[key] = PyObjectTag(full_class_name)
+                else:
+                    new_config[key] = f"!pyobject {full_class_name}"
+            elif isinstance(value, tuple):
+                new_config[key] = list(value)
             else:
                 new_config[key] = value
 
@@ -334,7 +372,7 @@ class ConfigHandler:
     The targets have to be given as full paths from the top level of the config
     """
 
-    def __init__(self, config: dict, name_addition="run"):
+    def __init__(self, config: dict, name_addition=""):
         """Initialize a new `ConfigHandler` class given a config.
 
         Args:
@@ -378,11 +416,13 @@ class ConfigHandler:
                 else:
                     sweep_targets[tuple(v["target"])]["partner_path"] = [v["path"]]
 
+            self.sweep_targets = list(sweep_targets.keys())
+
             # construct the configs
             self.run_configs = self._construct_run_configs(sweep_targets)
 
         for i, cfg in enumerate(self.run_configs):
-            cfg["model"]["name"] = f"{cfg['model']['name']}_{name_addition}_{i}"
+            cfg["name"] = f"{cfg.get('name', 'run_')}_{name_addition}_{i}"
 
     def _extract_sweep_dims(
         self,
@@ -401,13 +441,17 @@ class ConfigHandler:
             sweep_targets (dict[str, Any]): dict to store sweep dimensions in
             coupled_targets (dict[str, Any]): dict to store coupled-sweep dimension in
         """
-        # TODO: do we need list support on the outermost level?
-        if not isinstance(
-            cfg_node, dict
-        ):  # only dictionary nodes are interesting by design, others are not capable of storing the data structures needed
+        if (
+            not isinstance(cfg_node, dict) and not isinstance(cfg_node, list)
+        ):  # only collections are interesting by design, others are not capable of storing the data structures needed
             return
 
-        for key, node in cfg_node.items():
+        if isinstance(cfg_node, dict):
+            to_iterate = cfg_node.items()
+        else:
+            to_iterate = enumerate(cfg_node)
+
+        for key, node in to_iterate:
             if isinstance(node, dict) and "type" in node:
                 if node["type"] == "sweep":
                     # when a sweep dimension is found, we record its path and values

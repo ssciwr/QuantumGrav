@@ -58,53 +58,31 @@ First, we need to define the list of input files. We also need to choose the out
 Then, we have to define the function that reads data from the file. This eats a zarr file, a float and int type, and whether to validate the data or not. For example:
 
 ```python
-def reader(
-        f: zarr.Group, idx: int, float_dtype: torch.dtype, int_dtype: torch.dtype, validate: bool
-    ) -> Data:
-
-        # get the adjacency matrix
-        adj_raw = f["adjacency_matrix"][idx, :, :]
-        adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
-        node_features = []
-
-        # Path lengths
-        max_path_future = torch.tensor(
-            f["max_pathlen_future"][idx, :], dtype=float_dtype
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-
-        max_path_past = torch.tensor(
-            f["max_pathlen_past"][idx, :], dtype=float_dtype
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-        node_features.extend([max_path_future, max_path_past])
-
-        # make the targets
-        manifold = f["manifold"][idx]
-        boundary = f["boundary"][idx]
-        dimension = f["dimension"][idx]
-
-        if (
-            isinstance(manifold, np.ndarray)
-            and isinstance(boundary, np.ndarray)
-            and isinstance(dimension, np.ndarray)
-        ):
-            value_list = [manifold.item(), boundary.item(), dimension.item()]
-        else:
-            value_list = [manifold, boundary, dimension]
-
-        return {
-            "adj": adj_matrix,
-            "max_pathlen_future": max_path_future,
-            "max_pathlen_past": max_path_past,
-            "manifold": manifold,
-            "boundary": boundary,
-            "dimension": dimension
-        }
+def reader(store, idx, float_dtype, int_dtype, validate):
+    group = zarr.open_group(store.root)
+    adj = group["adjacency_matrix"][idx, :, :]
+    cset_size = int(group["cset_size"][idx])
+    data = {
+        "adjacency_matrix": adj,
+        "cset_size": cset_size,
+        "feature_names": [
+            "max_pathlens_future",
+            "max_pathlens_past",
+            "in_degree",
+            "out_degree",
+        ],
+        "manifold_like": int(group["manifold_like"][idx]),
+    }
+    for name in data["feature_names"]:
+        vals = torch.tensor(group[name][idx, :][:cset_size], dtype=float_dtype).unsqueeze(1)
+        data[name] = torch.nan_to_num(vals, nan=0.0)
+    return data
 ```
 
 Now we have a function that turns raw data into a dictionary. Next, we need the `pre_filter` and `pre_transform` functions. We want to retain all data, so `pre_filter` can just return true all the time:
 
 ```python
-pre_filter = lambda x: true
+pre_filter = lambda x: True
 ```
 or we can filter out some targets:
 
@@ -115,34 +93,16 @@ pre_filter = lambda data: data.y[2] != 2
 Then, we need the `pre_transform` function which truns the returned dict into a `torch_geometric.data.Data` object. Here, we want to fix the adjacency matrix because Julia uses a different convention. we could have done this right away in the reader function, too, but it's a good way to show what `pre_transform` can do.
 
 ```python
-def pre_transform(data: Data) -> Data:
-    """Pre-transform the data dictionary into a  Data object."""
-    adjacency_matrix = data["adjacency_matrix"]
-    cset_size = data["cset_size"]
-    # this is a workaround for the fact that the adjacency matrix is stored in a transposed form when going from julia to hdf5
-    adjacency_matrix = np.transpose(adjacency_matrix)
-    adjacency_matrix = adjacency_matrix[0:cset_size, 0:cset_size]
-    edge_index, edge_weight = dense_to_sparse(
-        torch.tensor(adjacency_matrix, dtype=torch.float32)
-    )
-
-    node_features = []
-    for feature_name in data["feature_names"]:
-        node_features.append(data[feature_name])
-    x = torch.cat(node_features, dim=1).to(torch.float32)
-    y = torch.tensor(data["manifold_like"]).to(torch.long)
-
-    # make data object
-    tgdata = Data(
-        x=x,
-        edge_index=edge_index,
-        edge_attr=edge_weight,
-        y=y,
-    )
-
-    if not tgdata.validate():
-        raise ValueError(f"Data validation failed for index {idx}.")
-    return tgdata
+def pre_transform(data: dict) -> Data:
+    adj = np.transpose(data["adjacency_matrix"])  # if stored transposed
+    adj = adj[: data["cset_size"], : data["cset_size"]]
+    edge_index, edge_weight = dense_to_sparse(torch.tensor(adj, dtype=torch.float32))
+    x = torch.cat([data[name] for name in data["feature_names"]], dim=1).to(torch.float32)
+    y = torch.tensor(data["manifold_like"], dtype=torch.long)
+    tg = Data(x=x, edge_index=edge_index, edge_attr=edge_weight, y=y)
+    if not tg.validate():
+        raise ValueError("Data validation failed.")
+    return tg
 ```
 
 The `transform` function follows the same principle, so we don't show it explicitly here and just set it to a no-op:
@@ -156,18 +116,18 @@ Now, we can put together our dataset. Upon first instantiation, it will pre-proc
 
 ```python
 dataset = QGDataset(
-    input,
-    output,
-    reader = reader,
-    validate_data = True,
-    chunksize = 5000,
-    n_processes= 12,
-    transform = transform,
-    pre_transform = pre_transform,
-    pre_filter = pre_filter,
+    input=input,
+    output=output,
+    reader=reader,
+    validate_data=True,
+    chunksize=1000,
+    n_processes=4,
+    transform=transform,
+    pre_transform=pre_transform,
+    pre_filter=pre_filter,
 )
 ```
-Here we use 12 processes which process the data in chunks of 5000 samples before loading the next 5000 using the `reader` function, processing them and so on.
+Processing runs in `chunksize` batches using `n_processes` workers.
 
 
 ## Indexing and subsetting
@@ -183,8 +143,8 @@ Note that the dataset internally treats all supplied files as one consecutive ra
 Since the `QGDataset` is a torch dataset under the hood, it works together with [torch's subset functionality](https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.Subset):
 
 ```python
-subset = torch.Subset(dataset, 0:4:100)
-random_subset = torch.Subste(dataset, torch.randint(0, 99, 25))
+subset = torch.utils.data.Subset(dataset, list(range(0, 100, 4)))
+random_subset = torch.utils.data.Subset(dataset, torch.randint(0, len(dataset), (25,)).tolist())
 ```
 
 This can help with dataset splitting for, e.g., k-fold cross validation or other tasks where splitting a dataset into multiple groups are needed.

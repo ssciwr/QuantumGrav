@@ -21,6 +21,6 @@ repos:
     - id: mixed-line-ending
     # - id: check-yaml
     - id: check-added-large-files
-      args: ['--maxkb=100']
+      args: ['--maxkb=500']
     - id: check-merge-conflict
     - id: check-toml

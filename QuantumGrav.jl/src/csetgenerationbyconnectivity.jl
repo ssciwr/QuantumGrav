@@ -7,7 +7,7 @@ A 2D spline interpolator that maps a given `(connectivity_goal, size)` pair to a
 - `connectivity_goal` (`Float64`): target connectivity ratio in `[0,1]`.
 - `size` (`Int64`): number of nodes in the causet.
 
-# Returns 
+# Returns
 - interpolated `flip_param` (`Float64`).
 
 This piecewise-linear, exact spline is built on a full grid with shape `(13, 6)`.
@@ -74,7 +74,7 @@ end
            tx * ty * z22
 end
 
-""" 
+"""
 Sample a causet with given connectivity using a Markov Chain Monte Carlo method with adaptive number of edge flips.
 
 # Parameters
@@ -82,9 +82,9 @@ Sample a causet with given connectivity using a Markov Chain Monte Carlo method 
 - `connectivity_goal::Float64`: Target connectivity ratio for the causet.
 - `markov_steps::Int64`: Number of Markov chain steps to perform.
 - `rng::AbstractRNG`: Random number generator instance.
-- `flips_param::Float64`: Parameter of algorithm that relates distance from connectivity goal with number of edge flips.
 - `rel_tol::Float64`: Relative distance between connectivity and connectivity_goal beyond which the algorithm stops.
 - `abs_tol::Float64`: Absolute distance between connectivity and connectivity_goal beyond which the algorithm stops.
+- `flip_param::Float64`: Parameter controlling the number of edge flips per step, determined by `flip_param_determiner` if not provided.
 - `acceptance::Float64`: Acceptance parameter for the Metropolis criterion.
 # Returns
 - A bitarray causet sampled according to the connectivity goal.
@@ -97,6 +97,7 @@ function sample_bitarray_causet_by_connectivity(
     rng::Random.AbstractRNG;
     rel_tol::Union{Float64,Nothing} = nothing,
     abs_tol::Union{Float64,Nothing} = nothing,
+    flip_param::Union{Float64,Nothing} = nothing,
     acceptance::Float64 = 5e5,
 )::Tuple{CausalSets.BitArrayCauset,Bool}
     if size < 1
@@ -133,7 +134,10 @@ function sample_bitarray_causet_by_connectivity(
         throw(ArgumentError("abs_tol has to be in [0,1], is $(abs_tol)"))
     end
 
-    flip_param = flip_param_determiner(connectivity_goal, size)
+    # only use flip_param_determiner if flip_param is not provided, otherwise use the provided value
+    if flip_param === nothing
+        flip_param = flip_param_determiner(connectivity_goal, size)
+    end
 
     if flip_param <= 0
         throw(ArgumentError("flip_param has to be larger than 0, is $(flip_param)"))
@@ -157,6 +161,7 @@ function sample_bitarray_causet_by_connectivity(
                 (size - 1) / 2,
             ),
         )
+        flips_per_step = max(flips_per_step, 1)  # Ensure at least one flip per step
 
         # Randomly select edges to flip
         i = [rand(rng, 1:(size-1)) for flip = 1:flips_per_step]
@@ -213,7 +218,7 @@ end
 """
 Sample a causet of given `size` with connectivity goal drawn from a specified distribution.
 
-This function draws a connectivity goal value from the provided distribution `dist` and then 
+This function draws a connectivity goal value from the provided distribution `dist` and then
 samples a causet using Markov Chain Monte Carlo with adaptive edge flips to approximate this connectivity.
 
 # Inputs

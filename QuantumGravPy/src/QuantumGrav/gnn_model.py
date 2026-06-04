@@ -1,6 +1,6 @@
 from typing import Any, Callable, Sequence, Dict, Tuple
 from pathlib import Path
-from inspect import isclass
+from inspect import isclass, signature
 import jsonschema
 
 import torch
@@ -242,15 +242,14 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 "If graph features are to be used, both a graph features network and an aggregation method must be provided."
             )
 
-        pooling_funcs = [aggregate_pooling_type, pooling_layers]
         self.with_pooling = False
-        if any(p is not None for p in pooling_funcs):
-            if not all(p is not None for p in pooling_funcs):
+        if pooling_layers is not None:
+            self.with_pooling = True
+        else:
+            if aggregate_pooling_type is not None:
                 raise ValueError(
-                    "If pooling layers are to be used, both an aggregate pooling method and pooling layers must be provided."
+                    "If aggregate_pooling_type is provided, pooling_layers must also be provided."
                 )
-            else:
-                self.with_pooling = True
 
         self.with_latent = False
         if latent_model_type is not None:
@@ -314,7 +313,7 @@ class GNNModel(torch.nn.Module, base.Configurable):
                     aggregate_pooling_kwargs,
                 )
             else:
-                self.aggregate_pooling = torch.nn.Identity()  # non-op
+                self.aggregate_pooling = instantiate_type(torch.cat, None, None)
 
         if self.with_latent:
             # alternatively to pooling_layer, set up latent_model
@@ -352,6 +351,10 @@ class GNNModel(torch.nn.Module, base.Configurable):
             self.active_tasks: Dict[int, bool] = active_tasks
         else:
             self.active_tasks = {i: True for i in range(0, len(self.downstream_tasks))}
+
+        # check whether batch is needed for the conv layers and set a flag for later use in the forward pass. This is a bit hacky and should be refactored in the future to be more explicit and less error-prone, e.g. by having separate forward methods for with and without batch or by having a more explicit contract for the conv layers that specifies whether they expect batch or not.
+        sig = signature(self.encoder.forward)
+        self.conv_requires_batch = "batch" in sig.parameters
 
     def set_task_active(self, key: int) -> None:
         """Set a downstream task as active.
@@ -394,21 +397,25 @@ class GNNModel(torch.nn.Module, base.Configurable):
         Returns:
             torch.Tensor: Embedding vector for the graph features.
         """
+        # TODO: Contract missing here that would ensure with- and without batch dispatch. for now, we inspect the signature and check if batch is expected by the conv layers, but this is not ideal and should be refactored in the future to be more explicit and less error-prone.
+        # simple idea: make this eat a full data object
+
         # apply the GCN backbone to the node features
-        embeddings = self.encoder(x, edge_index, **(gcn_kwargs if gcn_kwargs else {}))
+        if self.conv_requires_batch:
+            embeddings = self.encoder(
+                x, edge_index, batch=batch, **(gcn_kwargs if gcn_kwargs else {})
+            )
+        else:
+            embeddings = self.encoder(
+                x, edge_index, **(gcn_kwargs if gcn_kwargs else {})
+            )
 
         # pool everything together into a single graph representation
         if self.with_pooling:
-            if not self.pooling_layers or self.pooling_layers == [None]:
-                # No pooling layers provided; pass embeddings directly
-                pooled_embeddings = [
-                    embeddings,
-                ]
-            else:
-                pooled_embeddings = [
-                    pooling_op(embeddings, batch) if pooling_op else embeddings
-                    for pooling_op in self.pooling_layers
-                ]
+            pooled_embeddings = [
+                pooling_op(embeddings, batch) if pooling_op else embeddings
+                for pooling_op in self.pooling_layers
+            ]
 
             return self.aggregate_pooling(pooled_embeddings)
 
@@ -418,6 +425,8 @@ class GNNModel(torch.nn.Module, base.Configurable):
                 *(latent_args if latent_args is not None else []),
                 **(latent_kwargs if latent_kwargs is not None else {}),
             )
+        else:
+            return embeddings
 
     def compute_downstream_tasks(
         self,
@@ -583,6 +592,6 @@ class GNNModel(torch.nn.Module, base.Configurable):
             model = cls(
                 *(args if args is not None else []),
                 **(kwargs if kwargs is not None else {}),
-            )
+            ).to(device)
         model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
         return model

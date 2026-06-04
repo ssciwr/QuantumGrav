@@ -46,11 +46,11 @@ function get_git_info!(config::AbstractDict)
 
     git_source = info.git_source
     git_branch = info.git_revision
-    git_tree_hash = info.tree_hash
+    git_commit_hash = readchomp(`git rev-parse HEAD`)
     config["QuantumGrav"] = Dict(
         "git_source" => git_source,
         "git_branch" => git_branch,
-        "git_tree_hash" => git_tree_hash,
+        "git_commit_hash" => git_commit_hash,
     )
 end
 
@@ -226,13 +226,17 @@ This relies on worker tasks being spawned by the user and will error when there 
 - `make_data`: Function for producing the data with the signature: functionname(worker_factory::CsetFactory). No other signature is permissible and supplying one will throw an error.
    This must return a Dictionary mapping names (strings) => Union{AbstractVector, Number, Bool, String}
 
+# Keyword arguments:
+- `zip`: Whether make the output zarr store into a zarr.zip store to have everything in one file. This is convenient for sharing data without having to manage all the individual chunk files of a dataset. Default is false.
+
 # Returns:
 Nothing
 """
 function produce_data(
     chunksize::Int64,
     configpath::Union{String,Nothing},
-    make_data::Function
+    make_data::Function;
+    zip::Bool = false,
 )::Nothing
     @info "Producing data with workers $(Distributed.nworkers()) and chunksize $(chunksize)"
     if length(Distributed.workers()) < 2
@@ -304,6 +308,15 @@ function produce_data(
     end
     @info "All producers finished. Waiting for writer to finish"
     wait(writer)
-    @info "Finished cset type $(cset_type)"
+    @info "Writer finished. Data production complete."
+
+    if zip
+        @info "Zipping the zarr store into a single file"
+        zip_path = filepath * ".zip"
+        open(zip_path, "w") do io
+            Zarr.writezip(io, file)
+        end
+    end
+    @info "Finished cset type $(cset_type). Data written to $(filepath)"
 
 end

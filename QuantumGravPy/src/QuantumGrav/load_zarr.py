@@ -1,5 +1,4 @@
 import zarr
-from zarr.storage import LocalStore
 from pathlib import Path
 from typing import Any
 
@@ -35,12 +34,18 @@ def zarr_file_to_dict(path: Path | str) -> dict[str, Any]:
         dict[str, Any]: A nested dictionary representation of the zarr group.
     """
     # open zarr store and root group
-    store = LocalStore(path, read_only=True)
+    if Path(path).suffix == ".zip":
+        store = zarr.storage.ZipStore(path, mode="r")
+    else:
+        store = zarr.storage.LocalStore(path, read_only=True)
+
     root = zarr.open_group(store=store, mode="r")
 
     # target dict
     target: dict[str, Any] = {}
 
     zarr_group_to_dict(root, target)
+
+    store.close()
 
     return target

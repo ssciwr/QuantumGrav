@@ -191,7 +191,6 @@ class GNNBlock(torch.nn.Module, base.Configurable):
         Args:
             x (torch.Tensor): The input node features.
             edge_index (torch.Tensor): The graph connectivity information.
-            edge_weight (torch.Tensor, optional): The edge weights. Defaults to None.
             kwargs (dict[Any, Any], optional): Additional keyword arguments for the GNN layer. Defaults to None.
 
         Returns:

@@ -2,9 +2,9 @@
 This document explains how to get the project running for development and for usage. It covers the two supported ecosystems used in this repository: the Julia package (data generation and low-level causal-set utilities) and the Python package (model code, training and evaluation).
 
 ## Installation
-**WARNING: Currently, QG only supports CUDA 12.8**
+Note: Install PyTorch and PyTorch Geometric according to your platform and accelerator backend. The repository includes predefined requirements files for CPU, macOS, ROCm, and CUDA. The default CUDA requirements file currently targets CUDA 13.0, and an explicit CUDA 12.8 file is provided as well.
 
-The Python package lives in `QuantumGravPy/` and follows a standard packaging layout (sources under `QuantumGravPy/src/QuantumGrav`). The project uses PyTorch and PyTorch Geometric; installation of those dependencies depends on your OS and available hardware (CUDA version).
+The Python package lives in `QuantumGravPy/` and follows a standard packaging layout (sources under `QuantumGravPy/src/QuantumGrav`). The project uses PyTorch and PyTorch Geometric; installation of those dependencies depends on your OS and available hardware backend.
 
 Basic steps (UNIX-like shells):
 
@@ -21,20 +21,19 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-3. Install PyTorch (follow the instructions at https://pytorch.org/get-started/locally/ for the correct wheel for your platform and CUDA). Example (CPU-only wheel).
 
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-```
-
-4. For PyTorch Geometric, follow the project documentation for the correct platform-specific wheels: https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html
-
-5. Install the Python package (recommended editable install for development):
-
+5. Install PyTorch and PyTorch Geometric dependencies using the requirements file that matches your platform:
 ```bash
 cd QuantumGravPy
+pip install -r requirements-cpu.txt
+# or requirements-cuda.txt       # default CUDA install, currently CUDA 13.0
+# or requirements-cuda12.8.txt   # explicit CUDA 12.8 install
+# or requirements-rocm.txt       # ROCm install
+# or requirements-macos.txt      # macOS install (uses PyTorch's MPS-capable wheel)
 python -m pip install -e .
 ```
+
+If you are on another platform, please refer to the [official PyTorch installation instructions](https://pytorch.org/get-started/locally/) and the [PyTorch Geometric installation instructions](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html) for guidance on installing compatible versions of those packages.
 
 After installation you can import the package as `import QuantumGrav` from Python code or a REPL.
 
@@ -49,11 +48,11 @@ cd QuantumGravPy
 python -m pip install -e .[dev,docs]
 ```
 
-Run the Python unit tests from the repository root (with the virtualenv activated):
+Run the Python unit tests (with the virtualenv activated):
 
 ```bash
 cd QuantumGravPy
-pytest test
+pytest
 ```
 
 ### Building the documentation locally
@@ -69,16 +68,11 @@ mkdocs serve
 ```
 Follow the instructions on screen to open the documentation. More on `mkdocs` can be found [here](https://www.mkdocs.org/), and on the `Documenter.jl` package used in the Julia package [here](https://documenter.juliadocs.org/stable/).
 
-Training and evaluation scripts live under `QuantumGravPy/src/QuantumGrav/` (`train.py`, `train_ddp.py`) and can be run once dependencies are installed.
-See the [training section](./training_a_model.md) for more.
+Training and evaluation are driven via configs, `DataLoaderFactory`, and the `Trainer`. See [Model training](./training_a_model.md) for a minimal example.
 
 ## Notes and troubleshooting
 
 - PyTorch and PyTorch-Geometric installation is platform and CUDA-version specific; consult the official installation docs if you encounter wheel or binary compatibility errors.
 
 ### Contribution guide
-
 Tbd.
-
-
-
