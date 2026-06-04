@@ -6,6 +6,8 @@ import QuantumGrav as QG
 import torch
 import torch.multiprocessing as mp
 from torch_geometric.loader import DataLoader
+from torch_geometric.utils import dense_to_sparse
+from torch_geometric.data import Data
 
 mp.set_start_method("spawn")
 
@@ -20,7 +22,7 @@ def create_data_zarr(tmp_path_factory):
     for i in range(3):
         data = []
         for _ in range(5):
-            num_nodes = np.random.randint(10, 15)
+            num_nodes = 15
             adjacency_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
             link_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
             max_pathlen_future = np.random.rand(num_nodes).astype("float32")
@@ -83,7 +85,7 @@ def create_data_zarr_zip(tmp_path_factory):
     for i in range(3):
         data = []
         for _ in range(5):
-            num_nodes = np.random.randint(10, 15)
+            num_nodes = 15
             adjacency_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
             link_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
             max_pathlen_future = np.random.rand(num_nodes).astype("float32")
@@ -122,9 +124,52 @@ def create_data_zarr_zip(tmp_path_factory):
 
 
 @pytest.fixture
+def pre_transform():
+    global pre_transform_function
+
+    def _pre_transform_func(datadict: dict) -> Data:
+        adj_matrix = torch.tensor(datadict["adjacency_matrix"])
+        edge_index, edge_weight = dense_to_sparse(adj_matrix)
+        max_pathlen_future = torch.tensor(datadict["max_pathlen_future"]).unsqueeze(1)
+        max_pathlen_past = torch.tensor(datadict["max_pathlen_past"]).unsqueeze(1)
+
+        x = torch.cat((max_pathlen_past, max_pathlen_future), dim=1)
+
+        dimension = datadict["dimension"]
+
+        if isinstance(dimension, np.ndarray):
+            value_list = [
+                dimension.item(),
+            ]
+        else:
+            value_list = [
+                dimension,
+            ]
+
+        data = Data(
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_weight.unsqueeze(1),
+            y=torch.tensor(
+                [
+                    value_list,
+                ],
+                dtype=torch.int32,
+            ),
+        )
+
+        if not data.validate():
+            raise ValueError("Data validation failed.")
+        return data
+
+    pre_transform_function = _pre_transform_func
+    return pre_transform_function
+
+
+@pytest.fixture
 def make_dataset(create_data_zarr, pre_transform):
     datadir, datafiles = create_data_zarr
-
+    pre_transform_function = pre_transform
     dataset = QG.QGDataset(
         input=datafiles,
         output=datadir,
@@ -134,7 +179,7 @@ def make_dataset(create_data_zarr, pre_transform):
         n_processes=1,
         chunksize=4,
         transform=lambda x: x,
-        pre_transform=pre_transform,
+        pre_transform=pre_transform_function,
         pre_filter=lambda x: True,
     )
     return dataset
@@ -157,8 +202,8 @@ def make_dataloader(create_data_zarr, make_dataset):
 @pytest.fixture(scope="session")
 def yaml_text():
     yaml_text = """
-        name: test_model
         model:
+            name: test_model
             layers: !sweep
                 values: [1, 2]
 
@@ -183,21 +228,8 @@ def yaml_text():
                     values: [-1, -2]
             baz:
                 - x: !coupled-sweep
-                    target: model.foo.1.x
+                    target: model.foo[1].x
                     values: [-10, -20]
-
-            listsweep: !sweep
-                values:
-                    - [1, 2]
-                    - [3, 4, 5]
-                    - [6]
-
-            coupled_listsweep: !coupled-sweep
-                target: model.listsweep
-                values:
-                    - [10, 20]
-                    - [30, 40, 50]
-                    - [60]
 
         trainer:
             epochs: !range

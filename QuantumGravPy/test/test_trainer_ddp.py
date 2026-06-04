@@ -5,7 +5,6 @@ from jsonschema import ValidationError
 import torch
 import torch_geometric
 from torch_geometric.data import Data
-from torch_geometric.utils import dense_to_sparse
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import QuantumGrav as QG
@@ -13,7 +12,6 @@ import QuantumGrav as QG
 import numpy as np
 from copy import deepcopy
 import os
-import zarr
 from datetime import datetime
 from pathlib import Path
 from functools import partial
@@ -94,7 +92,7 @@ def model_config_eval():
 
 
 @pytest.fixture
-def config(model_config_eval, tmppath, create_data_zarr, read_data):
+def config(model_config_eval, tmppath, create_data_zarr, pre_transform):
     datadir, datafiles = create_data_zarr
     cfg = {
         "training": {
@@ -116,10 +114,9 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
             # "prefetch_factor": 2,
         },
         "data": {
-            "pre_transform": lambda x: x,
+            "pre_transform": pre_transform,
             "transform": lambda x: x,
             "pre_filter": lambda x: True,
-            "reader": read_data,
             "files": [str(f) for f in datafiles],
             "output": str(datadir),
             "validate_data": True,
@@ -230,41 +227,6 @@ def compute_loss(x: dict[int, torch.Tensor], data: Data, trainer) -> torch.Tenso
         loss = torch.nn.MSELoss()(task_output, data.y.to(torch.float32))
         all_losses += loss
     return all_losses
-
-
-def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
-    adj_raw = f["adjacency_matrix"][idx, :, :]
-    adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
-    edge_index, edge_weight = dense_to_sparse(adj_matrix)
-    adj_matrix = adj_matrix.to_sparse()
-    node_features = []
-
-    # Path lengths
-    max_path_future = torch.tensor(
-        f["max_pathlen_future"][idx, :], dtype=float_dtype
-    ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-
-    max_path_past = torch.tensor(
-        f["max_pathlen_past"][idx, :], dtype=float_dtype
-    ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-    node_features.extend([max_path_future, max_path_past])
-
-    x = torch.cat(node_features, dim=1)
-
-    manifold = f["manifold"][idx]
-    boundary = f["boundary"][idx]
-    dimension = f["dimension"][idx]
-
-    data = Data(
-        x=x,
-        edge_index=edge_index,
-        edge_attr=edge_weight.unsqueeze(1),
-        y=torch.tensor([[manifold, boundary, dimension]], dtype=int_dtype),
-    )
-
-    if validate and not data.validate():
-        raise ValueError("Data validation failed.")
-    return data
 
 
 def test_initialize_ddp():
