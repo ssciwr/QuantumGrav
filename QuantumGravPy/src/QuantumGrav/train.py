@@ -15,7 +15,7 @@ from . import evaluate
 from . import early_stopping
 from . import gnn_model
 from . import base
-from .config_utils import get_loader
+from .config_utils import convert_to_pyobject_tags, get_loader
 from .utils import seed_all_rngs
 
 import torch
@@ -527,6 +527,13 @@ class Trainer(base.Configurable):
         if not data_path.exists():
             data_path.mkdir(parents=True)
         logger.info(f"Data path set to: {data_path}")
+        # dump config to outpath
+        with open(Path(data_path) / "config.yaml", "w") as cfgfile:
+            yaml.safe_dump(
+                convert_to_pyobject_tags(config, emit_yaml_tags=True),
+                cfgfile,
+                sort_keys=False,
+            )
 
         return cls._from_validated_config(
             config=config,
@@ -998,7 +1005,6 @@ class Trainer(base.Configurable):
 
         self.logger.info("Starting testing process.")
         # get the best model again
-
         saved_models = [
             f
             for f in Path(self.checkpoint_path).iterdir()
@@ -1097,12 +1103,12 @@ class Trainer(base.Configurable):
         with open(snapshot.config_path) as f:
             config = yaml.load(f, Loader=get_loader())
 
-        if config.get("continue_path") is None:
+        if config["training"].get("continue_path") is None:
             # when there is no continuation path, go on with the same path as the loaded snapshot
             continue_path = path.parent
         else:
             # when there is a continuation path, overwrite the path in the config with the continuation path for the new run
-            continue_path = Path(config["continue_path"])
+            continue_path = Path(config["training"]["continue_path"])
 
         trainer = cls.from_config(config, path_overwrite=continue_path)
 
