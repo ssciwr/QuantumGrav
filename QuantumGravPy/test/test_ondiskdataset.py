@@ -119,15 +119,15 @@ def test_ondisk_dataset_map_index(create_data_zarr):
     )
 
     assert len(dataset.input) == 3
-    assert all(dataset._num_samples_per_file == [5, 5, 5])
+    assert list(dataset._num_samples_per_file.values()) == [5, 5, 5]
     assert dataset._num_samples == 15
-    assert dataset.map_index(3) == (datafiles[0], 3)
-    assert dataset.map_index(12) == (datafiles[2], 2)
+    assert dataset.map_index(3) == (str(datafiles[0]), 3)
+    assert dataset.map_index(12) == (str(datafiles[2]), 2)
 
     with pytest.raises(
         RuntimeError,
         match=re.escape(
-            "Error, index 15 could not be found in the supplied data files of size [5 5 5] with total size 15"
+            "Error, index 15 could not be found in the supplied data files of size [5, 5, 5] with total size 15"
         ),
     ):
         dataset.map_index(15)
@@ -150,9 +150,9 @@ def test_ondisk_dataset_get(create_data_zarr):
     _ = dataset[0]
     assert len(dataset.stores) == 1
 
-    assert len(dataset.stores[dataset.input[0]]) == 2
-    assert isinstance(dataset.stores[dataset.input[0]][0], zarr.storage.LocalStore)
-    assert isinstance(dataset.stores[dataset.input[0]][1], zarr.Group)
+    assert len(dataset.stores[str(dataset.input[0])]) == 2
+    assert isinstance(dataset.stores[str(dataset.input[0])][0], zarr.storage.LocalStore)
+    assert isinstance(dataset.stores[str(dataset.input[0])][1], zarr.Group)
 
     _ = dataset[3]
     assert len(dataset.stores) == 1
@@ -173,7 +173,7 @@ def test_ondisk_dataset_get(create_data_zarr):
     assert len(datarange) == 4
 
     for file in dataset.input:
-        assert file in dataset.stores
+        assert str(file) in dataset.stores
     dataset.close()
     assert len(dataset.stores) == 0
 
@@ -193,7 +193,7 @@ def test_ondisk_dataset_zip_store_get(create_data_zarr_zip, tmp_path):
 
     assert len(dataset) == 15
     _ = dataset[0]
-    store, _ = dataset.stores[dataset.input[0]]
+    store, _ = dataset.stores[str(dataset.input[0])]
     assert isinstance(store, ZipStore)
     _ = dataset[6]  # second file
     assert len(dataset.stores) == 2
