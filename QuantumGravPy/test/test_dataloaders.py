@@ -209,6 +209,7 @@ def test_build_dataset_from_config_passes_options_applies_subset_and_shuffle(
         "transform": data_config["transform"],
         "pre_transform": data_config["pre_transform"],
         "pre_filter": data_config["pre_filter"],
+        "reader": None,
     }
     assert len(dataset) == 3
     assert dataset.selected_indices == [5, 6, 0]

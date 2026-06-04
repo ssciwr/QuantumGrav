@@ -265,6 +265,62 @@ def test_ondisk_dataset_default_transform(create_data_zarr):
     assert isinstance(dataset[0], dict)
 
 
+def test_ondisk_dataset_with_reader(create_data_zarr, tmp_path):
+    """reader(root, path) replaces zarr_group_to_dict; output flows through pre_transform."""
+    _, datafiles = create_data_zarr
+
+    call_log = []
+
+    def reader(root, path):
+        call_log.append(path)
+        grp = root[path]
+        return {k: grp[k][:] for k in grp.array_keys()}
+
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=5,
+        pre_transform=pre_transform,
+        reader=reader,
+    )
+
+    assert len(dataset) == 15
+    item = dataset[0]
+    assert isinstance(item, Data)
+    assert item.x is not None
+    assert item.x.shape == (15, 2)
+    assert len(call_log) == 15
+
+
+def test_ondisk_dataset_reader_returns_data_directly(create_data_zarr, tmp_path):
+    """reader can return a Data object directly; pre_transform receives it unchanged."""
+    _, datafiles = create_data_zarr
+
+    def reader(root, path):
+        return pre_transform({k: root[path][k][:] for k in root[path].array_keys()})
+
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        n_processes=1,
+        chunksize=5,
+        pre_transform=lambda x: x,
+        reader=reader,
+    )
+
+    assert len(dataset) == 15
+    item = dataset[7]
+    assert isinstance(item, Data)
+    assert item.x is not None
+    assert item.x.shape == (15, 2)
+
+
 def test_ondisk_dataset_with_dataloader(create_data_zarr):
     datadir, datafiles = create_data_zarr
     dataset = QG.QGDataset(

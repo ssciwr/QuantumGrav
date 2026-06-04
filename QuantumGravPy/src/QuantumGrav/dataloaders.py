@@ -39,63 +39,23 @@ DATALOADER_WORKER_OPTION_CONSTRAINTS = [
 
 
 DATA_CONFIG_SCHEMA = {
-    "type": "object",
-    "description": "Dataset configuration",
+    **dataset_ondisk.QGDataset.schema,
+    "description": "Dataset configuration for the DataLoaderFactory",
     "properties": {
-        "pre_transform": {
-            "description": "Callable applied before storing processed data",
-        },
-        "transform": {
-            "description": "Callable applied when reading processed data",
-        },
-        "pre_filter": {
-            "description": "Callable used to filter processed data",
-        },
-        "reader": {
-            "description": "Callable that reads raw data from file",
-        },
-        "files": {
-            "type": "array",
-            "description": "List of zarr stores to read from",
-            "minItems": 1,
-            "items": {"type": "string"},
-        },
-        "output": {
-            "type": "string",
-            "description": "Path to store preprocessed data",
-        },
-        "validate_data": {
-            "type": "boolean",
-            "description": "Whether to validate transformed data objects",
-        },
-        "float_type": {
-            "description": "Torch floating point dtype used for tensor conversion",
-        },
-        "int_type": {
-            "description": "Torch integer dtype used for tensor conversion",
-        },
-        "n_processes": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Processes to use for preprocessing",
-        },
-        "chunksize": {
-            "type": "integer",
-            "description": "Number of datapoints to process at once",
-        },
+        **dataset_ondisk.QGDataset.schema["properties"],
         "shuffle": {
             "type": "boolean",
-            "description": "Whether to shuffle the dataset",
+            "description": "Whether to shuffle the dataset after building",
         },
         "subset": {
             "type": "number",
-            "description": "Fraction of the dataset to use",
+            "description": "Fraction of the dataset to use (0 < subset <= 1)",
             "exclusiveMinimum": 0,
             "maximum": 1,
         },
         "split": {
             "type": "array",
-            "description": "Split ratios of the dataset",
+            "description": "Split ratios for train/val or train/val/test",
             "items": {
                 "type": "number",
                 "exclusiveMinimum": 0,
@@ -105,10 +65,6 @@ DATA_CONFIG_SCHEMA = {
             "maxItems": 3,
         },
     },
-    "required": [
-        "output",
-        "files",
-    ],
     "additionalProperties": False,
 }
 
@@ -296,17 +252,22 @@ class DataLoaderFactory(base.Configurable):
     def _build_dataset_from_config(
         self, data_config: dict[str, Any] | None, stage_name: str
     ) -> Dataset:
-        """Build the configured on-disk dataset.
+        """Build a QGDataset from a data config node.
+
+        All standard QGDataset options (``pre_transform``, ``pre_filter``,
+        ``transform``, ``reader``, ``subset``, ``shuffle``, etc.) are forwarded
+        from the config node when present.
 
         Args:
             data_config (dict[str, Any] | None): Dataset config node to build from.
-            stage_name (str): Name of the config node used for error reporting.
+                Must contain ``files`` and ``output``; all other keys are optional.
+            stage_name (str): Name of the config node used in error messages.
 
         Returns:
-            Dataset: Dataset built from the provided config node.
+            Dataset: Fully built (and optionally subsetted/shuffled) dataset.
 
         Raises:
-            ValueError: If the config does not include the requested data section.
+            ValueError: If ``data_config`` is None.
         """
         if data_config is None:
             raise ValueError(
@@ -325,6 +286,7 @@ class DataLoaderFactory(base.Configurable):
             transform=cfg.get("transform"),
             pre_transform=cfg.get("pre_transform"),
             pre_filter=cfg.get("pre_filter"),
+            reader=cfg.get("reader"),
         )
 
         if "subset" in cfg and cfg["subset"] is not None:
