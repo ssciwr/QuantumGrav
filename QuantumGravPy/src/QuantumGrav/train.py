@@ -256,7 +256,10 @@ class Trainer(base.Configurable):
                         "description": "Shuffle validation dataset",
                     },
                     "validator": {
-                        "$ref": "#/definitions/constructor",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.Validator.schema,
+                        ],
                         "description": "Validator constructor spec: provides type, args, kwargs",
                     },
                 },
@@ -295,7 +298,10 @@ class Trainer(base.Configurable):
                         "description": "Shuffle test dataset",
                     },
                     "tester": {
-                        "$ref": "#/definitions/constructor",
+                        "anyOf": [
+                            {"$ref": "#/definitions/constructor"},
+                            evaluate.Tester.schema,
+                        ],
                         "description": "Tester constructor spec: provides type, args, kwargs",
                     },
                 },
@@ -393,7 +399,7 @@ class Trainer(base.Configurable):
             )
 
         try:
-            self.validator = evaluate.DefaultValidator.from_config(
+            self.validator = evaluate.Validator.from_config(
                 config["validation"]["validator"]
             )
         except Exception as e:
@@ -406,9 +412,7 @@ class Trainer(base.Configurable):
             )
 
         try:
-            self.tester = evaluate.DefaultTester.from_config(
-                config["testing"]["tester"]
-            )
+            self.tester = evaluate.Tester.from_config(config["testing"]["tester"])
         except Exception as e:
             self.logger.debug(
                 f"from_config failed for tester, using direct instantiation: {e}"

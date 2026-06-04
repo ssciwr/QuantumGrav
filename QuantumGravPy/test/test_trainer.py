@@ -274,6 +274,60 @@ def compute_loss(
     return all_loss
 
 
+def compute_evaluation_loss(x: dict[int, torch.Tensor], data: Data) -> torch.Tensor:
+    """Compute evaluator loss with the two-argument evaluator criterion signature."""
+    all_loss = torch.zeros(1)
+    for _, task_output in x.items():
+        target = data.y.to(torch.float32).expand_as(task_output)  # type: ignore
+        loss = torch.nn.MSELoss()(task_output, target)
+        all_loss += loss
+    return all_loss
+
+
+def count_prediction_batches(predictions: list[dict[int, torch.Tensor]], _targets):
+    return len(predictions)
+
+
+@pytest.fixture
+def config_with_real_evaluators(config):
+    cfg = deepcopy(config)
+    evaluator_tasks = [
+        {
+            "name": "batch_count",
+            "monitor": count_prediction_batches,
+        }
+    ]
+    cfg["validation"]["validator"] = {
+        "device": cfg["training"]["device"],
+        "criterion": compute_evaluation_loss,
+        "evaluator_tasks": evaluator_tasks,
+    }
+    cfg["testing"]["tester"] = {
+        "device": cfg["training"]["device"],
+        "criterion": compute_evaluation_loss,
+        "evaluator_tasks": evaluator_tasks,
+    }
+    cfg["early_stopping"] = {
+        "type": QG.early_stopping.DefaultEarlyStopping,
+        "args": [
+            {
+                0: {
+                    "delta": 1e-2,
+                    "metric": "loss_avg",
+                    "grace_period": 8,
+                    "init_best_score": 1000000.0,
+                    "mode": "min",
+                },
+            },
+            12,
+        ],
+        "kwargs": {
+            "mode": "any",
+        },
+    }
+    return cfg
+
+
 def test_trainer_creation_works(config):
     trainer = QG.Trainer(
         config,
@@ -295,6 +349,29 @@ def test_trainer_creation_works(config):
 
     assert trainer.optimizer is None
     assert trainer.model is None
+
+
+def test_trainer_creation_works_with_real_evaluators(config_with_real_evaluators):
+    trainer = QG.Trainer(
+        config_with_real_evaluators,
+    )
+
+    assert isinstance(trainer.validator, QG.Validator)
+    assert isinstance(trainer.tester, QG.Tester)
+    assert trainer.validator.criterion is compute_evaluation_loss
+    assert trainer.tester.criterion is compute_evaluation_loss
+    assert set(trainer.validator.data.columns) == {
+        "loss_avg",
+        "loss_min",
+        "loss_max",
+        "batch_count",
+    }
+    assert set(trainer.tester.data.columns) == {
+        "loss_avg",
+        "loss_min",
+        "loss_max",
+        "batch_count",
+    }
 
 
 def test_trainer_model_instantiation_works(config):
@@ -647,6 +724,38 @@ def test_trainer_run_training(make_dataset, config):
     assert len(trainer.validator.data) == config["training"]["num_epochs"]
 
 
+def test_trainer_run_training_with_real_validator(
+    make_dataset, config_with_real_evaluators
+):
+    config_with_real_evaluators["training"]["num_epochs"] = 2
+    trainer = QG.Trainer(
+        config_with_real_evaluators,
+    )
+    assert isinstance(trainer.validator, QG.Validator)
+
+    train_loader, validation_loader, _ = trainer.prepare_dataloaders(
+        make_dataset, split=[0.8, 0.1, 0.1]
+    )
+
+    training_data, valid_data = trainer.run_training(
+        train_loader,
+        validation_loader,
+    )
+
+    expected_columns = {"loss_avg", "loss_min", "loss_max", "batch_count"}
+    assert isinstance(valid_data, pd.DataFrame)
+    assert valid_data is trainer.validator.data
+    assert set(valid_data.columns) == expected_columns
+    assert len(valid_data) == config_with_real_evaluators["training"]["num_epochs"]
+    assert (
+        training_data.shape[0] == config_with_real_evaluators["training"]["num_epochs"]
+    )
+    assert valid_data["loss_avg"].notna().all()
+    assert valid_data["loss_min"].notna().all()
+    assert valid_data["loss_max"].notna().all()
+    assert valid_data["batch_count"].eq(len(validation_loader)).all()
+
+
 def test_trainer_run_training_with_datasetconf(config_with_data):
     trainer = QG.Trainer(
         config_with_data,
@@ -725,3 +834,31 @@ def test_trainer_run_test(make_dataset, config):
     assert test_data is not None
     assert len(test_data) == 1  # DummyEvaluator returns a single loss value
     assert len(trainer.tester.data) == 1
+
+
+def test_trainer_run_test_with_real_tester(make_dataset, config_with_real_evaluators):
+    trainer = QG.Trainer(
+        config_with_real_evaluators,
+    )
+    assert isinstance(trainer.tester, QG.Tester)
+    trainer.initialize_model()
+
+    test_loader, _, _ = trainer.prepare_dataloaders(make_dataset, split=[0.8, 0.1, 0.1])
+
+    trainer.save_checkpoint("best")
+
+    test_data = trainer.run_test(test_loader, "best")
+
+    assert isinstance(test_data, pd.DataFrame)
+    assert test_data is trainer.tester.data
+    assert len(test_data) == 1
+    assert set(test_data.columns) == {
+        "loss_avg",
+        "loss_min",
+        "loss_max",
+        "batch_count",
+    }
+    assert test_data.loc[0, "batch_count"] == len(test_loader)
+    assert pd.notna(test_data.loc[0, "loss_avg"])
+    assert pd.notna(test_data.loc[0, "loss_min"])
+    assert pd.notna(test_data.loc[0, "loss_max"])
