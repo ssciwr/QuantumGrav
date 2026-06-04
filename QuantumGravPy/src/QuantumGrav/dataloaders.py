@@ -585,7 +585,7 @@ class DataLoaderFactory(base.Configurable):
             "drop_last": section.get("drop_last", False),
             "prefetch_factor": section.get("prefetch_factor", None),
             "persistent_workers": section.get("persistent_workers", False),
-            "shuffle": section.get("shuffle", True),
+            "shuffle": section.get("shuffle", False),
         }
 
     def prepare_dataloaders(
