@@ -24,20 +24,79 @@ def _process_data(
     pre_filter: Callable,
     pre_transform: Callable,
     data_chunk: list[str],
+    reader: Callable | None = None,
 ):
     out = []
     with ZarrStore(file, mode="r") as store:
         root = zarr.open_group(store, path="", mode="r")
-        for path in data_chunk:
-            data = dict()
-            zarr_group_to_dict(root[path], data)
-            if pre_filter(data):
-                out.append(pre_transform(data))
+        if reader is not None:
+            for path in data_chunk:
+                data = reader(root, path)
+                if pre_filter(data):
+                    out.append(pre_transform(data))
+        else:
+            for path in data_chunk:
+                data = dict()
+                zarr_group_to_dict(root[path], data)
+                if pre_filter(data):
+                    out.append(pre_transform(data))
     return out
 
 
 class QGDataset(Dataset):
-    """A dataset class for QuantumGrav data that is designed to handle large datasets stored on disk. This class provides methods for loading, processing, and writing data that are common to both in-memory and on-disk datasets."""
+    """On-disk QuantumGrav dataset backed by zarr stores."""
+
+    schema = {
+        "type": "object",
+        "description": "QGDataset constructor parameters expressed as a config dict",
+        "properties": {
+            "files": {
+                "type": "array",
+                "description": "List of zarr store paths to read from",
+                "minItems": 1,
+                "items": {"type": "string"},
+            },
+            "output": {
+                "type": "string",
+                "description": "Directory where processed data will be stored",
+            },
+            "float_type": {
+                "description": "Torch floating-point dtype for tensor conversion",
+            },
+            "int_type": {
+                "description": "Torch integer dtype for tensor conversion",
+            },
+            "validate_data": {
+                "type": "boolean",
+                "description": "Whether to validate transformed data objects",
+            },
+            "n_processes": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Worker processes to use for preprocessing",
+            },
+            "chunksize": {
+                "type": "integer",
+                "description": "Number of samples to process per chunk",
+            },
+            "transform": {
+                "description": "Callable applied to each sample at read time",
+            },
+            "pre_transform": {
+                "description": "Callable applied once before saving processed data",
+            },
+            "pre_filter": {
+                "description": "Callable used to drop samples before pre_transform",
+            },
+            "reader": {
+                "description": (
+                    "reader(root, path) replaces the default zarr_group_to_dict. "
+                    "root is the zarr root group, path is the group path string."
+                ),
+            },
+        },
+        "required": ["files", "output"],
+    }
 
     def __init__(
         self,
@@ -49,27 +108,33 @@ class QGDataset(Dataset):
         chunksize: int = 1000,
         n_processes: int = 1,
         # dataset properties
-        transform: Callable[[Data | Collection[Any]], Data] | None = None,
-        pre_transform: Callable[[Data | Collection[Any]], Data] | None = None,
-        pre_filter: Callable[[Data | Collection[Any]], bool] | None = None,
-        logfile: str | None = None,
-        name: str = "dataset",
+        transform: Callable[..., Data] | None = None,
+        pre_transform: Callable[..., Data] | None = None,
+        pre_filter: Callable[..., bool] | None = None,
+        reader: Callable | None = None,
     ):
-        """Create a new QGDataset instance. This class is designed to handle the loading, processing, and writing of QuantumGrav datasets that are stored on disk. When there is no pre_transform and no pre_filter is given, the system will not create a `processed` directory.
+        """Create a new QGDataset instance.
+
+        Loads QuantumGrav data from zarr stores on disk. When neither ``pre_transform``
+        nor ``pre_filter`` is given the dataset reads samples lazily at access time
+        and no ``processed`` directory is written.
 
         Args:
-            input (list[str  |  Path] | Callable[[Any], dict]): List of input zarr file paths.
-            output (str | Path): Output directory where processed data will be stored.
-            float_type (torch.dtype, optional): Data type for float tensors. Defaults to torch.float32.
-            int_type (torch.dtype, optional): Data type for int tensors. Defaults to torch.int64.
-            validate_data (bool, optional): Whether to validate the data. Defaults to True.
-            chunksize (int, optional): Size of data chunks to process at once. Defaults to 1000.
-            n_processes (int, optional): Number of processes to use for data loading. Defaults to 1.
-            transform (Callable[[Data], Data] | None, optional): Function to transform the data. Defaults to None.
-            pre_transform (Callable[[Data], Data] | None, optional): Function to pre-transform the data. Defaults to None.
-            pre_filter (Callable[[Data], bool] | None, optional): Function to pre-filter the data. Defaults to None.
-            logfile: (str, None, optional): Logfile to attach to
-            name (str, optional): name of the dataset to identify it in logging output, defaults to 'dataset'.
+            input (list[str | Path]): List of input zarr file paths.
+            output (str | Path): Directory where processed data will be stored.
+            float_type (torch.dtype, optional): Dtype for float tensors. Defaults to torch.float32.
+            int_type (torch.dtype, optional): Dtype for int tensors. Defaults to torch.int64.
+            validate_data (bool, optional): Whether to validate transformed data objects. Defaults to True.
+            chunksize (int, optional): Number of samples processed per chunk. Defaults to 1000.
+            n_processes (int, optional): Worker processes for preprocessing. Defaults to 1.
+            transform (Callable | None, optional): Applied to each sample at read time. Defaults to None.
+            pre_transform (Callable | None, optional): Applied once before saving processed data. Defaults to None.
+            pre_filter (Callable | None, optional): Called before pre_transform; samples that return False are dropped. Defaults to None.
+            reader (Callable | None, optional): ``reader(root, path)`` replaces the default
+                ``zarr_group_to_dict`` when reading raw samples. ``root`` is the zarr root
+                group of a store and ``path`` is the group path string (e.g. ``"cset_1"``).
+                The return value is passed to ``pre_filter`` and ``pre_transform`` unchanged.
+                Defaults to None.
         """
         does_preprocessing = pre_transform is not None or pre_filter is not None
 
@@ -97,7 +162,7 @@ class QGDataset(Dataset):
         self.n_processes = n_processes
         self.chunksize = chunksize
         self.does_preprocessing = does_preprocessing
-        self.name = name
+        self.reader = reader
 
         # ensure the input is a list of paths
         if Path(self.processed_dir).exists():
@@ -210,7 +275,7 @@ class QGDataset(Dataset):
 
             reading_groups = chunks(
                 [
-                    (filepath, self.pre_filter, self.pre_transform, chunk)
+                    (filepath, self.pre_filter, self.pre_transform, chunk, self.reader)
                     for chunk in datagroups
                 ],
                 10 if n_datagroups > 10 else 1,

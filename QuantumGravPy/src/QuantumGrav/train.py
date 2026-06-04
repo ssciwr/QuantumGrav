@@ -578,6 +578,7 @@ class Trainer(base.Configurable):
                 transform=cfg.get("transform"),
                 pre_transform=cfg.get("pre_transform"),
                 pre_filter=cfg.get("pre_filter"),
+                reader=cfg.get("reader"),
             )
 
             if cfg.get("subset"):
