@@ -10,7 +10,6 @@ from pathlib import Path
 
 from collections.abc import Callable, Sequence, Collection
 from typing import Any, Tuple
-import numpy as np
 import yaml
 from tqdm import tqdm
 from joblib import Parallel, delayed
@@ -106,9 +105,8 @@ class QGDataset(Dataset):
                 self.metadata = yaml.load(f, Loader=yaml.FullLoader)
 
             self._num_samples = self.metadata["num_samples"]
-            self._num_samples_per_file = dict(
-                self.metadata["num_samples_per_file"], dtype=np.int64
-            )
+            self._num_samples_per_file = self.metadata["num_samples_per_file"]
+
         else:
             # get the number of samples in the dataset
             self._num_samples = 0
