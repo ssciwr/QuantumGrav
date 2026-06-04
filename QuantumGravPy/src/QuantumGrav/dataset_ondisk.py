@@ -106,6 +106,7 @@ class QGDataset(Dataset):
 
             self._num_samples = self.metadata["num_samples"]
             self._num_samples_per_file = self.metadata["num_samples_per_file"]
+
         else:
             # get the number of samples in the dataset
             self._num_samples = 0
@@ -122,7 +123,7 @@ class QGDataset(Dataset):
                         mode="r",
                     )
                     n = len(root)
-                    self._num_samples_per_file[filepath] = n
+                    self._num_samples_per_file[str(filepath)] = n
                 self._num_samples += n
 
             Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
@@ -280,7 +281,7 @@ class QGDataset(Dataset):
         original_index = idx
         final_file: Path | str | None = None
 
-        for size, dfile in zip(self._num_samples_per_file, self.input):
+        for dfile, size in self._num_samples_per_file.items():
             if idx < size:
                 final_file = dfile
                 break
@@ -289,7 +290,7 @@ class QGDataset(Dataset):
 
         if final_file is None:
             raise RuntimeError(
-                f"Error, index {original_index} could not be found in the supplied data files of size {self._num_samples_per_file} with total size {self._num_samples}"
+                f"Error, index {original_index} could not be found in the supplied data files of size {list(self._num_samples_per_file.values())} with total size {self._num_samples}"
             )
         return final_file, idx
 

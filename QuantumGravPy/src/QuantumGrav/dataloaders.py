@@ -14,6 +14,30 @@ from . import base
 from . import dataset_ondisk
 
 
+DATALOADER_WORKER_OPTION_CONSTRAINTS = [
+    {
+        "if": {
+            "required": ["persistent_workers"],
+            "properties": {"persistent_workers": {"const": True}},
+        },
+        "then": {
+            "required": ["num_workers"],
+            "properties": {"num_workers": {"minimum": 1}},
+        },
+    },
+    {
+        "if": {
+            "required": ["prefetch_factor"],
+            "properties": {"prefetch_factor": {"type": "integer"}},
+        },
+        "then": {
+            "required": ["num_workers"],
+            "properties": {"num_workers": {"minimum": 1}},
+        },
+    },
+]
+
+
 DATA_CONFIG_SCHEMA = {
     "type": "object",
     "description": "Dataset configuration",
@@ -44,6 +68,12 @@ DATA_CONFIG_SCHEMA = {
             "type": "boolean",
             "description": "Whether to validate transformed data objects",
         },
+        "float_type": {
+            "description": "Torch floating point dtype used for tensor conversion",
+        },
+        "int_type": {
+            "description": "Torch integer dtype used for tensor conversion",
+        },
         "n_processes": {
             "type": "integer",
             "minimum": 0,
@@ -60,11 +90,17 @@ DATA_CONFIG_SCHEMA = {
         "subset": {
             "type": "number",
             "description": "Fraction of the dataset to use",
+            "exclusiveMinimum": 0,
+            "maximum": 1,
         },
         "split": {
             "type": "array",
             "description": "Split ratios of the dataset",
-            "items": {"type": "number"},
+            "items": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+            },
             "minItems": 2,
             "maxItems": 3,
         },
@@ -134,6 +170,7 @@ class DataLoaderFactory(base.Configurable):
                 },
                 "required": ["seed", "batch_size"],
                 "additionalProperties": True,
+                "allOf": DATALOADER_WORKER_OPTION_CONSTRAINTS,
             },
             "validation": {
                 "type": "object",
@@ -163,6 +200,10 @@ class DataLoaderFactory(base.Configurable):
                         "minimum": 2,
                         "description": "Prefetch samples per worker (None or >=2)",
                     },
+                    "persistent_workers": {
+                        "type": "boolean",
+                        "description": "Keep validation workers alive between iterations",
+                    },
                     "shuffle": {
                         "type": "boolean",
                         "description": "Shuffle validation dataset",
@@ -170,6 +211,7 @@ class DataLoaderFactory(base.Configurable):
                 },
                 "required": ["batch_size"],
                 "additionalProperties": True,
+                "allOf": DATALOADER_WORKER_OPTION_CONSTRAINTS,
             },
             "testing": {
                 "type": "object",
@@ -199,6 +241,10 @@ class DataLoaderFactory(base.Configurable):
                         "minimum": 2,
                         "description": "Prefetch samples per worker (None or >=2)",
                     },
+                    "persistent_workers": {
+                        "type": "boolean",
+                        "description": "Keep test workers alive between iterations",
+                    },
                     "shuffle": {
                         "type": "boolean",
                         "description": "Shuffle test dataset",
@@ -206,6 +252,7 @@ class DataLoaderFactory(base.Configurable):
                 },
                 "required": ["batch_size"],
                 "additionalProperties": True,
+                "allOf": DATALOADER_WORKER_OPTION_CONSTRAINTS,
             },
         },
         "required": ["training", "validation", "testing"],
@@ -228,7 +275,9 @@ class DataLoaderFactory(base.Configurable):
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.logger.setLevel(config.get("log_level", logging.INFO))
-        self.nprng = np.random.default_rng(config["training"]["seed"])
+        seed = config["training"]["seed"]
+        self.nprng = np.random.default_rng(seed)
+        self.torch_generator = torch.Generator().manual_seed(seed)
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "DataLoaderFactory":
@@ -278,15 +327,15 @@ class DataLoaderFactory(base.Configurable):
             pre_filter=cfg.get("pre_filter"),
         )
 
-        if cfg.get("subset"):
+        if "subset" in cfg and cfg["subset"] is not None:
             num_points = ceil(len(dataset) * cfg["subset"])
             dataset = dataset.index_select(
-                self.nprng.integers(0, len(dataset), size=num_points).tolist()
+                self.nprng.choice(len(dataset), size=num_points, replace=False).tolist()
             )
 
         # Keep the current dataset shuffle behavior unchanged.
         if cfg.get("shuffle"):
-            dataset.shuffle()
+            dataset = dataset.shuffle()
 
         return dataset
 
@@ -350,13 +399,20 @@ class DataLoaderFactory(base.Configurable):
         Raises:
             ValueError: If the split has the wrong length or does not sum to 1.0.
         """
+        if expected_parts <= 0:
+            raise ValueError("Error, expected parts must be >0")
+
         if len(split) != expected_parts:
             raise ValueError(
                 f"Split ratios must contain {expected_parts} values. Provided split: {split}"
             )
 
-        if not np.isclose(np.sum(split), 1.0, rtol=1e-05, atol=1e-08, equal_nan=False):
-            raise ValueError(f"Split ratios must sum to 1.0. Provided split: {split}")
+        if not np.isclose(np.sum(split), 1.0):
+            raise ValueError("Splits must sum to one")
+
+        for s in split:
+            if s <= 0 or s >= 1:
+                raise ValueError("Error, split can only contain values 0 < s < 1")
 
     def _split_dataset(
         self, dataset: Dataset, split: list[float]
@@ -389,7 +445,9 @@ class DataLoaderFactory(base.Configurable):
                 raise ValueError("test size cannot be 0")
 
             return torch.utils.data.random_split(
-                dataset, [train_size, val_size, test_size]
+                dataset,
+                [train_size, val_size, test_size],
+                generator=self.torch_generator,
             )
 
         train_size = ceil(len(dataset) * split[0])
@@ -401,7 +459,11 @@ class DataLoaderFactory(base.Configurable):
         if val_size == 0:
             raise ValueError("validation size cannot be 0")
 
-        return torch.utils.data.random_split(dataset, [train_size, val_size])
+        return torch.utils.data.random_split(
+            dataset,
+            [train_size, val_size],
+            generator=self.torch_generator,
+        )
 
     def _prepare_datasets_from_config(
         self, split: list[float]
@@ -455,7 +517,7 @@ class DataLoaderFactory(base.Configurable):
     def prepare_dataset(
         self,
         dataset: Dataset | None = None,
-        split: list[float] = [0.8, 0.1, 0.1],
+        split: list[float] | None = None,
         train_dataset: torch.utils.data.Subset | None = None,
         val_dataset: torch.utils.data.Subset | None = None,
         test_dataset: torch.utils.data.Subset | None = None,
@@ -485,20 +547,26 @@ class DataLoaderFactory(base.Configurable):
                 "If providing train, val, or test datasets, the full dataset must not be provided."
             )
 
-        if dataset is None:
-            if train_dataset is None and val_dataset is None and test_dataset is None:
-                return self._prepare_datasets_from_config(split)
+        if split is None:
+            split = [0.8, 0.1, 0.1]
 
-            dataset = self._build_dataset_from_config(self.config.get("data"), "data")
-
-        if train_dataset is None and val_dataset is None and test_dataset is None:
+        if dataset is None and (
+            train_dataset is None and val_dataset is None and test_dataset is None
+        ):
+            return self._prepare_datasets_from_config(split)
+        elif train_dataset is None and val_dataset is None and test_dataset is None:
             split = self.config.get("data", {}).get("split", split)
             self._validate_split(split, expected_parts=3)
             train_dataset, val_dataset, test_dataset = self._split_dataset(
                 dataset, split
             )
-
-        return train_dataset, val_dataset, test_dataset
+            return train_dataset, val_dataset, test_dataset
+        elif train_dataset and val_dataset and test_dataset:
+            return train_dataset, val_dataset, test_dataset
+        else:
+            raise ValueError(
+                "Error, train_dataset, val_dataset and test_dataset must be given"
+            )
 
     def _loader_kwargs(self, section_name: str) -> dict[str, Any]:
         """Build keyword arguments for a loader section.
@@ -516,10 +584,8 @@ class DataLoaderFactory(base.Configurable):
             "pin_memory": section.get("pin_memory", True),
             "drop_last": section.get("drop_last", False),
             "prefetch_factor": section.get("prefetch_factor", None),
-            "persistent_workers": self.config["training"].get(
-                "persistent_workers", False
-            ),
-            "shuffle": section.get("shuffle", True),
+            "persistent_workers": section.get("persistent_workers", False),
+            "shuffle": section.get("shuffle", False),
         }
 
     def prepare_dataloaders(
@@ -621,6 +687,7 @@ class DistributedDataLoaderFactory(DataLoaderFactory):
         super().__init__(config=config, logger=logger)
         self.rank = config["parallel"].get("rank", 0) if rank is None else rank
         self.world_size = config["parallel"]["world_size"]
+        self.sampler_seed = config["training"]["seed"]
         self.train_sampler: torch.utils.data.DistributedSampler | None = None
         self.val_sampler: torch.utils.data.DistributedSampler | None = None
         self.test_sampler: torch.utils.data.DistributedSampler | None = None
@@ -664,6 +731,7 @@ class DistributedDataLoaderFactory(DataLoaderFactory):
                 num_replicas=self.world_size,
                 rank=self.rank,
                 shuffle=True,
+                seed=self.sampler_seed,
             )
         )
         self.val_sampler = torch.utils.data.DistributedSampler(
@@ -671,12 +739,14 @@ class DistributedDataLoaderFactory(DataLoaderFactory):
             num_replicas=self.world_size,
             rank=self.rank,
             shuffle=False,
+            seed=self.sampler_seed,
         )
         self.test_sampler = torch.utils.data.DistributedSampler(
             test_dataset,
             num_replicas=self.world_size,
             rank=self.rank,
             shuffle=False,
+            seed=self.sampler_seed,
         )
 
         train_kwargs = self._loader_kwargs("training")
@@ -709,3 +779,20 @@ class DistributedDataLoaderFactory(DataLoaderFactory):
             len(test_dataset),
         )
         return train_loader, val_loader, test_loader
+
+    def set_epoch(self, epoch: int) -> None:
+        """Set the epoch on distributed samplers that support epoch-aware shuffling.
+
+        Args:
+            epoch (int): Current training epoch.
+
+        Raises:
+            RuntimeError: If distributed dataloaders have not been prepared yet.
+        """
+        samplers = (self.train_sampler, self.val_sampler, self.test_sampler)
+        if all(sampler is None for sampler in samplers):
+            raise RuntimeError("Distributed samplers have not been prepared yet.")
+
+        for sampler in samplers:
+            if sampler is not None and hasattr(sampler, "set_epoch"):
+                sampler.set_epoch(epoch)
