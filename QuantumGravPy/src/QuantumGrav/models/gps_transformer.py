@@ -1,5 +1,3 @@
-from inspect import isclass
-
 import torch
 import torch_geometric
 from typing import Any
@@ -91,21 +89,10 @@ class GPSModel(torch.nn.Module):
                 torch.nn.Linear(channels, channels),
             )
 
-            if norm is not None and not isinstance(norm, str):
-                norm_instance = norm(
-                    channels, **(norm_kwargs if norm_kwargs is not None else {})
-                )
-                norm_kwargs = None
-            else:
-                norm_instance = None
-
-            if act is not None and not isinstance(act, str) and isclass(act):
-                act_instance = act(**(act_kwargs if act_kwargs is not None else {}))
-                act_kwargs = None
-            else:
-                act_instance = None
-
-            # this is the main part of the architecture
+            # `act` and `norm` are passed through untouched: GPSConv's internal
+            # activation_resolver / normalization_resolver accept a string, a
+            # class, or an instance and build a fresh module per conv (and per
+            # norm1/2/3), so there is no layer sharing to guard against here.
             conv = torch_geometric.nn.GPSConv(
                 channels,
                 torch_geometric.nn.GINConv(
@@ -114,12 +101,12 @@ class GPSModel(torch.nn.Module):
                 ),
                 heads=num_heads,
                 dropout=dropout,
-                act=act_instance,
-                act_kwargs=act_kwargs if act_kwargs is not None else {},
+                act=act,
+                act_kwargs=act_kwargs,
                 attn_type=attn_type,
                 attn_kwargs=attn_kwargs,
-                norm=norm_instance,
-                norm_kwargs=norm_kwargs if norm_kwargs is not None else {},
+                norm=norm,
+                norm_kwargs=norm_kwargs,
             )
 
             self.convs.append(conv)
