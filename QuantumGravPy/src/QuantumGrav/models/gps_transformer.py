@@ -84,7 +84,7 @@ class GPSModel(torch.nn.Module):
 
         # convolutional part
         self.convs = torch.nn.ModuleList()
-        for i in range(num_layers):
+        for _ in range(num_layers):
             nn = torch.nn.Sequential(
                 torch.nn.Linear(channels, channels),
                 torch.nn.ReLU(),
@@ -92,14 +92,18 @@ class GPSModel(torch.nn.Module):
             )
 
             if norm is not None and not isinstance(norm, str):
-                norm = norm(
+                norm_instance = norm(
                     channels, **(norm_kwargs if norm_kwargs is not None else {})
                 )
                 norm_kwargs = None
+            else:
+                norm_instance = None
 
             if act is not None and not isinstance(act, str) and isclass(act):
-                act = act(**(act_kwargs if act_kwargs is not None else {}))
+                act_instance = act(**(act_kwargs if act_kwargs is not None else {}))
                 act_kwargs = None
+            else:
+                act_instance = None
 
             # this is the main part of the architecture
             conv = torch_geometric.nn.GPSConv(
@@ -110,11 +114,11 @@ class GPSModel(torch.nn.Module):
                 ),
                 heads=num_heads,
                 dropout=dropout,
-                act=act,
+                act=act_instance,
                 act_kwargs=act_kwargs if act_kwargs is not None else {},
                 attn_type=attn_type,
                 attn_kwargs=attn_kwargs,
-                norm=norm,
+                norm=norm_instance,
                 norm_kwargs=norm_kwargs if norm_kwargs is not None else {},
             )
 
