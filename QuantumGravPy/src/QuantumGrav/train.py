@@ -260,6 +260,10 @@ class Trainer(base.Configurable):
                         "type": "string",
                         "description": "Output path for artifacts produced by the continuation run",
                     },
+                    "optuna_report_variable": {
+                        "type": "string",
+                        "description": "The name of the variable in result of the validation step to be used as score in optuna",
+                    },
                 },
                 "required": [
                     "seed",
@@ -416,6 +420,7 @@ class Trainer(base.Configurable):
         validator: evaluate.Evaluator | None = None,
         tester: evaluate.Evaluator | None = None,
         apply_model: Callable | None = None,
+        optuna_report_variable: str = "loss_avg",
     ):
         self.config = config
         self.logger = logger
@@ -433,6 +438,7 @@ class Trainer(base.Configurable):
         self.data_path = data_path
         self.checkpoint_path = data_path / "checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
+        self.optuna_report_variable = optuna_report_variable
 
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
         self._configure_file_logging()
@@ -535,6 +541,11 @@ class Trainer(base.Configurable):
                 sort_keys=False,
             )
 
+        # get optuna report variable
+        optuna_report_variable = config["training"].get(
+            "optuna_report_variable,", "loss_avg"
+        )
+
         return cls._from_validated_config(
             config=config,
             logger=logger,
@@ -543,6 +554,7 @@ class Trainer(base.Configurable):
             seed=seed,
             device=device,
             data_path=data_path,
+            optuna_report_variable=optuna_report_variable,
         )
 
     @classmethod
@@ -556,6 +568,7 @@ class Trainer(base.Configurable):
         seed: int,
         device: torch.device,
         data_path: Path,
+        optuna_report_variable: str,
     ) -> "Trainer":
         """Build a trainer once schema validation, seeding, and data_path are settled."""
         # early stopping and evaluation functors
@@ -621,6 +634,7 @@ class Trainer(base.Configurable):
             seed=seed,
             device=device,
             data_path=data_path,
+            optuna_report_variable=optuna_report_variable,
         )
 
         logging_formatter = logging.Formatter(
@@ -845,9 +859,11 @@ class Trainer(base.Configurable):
 
         # integrate Optuna here for hyperparameter tuning
         if trial is not None:
-            avg_sigma_loss = self.validator.data[self.epoch]
-            avg_loss = avg_sigma_loss[0]
-            trial.report(avg_loss, self.epoch)
+            report_var = self.validator.data.loc[
+                self.epoch, self.optuna_report_variable
+            ]
+
+            trial.report(report_var, self.epoch)
 
             # Handle pruning based on the intermediate value.
             if trial.should_prune():
