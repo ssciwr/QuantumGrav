@@ -230,7 +230,7 @@ def test_is_categorical_suggestion():
     assert tune.is_categorical_suggestion(["relu", "tanh", "sigmoid"]) is True
     assert tune.is_categorical_suggestion([16, 32, 64]) is True
     assert tune.is_categorical_suggestion([1.0, 2.0, 3.0]) is True
-    assert tune.is_categorical_suggestion([{"a": 1}, {"b": 2}]) is False
+    assert tune.is_categorical_suggestion([{"a": 1}, {"b": 2}]) is True
     assert tune.is_categorical_suggestion([[1, 2], [3, 4]]) is False
     assert tune.is_categorical_suggestion([True, False]) is True
 
@@ -305,7 +305,7 @@ def test_convert_to_suggestion(get_config):
         "param", {"type": "range", "tune_values": (16, 64, 2)}, trial, get_config
     ) == trial.suggest_int("param", 16, 64, step=2)
 
-    # sweep nodes
+    # sweep nodes - flat (primitive) values
     trial = optuna.trial.FixedTrial({"param": "tanh"})
     assert tune.convert_to_suggestion(
         "param",
@@ -313,6 +313,17 @@ def test_convert_to_suggestion(get_config):
         trial,
         get_config,
     ) == trial.suggest_categorical("param", ["relu", "tanh", "sigmoid"])
+
+    # sweep nodes - complex (dict) values: suggestion is the chosen dict, not the index
+    complex_values = [{"layers": 1, "out": 16}, {"layers": 2, "out": 32}]
+    trial = optuna.trial.FixedTrial({"param": 1})
+    result = tune.convert_to_suggestion(
+        "param",
+        {"type": "sweep", "values": complex_values},
+        trial,
+        get_config,
+    )
+    assert result == complex_values[1]
 
     # coupled-sweep nodes
     trial = optuna.trial.FixedTrial({"param": 1})
