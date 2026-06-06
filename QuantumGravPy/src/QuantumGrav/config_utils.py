@@ -266,12 +266,16 @@ def object_constructor(loader: yaml.SafeLoader, node: yaml.nodes.ScalarNode) -> 
     try:
         module = importlib.import_module(modulename)
     except Exception as e:
-        raise ValueError(f"Importing module {modulename} unsuccessful") from e
+        raise ValueError(
+            f"Importing module {modulename} unsuccessful for key {value}"
+        ) from e
 
     try:
         tpe = getattr(module, objectname)
     except Exception as e:
-        raise ValueError(f"Could not load name {objectname} from {modulename}") from e
+        raise ValueError(
+            f"Could not load name {objectname} from {modulename} for key {value}"
+        ) from e
 
     return tpe
 
