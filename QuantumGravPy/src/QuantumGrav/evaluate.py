@@ -170,6 +170,24 @@ class Evaluator(base.Configurable):
             config.get("apply_model"),
         )
 
+    def best_score(self, variable: str, direction: str) -> float:
+        """Return the best value of `variable` across all recorded epochs.
+
+        Args:
+            variable (str): Column name in ``self.data`` to aggregate.
+            direction (str): ``"maximize"`` or ``"minimize"``.
+
+        Returns:
+            float: Best value found, or the appropriate sentinel (``-inf`` /
+                ``+inf``) when the DataFrame is empty or the column is absent.
+        """
+        sentinel = float("-inf") if direction == "maximize" else float("inf")
+        if self.data.empty or variable not in self.data.columns:
+            return sentinel
+        if direction == "maximize":
+            return float(self.data[variable].max())
+        return float(self.data[variable].min())
+
     def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         """Load the evaluator's state from a state dictionary.
 

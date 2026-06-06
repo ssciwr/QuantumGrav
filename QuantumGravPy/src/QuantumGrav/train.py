@@ -264,6 +264,11 @@ class Trainer(base.Configurable):
                         "type": "string",
                         "description": "The name of the variable in result of the validation step to be used as score in optuna",
                     },
+                    "optuna_direction": {
+                        "type": "string",
+                        "enum": ["maximize", "minimize"],
+                        "description": "Whether Optuna should maximize or minimize optuna_report_variable. Drives create_study direction, per-epoch pruner reporting, and best-score aggregation.",
+                    },
                 },
                 "required": [
                     "seed",
@@ -421,6 +426,7 @@ class Trainer(base.Configurable):
         tester: evaluate.Evaluator | None = None,
         apply_model: Callable | None = None,
         optuna_report_variable: str = "loss_avg",
+        optuna_direction: str = "minimize",
     ):
         self.config = config
         self.logger = logger
@@ -439,6 +445,7 @@ class Trainer(base.Configurable):
         self.checkpoint_path = data_path / "checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.optuna_report_variable = optuna_report_variable
+        self.optuna_direction = optuna_direction
 
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
         self._configure_file_logging()
@@ -541,10 +548,10 @@ class Trainer(base.Configurable):
                 sort_keys=False,
             )
 
-        # get optuna report variable
         optuna_report_variable = config["training"].get(
-            "optuna_report_variable,", "loss_avg"
+            "optuna_report_variable", "loss_avg"
         )
+        optuna_direction = config["training"].get("optuna_direction", "minimize")
 
         return cls._from_validated_config(
             config=config,
@@ -555,6 +562,7 @@ class Trainer(base.Configurable):
             device=device,
             data_path=data_path,
             optuna_report_variable=optuna_report_variable,
+            optuna_direction=optuna_direction,
         )
 
     @classmethod
@@ -569,6 +577,7 @@ class Trainer(base.Configurable):
         device: torch.device,
         data_path: Path,
         optuna_report_variable: str,
+        optuna_direction: str,
     ) -> "Trainer":
         """Build a trainer once schema validation, seeding, and data_path are settled."""
         # early stopping and evaluation functors
@@ -635,6 +644,7 @@ class Trainer(base.Configurable):
             device=device,
             data_path=data_path,
             optuna_report_variable=optuna_report_variable,
+            optuna_direction=optuna_direction,
         )
 
         logging_formatter = logging.Formatter(

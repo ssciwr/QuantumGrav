@@ -303,3 +303,30 @@ def test_load_state_dict(gnn_model_eval, config):
     new_evaluator = QG.Validator.from_config(config)
     new_evaluator.load_state_dict(state_dict)
     assert new_evaluator.data.equals(evaluator.data)
+
+
+def test_best_score(config):
+    evaluator = QG.Validator.from_config(config)
+
+    # populate with two epochs of data
+    evaluator.data = pd.DataFrame(
+        {
+            "loss_avg": [0.5, 0.3, 0.4],
+            "f1_weighted": [0.7, 0.9, 0.8],
+        }
+    )
+
+    # maximize picks the highest value
+    assert evaluator.best_score("f1_weighted", "maximize") == pytest.approx(0.9)
+
+    # minimize picks the lowest value
+    assert evaluator.best_score("loss_avg", "minimize") == pytest.approx(0.3)
+
+    # missing column → sentinel
+    assert evaluator.best_score("nonexistent", "maximize") == float("-inf")
+    assert evaluator.best_score("nonexistent", "minimize") == float("inf")
+
+    # empty DataFrame → sentinel
+    evaluator.data = pd.DataFrame(columns=["loss_avg", "f1_weighted"])
+    assert evaluator.best_score("f1_weighted", "maximize") == float("-inf")
+    assert evaluator.best_score("loss_avg", "minimize") == float("inf")
