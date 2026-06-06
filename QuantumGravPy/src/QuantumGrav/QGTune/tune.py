@@ -45,7 +45,8 @@ def is_categorical_suggestion(value: Any) -> bool:
         if non_empty_list
         else False
     ) and is_flat_list(value)
-    return non_empty_list and valid_elements
+    valid_complex = all(isinstance(v, dict) for v in value) if non_empty_list else False
+    return non_empty_list and (valid_elements or valid_complex)
 
 
 def is_float_suggestion(value: Any) -> bool:
@@ -136,13 +137,18 @@ def convert_to_suggestion(
     is_range = isinstance(node, dict) and node.get("type") == "range"
     is_random_uniform = isinstance(node, dict) and node.get("type") == "random_uniform"
 
+    node_values = None
     if is_range or is_random_uniform:
         node_values = node.get("tune_values")
     elif is_sweep or is_coupled_sweep:
         node_values = node.get("values")
 
-    if is_sweep and is_categorical_suggestion(node_values):
-        return trial.suggest_categorical(param_name, node_values)
+    if is_sweep and node_values is not None and is_categorical_suggestion(node_values):
+        if is_flat_list(node_values):
+            return trial.suggest_categorical(param_name, node_values)
+        else:  # list-of-dicts: Optuna can't store dicts directly, suggest by index
+            index = trial.suggest_categorical(param_name, list(range(len(node_values))))
+            return node_values[index]
     elif (is_range or is_random_uniform) and is_float_suggestion(node_values):
         start, stop, step_or_log = node_values
         if isinstance(step_or_log, bool):
@@ -465,30 +471,7 @@ def save_best_config(
     search_space_w_refs, coupled_sweep_mapping = get_suggestion(
         config=config, current_node=config, trial=best_trial, traced_param=[]
     )
-    best_trial_params = best_trial.params
-
     best_config = copy.deepcopy(search_space_w_refs)
-
-    def get_next(current: dict, part: str | int):
-        try:
-            index = int(part)
-            return current[index]
-        except ValueError:
-            return current.get(part)
-
-    def set_next(current: dict, part: str | int, value: Any):
-        try:
-            index = int(part)
-            current[index] = value
-        except ValueError:
-            current[part] = value
-
-    for key, value in best_trial_params.items():
-        parts = key.split(".")
-        current = best_config
-        for part in parts[:-1]:
-            current = get_next(current, part)
-        set_next(current, parts[-1], value)
 
     # apply dependencies to resolve any changes
     resolve_references(
