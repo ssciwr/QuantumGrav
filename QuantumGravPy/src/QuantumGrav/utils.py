@@ -1,8 +1,5 @@
 import importlib
 from typing import Sequence, Any
-import torch
-import numpy as np
-import random
 from pathlib import Path
 import zarr
 
@@ -85,34 +82,3 @@ def get_at_path(cfg: dict, path: Sequence[Any], default: Any = None) -> Any:
         cfg = cfg[p]
 
     return cfg.get(path[-1], default)
-
-
-def maybe_number(s: str, type: type = float) -> Any:
-    """Convert a string to a number if possible.
-
-    Args:
-        s (str): The string to convert.
-        type (type, optional): The type to convert to. Defaults to float.
-
-    Returns:
-        Any: The converted number, or the original string if conversion failed.
-    """
-    try:
-        return type(s)
-    except ValueError:
-        return s
-
-
-def seed_all_rngs(seed: int) -> None:
-    """Seed Python, NumPy, and PyTorch RNGs.
-
-    Args:
-        seed: Integer seed to apply. If ``None``, this function is a no-op.
-    """
-
-    seed = int(seed)
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)

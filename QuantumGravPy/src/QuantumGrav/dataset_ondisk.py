@@ -149,12 +149,12 @@ class QGDataset(Dataset):
 
         self.stores = {}
 
-        self.input = input
+        self.input = [Path(f).resolve() for f in input]
         for file in self.input:
             if Path(file).exists() is False:
                 raise FileNotFoundError(f"Input file {file} does not exist.")
 
-        self.output = output
+        self.output = Path(output).resolve()
         self.metadata = {}
         self.float_type = float_type
         self.int_type = int_type
@@ -224,7 +224,7 @@ class QGDataset(Dataset):
         Returns:
             str: The path to the processed directory, or None if it doesn't exist.
         """
-        processed_path = Path(self.output).resolve().absolute() / "processed"
+        processed_path = Path(self.output).resolve() / "processed"
         return str(processed_path)
 
     @property
