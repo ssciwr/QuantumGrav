@@ -1,5 +1,6 @@
 # pytorch and torch geometric imports
 from torch_geometric.data import Data, Dataset
+from torch_geometric.transforms import Compose, ComposeFilters
 import torch
 
 # data handling
@@ -81,9 +82,11 @@ class QGDataset(Dataset):
             },
             "transform": {
                 "description": "Callable applied to each sample at read time",
+                "oneOf": [{"not": {"type": "array"}}, {"type": "array", "items": {}}],
             },
             "pre_transform": {
                 "description": "Callable applied once before saving processed data",
+                "oneOf": [{"not": {"type": "array"}}, {"type": "array", "items": {}}],
             },
             "pre_filter": {
                 "description": "Callable used to drop samples before pre_transform",
@@ -108,7 +111,7 @@ class QGDataset(Dataset):
         chunksize: int = 1000,
         n_processes: int = 1,
         # dataset properties
-        transform: Callable[..., Data] | None = None,
+        transform: Callable[..., Data] | list[Callable[..., Data]] | None = None,
         pre_transform: Callable[..., Data] | None = None,
         pre_filter: Callable[..., bool] | None = None,
         reader: Callable | None = None,
@@ -127,7 +130,7 @@ class QGDataset(Dataset):
             validate_data (bool, optional): Whether to validate transformed data objects. Defaults to True.
             chunksize (int, optional): Number of samples processed per chunk. Defaults to 1000.
             n_processes (int, optional): Worker processes for preprocessing. Defaults to 1.
-            transform (Callable | None, optional): Applied to each sample at read time. Defaults to None.
+            transform (Callable[..., Data] | list[Callable[..., Data]] | None, optional): Applied to each sample at read time. If a list of transformations is passed, they are concatenated with torch_geometric.transform.Compose. Defaults to None.
             pre_transform (Callable | None, optional): Applied once before saving processed data. Defaults to None.
             pre_filter (Callable | None, optional): Called before pre_transform; samples that return False are dropped. Defaults to None.
             reader (Callable | None, optional): ``reader(root, path)`` replaces the default
@@ -139,13 +142,23 @@ class QGDataset(Dataset):
         does_preprocessing = pre_transform is not None or pre_filter is not None
 
         if pre_transform is None:
-            pre_transform = identity
+            _pre_transform = identity
+        else:
+            _pre_transform = pre_transform
 
         if pre_filter is None:
-            pre_filter = tautology
+            _pre_filter = tautology
+        elif isinstance(pre_filter, list):
+            _pre_filter = ComposeFilters(pre_filter)
+        else:
+            _pre_filter = pre_filter
 
         if transform is None:
-            transform = identity
+            _transform = identity
+        elif isinstance(transform, list):
+            _transform = Compose(transform)
+        else:
+            _transform = transform
 
         self.stores = {}
 
@@ -212,9 +225,9 @@ class QGDataset(Dataset):
         Dataset.__init__(
             self,
             root=output,
-            transform=transform,
-            pre_transform=pre_transform,
-            pre_filter=pre_filter,
+            transform=_transform,
+            pre_transform=_pre_transform,
+            pre_filter=_pre_filter,
         )
 
     @property

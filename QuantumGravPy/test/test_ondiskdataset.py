@@ -47,6 +47,22 @@ def pre_transform(datadict: dict) -> Data:
     return data
 
 
+def _raw_dimensions(datafiles):
+    dimensions = []
+    for datafile in datafiles:
+        store = zarr.storage.LocalStore(datafile, read_only=True)
+        root = zarr.open_group(store, path="", mode="r")
+        dimensions.extend(
+            int(root[f"cset_{i + 1}"]["dimension"][0]) for i in range(len(root))
+        )
+        store.close()
+    return dimensions
+
+
+def _sample_dimension(datadict):
+    return int(datadict["dimension"][0])
+
+
 @pytest.mark.parametrize("n", [1, 3], ids=["sequential", "parallel"])
 def test_ondisk_dataset_creation_processing(create_data_zarr, n):
     datadir, datafiles = create_data_zarr
@@ -319,6 +335,107 @@ def test_ondisk_dataset_reader_returns_data_directly(create_data_zarr, tmp_path)
     assert isinstance(item, Data)
     assert item.x is not None
     assert item.x.shape == (15, 2)
+
+
+def test_ondisk_dataset_single_transform(create_data_zarr, tmp_path):
+    _, datafiles = create_data_zarr
+    raw_dimensions = _raw_dimensions(datafiles)
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=3,
+        transform=lambda x: 2 * x,
+        pre_transform=_sample_dimension,
+        pre_filter=lambda x: True,
+    )
+
+    assert len(dataset) == len(raw_dimensions)
+
+    for i, dimension in enumerate(raw_dimensions):
+        assert dataset[i] == 2 * dimension
+
+
+def test_ondisck_dataset_multi_transform(create_data_zarr, tmp_path):
+    _, datafiles = create_data_zarr
+    raw_dimensions = _raw_dimensions(datafiles)
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=3,
+        transform=[lambda x: 2 * x, lambda x: x - 1],
+        pre_transform=_sample_dimension,
+        pre_filter=lambda x: True,
+    )
+
+    assert len(dataset) == len(raw_dimensions)
+
+    for i, dimension in enumerate(raw_dimensions):
+        assert dataset[i] == 2 * dimension - 1
+
+
+def test_ondisk_dataset_single_filter(create_data_zarr, tmp_path):
+    _, datafiles = create_data_zarr
+    raw_dimensions = _raw_dimensions(datafiles)
+
+    def keep_even_dimension(x):
+        return _sample_dimension(x) % 2 == 0
+
+    expected_dimensions = [
+        dimension for dimension in raw_dimensions if dimension % 2 == 0
+    ]
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=3,
+        transform=lambda x: x,
+        pre_transform=_sample_dimension,
+        pre_filter=keep_even_dimension,
+    )
+
+    assert len(dataset) == len(expected_dimensions)
+
+    for i, dimension in enumerate(expected_dimensions):
+        assert dataset[i] == dimension
+
+
+def test_ondisk_dataset_multi_filter(create_data_zarr, tmp_path):
+    _, datafiles = create_data_zarr
+    raw_dimensions = _raw_dimensions(datafiles)
+    expected_dimensions = [
+        dimension for dimension in raw_dimensions if dimension >= 4 and dimension <= 7
+    ]
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=tmp_path,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        validate_data=True,
+        n_processes=1,
+        chunksize=3,
+        transform=lambda x: x,
+        pre_transform=_sample_dimension,
+        pre_filter=[
+            lambda x: _sample_dimension(x) >= 4,
+            lambda x: _sample_dimension(x) <= 7,
+        ],
+    )
+
+    assert len(dataset) == len(expected_dimensions)
+
+    for i, dimension in enumerate(expected_dimensions):
+        assert dataset[i] == dimension
 
 
 def test_ondisk_dataset_with_dataloader(create_data_zarr):
