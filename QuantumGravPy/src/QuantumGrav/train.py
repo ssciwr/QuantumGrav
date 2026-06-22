@@ -428,6 +428,13 @@ class Trainer(base.Configurable):
         optuna_report_variable: str = "loss_avg",
         optuna_direction: str = "minimize",
     ):
+        self.data_path = data_path
+        self._configure_file_logging()
+        logger.info(f"Data path set to: {data_path}")
+
+        self.checkpoint_path = data_path / "checkpoints"
+        self.checkpoint_path.mkdir(parents=True, exist_ok=True)
+
         self.config = config
         self.logger = logger
         self.criterion = criterion
@@ -441,14 +448,9 @@ class Trainer(base.Configurable):
         self.seed = seed
         self.device = device
         self.epoch = 0
-        self.data_path = data_path
-        self.checkpoint_path = data_path / "checkpoints"
         self.checkpoint_at = config["training"].get("checkpoint_at", None)
         self.optuna_report_variable = optuna_report_variable
         self.optuna_direction = optuna_direction
-
-        self.checkpoint_path.mkdir(parents=True, exist_ok=True)
-        self._configure_file_logging()
 
         if model is None:
             self.initialize_model()
@@ -467,39 +469,22 @@ class Trainer(base.Configurable):
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-        loggers = [self.logger]
-        if self.validator is not None:
-            loggers.append(self.validator.logger)
-        if self.tester is not None:
-            loggers.append(self.tester.logger)
-        if self.early_stopper is not None:
-            loggers.append(self.early_stopper.logger)
-
-        for logger in loggers:
-            has_current_handler = False
-            for handler in list(logger.handlers):
-                if not isinstance(handler, logging.FileHandler):
-                    continue
-
-                if Path(handler.baseFilename).resolve() == log_file:
-                    handler._quantumgrav_training_log = True
-                    has_current_handler = True
-                    continue
-
-                if not getattr(handler, "_quantumgrav_training_log", False):
-                    continue
-
-                logger.removeHandler(handler)
-                handler.close()
-
-            if has_current_handler:
+        for handler in list(self.logger.handlers):
+            # security: close existing file handlers
+            if not isinstance(handler, logging.FileHandler):
                 continue
+            self.logger.removeHandler(handler)
+            handler.close()
 
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(logging.INFO)
-            file_handler.setFormatter(formatter)
-            file_handler._quantumgrav_training_log = True
-            logger.addHandler(file_handler)
+        self.file_handler = logging.FileHandler(log_file)
+        self.file_handler.setLevel(logging.INFO)
+        self.file_handler.setFormatter(formatter)
+        self.logger.addHandler(self.file_handler)
+
+    def close_logfiles(self):
+        """Close log files"""
+        self.file_handler.close()
+        self.logger.removeHandler(self.file_handler)
 
     @classmethod
     def from_config(
@@ -514,7 +499,7 @@ class Trainer(base.Configurable):
         jsonschema.validate(instance=config, schema=cls.schema)
 
         config = config
-        logger = logging.getLogger(__name__)
+        logger = logging.getLogger("quantumgrav")
         logger.setLevel(config.get("log_level", logging.INFO))
         logger.info("Initializing Trainer instance")
 
@@ -539,7 +524,7 @@ class Trainer(base.Configurable):
         # set up paths for storing model snapshots and data
         if not data_path.exists():
             data_path.mkdir(parents=True)
-        logger.info(f"Data path set to: {data_path}")
+
         # dump config to outpath
         with open(Path(data_path) / "config.yaml", "w") as cfgfile:
             yaml.safe_dump(
@@ -646,23 +631,6 @@ class Trainer(base.Configurable):
             optuna_report_variable=optuna_report_variable,
             optuna_direction=optuna_direction,
         )
-
-        logging_formatter = logging.Formatter(
-            fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
-        logging.basicConfig(  # or logging.INFO if you want less verbosity
-            # TODO: use logging level from config, default to INFO
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
-
-        log_file = Path(trainer.data_path) / "training.log"
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(logging_formatter)
-        trainer.logger.addHandler(file_handler)
-        trainer.validator.logger.addHandler(file_handler)
-        trainer.tester.logger.addHandler(file_handler)
 
         logger.info("Trainer initialized")
         logger.debug(f"Configuration: {config}")

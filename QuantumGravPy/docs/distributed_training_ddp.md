@@ -103,7 +103,7 @@ def train_ddp(
     """
     setup_logging(rank)
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("quantumgrav")
     logger.info(f"Process {rank}/{world_size} started")
 
     try:
@@ -247,7 +247,7 @@ def main():
 
     setup_logging(rank)
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("quantumgrav")
     logger.info(f"Process {rank}/{world_size} started")
 
     try:

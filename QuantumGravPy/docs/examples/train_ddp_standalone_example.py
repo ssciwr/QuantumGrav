@@ -70,7 +70,7 @@ def train_ddp(
     """
     setup_logging(rank)
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("quantumgrav")
     logger.info(f"Process {rank}/{world_size} started")
 
     try:
@@ -155,7 +155,7 @@ def main():
     master_addr = "localhost"
     master_port = "12355"
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("quantumgrav")
     logging.basicConfig(level=logging.INFO)
     logger.info(f"DDP Training with {world_size} processes")
     logger.info(

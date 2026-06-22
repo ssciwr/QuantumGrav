@@ -229,7 +229,7 @@ class DataLoaderFactory(base.Configurable):
         jsonschema.validate(instance=config, schema=type(self).schema)
 
         self.config = config
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger("quantumgrav")
         self.logger.setLevel(config.get("log_level", logging.INFO))
         seed = config["training"]["seed"]
         self.nprng = np.random.default_rng(seed)
@@ -245,7 +245,7 @@ class DataLoaderFactory(base.Configurable):
         Returns:
             DataLoaderFactory: Configured factory instance.
         """
-        logger = logging.getLogger(__name__)
+        logger = logging.getLogger("quantumgrav")
         logger.setLevel(config.get("log_level", logging.INFO))
         return cls(config=config, logger=logger)
 

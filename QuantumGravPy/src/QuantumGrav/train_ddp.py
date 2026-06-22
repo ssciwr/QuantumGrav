@@ -118,7 +118,7 @@ class TrainerDDP(train.Trainer):
             ValueError: If the configuration is invalid.
         """
         jsonschema.validate(instance=config, schema=self.schema)
-        logger = logging.getLogger(__name__)
+        logger = logging.getLogger("quantumgrav")
         logger.setLevel(config.get("log_level", logging.INFO))
         logger.info("Initializing TrainerDDP instance")
 

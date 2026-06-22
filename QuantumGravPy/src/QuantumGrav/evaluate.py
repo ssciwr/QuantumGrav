@@ -62,6 +62,7 @@ class Evaluator(base.Configurable):
         ]
         | None,
         apply_model: Callable | None = None,
+        loglevel=logging.INFO,
     ):
         """Default evaluator for model evaluation.
 
@@ -80,7 +81,8 @@ class Evaluator(base.Configurable):
         self.criterion = criterion
         self.apply_model = apply_model
         self.device = device
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("quantumgrav")
+        self.logger.setLevel(loglevel)
 
         # store as list of (metric_name, monitor_callable) tuples for simple iteration
         self.tasks: list[tuple[str, Callable]] = []

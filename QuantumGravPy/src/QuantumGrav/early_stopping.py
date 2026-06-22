@@ -74,6 +74,7 @@ class DefaultEarlyStopping(base.Configurable):
         tasks: Dict[str | int, Any],
         patience: int,
         mode: str = "any",
+        loglevel=logging.INFO,
     ):
         """Instantiate a new DefaultEarlyStopping.
 
@@ -88,7 +89,8 @@ class DefaultEarlyStopping(base.Configurable):
             task["best_score"] = task["init_best_score"]
             task["found_better"] = False
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("quantumgrav")
+        self.logger.setLevel(loglevel)
         self.mode = mode
         self.patience = patience
         self.current_patience = patience
