@@ -13,6 +13,8 @@ from typing import Any, Tuple
 import yaml
 from tqdm import tqdm
 from joblib import Parallel, delayed
+from inspect import isclass
+from torch_geometric.transforms import Compose, ComposeFilters
 
 # internals
 from .utils import ZarrStore, identity, tautology
@@ -139,13 +141,34 @@ class QGDataset(Dataset):
         does_preprocessing = pre_transform is not None or pre_filter is not None
 
         if pre_transform is None:
-            pre_transform = identity
+            _pre_transform = identity
+        elif isinstance(pre_transform, list):
+            _pre_transform = [
+                pt() if isclass(pt) else pt for pt in pre_transform
+            ]  # TODO: allow args in the future
+            _pre_transform = Compose(_pre_transform)
+        else:
+            _pre_transform = pre_transform
 
         if pre_filter is None:
-            pre_filter = tautology
+            _pre_filter = tautology
+        elif isinstance(pre_filter, list):
+            _pre_filter = [
+                pt() if isclass(pt) else pt for pt in pre_filter
+            ]  # TODO: allow args in the future
+            _pre_filter = ComposeFilters(_pre_filter)
+        else:
+            _pre_filter = pre_filter
 
         if transform is None:
-            transform = identity
+            _transform = identity
+        elif isinstance(transform, list):
+            _transform = [
+                t() if isclass(t) else t for t in transform
+            ]  # TODO: allow args in the future
+            _transform = Compose(_transform)
+        else:
+            _transform = transform
 
         self.stores = {}
 
@@ -213,9 +236,9 @@ class QGDataset(Dataset):
         Dataset.__init__(
             self,
             root=output,
-            transform=transform,
-            pre_transform=pre_transform,
-            pre_filter=pre_filter,
+            transform=_transform,
+            pre_transform=_pre_transform,
+            pre_filter=_pre_filter,
         )
 
     @property

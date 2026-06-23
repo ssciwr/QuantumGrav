@@ -429,14 +429,14 @@ class Trainer(base.Configurable):
         optuna_direction: str = "minimize",
     ):
         self.data_path = data_path
+        self.logger = logger
         self._configure_file_logging()
-        logger.info(f"Data path set to: {data_path}")
+        self.logger.info(f"Data path set to: {data_path}")
 
         self.checkpoint_path = data_path / "checkpoints"
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         self.config = config
-        self.logger = logger
         self.criterion = criterion
         self.model = model
         self.optimizer = optimizer
