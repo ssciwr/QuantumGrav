@@ -13,6 +13,7 @@ import Pkg
 import JSONSchema
 import Distributed
 import ProgressMeter
+import SpecialFunctions
 
 include("utils.jl")
 include("csetgeneration.jl")
@@ -22,6 +23,7 @@ include("csetgenerationbyconnectivity.jl")
 include("branchedcsetgeneration.jl")
 include("csetmerging.jl")
 include("destroy_manifold_like_cset.jl")
+include("minkowski_causet_with_local_KR_insertion.jl")
 include("grid_like_causets.jl")
 include("graph_utils.jl")
 include("curvature_on_manifold.jl")
@@ -43,6 +45,9 @@ export make_adj,
     merge_csets,
     insert_cset,
     insert_KR_into_manifoldlike,
+    generate_KR_poset,
+    replace_region_with_KR_poset,
+    generate_causet_with_KR_defect,
     prepare_dataproduction,
     random_causet_by_connectivity_distribution,
     destroy_manifold_cset,
@@ -63,6 +68,7 @@ export make_adj,
     GridCsetMakerPolynomial,
     MergedCsetMaker,
     ComplexTopCsetMaker,
+    MinkowskiKRInsertionCsetMaker,
     CsetFactory,
     encode_csettype,# data saving
     dict_to_zarr,

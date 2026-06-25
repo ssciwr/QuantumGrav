@@ -1154,6 +1154,104 @@ function (mcm::MergedCsetMaker)(
 	return cset, n2rel
 end
 
+"""
+	MinkowskiKRInsertionCsetMaker
+
+	Causal set maker for a Minkowski sprinkling with a local KR-order insertion.
+
+# Fields:
+- `kr_order_size_rel_distribution::Distributions.Distribution`: distribution of inserted KR-order sizes relative to `n`
+- `dimension::Int`: dimension of the Minkowski manifold
+- `require_region_fully_in_boundary::Bool`: whether the inserted region must lie inside the original boundary
+"""
+struct MinkowskiKRInsertionCsetMaker
+	kr_order_size_rel_distribution::Distributions.Distribution
+	dimension::Int
+	require_region_fully_in_boundary::Bool
+end
+
+const MinkowskiKRInsertionCsetMaker_schema = JSONSchema.Schema("""{
+  "\$schema": "http://json-schema.org/draft-06/schema#",
+  "title": "Minkowski KR insertion csetmaker config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "dimension": { "type": "integer", "minimum": 2 },
+    "kr_order_size_rel_distribution": { "type": "string" },
+    "kr_order_size_rel_distribution_args": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "kr_order_size_rel_distribution_kwargs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "require_region_fully_in_boundary": { "type": "boolean" }
+  },
+  "required": [
+    "dimension",
+    "kr_order_size_rel_distribution",
+    "kr_order_size_rel_distribution_args"
+  ]
+}
+""")
+
+"""
+	MinkowskiKRInsertionCsetMaker(config::AbstractDict)
+
+Make a new Minkowski KR insertion causal set maker from a configuration dictionary.
+"""
+function MinkowskiKRInsertionCsetMaker(config::AbstractDict)
+	validate_config(MinkowskiKRInsertionCsetMaker_schema, config)
+
+	kr_order_size_rel_distribution = build_distr(config, "kr_order_size_rel_distribution")
+	require_region_fully_in_boundary = get(config, "require_region_fully_in_boundary", true)
+
+	return MinkowskiKRInsertionCsetMaker(
+		kr_order_size_rel_distribution,
+		config["dimension"],
+		require_region_fully_in_boundary,
+	)
+end
+
+"""
+	mkr::MinkowskiKRInsertionCsetMaker(n::Int64, rng::Random.AbstractRNG; config=nothing)
+
+Creates an `n`-element Minkowski causal set with a local KR-order insertion.
+
+# Returns
+- causal set (BitArrayCauset)
+- inserted KR-order size relative to the full causal set size
+"""
+function (mkr::MinkowskiKRInsertionCsetMaker)(
+	n::Int64,
+	rng::Random.AbstractRNG;
+	config::Union{AbstractDict, Nothing} = nothing,
+)::Tuple{CausalSets.BitArrayCauset, Float64}
+	n >= 3 || throw(ArgumentError("n must be at least 3 to insert a KR order, is $n."))
+
+	kr_order_size_rel = clamp(rand(rng, mkr.kr_order_size_rel_distribution), 3 / n, 1.0)
+	kr_order_size = clamp(convert(Int, round(n * kr_order_size_rel)), 1, n)
+
+	manifold = CausalSets.MinkowskiManifold{mkr.dimension}()
+	sprinkling_boundary = CausalSets.CausalDiamondBoundary{mkr.dimension}(1.0)
+	sprinkling_density = n / CausalSets.boundary_volume(manifold, sprinkling_boundary)
+	manifold_causet = CausalSets.ManifoldCauset(
+		manifold,
+		CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng),
+	)
+	cset = replace_region_with_KR_poset(
+		manifold_causet,
+		sprinkling_boundary,
+		kr_order_size,
+		sprinkling_density;
+		require_region_fully_in_boundary = mkr.require_region_fully_in_boundary,
+		rng = rng,
+	)
+
+	return cset, kr_order_size / n
+end
+
 csetfactory_schema = JSONSchema.Schema("""
   	{
   	  "\$schema": "http://json-schema.org/draft-06/schema#",
@@ -1192,6 +1290,11 @@ csetfactory_schema = JSONSchema.Schema("""
   		  "additionalProperties": true
   		},
   		"grid": {
+  		  "type": "object",
+  		  "properties": {},
+  		  "additionalProperties": true
+  		},
+  		"minkowski_kr_insertion": {
   		  "type": "object",
   		  "properties": {},
   		  "additionalProperties": true
@@ -1236,6 +1339,7 @@ csetfactory_schema = JSONSchema.Schema("""
   		"complex_topology",
   		"destroyed",
   		"grid",
+  		"minkowski_kr_insertion",
   		"seed",
   		"num_datapoints",
   		"csetsize_distr",
@@ -1288,6 +1392,8 @@ function CsetFactory(config::AbstractDict)
 		"destroyed" => DestroyedCsetMaker(config["destroyed"]),
 		"destroyed_ambiguous" =>
 			DestroyedCsetMaker(get(config, "destroyed_ambiguous", config["destroyed"])),
+		"minkowski_kr_insertion" =>
+			MinkowskiKRInsertionCsetMaker(config["minkowski_kr_insertion"]),
 	)
 	return CsetFactory(npoint_distribution, config, rng, cset_makers)
 end
@@ -1330,4 +1436,5 @@ encode_csettype = Dict(
 	"merged" => 7,
 	"merged_ambiguous" => 8,
 	"complex_topology" => 9,
+	"minkowski_kr_insertion" => 10,
 )

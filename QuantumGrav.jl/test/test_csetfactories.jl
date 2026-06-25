@@ -115,6 +115,13 @@
                 "oblique_angle_distribution_kwargs" => Dict(),
             ),
         ),
+        "minkowski_kr_insertion" => Dict(
+            "dimension" => 2,
+            "kr_order_size_rel_distribution" => "Uniform",
+            "kr_order_size_rel_distribution_args" => [0.05, 0.1],
+            "kr_order_size_rel_distribution_kwargs" => Dict(),
+            "require_region_fully_in_boundary" => false,
+        ),
         "seed" => 42,
         "num_datapoints" => 5,
         "csetsize_distr_args" => [10, 20],
@@ -146,6 +153,7 @@ end
         "layered",
         "grid",
         "destroyed",
+        "minkowski_kr_insertion",
     ]
         @test key in keys(csetfactory.cset_makers)
     end
@@ -191,6 +199,7 @@ end
         "layered",
         "grid",
         "destroyed",
+        "minkowski_kr_insertion",
     ]
         @test key in keys(csetfactory.cset_makers)
     end
@@ -246,6 +255,12 @@ end
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == n
     @test fraction isa Float64
+
+    cset, kr_order_size_rel = csetfactory("minkowski_kr_insertion", n, rng)
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test kr_order_size_rel isa Float64
+    @test round(Int, 0.05 * n) / n <= kr_order_size_rel <= round(Int, 0.1 * n) / n
 end
 
 @testitem "test_polynomial_factory_construction" tags = [:csetfactories] setup =
@@ -681,4 +696,68 @@ end
     @test length(curvature_matrix) == 25
     @test grid_type_out in grid_types
 
+end
+
+@testitem "test_minkowski_kr_insertion_factory_construction" tags = [:csetfactories] setup =
+    [factories_config] begin
+    using Distributions
+
+    csetmaker =
+        QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
+
+    @test csetmaker.kr_order_size_rel_distribution isa Distributions.Uniform
+    @test Distributions.params(csetmaker.kr_order_size_rel_distribution) ==
+          tuple(
+        factory_cfg["minkowski_kr_insertion"]["kr_order_size_rel_distribution_args"]...,
+    )
+    @test csetmaker.dimension == factory_cfg["minkowski_kr_insertion"]["dimension"]
+    @test csetmaker.require_region_fully_in_boundary ==
+          factory_cfg["minkowski_kr_insertion"]["require_region_fully_in_boundary"]
+end
+
+@testitem "test_minkowski_kr_insertion_factory_broken_config" tags = [:csetfactories] setup =
+    [factories_config] begin
+    broken_cfg = deepcopy(factory_cfg)
+    broken_cfg["minkowski_kr_insertion"]["dimension"] = 1
+    @test_throws ArgumentError QuantumGrav.MinkowskiKRInsertionCsetMaker(
+        broken_cfg["minkowski_kr_insertion"],
+    )
+
+    broken_cfg = deepcopy(factory_cfg)
+    broken_cfg["minkowski_kr_insertion"]["kr_order_size_rel_distribution"] = nothing
+    @test_throws ArgumentError QuantumGrav.MinkowskiKRInsertionCsetMaker(
+        broken_cfg["minkowski_kr_insertion"],
+    )
+
+    broken_cfg = deepcopy(factory_cfg)
+    broken_cfg["minkowski_kr_insertion"]["kr_order_size_rel_distribution_args"] =
+        nothing
+    @test_throws ArgumentError QuantumGrav.MinkowskiKRInsertionCsetMaker(
+        broken_cfg["minkowski_kr_insertion"],
+    )
+end
+
+@testitem "test_minkowski_kr_insertion_factory_produce_csets" tags = [:csetfactories] setup =
+    [factories_config] begin
+    using Random: Random
+
+    csetmaker =
+        QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
+    rng = Random.Xoshiro(factory_cfg["seed"])
+    n = 25
+    cset, kr_order_size_rel = csetmaker(n, rng)
+    @test isnothing(cset) === false
+    @test cset.atom_count == n
+    @test max(round(Int, 0.05 * n), 3) / n <= kr_order_size_rel <=
+          max(round(Int, 0.1 * n), 3) / n
+end
+
+@testitem "test_minkowski_kr_insertion_factory_throws" tags =
+    [:csetfactories, :throws] setup = [factories_config] begin
+    using Random: Random
+
+    csetmaker =
+        QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
+    rng = Random.Xoshiro(factory_cfg["seed"])
+    @test_throws ArgumentError csetmaker(2, rng)
 end

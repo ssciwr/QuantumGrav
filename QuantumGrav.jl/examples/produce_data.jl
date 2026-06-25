@@ -112,6 +112,7 @@ cset_type_encoder = Dict(
     "random" => 7,
     "merged_ambiguous" => 8,
     "destroyed_ambiguous" => 9,
+    "minkowski_kr_insertion" => 10,
 )
 
 # actual make cset. Must eat a worker_factory as sole input and return a dict of named data features
