@@ -1235,7 +1235,6 @@ function (mkr::MinkowskiKRInsertionCsetMaker)(
 
 	manifold = CausalSets.MinkowskiManifold{mkr.dimension}()
 	sprinkling_boundary = CausalSets.CausalDiamondBoundary{mkr.dimension}(1.0)
-	sprinkling_density = n / CausalSets.boundary_volume(manifold, sprinkling_boundary)
 	manifold_causet = CausalSets.ManifoldCauset(
 		manifold,
 		CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng),
@@ -1244,7 +1243,6 @@ function (mkr::MinkowskiKRInsertionCsetMaker)(
 		manifold_causet,
 		sprinkling_boundary,
 		kr_order_size,
-		sprinkling_density;
 		require_region_fully_in_boundary = mkr.require_region_fully_in_boundary,
 		rng = rng,
 	)
