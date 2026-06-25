@@ -52,7 +52,7 @@ end
 
 """
     count_elements_in_boundary(manifold_causet::ManifoldCauset{N}, boundary::OffsetCausalDiamondBoundary{N})
-Get the number of points of a ManifoldCauset lying in a specific OffsetCausalDiamondBoundary
+Get the number of points of a ManifoldCauset lyin strictly within in a specific OffsetCausalDiamondBoundary
 """
 function count_elements_in_boundary(manifold_causet::CausalSets.ManifoldCauset{N}, boundary::OffsetCausalDiamondBoundary{N}) where {N}
     sum(CausalSets.is_in_boundary.(Ref(manifold_causet.manifold), Ref(boundary), manifold_causet.sprinkling))
