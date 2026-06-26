@@ -37,27 +37,78 @@
         return true
     end
 
-    function matrix_is_transitively_closed(adj::BitMatrix)::Bool
-        n = size(adj, 1)
-        for source = 1:n
-            for middle = 1:n
-                adj[source, middle] || continue
-                for target = 1:n
-                    if adj[middle, target] && !adj[source, target]
-                        return false
-                    end
-                end
-            end
-        end
-        return true
-    end
-
     function clone_causet(cset::CausalSets.BitArrayCauset)
         return CausalSets.BitArrayCauset(
             cset.atom_count,
             copy.(cset.future_relations),
             copy.(cset.past_relations),
         )
+    end
+
+    function empty_bitarray_causet(n::Integer)
+        return CausalSets.BitArrayCauset(
+            Int64(n),
+            [falses(n) for _ in 1:n],
+            [falses(n) for _ in 1:n],
+        )
+    end
+
+    function replace_region_relations!(cset, region_indices, inserted_cset)
+        for (inner_idx, global_idx) in enumerate(region_indices)
+            cset.future_relations[global_idx][region_indices] =
+                inserted_cset.future_relations[inner_idx]
+            cset.past_relations[global_idx][region_indices] =
+                inserted_cset.past_relations[inner_idx]
+        end
+        return cset
+    end
+
+    function preclosed_causet_with_KR_region(
+        manifold,
+        sprinkling_boundary,
+        n,
+        element_count,
+        rng,
+    )
+        sprinkling =
+            CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng)
+        manifold_causet = CausalSets.ManifoldCauset(manifold, sprinkling)
+        center =
+            CausalSets.generate_sprinkling(manifold, sprinkling_boundary, 1; rng = rng)[1]
+        boundary = QuantumGrav.boundary_from_contained_element_count(
+            manifold_causet,
+            center,
+            element_count,
+        )
+        region_indices = findall(
+            CausalSets.is_in_boundary.(
+                Ref(manifold_causet.manifold),
+                Ref(boundary),
+                manifold_causet.sprinkling,
+            ),
+        )
+        preclosed_cset =
+            CausalSets.BitArrayCauset(manifold_causet.manifold, manifold_causet.sprinkling)
+        inserted_cset, _ = QuantumGrav.create_KR_order(element_count; rng = rng)
+        replace_region_relations!(preclosed_cset, region_indices, inserted_cset)
+
+        return preclosed_cset, region_indices, manifold_causet, boundary
+    end
+
+    function local_closure_matches_global(preclosed_cset, region_indices, manifold_causet, boundary)
+        global_cset = clone_causet(preclosed_cset)
+        local_cset = clone_causet(preclosed_cset)
+
+        QuantumGrav.transitive_closure!(global_cset)
+        QuantumGrav.local_transitive_closure!(
+            local_cset,
+            region_indices,
+            manifold_causet,
+            boundary,
+        )
+
+        return local_cset.future_relations == global_cset.future_relations &&
+               local_cset.past_relations == global_cset.past_relations
     end
 end
 
@@ -341,6 +392,30 @@ end
     @test QuantumGrav.count_elements_in_boundary(manifold_causet, counted_boundary) == 3
 end
 
+@testitem "test_boundary_from_contained_element_count_all_elements" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    sprinkling = CausalSets.Coordinates{2}[
+        (-0.8, 0.0),
+        (-0.2, 0.0),
+        (0.0, 0.0),
+        (0.2, 0.0),
+        (0.8, 0.0),
+    ]
+    manifold_causet = CausalSets.ManifoldCauset(manifold, sprinkling)
+    center = CausalSets.Coordinates{2}((0.0, 0.0))
+    counted_boundary = QuantumGrav.boundary_from_contained_element_count(
+        manifold_causet,
+        center,
+        length(sprinkling),
+    )
+
+    @test counted_boundary isa QuantumGrav.OffsetCausalDiamondBoundary{2}
+    @test QuantumGrav.count_elements_in_boundary(manifold_causet, counted_boundary) ==
+          length(sprinkling)
+end
+
 @testitem "test_boundary_from_contained_element_count_throws" tags = [
     :minkowski_kr_insertion,
     :throws,
@@ -379,7 +454,9 @@ end
     adj[2, 3] = true
     adj[3, 4] = true
 
-    cset = CausalSets.BitArrayCauset(adj)
+    future_relations = [BitVector(adj[i, :]) for i = 1:4]
+    past_relations = [BitVector(adj[:, i]) for i = 1:4]
+    cset = CausalSets.BitArrayCauset(4, future_relations, past_relations)
     QuantumGrav.transitive_closure!(cset)
 
     @test cset.future_relations[1] == BitVector([false, true, true, true])
@@ -412,14 +489,9 @@ end
             manifold_causet.sprinkling,
         ),
     )
-    inserted_cset = CausalSets.BitArrayCauset(falses(length(region_indices), length(region_indices)))
+    inserted_cset = empty_bitarray_causet(length(region_indices))
     preclosed_cset = CausalSets.BitArrayCauset(manifold_causet.manifold, manifold_causet.sprinkling)
-    for (inner_idx, global_idx) in enumerate(region_indices)
-        preclosed_cset.future_relations[global_idx][region_indices] =
-            inserted_cset.future_relations[inner_idx]
-        preclosed_cset.past_relations[global_idx][region_indices] =
-            inserted_cset.past_relations[inner_idx]
-    end
+    replace_region_relations!(preclosed_cset, region_indices, inserted_cset)
 
     global_cset = clone_causet(preclosed_cset)
     local_cset = clone_causet(preclosed_cset)
@@ -444,6 +516,121 @@ end
     @test relations_are_consistent(geometric_local_cset)
     @test is_transitively_closed(geometric_local_cset)
     @test is_strictly_upper_triangular(geometric_local_cset)
+end
+
+@testitem "test_local_transitive_closure_2d_side_branches" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    sprinkling = CausalSets.Coordinates{2}[
+        (-0.7, 0.0),
+        (-0.3, 0.2),
+        (-0.3, -0.2),
+        (-0.1, -0.1),
+        (0.0, 0.0),
+        (0.1, 0.1),
+        (0.45, -0.2),
+        (0.45, 0.2),
+        (0.8, 0.0),
+    ]
+    manifold_causet = CausalSets.ManifoldCauset(manifold, sprinkling)
+    boundary = QuantumGrav.OffsetCausalDiamondBoundary{2}(
+        0.8,
+        CausalSets.Coordinates{2}((0.0, 0.0)),
+    )
+    region_indices = findall(
+        CausalSets.is_in_boundary.(
+            Ref(manifold_causet.manifold),
+            Ref(boundary),
+            manifold_causet.sprinkling,
+        ),
+    )
+    inserted_cset = empty_bitarray_causet(length(region_indices))
+    preclosed_cset = CausalSets.BitArrayCauset(manifold_causet.manifold, manifold_causet.sprinkling)
+    for (inner_idx, global_idx) in enumerate(region_indices)
+        preclosed_cset.future_relations[global_idx][region_indices] =
+            inserted_cset.future_relations[inner_idx]
+        preclosed_cset.past_relations[global_idx][region_indices] =
+            inserted_cset.past_relations[inner_idx]
+    end
+
+    global_cset = clone_causet(preclosed_cset)
+    generic_local_cset = clone_causet(preclosed_cset)
+    side_local_cset = clone_causet(preclosed_cset)
+    affected =
+        QuantumGrav.affected_rows_for_region(preclosed_cset, region_indices, manifold_causet, boundary)
+    allowed_future_targets =
+        .!QuantumGrav.complete_future_rows_for_region(manifold_causet, boundary)
+
+    QuantumGrav.transitive_closure!(global_cset)
+    QuantumGrav.local_transitive_closure!(
+        generic_local_cset,
+        affected,
+        allowed_future_targets,
+    )
+    QuantumGrav.local_transitive_closure!(
+        side_local_cset,
+        region_indices,
+        manifold_causet,
+        boundary,
+    )
+
+    @test region_indices == [4, 5, 6]
+    @test affected[2]
+    @test affected[3]
+    @test generic_local_cset.future_relations == global_cset.future_relations
+    @test generic_local_cset.past_relations == global_cset.past_relations
+    @test side_local_cset.future_relations == global_cset.future_relations
+    @test side_local_cset.past_relations == global_cset.past_relations
+end
+
+@testitem "test_local_transitive_closure_random_2d_matches_global" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+    for sample_idx = 1:5
+        sample_rng = Random.Xoshiro(100 + sample_idx)
+        preclosed_cset, region_indices, manifold_causet, boundary =
+            preclosed_causet_with_KR_region(
+                manifold,
+                sprinkling_boundary,
+                80,
+                4 + sample_idx,
+                sample_rng,
+            )
+
+        @test local_closure_matches_global(
+            preclosed_cset,
+            region_indices,
+            manifold_causet,
+            boundary,
+        )
+    end
+end
+
+@testitem "test_local_transitive_closure_d3_matches_global" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    manifold_d3 = CausalSets.MinkowskiManifold{3}()
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{3}(1.0)
+    sample_rng = Random.Xoshiro(301)
+    preclosed_cset, region_indices, manifold_causet, boundary =
+        preclosed_causet_with_KR_region(
+            manifold_d3,
+            sprinkling_boundary,
+            60,
+            6,
+            sample_rng,
+        )
+
+    @test local_closure_matches_global(
+        preclosed_cset,
+        region_indices,
+        manifold_causet,
+        boundary,
+    )
 end
 
 @testitem "test_affected_rows_for_region" tags = [:minkowski_kr_insertion] setup =
@@ -593,27 +780,15 @@ end
     @test_throws ArgumentError QuantumGrav.bool_mul2(A, B)
 end
 
-@testitem "test_generate_KR_poset_adjacency_matrix" tags = [:minkowski_kr_insertion] setup =
-    [MinkowskiKRInsertionTests] begin
-
-    n = 40
-    adj = QuantumGrav.generate_KR_poset_adjacency_matrix(n; rng = rng)
-
-    @test adj isa BitMatrix
-    @test size(adj) == (n, n)
-    @test all(!adj[i, j] for i = 1:n for j = 1:i)
-    @test matrix_is_transitively_closed(adj)
-end
-
-@testitem "test_generate_KR_poset_adjacency_matrix_layers" tags = [
+@testitem "test_create_KR_order_layers" tags = [
     :minkowski_kr_insertion,
 ] setup = [MinkowskiKRInsertionTests] begin
 
     n = 1000
-    adj = QuantumGrav.generate_KR_poset_adjacency_matrix(n; rng = rng)
+    cset, _ = QuantumGrav.create_KR_order(n; rng = rng)
 
-    bottom_layer = findall(i -> !any(adj[:, i]), 1:n)
-    top_layer = findall(i -> !any(adj[i, :]), 1:n)
+    bottom_layer = findall(i -> !any(cset.past_relations[i]), 1:n)
+    top_layer = findall(i -> !any(cset.future_relations[i]), 1:n)
     middle_layer = setdiff(1:n, union(bottom_layer, top_layer))
 
     @test !isempty(bottom_layer)
@@ -623,77 +798,53 @@ end
     @test isapprox(length(bottom_layer) / n, 0.25; atol = 0.02)
     @test isapprox(length(middle_layer) / n, 0.5; atol = 0.02)
     @test isapprox(length(top_layer) / n, 0.25; atol = 0.02)
-    @test all(!adj[i, j] for i in bottom_layer for j in bottom_layer)
-    @test all(!adj[i, j] for i in middle_layer for j in middle_layer)
-    @test all(!adj[i, j] for i in top_layer for j in top_layer)
-    @test all(!adj[i, j] for i in middle_layer for j in bottom_layer)
-    @test all(!adj[i, j] for i in top_layer for j in bottom_layer)
-    @test all(!adj[i, j] for i in top_layer for j in middle_layer)
+    @test all(!cset.future_relations[i][j] for i in bottom_layer for j in bottom_layer)
+    @test all(!cset.future_relations[i][j] for i in middle_layer for j in middle_layer)
+    @test all(!cset.future_relations[i][j] for i in top_layer for j in top_layer)
+    @test all(!cset.future_relations[i][j] for i in middle_layer for j in bottom_layer)
+    @test all(!cset.future_relations[i][j] for i in top_layer for j in bottom_layer)
+    @test all(!cset.future_relations[i][j] for i in top_layer for j in middle_layer)
 end
 
-@testitem "test_generate_KR_poset_adjacency_matrix_connectivity" tags = [
+@testitem "test_create_KR_order_connectivity" tags = [
     :minkowski_kr_insertion,
 ] setup = [MinkowskiKRInsertionTests] begin
 
     n = 1000
-    adj = QuantumGrav.generate_KR_poset_adjacency_matrix(n; rng = rng)
+    cset, _ = QuantumGrav.create_KR_order(n; rng = rng)
 
-    bottom_layer = findall(i -> !any(adj[:, i]), 1:n)
-    top_layer = findall(i -> !any(adj[i, :]), 1:n)
+    bottom_layer = findall(i -> !any(cset.past_relations[i]), 1:n)
+    top_layer = findall(i -> !any(cset.future_relations[i]), 1:n)
     middle_layer = setdiff(1:n, union(bottom_layer, top_layer))
 
     bottom_to_middle_connectivity =
-        sum(adj[i, j] for i in bottom_layer for j in middle_layer) /
+        sum(cset.future_relations[i][j] for i in bottom_layer for j in middle_layer) /
         (length(bottom_layer) * length(middle_layer))
     middle_to_top_connectivity =
-        sum(adj[i, j] for i in middle_layer for j in top_layer) /
+        sum(cset.future_relations[i][j] for i in middle_layer for j in top_layer) /
         (length(middle_layer) * length(top_layer))
 
     @test isapprox(bottom_to_middle_connectivity, 0.5; atol = 0.01)
     @test isapprox(middle_to_top_connectivity, 0.5; atol = 0.01)
 end
 
-@testitem "test_generate_KR_poset_throws" tags = [
+@testitem "test_create_KR_order_throws_from_minkowski_tests" tags = [
     :minkowski_kr_insertion,
     :throws,
 ] setup = [MinkowskiKRInsertionTests] begin
 
-    @test_throws ArgumentError QuantumGrav.generate_KR_poset_adjacency_matrix(2; rng = rng)
-    @test_throws ArgumentError QuantumGrav.generate_KR_poset(2; rng = rng)
+    @test_throws ArgumentError QuantumGrav.create_KR_order(2; rng = rng)
 end
 
-@testitem "test_BitArrayCauset_from_adjacency_matrix" tags = [
-    :minkowski_kr_insertion,
-] setup = [MinkowskiKRInsertionTests] begin
-
-    adj = BitMatrix([
-        0 1 1
-        0 0 0
-        0 0 0
-    ])
-    cset = CausalSets.BitArrayCauset(adj)
-
-    @test cset.atom_count == 3
-    @test cset.future_relations == [BitVector(adj[i, :]) for i = 1:3]
-    @test cset.past_relations == [BitVector(adj[:, j]) for j = 1:3]
-end
-
-@testitem "test_BitArrayCauset_from_adjacency_matrix_throws" tags = [
-    :minkowski_kr_insertion,
-    :throws,
-] setup = [MinkowskiKRInsertionTests] begin
-
-    @test_throws ArgumentError CausalSets.BitArrayCauset(falses(2, 3))
-end
-
-@testitem "test_generate_KR_poset" tags = [:minkowski_kr_insertion] setup =
+@testitem "test_create_KR_order" tags = [:minkowski_kr_insertion] setup =
     [MinkowskiKRInsertionTests] begin
 
     n = 40
-    cset = QuantumGrav.generate_KR_poset(n; rng = rng)
+    cset, atoms_per_layer = QuantumGrav.create_KR_order(n; rng = rng)
 
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == n
+    @test sum(atoms_per_layer) == n
     @test relations_are_consistent(cset)
     @test is_transitively_closed(cset)
     @test is_strictly_upper_triangular(cset)
@@ -715,7 +866,7 @@ end
         0.8,
         CausalSets.Coordinates{2}((0.0, 0.0)),
     )
-    inserted_cset = CausalSets.BitArrayCauset(falses(3, 3))
+    inserted_cset = empty_bitarray_causet(3)
 
     cset = QuantumGrav.place_causet_in_manifold_causet(
         manifold_causet,
@@ -748,7 +899,7 @@ end
         0.8,
         CausalSets.Coordinates{2}((0.0, 0.0)),
     )
-    wrong_size_cset = CausalSets.BitArrayCauset(falses(4, 4))
+    wrong_size_cset = empty_bitarray_causet(4)
 
     @test_throws ArgumentError QuantumGrav.place_causet_in_manifold_causet(
         manifold_causet,
@@ -852,6 +1003,36 @@ end
 
     @test cset isa CausalSets.BitArrayCauset
     @test cset.atom_count == n
+    @test relations_are_consistent(cset)
+    @test is_transitively_closed(cset)
+    @test is_strictly_upper_triangular(cset)
+end
+
+@testitem "test_replace_region_with_KR_poset_require_region_fully_in_boundary_return_KR_poset" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    n = 30
+    element_count = 5
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+    manifold_causet = CausalSets.ManifoldCauset(
+        manifold,
+        CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng),
+    )
+
+    cset, kr_poset = QuantumGrav.replace_region_with_KR_poset(
+        manifold_causet,
+        sprinkling_boundary,
+        element_count,
+        require_region_fully_in_boundary = true,
+        return_KR_poset = true,
+        rng = rng,
+    )
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test kr_poset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test kr_poset.atom_count == element_count
     @test relations_are_consistent(cset)
     @test is_transitively_closed(cset)
     @test is_strictly_upper_triangular(cset)

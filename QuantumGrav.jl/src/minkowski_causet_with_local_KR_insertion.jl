@@ -606,95 +606,6 @@ function local_transitive_closure!(
 end
 
 """
-    bool_mul2(A::BitMatrix, B::BitMatrix) -> BitMatrix
-
-Compute the Boolean matrix product of `A` and `B`.
-
-# Arguments
-- `A`: Left Boolean matrix.
-- `B`: Right Boolean matrix.
-
-# Throws
-- `ArgumentError`: If the inner matrix dimensions do not agree.
-"""
-function bool_mul2(A::BitMatrix, B::BitMatrix)
-    mA, nA = size(A)
-    mB, nB = size(B)
-    nA == mB || throw(ArgumentError(
-        "inner dimensions must agree for Boolean matrix multiplication, got $(size(A)) and $(size(B)).",
-    ))
-    AB = BitArray(undef, mA, nB)
-    for i in 1:mA, j in 1:nB
-        AB[i,j] = any(A[i,k] && B[k,j] for k in 1:nA)
-    end
-    AB
-end
-
-"""
-    generate_KR_poset_adjacency_matrix(n_elements::Integer; rng=Random.default_rng()) -> BitMatrix
-
-Generate the adjacency matrix of a random three-layer KR poset.
-
-# Arguments
-- `n_elements`: Number of elements in the KR poset. Must be at least 3.
-- `rng`: Random number generator.
-
-# Throws
-- `ArgumentError`: If `n_elements < 3`.
-"""
-function generate_KR_poset_adjacency_matrix(n_elements::Integer; rng::Random.AbstractRNG = Random.default_rng())
-    n_elements >= 3 ||
-        throw(ArgumentError("n_elements must be at least 3, got $n_elements."))
-    # Using this approach rather than simply sampling 
-    layer_counts = rand(rng, Distributions.Multinomial(n_elements, [0.25, 0.5, 0.25]));
-    # NOTE: Should be equivalent to connecting from the bottom, but am not totaly certain
-    bottom_to_middle = Random.bitrand(rng, layer_counts[1], layer_counts[2]);
-    middle_to_top = Random.bitrand(rng, layer_counts[2], layer_counts[3]);
-    bottom_to_top = bool_mul2(bottom_to_middle, middle_to_top);
-    A = falses(n_elements, n_elements);
-    A[1:layer_counts[1], (layer_counts[1]+1):(layer_counts[1]+layer_counts[2])] = bottom_to_middle;
-    A[(layer_counts[1]+1):(layer_counts[1]+layer_counts[2]),(layer_counts[1]+layer_counts[2]+1):end] = middle_to_top;
-    A[1:layer_counts[1], (layer_counts[1]+layer_counts[2]+1):end] = bottom_to_top;
-    A
-end
-
-"""
-    BitArrayCauset(A::BitMatrix)
-
-Create a `BitArrayCauset` from a square adjacency matrix.
-
-# Arguments
-- `A`: Square adjacency matrix in natural labelling.
-
-# Throws
-- `ArgumentError`: If `A` is not square.
-"""
-function CausalSets.BitArrayCauset(A::BitMatrix)
-    size(A, 1) == size(A, 2) ||
-        throw(ArgumentError("adjacency matrix must be square, got size $(size(A))."))
-    n = size(A, 1);
-    future_relations = [A[i,:] for i in 1:n];
-    past_relations   = [A[:,j] for j in 1:n];
-    CausalSets.BitArrayCauset(n, future_relations, past_relations);
-end
-
-"""
-    generate_KR_poset(n_elements::Integer; rng=Random.default_rng()) -> BitArrayCauset
-
-Generate a random three-layer KR poset as a `BitArrayCauset`.
-
-# Arguments
-- `n_elements`: Number of elements in the KR poset. Must be at least 3.
-- `rng`: Random number generator.
-
-# Throws
-- `ArgumentError`: If `n_elements < 3`.
-"""
-function generate_KR_poset(n_elements::Integer; rng::Random.AbstractRNG = Random.default_rng())
-    CausalSets.BitArrayCauset(generate_KR_poset_adjacency_matrix(n_elements; rng = rng))
-end
-
-"""
     place_causet_in_manifold_causet(manifold_causet::ManifoldCauset{N}, boundary::OffsetCausalDiamondBoundary{N}, small_causet::BitArrayCauset)
 
 Return a copy of `manifold_causet` with the induced subcauset inside `boundary`
@@ -766,7 +677,7 @@ function replace_region_with_KR_poset(manifold_causet::CausalSets.ManifoldCauset
     3 <= element_count <= manifold_causet.atom_count || throw(ArgumentError(
         "element_count must be between 3 and $(manifold_causet.atom_count), got $element_count.",
     ))
-    KR_poset = generate_KR_poset(element_count; rng = rng)
+    KR_poset, _ = create_KR_order(element_count; rng = rng)
     if require_region_fully_in_boundary
         while true
             center = CausalSets.generate_sprinkling(manifold_causet.manifold, sprinkling_boundary, 1; rng = rng)[1]

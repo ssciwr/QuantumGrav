@@ -30,6 +30,81 @@ function gaussian_dist_cuts(N::Int64, n::Int64, σ::Float64; rng = Random.GLOBAL
 end
 
 """
+    bool_mul2(A::BitMatrix, B::BitMatrix) -> BitMatrix
+
+Compute the Boolean matrix product of `A` and `B`.
+
+# Arguments
+- `A`: Left Boolean matrix.
+- `B`: Right Boolean matrix.
+
+# Throws
+- `ArgumentError`: If the inner matrix dimensions do not agree.
+"""
+function bool_mul2(A::BitMatrix, B::BitMatrix)
+    mA, nA = size(A)
+    mB, nB = size(B)
+    nA == mB || throw(ArgumentError(
+        "inner dimensions must agree for Boolean matrix multiplication, got $(size(A)) and $(size(B)).",
+    ))
+    AB = BitArray(undef, mA, nB)
+    for i in 1:mA, j in 1:nB
+        AB[i,j] = any(A[i,k] && B[k,j] for k in 1:nA)
+    end
+    AB
+end
+
+function KR_poset_from_blocks(
+    n::Int64,
+    layer_counts::AbstractVector{<:Integer},
+    bottom_to_middle::BitMatrix,
+    middle_to_top::BitMatrix,
+    bottom_to_top::BitMatrix,
+)
+    n_bottom, n_middle, n_top = layer_counts
+    mid_start = n_bottom + 1
+    top_start = n_bottom + n_middle + 1
+
+    future_relations = [falses(n) for _ in 1:n]
+    past_relations = [falses(n) for _ in 1:n]
+
+    @inbounds for i in 1:n_bottom
+        if n_middle > 0
+            future_relations[i][mid_start:(top_start - 1)] = bottom_to_middle[i, :]
+        end
+        if n_top > 0
+            future_relations[i][top_start:n] = bottom_to_top[i, :]
+        end
+    end
+
+    @inbounds for m_local in 1:n_middle
+        m = n_bottom + m_local
+        if n_top > 0
+            future_relations[m][top_start:n] = middle_to_top[m_local, :]
+        end
+    end
+
+    @inbounds for m_local in 1:n_middle
+        m = n_bottom + m_local
+        if n_bottom > 0
+            past_relations[m][1:n_bottom] = bottom_to_middle[:, m_local]
+        end
+    end
+
+    @inbounds for t_local in 1:n_top
+        t = top_start + t_local - 1
+        if n_bottom > 0
+            past_relations[t][1:n_bottom] = bottom_to_top[:, t_local]
+        end
+        if n_middle > 0
+            past_relations[t][mid_start:(top_start - 1)] = middle_to_top[:, t_local]
+        end
+    end
+
+    return CausalSets.BitArrayCauset(n, future_relations, past_relations)
+end
+
+"""
     create_KR_order(N; rng=Random.GLOBAL_RNG)
 
 Generate a Kleitman–Rothschild (KR) order with N elements.
@@ -50,48 +125,21 @@ function create_KR_order(
     N::Int64;
     rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 )
-    if N < 3
-        throw(ArgumentError("N must be at least 3 to construct a KR order, is $N."))
-    end
+    N >= 3 || throw(ArgumentError("N must be at least 3 to construct a KR order, is $N."))
 
-    # assign each element independently to layers with probabilities (1/4, 1/2, 1/4)
-    layers = [Int[] for _ in 1:3]
+    atoms_per_layer = rand(rng, Distributions.Multinomial(N, [0.25, 0.5, 0.25]))
+    bottom_to_middle = Random.bitrand(rng, atoms_per_layer[1], atoms_per_layer[2])
+    middle_to_top = Random.bitrand(rng, atoms_per_layer[2], atoms_per_layer[3])
+    bottom_to_top = bool_mul2(bottom_to_middle, middle_to_top)
 
-    for i in 1:N
-        u = rand(rng)
-        if u ≤ 0.25
-            push!(layers[1], i)
-        elseif u ≤ 0.75
-            push!(layers[2], i)
-        else
-            push!(layers[3], i)
-        end
-    end
-
-    atoms_per_layer = length.(layers)
-
-    # impose layer-respecting topological ordering
-    perm = vcat(layers[1], layers[2], layers[3])
-    invperm = zeros(Int, N)
-    for (new, old) in enumerate(perm)
-        invperm[old] = new
-    end
-
-    graph = CausalSets.empty_graph(N)
-    tcg = CausalSets.empty_graph(N)
-
-    # link probability 1/2 between adjacent layers, relabeled by invperm
-    for i = 1:2
-        for a in layers[i], b in layers[i+1]
-            if rand(rng) < 0.5
-                graph.edges[invperm[a]][invperm[b]] = true
-            end
-        end
-    end
-
-    CausalSets.transitive_closure!(graph, tcg)
-
-    return CausalSets.to_bitarray_causet(tcg), atoms_per_layer
+    return KR_poset_from_blocks(
+        N,
+        atoms_per_layer,
+        bottom_to_middle,
+        middle_to_top,
+        bottom_to_top,
+    ),
+    atoms_per_layer
 end
 
 """
