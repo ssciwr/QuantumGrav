@@ -104,6 +104,15 @@ function KR_poset_from_blocks(
     return CausalSets.BitArrayCauset(n, future_relations, past_relations)
 end
 
+function normalized_KR_order_size(N::Int64)::Int64
+    N > 0 || throw(ArgumentError("N must be positive to construct a KR order, is $N."))
+    if N < 3
+        @warn "KR orders need at least 3 elements; using 3 instead of $N."
+        return 3
+    end
+    return N
+end
+
 """
     create_KR_order(N; rng=Random.GLOBAL_RNG)
 
@@ -125,7 +134,7 @@ function create_KR_order(
     N::Int64;
     rng::Random.AbstractRNG = Random.GLOBAL_RNG,
 )
-    N >= 3 || throw(ArgumentError("N must be at least 3 to construct a KR order, is $N."))
+    N = normalized_KR_order_size(N)
 
     atoms_per_layer = rand(rng, Distributions.Multinomial(N, [0.25, 0.5, 0.25]))
     bottom_to_middle = Random.bitrand(rng, atoms_per_layer[1], atoms_per_layer[2])

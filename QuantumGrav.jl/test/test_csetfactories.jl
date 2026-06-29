@@ -745,11 +745,32 @@ end
         QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
     rng = Random.Xoshiro(factory_cfg["seed"])
     n = 25
-    cset, kr_order_size_rel = csetmaker(n, rng)
+    cset, kr_order_size_rel = @test_logs (:warn, r"KR orders need at least 3 elements") csetmaker(
+        n,
+        rng,
+    )
     @test isnothing(cset) === false
     @test cset.atom_count == n
     @test max(round(Int, 0.05 * n), 3) / n <= kr_order_size_rel <=
           max(round(Int, 0.1 * n), 3) / n
+end
+
+@testitem "test_minkowski_kr_insertion_factory_zero_size_returns_sprinkling" tags =
+    [:csetfactories] setup = [factories_config] begin
+    using CausalSets
+    using Random: Random
+
+    zero_cfg = deepcopy(factory_cfg["minkowski_kr_insertion"])
+    zero_cfg["kr_order_size_rel_distribution_args"] = [0.0, 0.001]
+    csetmaker = QuantumGrav.MinkowskiKRInsertionCsetMaker(zero_cfg)
+    rng = Random.Xoshiro(factory_cfg["seed"])
+    n = 25
+
+    cset, kr_order_size_rel = csetmaker(n, rng)
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test kr_order_size_rel == 0.0
 end
 
 @testitem "test_minkowski_kr_insertion_factory_throws" tags =
@@ -759,5 +780,5 @@ end
     csetmaker =
         QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
     rng = Random.Xoshiro(factory_cfg["seed"])
-    @test_throws ArgumentError csetmaker(2, rng)
+    @test_throws ArgumentError csetmaker(0, rng)
 end

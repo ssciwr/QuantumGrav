@@ -1228,10 +1228,11 @@ function (mkr::MinkowskiKRInsertionCsetMaker)(
 	rng::Random.AbstractRNG;
 	config::Union{AbstractDict, Nothing} = nothing,
 )::Tuple{CausalSets.BitArrayCauset, Float64}
-	n >= 3 || throw(ArgumentError("n must be at least 3 to insert a KR order, is $n."))
+	n >= 1 || throw(ArgumentError("n must be at least 1, is $n."))
 
-	kr_order_size_rel = clamp(rand(rng, mkr.kr_order_size_rel_distribution), 3 / n, 1.0)
-	kr_order_size = clamp(convert(Int, round(n * kr_order_size_rel)), 1, n)
+	kr_order_size_rel = clamp(rand(rng, mkr.kr_order_size_rel_distribution), 0.0, 1.0)
+	requested_kr_order_size = clamp(convert(Int, round(n * kr_order_size_rel)), 0, n)
+	kr_order_size = requested_kr_order_size == 0 ? 0 : normalized_KR_order_size(requested_kr_order_size)
 
 	manifold = CausalSets.MinkowskiManifold{mkr.dimension}()
 	sprinkling_boundary = CausalSets.CausalDiamondBoundary{mkr.dimension}(1.0)

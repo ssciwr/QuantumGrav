@@ -828,12 +828,17 @@ end
     @test isapprox(middle_to_top_connectivity, 0.5; atol = 0.01)
 end
 
-@testitem "test_create_KR_order_throws_from_minkowski_tests" tags = [
+@testitem "test_create_KR_order_warns_for_too_small_KR_order" tags = [
     :minkowski_kr_insertion,
-    :throws,
 ] setup = [MinkowskiKRInsertionTests] begin
 
-    @test_throws ArgumentError QuantumGrav.create_KR_order(2; rng = rng)
+    cset, atoms_per_layer = @test_logs (:warn, r"KR orders need at least 3 elements") QuantumGrav.create_KR_order(
+        2;
+        rng = rng,
+    )
+
+    @test cset.atom_count == 3
+    @test sum(atoms_per_layer) == 3
 end
 
 @testitem "test_create_KR_order" tags = [:minkowski_kr_insertion] setup =
@@ -951,6 +956,64 @@ end
     @test is_strictly_upper_triangular(cset)
 end
 
+@testitem "test_replace_region_with_KR_poset_zero_returns_sprinkling" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    n = 30
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+    manifold_causet = CausalSets.ManifoldCauset(
+        manifold,
+        CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng),
+    )
+    expected = CausalSets.BitArrayCauset(manifold_causet.manifold, manifold_causet.sprinkling)
+
+    cset = QuantumGrav.replace_region_with_KR_poset(
+        manifold_causet,
+        sprinkling_boundary,
+        0,
+        rng = rng,
+    )
+    cset_with_returned_poset, kr_poset = QuantumGrav.replace_region_with_KR_poset(
+        manifold_causet,
+        sprinkling_boundary,
+        0,
+        return_KR_poset = true,
+        rng = rng,
+    )
+
+    @test cset.atom_count == n
+    @test cset.future_relations == expected.future_relations
+    @test cset.past_relations == expected.past_relations
+    @test cset_with_returned_poset.future_relations == expected.future_relations
+    @test cset_with_returned_poset.past_relations == expected.past_relations
+    @test isnothing(kr_poset)
+end
+
+@testitem "test_replace_region_with_KR_poset_warns_for_too_small_KR_order" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    n = 30
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+    manifold_causet = CausalSets.ManifoldCauset(
+        manifold,
+        CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng),
+    )
+
+    cset, kr_poset = @test_logs (:warn, r"KR orders need at least 3 elements") QuantumGrav.replace_region_with_KR_poset(
+        manifold_causet,
+        sprinkling_boundary,
+        2,
+        require_region_fully_in_boundary = false,
+        return_KR_poset = true,
+        rng = rng,
+    )
+
+    @test cset.atom_count == n
+    @test kr_poset.atom_count == 3
+end
+
 @testitem "test_replace_region_with_KR_poset_return_KR_poset" tags = [
     :minkowski_kr_insertion,
 ] setup = [MinkowskiKRInsertionTests] begin
@@ -1053,7 +1116,7 @@ end
     @test_throws ArgumentError QuantumGrav.replace_region_with_KR_poset(
         manifold_causet,
         sprinkling_boundary,
-        2;
+        -1;
         rng = rng,
     )
     @test_throws ArgumentError QuantumGrav.replace_region_with_KR_poset(
@@ -1085,6 +1148,45 @@ end
     @test is_strictly_upper_triangular(cset)
 end
 
+@testitem "test_generate_causet_with_KR_defect_zero_returns_sprinkling" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    n = 30
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+    cset = QuantumGrav.generate_causet_with_KR_defect(
+        n,
+        0,
+        sprinkling_boundary,
+        manifold;
+        rng = rng,
+    )
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == n
+    @test relations_are_consistent(cset)
+    @test is_transitively_closed(cset)
+    @test is_strictly_upper_triangular(cset)
+end
+
+@testitem "test_generate_causet_with_KR_defect_warns_for_too_small_KR_order" tags = [
+    :minkowski_kr_insertion,
+] setup = [MinkowskiKRInsertionTests] begin
+
+    sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
+
+    cset = @test_logs (:warn, r"KR orders need at least 3 elements") QuantumGrav.generate_causet_with_KR_defect(
+        30,
+        2,
+        sprinkling_boundary,
+        manifold;
+        rng = rng,
+    )
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 30
+end
+
 @testitem "test_generate_causet_with_KR_defect_throws" tags = [
     :minkowski_kr_insertion,
     :throws,
@@ -1093,15 +1195,15 @@ end
     sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
 
     @test_throws ArgumentError QuantumGrav.generate_causet_with_KR_defect(
-        2,
-        2,
+        0,
+        0,
         sprinkling_boundary,
         manifold;
         rng = rng,
     )
     @test_throws ArgumentError QuantumGrav.generate_causet_with_KR_defect(
         30,
-        2,
+        -1,
         sprinkling_boundary,
         manifold;
         rng = rng,

@@ -56,6 +56,13 @@ complex_topology:
   finite_cut_distribution_kwargs: {}
   tol: 1e-2
 
+minkowski_kr_insertion:
+  dimension: 2
+  kr_order_size_rel_distribution: "Uniform"
+  kr_order_size_rel_distribution_args: [0.05, 0.1]
+  kr_order_size_rel_distribution_kwargs: {}
+  require_region_fully_in_boundary: false
+
 destroyed:
   <<: *poly_defaults
   flip_distribution: "Uniform"

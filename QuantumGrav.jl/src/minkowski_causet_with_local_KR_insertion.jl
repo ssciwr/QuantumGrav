@@ -662,7 +662,9 @@ poset with `element_count` elements.
 - `manifold_causet`: Original manifold causet.
 - `sprinkling_boundary`: Boundary from which candidate region centers are
   sampled.
-- `element_count`: Size of the KR poset to insert. Must be between 3 and the
+- `element_count`: Size of the KR poset to insert. A value of 0 skips insertion
+  and returns the original sprinkling causet. Values 1 and 2 emit a warning and
+  insert a 3-element KR poset instead. The realized size must not exceed the
   atom count.
 - `require_region_fully_in_boundary`: If true, only accept regions whose tips
   lie in `sprinkling_boundary`.
@@ -671,11 +673,20 @@ poset with `element_count` elements.
 - `rng`: Random number generator.
 
 # Throws
-- `ArgumentError`: If `element_count < 3` or exceeds the atom count.
+- `ArgumentError`: If `element_count < 0` or the realized element count exceeds
+  the atom count.
 """
 function replace_region_with_KR_poset(manifold_causet::CausalSets.ManifoldCauset{N}, sprinkling_boundary::CausalSets.AbstractBoundary, element_count::Int64; require_region_fully_in_boundary::Bool=true, return_KR_poset=false, rng::Random.AbstractRNG = Random.default_rng()) where {N}
-    3 <= element_count <= manifold_causet.atom_count || throw(ArgumentError(
-        "element_count must be between 3 and $(manifold_causet.atom_count), got $element_count.",
+    if element_count == 0
+        sprinkling_causet = CausalSets.BitArrayCauset(
+            manifold_causet.manifold,
+            manifold_causet.sprinkling,
+        )
+        return return_KR_poset ? (sprinkling_causet, nothing) : sprinkling_causet
+    end
+    element_count = normalized_KR_order_size(element_count)
+    element_count <= manifold_causet.atom_count || throw(ArgumentError(
+        "element_count must not exceed $(manifold_causet.atom_count), got $element_count.",
     ))
     KR_poset, _ = create_KR_order(element_count; rng = rng)
     if require_region_fully_in_boundary
@@ -711,12 +722,17 @@ by a random KR poset.
 - `rng`: Random number generator.
 
 # Throws
-- `ArgumentError`: If `n < 3`, `m < 3`, or `m > n`.
+- `ArgumentError`: If `n < 1`, `m < 0`, or the realized `m` exceeds `n`.
 """
 function generate_causet_with_KR_defect(n::Int64, m::Int64, sprinkling_boundary::CausalSets.AbstractBoundary, manifold::CausalSets.AbstractManifold; rng::Random.AbstractRNG = Random.default_rng())
-    n >= 3 || throw(ArgumentError("n must be at least 3, got $n."))
-    3 <= m <= n || throw(ArgumentError("m must be between 3 and n=$n, got $m."))
+    n >= 1 || throw(ArgumentError("n must be at least 1, got $n."))
+    m >= 0 || throw(ArgumentError("m must be nonnegative, got $m."))
     manifold_causet = CausalSets.ManifoldCauset(manifold, CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng))
+    if m == 0
+        return CausalSets.BitArrayCauset(manifold_causet.manifold, manifold_causet.sprinkling)
+    end
+    m = normalized_KR_order_size(m)
+    m <= n || throw(ArgumentError("m must not exceed n=$n, got $m."))
     combined_causet = replace_region_with_KR_poset(manifold_causet, sprinkling_boundary, m; rng = rng)
     return combined_causet
 end
