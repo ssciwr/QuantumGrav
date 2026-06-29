@@ -1144,7 +1144,10 @@ function (mcm::MergedCsetMaker)(
 		r = max(r, 1.01)
 	end
 
-	n2rel = max(rand(rng, mcm.n2_rel_distribution), 0.0)
+	n2rel = rand(rng, mcm.n2_rel_distribution)
+	if !(0.0 <= n2rel <= 1.0)
+		throw(ArgumentError("Sampled inserted order relative size must be in [0, 1], got $n2rel."))
+	end
 	l = max(rand(rng, mcm.link_prob_distribution), 0.0)
 	p = max(rand(rng, mcm.connectivity_distribution), 0.0)
 
@@ -1230,9 +1233,12 @@ function (mkr::MinkowskiKRInsertionCsetMaker)(
 )::Tuple{CausalSets.BitArrayCauset, Float64}
 	n >= 1 || throw(ArgumentError("n must be at least 1, is $n."))
 
-	kr_order_size_rel = clamp(rand(rng, mkr.kr_order_size_rel_distribution), 0.0, 1.0)
-	requested_kr_order_size = clamp(convert(Int, round(n * kr_order_size_rel)), 0, n)
-	kr_order_size = requested_kr_order_size == 0 ? 0 : normalized_KR_order_size(requested_kr_order_size)
+	kr_order_size_rel = rand(rng, mkr.kr_order_size_rel_distribution)
+	if !(0.0 <= kr_order_size_rel <= 1.0)
+		throw(ArgumentError("Sampled KR order relative size must be in [0, 1], got $kr_order_size_rel."))
+	end
+	requested_kr_order_size = convert(Int, round(n * kr_order_size_rel))
+	kr_order_size = requested_kr_order_size
 
 	manifold = CausalSets.MinkowskiManifold{mkr.dimension}()
 	sprinkling_boundary = CausalSets.CausalDiamondBoundary{mkr.dimension}(1.0)

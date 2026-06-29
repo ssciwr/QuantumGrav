@@ -189,6 +189,14 @@ end
         rng = rng,
         n2_rel = 0.0,
     )
+    @test_throws ArgumentError QuantumGrav.insert_KR_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        0.5;
+        rng = rng,
+        n2_rel = 1.1,
+    )
 end
 
 @testitem "test_insert_layered_into_manifoldlike" tags = [:csetmerging] setup =
@@ -253,5 +261,13 @@ end
         0.5;
         rng = rng,
         n2_rel = 0.0,
+    )
+    @test_throws ArgumentError QuantumGrav.insert_layered_into_manifoldlike(
+        100,
+        10,
+        1.0,
+        0.5;
+        rng = rng,
+        n2_rel = 1.1,
     )
 end

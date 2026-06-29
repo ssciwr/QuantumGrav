@@ -664,8 +664,7 @@ poset with `element_count` elements.
   sampled.
 - `element_count`: Size of the KR poset to insert. A value of 0 skips insertion
   and returns the original sprinkling causet. Values 1 and 2 emit a warning and
-  insert a 3-element KR poset instead. The realized size must not exceed the
-  atom count.
+  are used without clamping. The realized size must not exceed the atom count.
 - `require_region_fully_in_boundary`: If true, only accept regions whose tips
   lie in `sprinkling_boundary`.
 - `return_KR_poset`: If true, return the inserted KR poset together with the
@@ -684,7 +683,6 @@ function replace_region_with_KR_poset(manifold_causet::CausalSets.ManifoldCauset
         )
         return return_KR_poset ? (sprinkling_causet, nothing) : sprinkling_causet
     end
-    element_count = normalized_KR_order_size(element_count)
     element_count <= manifold_causet.atom_count || throw(ArgumentError(
         "element_count must not exceed $(manifold_causet.atom_count), got $element_count.",
     ))
@@ -731,7 +729,6 @@ function generate_causet_with_KR_defect(n::Int64, m::Int64, sprinkling_boundary:
     if m == 0
         return CausalSets.BitArrayCauset(manifold_causet.manifold, manifold_causet.sprinkling)
     end
-    m = normalized_KR_order_size(m)
     m <= n || throw(ArgumentError("m must not exceed n=$n, got $m."))
     combined_causet = replace_region_with_KR_poset(manifold_causet, sprinkling_boundary, m; rng = rng)
     return combined_causet

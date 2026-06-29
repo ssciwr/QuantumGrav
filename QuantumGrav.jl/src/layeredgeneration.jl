@@ -107,8 +107,7 @@ end
 function normalized_KR_order_size(N::Int64)::Int64
     N > 0 || throw(ArgumentError("N must be positive to construct a KR order, is $N."))
     if N < 3
-        @warn "KR orders need at least 3 elements; using 3 instead of $N."
-        return 3
+        @warn "KR orders conventionally need at least 3 elements; using requested size $N without clamping."
     end
     return N
 end

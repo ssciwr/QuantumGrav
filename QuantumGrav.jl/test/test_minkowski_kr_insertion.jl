@@ -832,13 +832,13 @@ end
     :minkowski_kr_insertion,
 ] setup = [MinkowskiKRInsertionTests] begin
 
-    cset, atoms_per_layer = @test_logs (:warn, r"KR orders need at least 3 elements") QuantumGrav.create_KR_order(
+    cset, atoms_per_layer = @test_logs (:warn, r"KR orders conventionally need at least 3 elements") QuantumGrav.create_KR_order(
         2;
         rng = rng,
     )
 
-    @test cset.atom_count == 3
-    @test sum(atoms_per_layer) == 3
+    @test cset.atom_count == 2
+    @test sum(atoms_per_layer) == 2
 end
 
 @testitem "test_create_KR_order" tags = [:minkowski_kr_insertion] setup =
@@ -1001,7 +1001,7 @@ end
         CausalSets.generate_sprinkling(manifold, sprinkling_boundary, n; rng = rng),
     )
 
-    cset, kr_poset = @test_logs (:warn, r"KR orders need at least 3 elements") QuantumGrav.replace_region_with_KR_poset(
+    cset, kr_poset = @test_logs (:warn, r"KR orders conventionally need at least 3 elements") match_mode = :any QuantumGrav.replace_region_with_KR_poset(
         manifold_causet,
         sprinkling_boundary,
         2,
@@ -1011,7 +1011,7 @@ end
     )
 
     @test cset.atom_count == n
-    @test kr_poset.atom_count == 3
+    @test kr_poset.atom_count == 2
 end
 
 @testitem "test_replace_region_with_KR_poset_return_KR_poset" tags = [
@@ -1175,7 +1175,7 @@ end
 
     sprinkling_boundary = CausalSets.CausalDiamondBoundary{2}(1.0)
 
-    cset = @test_logs (:warn, r"KR orders need at least 3 elements") QuantumGrav.generate_causet_with_KR_defect(
+    cset = @test_logs (:warn, r"KR orders conventionally need at least 3 elements") match_mode = :any QuantumGrav.generate_causet_with_KR_defect(
         30,
         2,
         sprinkling_boundary,

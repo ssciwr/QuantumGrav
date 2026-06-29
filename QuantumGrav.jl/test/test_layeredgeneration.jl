@@ -80,9 +80,16 @@ end
     @test isapprox(p̂, 0.5; atol = 0.005)
 end
 
-@testitem "test_create_KR_order_throws" tags = [:layeredgeneration, :throws] setup = [LayeredTests] begin
+@testitem "test_create_KR_order_warns_for_too_small_KR_order" tags = [:layeredgeneration] setup = [LayeredTests] begin
 
     import CausalSets
 
-    @test_throws ArgumentError QuantumGrav.create_KR_order(2)
+    cset, atoms_per_layer = @test_logs (:warn, r"KR orders conventionally need at least 3 elements") QuantumGrav.create_KR_order(
+        2;
+        rng = rng,
+    )
+
+    @test cset isa CausalSets.BitArrayCauset
+    @test cset.atom_count == 2
+    @test sum(atoms_per_layer) == 2
 end

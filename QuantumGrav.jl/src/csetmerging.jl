@@ -199,9 +199,13 @@ function insert_KR_into_manifoldlike(
     type::Type{T} = Float32,
 )::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
 
-    n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
+    0.0 < n2_rel <= 1.0 ||
+        throw(ArgumentError("n2_rel must be in (0, 1], is $n2_rel."))
 
-    n2 = max(4, round(Int, n2_rel * npoints))  # Ensure at least 4
+    n2 = round(Int, n2_rel * npoints)
+    if n2 < 4
+        @warn "Computed inserted KR order size $n2 is below the previous minimum of 4; using it without clamping."
+    end
 
     n1 = max(1, npoints - n2) # Ensure at least 1
 
@@ -267,9 +271,13 @@ function insert_layered_into_manifoldlike(
     type::Type{T} = Float32,
 )::Tuple{CausalSets.BitArrayCauset,Bool,Matrix{T}} where {T}
 
-    n2_rel <= 0 && throw(ArgumentError("n2_rel must be larger than 0, is $n2_rel."))
+    0.0 < n2_rel <= 1.0 ||
+        throw(ArgumentError("n2_rel must be in (0, 1], is $n2_rel."))
 
-    n2 = max(4, round(Int, n2_rel * npoints))  # Ensure at least 4
+    n2 = round(Int, n2_rel * npoints)
+    if n2 < 4
+        @warn "Computed inserted layered order size $n2 is below the previous minimum of 4; using it without clamping."
+    end
 
     n1 = max(1, npoints - n2) # Ensure at least 1
 

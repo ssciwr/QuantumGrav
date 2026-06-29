@@ -536,6 +536,16 @@ end
     @test isnothing(cset) === false
     @test cset.atom_count == 25
     @test n2_rel >= 0.0 && n2_rel <= 1.0
+
+    negative_cfg = deepcopy(factory_cfg["merged"])
+    negative_cfg["n2_rel_distribution_args"] = [-0.2, -0.1]
+    csetmaker = QuantumGrav.MergedCsetMaker(negative_cfg)
+    @test_throws ArgumentError csetmaker(25, rng)
+
+    too_large_cfg = deepcopy(factory_cfg["merged"])
+    too_large_cfg["n2_rel_distribution_args"] = [1.1, 1.2]
+    csetmaker = QuantumGrav.MergedCsetMaker(too_large_cfg)
+    @test_throws ArgumentError csetmaker(25, rng)
 end
 
 @testitem "test_complex_topology_factory_construction" tags = [:csetfactories] setup =
@@ -745,14 +755,13 @@ end
         QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
     rng = Random.Xoshiro(factory_cfg["seed"])
     n = 25
-    cset, kr_order_size_rel = @test_logs (:warn, r"KR orders need at least 3 elements") csetmaker(
+    cset, kr_order_size_rel = @test_logs (:warn, r"KR orders conventionally need at least 3 elements") match_mode = :any csetmaker(
         n,
         rng,
     )
     @test isnothing(cset) === false
     @test cset.atom_count == n
-    @test max(round(Int, 0.05 * n), 3) / n <= kr_order_size_rel <=
-          max(round(Int, 0.1 * n), 3) / n
+    @test round(Int, 0.05 * n) / n <= kr_order_size_rel <= round(Int, 0.1 * n) / n
 end
 
 @testitem "test_minkowski_kr_insertion_factory_zero_size_returns_sprinkling" tags =
@@ -781,4 +790,14 @@ end
         QuantumGrav.MinkowskiKRInsertionCsetMaker(factory_cfg["minkowski_kr_insertion"])
     rng = Random.Xoshiro(factory_cfg["seed"])
     @test_throws ArgumentError csetmaker(0, rng)
+
+    negative_cfg = deepcopy(factory_cfg["minkowski_kr_insertion"])
+    negative_cfg["kr_order_size_rel_distribution_args"] = [-0.2, -0.1]
+    csetmaker = QuantumGrav.MinkowskiKRInsertionCsetMaker(negative_cfg)
+    @test_throws ArgumentError csetmaker(25, rng)
+
+    too_large_cfg = deepcopy(factory_cfg["minkowski_kr_insertion"])
+    too_large_cfg["kr_order_size_rel_distribution_args"] = [1.1, 1.2]
+    csetmaker = QuantumGrav.MinkowskiKRInsertionCsetMaker(too_large_cfg)
+    @test_throws ArgumentError csetmaker(25, rng)
 end
