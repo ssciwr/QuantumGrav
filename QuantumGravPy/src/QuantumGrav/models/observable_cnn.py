@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Dict, Sequence
 
@@ -14,9 +15,10 @@ def _resolve_torch_module(
     module_or_type: str | type[torch.nn.Module],
 ) -> type[torch.nn.Module]:
     if isinstance(module_or_type, str):
-        if not hasattr(torch.nn, module_or_type):
-            raise ValueError(f"Unknown torch.nn module '{module_or_type}'.")
-        module_or_type = getattr(torch.nn, module_or_type)
+        if hasattr(torch.nn, module_or_type):
+            module_or_type = getattr(torch.nn, module_or_type)
+        else:
+            module_or_type = utils.import_and_get(module_or_type)
 
     if not isinstance(module_or_type, type) or not issubclass(
         module_or_type,
@@ -32,70 +34,102 @@ def _module_path(module: type[torch.nn.Module]) -> str:
 
 
 class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
-    """Encode graph-observable signals with separate 1D CNN branches.
+    """Encode named vector observables with configurable 1D CNN branches.
 
-    The encoder is intended for observable-only causal-set classifiers. It takes a
-    probability-normalized link-degree signal, a preprocessed interval-abundance
-    signal, and optional scalar graph observables such as Laplacian eigenvalues.
-    The two 1D signals are encoded independently, pooled to fixed-size vectors,
-    concatenated with a scalar-feature MLP, and returned as a graph-level
-    embedding. A downstream task head can then map the embedding to logits.
+    The encoder is intended for observable-only causal-set models. It builds one
+    Conv1d branch for each configured vector input, pools every branch to a
+    fixed-size graph-level vector, optionally encodes scalar graph features with
+    an MLP, and concatenates all embeddings.
     """
+
+    vector_branch_schema = {
+        "type": "object",
+        "properties": {
+            "channels": {
+                "type": "array",
+                "description": (
+                    "Conv1d channel sizes for this branch, including input channel."
+                ),
+                "items": {"type": "integer", "minimum": 1},
+                "minItems": 2,
+            },
+            "kernel_sizes": {
+                "type": "array",
+                "description": "Conv1d kernel sizes for this branch.",
+                "items": {"type": "integer", "minimum": 1},
+            },
+            "paddings": {
+                "type": "array",
+                "description": (
+                    "Conv1d paddings for this branch. Defaults to same-length padding."
+                ),
+                "items": {"type": "integer", "minimum": 0},
+            },
+            "activation": {
+                "description": (
+                    "Activation module type or torch.nn module name for this branch."
+                ),
+            },
+            "activation_kwargs": {
+                "type": "object",
+                "description": (
+                    "Keyword arguments passed to this branch's activation modules."
+                ),
+            },
+            "dropout": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": "Dropout probability after each branch activation.",
+            },
+            "pooling": {
+                "type": "string",
+                "enum": ["avg", "max", "avgmax"],
+                "description": "Global pooling type for this branch.",
+            },
+        },
+        "required": ["channels"],
+        "additionalProperties": False,
+    }
 
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "title": "ObservableCNNEncoder Configuration",
         "type": "object",
         "properties": {
-            "degree_channels": {
-                "type": "array",
-                "description": "Conv1d channel sizes for the degree branch, including input channel.",
-                "items": {"type": "integer", "minimum": 1},
-                "minItems": 2,
-            },
-            "interval_channels": {
-                "type": "array",
-                "description": "Conv1d channel sizes for the interval branch, including input channel.",
-                "items": {"type": "integer", "minimum": 1},
-                "minItems": 2,
-            },
-            "degree_kernel_sizes": {
-                "type": "array",
-                "description": "Conv1d kernel sizes for the degree branch.",
-                "items": {"type": "integer", "minimum": 1},
-            },
-            "interval_kernel_sizes": {
-                "type": "array",
-                "description": "Conv1d kernel sizes for the interval branch.",
-                "items": {"type": "integer", "minimum": 1},
-            },
-            "degree_paddings": {
-                "type": "array",
-                "description": "Conv1d paddings for the degree branch. Defaults to same-length padding.",
-                "items": {"type": "integer", "minimum": 0},
-            },
-            "interval_paddings": {
-                "type": "array",
-                "description": "Conv1d paddings for the interval branch. Defaults to same-length padding.",
-                "items": {"type": "integer", "minimum": 0},
+            "vector_inputs": {
+                "type": "object",
+                "description": (
+                    "Mapping from vector input name to Conv1d branch configuration."
+                ),
+                "additionalProperties": vector_branch_schema,
+                "minProperties": 1,
             },
             "activation": {
-                "description": "Activation module type or torch.nn module name.",
+                "description": (
+                    "Default activation module type or torch.nn module name for vector "
+                    "branches."
+                ),
             },
             "activation_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments passed to each activation module.",
+                "description": (
+                    "Default keyword arguments passed to vector branch activation "
+                    "modules."
+                ),
             },
             "dropout": {
                 "type": "number",
                 "minimum": 0.0,
                 "maximum": 1.0,
-                "description": "Dropout probability after each activation. Set to 0 to disable.",
+                "description": (
+                    "Default dropout probability after each vector branch activation."
+                ),
             },
             "pooling": {
                 "type": "string",
                 "enum": ["avg", "max", "avgmax"],
-                "description": "Global pooling type for each 1D branch.",
+                "description": "Default global pooling type for vector branches.",
             },
             "scalar_in_features": {
                 "type": "integer",
@@ -108,28 +142,25 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
                 "items": {"type": "integer", "minimum": 1},
             },
             "scalar_activation": {
-                "description": "Activation module type or torch.nn module name for scalar MLP hidden layers.",
+                "description": (
+                    "Activation module type or torch.nn module name for scalar MLP "
+                    "hidden layers."
+                ),
             },
             "scalar_activation_kwargs": {
                 "type": "object",
-                "description": "Keyword arguments passed to scalar MLP activation modules.",
+                "description": (
+                    "Keyword arguments passed to scalar MLP activation modules."
+                ),
             },
         },
-        "required": [
-            "degree_channels",
-            "interval_channels",
-        ],
+        "required": ["vector_inputs"],
         "additionalProperties": False,
     }
 
     def __init__(
         self,
-        degree_channels: Sequence[int],
-        interval_channels: Sequence[int],
-        degree_kernel_sizes: Sequence[int] | None = None,
-        interval_kernel_sizes: Sequence[int] | None = None,
-        degree_paddings: Sequence[int] | None = None,
-        interval_paddings: Sequence[int] | None = None,
+        vector_inputs: Mapping[str, Mapping[str, Any]],
         activation: str | type[torch.nn.Module] = torch.nn.ReLU,
         activation_kwargs: Dict[str, Any] | None = None,
         dropout: float = 0.0,
@@ -142,22 +173,15 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
         """Create an observable CNN encoder.
 
         Args:
-            degree_channels: Channel sizes for the degree Conv1d branch, including
-                the input channel. For a single input signal this should start with 1.
-            interval_channels: Channel sizes for the interval Conv1d branch, including
-                the input channel. For a single input signal this should start with 1.
-            degree_kernel_sizes: Kernel sizes for the degree branch. Defaults to 5
-                for every convolution.
-            interval_kernel_sizes: Kernel sizes for the interval branch. Defaults to
-                5 for every convolution.
-            degree_paddings: Paddings for the degree branch. Defaults to
-                ``kernel_size // 2`` for each convolution.
-            interval_paddings: Paddings for the interval branch. Defaults to
-                ``kernel_size // 2`` for each convolution.
-            activation: Activation module type or torch.nn module name used in CNN branches.
-            activation_kwargs: Keyword arguments for CNN activations.
-            dropout: Dropout probability after each CNN activation.
-            pooling: Global pooling mode: ``"avg"``, ``"max"``, or ``"avgmax"``.
+            vector_inputs: Mapping from vector input name to branch config. Each
+                branch config must provide ``channels`` and can override
+                ``kernel_sizes``, ``paddings``, ``activation``,
+                ``activation_kwargs``, ``dropout``, and ``pooling``.
+            activation: Default activation module type or torch.nn module name
+                used in vector branches.
+            activation_kwargs: Default keyword arguments for vector activations.
+            dropout: Default dropout probability after each vector activation.
+            pooling: Default global pooling mode: ``"avg"``, ``"max"``, or ``"avgmax"``.
             scalar_in_features: Number of scalar features supplied to ``forward``.
             scalar_hidden_dims: Dimensions for the scalar-feature MLP. If empty,
                 scalar features are passed through unchanged.
@@ -167,26 +191,15 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
         """
         super().__init__()
 
+        if len(vector_inputs) == 0:
+            raise ValueError("vector_inputs must contain at least one branch.")
+
         if pooling not in {"avg", "max", "avgmax"}:
             raise ValueError("pooling must be one of 'avg', 'max', or 'avgmax'.")
 
         if scalar_in_features < 0:
             raise ValueError("scalar_in_features must be non-negative.")
 
-        self.degree_channels = list(degree_channels)
-        self.interval_channels = list(interval_channels)
-        self.degree_kernel_sizes = self._default_kernel_sizes(
-            degree_kernel_sizes, self.degree_channels
-        )
-        self.interval_kernel_sizes = self._default_kernel_sizes(
-            interval_kernel_sizes, self.interval_channels
-        )
-        self.degree_paddings = self._default_paddings(
-            degree_paddings, self.degree_kernel_sizes
-        )
-        self.interval_paddings = self._default_paddings(
-            interval_paddings, self.interval_kernel_sizes
-        )
         self.activation = _resolve_torch_module(activation)
         self.activation_kwargs = activation_kwargs or {}
         self.dropout = dropout
@@ -196,31 +209,76 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
         self.scalar_activation = _resolve_torch_module(scalar_activation)
         self.scalar_activation_kwargs = scalar_activation_kwargs or {}
 
-        self.degree_encoder = self._build_conv_branch(
-            self.degree_channels,
-            self.degree_kernel_sizes,
-            self.degree_paddings,
-        )
-        self.interval_encoder = self._build_conv_branch(
-            self.interval_channels,
-            self.interval_kernel_sizes,
-            self.interval_paddings,
+        self.vector_inputs = self._normalize_vector_inputs(vector_inputs)
+        self.vector_encoders = torch.nn.ModuleDict(
+            {
+                name: self._build_conv_branch(
+                    config["channels"],
+                    config["kernel_sizes"],
+                    config["paddings"],
+                    config["activation"],
+                    config["activation_kwargs"],
+                    config["dropout"],
+                )
+                for name, config in self.vector_inputs.items()
+            }
         )
         self.scalar_encoder = self._build_scalar_branch()
 
-        pooling_multiplier = 2 if self.pooling == "avgmax" else 1
-        self.degree_out_features = self.degree_channels[-1] * pooling_multiplier
-        self.interval_out_features = self.interval_channels[-1] * pooling_multiplier
+        self.vector_out_features = {
+            name: self._branch_out_features(config)
+            for name, config in self.vector_inputs.items()
+        }
         self.scalar_out_features = (
             self.scalar_hidden_dims[-1]
             if len(self.scalar_hidden_dims) > 0
             else self.scalar_in_features
         )
         self.out_features = (
-            self.degree_out_features
-            + self.interval_out_features
-            + self.scalar_out_features
+            sum(self.vector_out_features.values()) + self.scalar_out_features
         )
+
+    def _normalize_vector_inputs(
+        self,
+        vector_inputs: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        normalized: dict[str, dict[str, Any]] = {}
+        for name, config in vector_inputs.items():
+            if "." in name:
+                raise ValueError("vector input names cannot contain '.'.")
+
+            channels = list(config["channels"])
+            kernel_sizes = self._default_kernel_sizes(
+                config.get("kernel_sizes"),
+                channels,
+            )
+            paddings = self._default_paddings(config.get("paddings"), kernel_sizes)
+            branch_activation = _resolve_torch_module(
+                config.get("activation", self.activation)
+            )
+            branch_activation_kwargs = config.get(
+                "activation_kwargs",
+                self.activation_kwargs,
+            )
+            branch_dropout = config.get("dropout", self.dropout)
+            branch_pooling = config.get("pooling", self.pooling)
+            if branch_pooling not in {"avg", "max", "avgmax"}:
+                raise ValueError(
+                    f"pooling for vector input '{name}' must be one of "
+                    "'avg', 'max', or 'avgmax'."
+                )
+
+            normalized[name] = {
+                "channels": channels,
+                "kernel_sizes": kernel_sizes,
+                "paddings": paddings,
+                "activation": branch_activation,
+                "activation_kwargs": branch_activation_kwargs,
+                "dropout": branch_dropout,
+                "pooling": branch_pooling,
+            }
+
+        return normalized
 
     @staticmethod
     def _default_kernel_sizes(
@@ -252,11 +310,19 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
             raise ValueError("paddings must have the same length as kernel_sizes.")
         return paddings
 
+    @staticmethod
+    def _branch_out_features(config: Mapping[str, Any]) -> int:
+        pooling_multiplier = 2 if config["pooling"] == "avgmax" else 1
+        return config["channels"][-1] * pooling_multiplier
+
     def _build_conv_branch(
         self,
         channels: Sequence[int],
         kernel_sizes: Sequence[int],
         paddings: Sequence[int],
+        activation: type[torch.nn.Module],
+        activation_kwargs: Mapping[str, Any],
+        dropout: float,
     ) -> torch.nn.Sequential:
         layers: list[torch.nn.Module] = []
         for i in range(len(channels) - 1):
@@ -268,9 +334,9 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
                     padding=paddings[i],
                 )
             )
-            layers.append(self.activation(**self.activation_kwargs))
-            if self.dropout > 0:
-                layers.append(torch.nn.Dropout(p=self.dropout))
+            layers.append(activation(**activation_kwargs))
+            if dropout > 0:
+                layers.append(torch.nn.Dropout(p=dropout))
 
         return torch.nn.Sequential(*layers)
 
@@ -299,7 +365,7 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
         if signal.ndim == 3:
             return signal
         raise ValueError(
-            "Observable signals must have shape [length], [batch, length], "
+            "Vector inputs must have shape [length], [batch, length], "
             f"or [batch, channels, length], got {tuple(signal.shape)}."
         )
 
@@ -314,10 +380,11 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
             f"got {tuple(scalars.shape)}."
         )
 
-    def _pool(self, x: torch.Tensor) -> torch.Tensor:
-        if self.pooling == "avg":
+    @staticmethod
+    def _pool(x: torch.Tensor, pooling: str) -> torch.Tensor:
+        if pooling == "avg":
             return torch.nn.functional.adaptive_avg_pool1d(x, 1).squeeze(-1)
-        if self.pooling == "max":
+        if pooling == "max":
             return torch.nn.functional.adaptive_max_pool1d(x, 1).squeeze(-1)
 
         avg = torch.nn.functional.adaptive_avg_pool1d(x, 1).squeeze(-1)
@@ -326,33 +393,39 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
 
     def forward(
         self,
-        degree_distribution: torch.Tensor,
-        interval_abundance: torch.Tensor,
+        vector_features: Mapping[str, torch.Tensor],
         scalar_features: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Encode observable tensors into one graph-level embedding.
+        """Encode configured vector and scalar inputs into one graph-level embedding.
 
         Args:
-            degree_distribution: Link-degree distribution signal with shape
-                ``[length]``, ``[batch, length]``, or ``[batch, channels, length]``.
-            interval_abundance: Interval-abundance signal with shape ``[length]``,
-                ``[batch, length]``, or ``[batch, channels, length]``.
+            vector_features: Mapping from configured vector input name to tensor.
+                Each tensor must have shape ``[length]``, ``[batch, length]``, or
+                ``[batch, channels, length]``.
             scalar_features: Optional scalar feature tensor with shape
                 ``[features]`` or ``[batch, features]``.
 
         Returns:
             torch.Tensor: Concatenated embedding of shape ``[batch, out_features]``.
         """
-        degree_distribution = self._as_conv_input(degree_distribution)
-        interval_abundance = self._as_conv_input(interval_abundance)
+        missing_inputs = set(self.vector_inputs) - set(vector_features)
+        if missing_inputs:
+            raise ValueError(f"Missing vector inputs: {sorted(missing_inputs)}.")
 
-        degree_embedding = self._pool(self.degree_encoder(degree_distribution))
-        interval_embedding = self._pool(self.interval_encoder(interval_abundance))
+        embeddings = []
+        for name, encoder in self.vector_encoders.items():
+            branch_input = self._as_conv_input(vector_features[name])
+            branch_embedding = self._pool(
+                encoder(branch_input),
+                self.vector_inputs[name]["pooling"],
+            )
+            embeddings.append(branch_embedding)
 
-        embeddings = [degree_embedding, interval_embedding]
         if self.scalar_in_features > 0:
             if scalar_features is None:
-                raise ValueError("scalar_features must be supplied when scalar_in_features > 0.")
+                raise ValueError(
+                    "scalar_features must be supplied when scalar_in_features > 0."
+                )
             scalar_features = self._as_scalar_input(scalar_features)
             embeddings.append(self.scalar_encoder(scalar_features))
 
@@ -365,12 +438,7 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
 
         try:
             return cls(
-                degree_channels=config["degree_channels"],
-                interval_channels=config["interval_channels"],
-                degree_kernel_sizes=config.get("degree_kernel_sizes", None),
-                interval_kernel_sizes=config.get("interval_kernel_sizes", None),
-                degree_paddings=config.get("degree_paddings", None),
-                interval_paddings=config.get("interval_paddings", None),
+                vector_inputs=config["vector_inputs"],
                 activation=config.get("activation", torch.nn.ReLU),
                 activation_kwargs=config.get("activation_kwargs", None),
                 dropout=config.get("dropout", 0.0),
@@ -387,13 +455,20 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
 
     def to_config(self) -> Dict[str, Any]:
         """Build a serializable configuration dictionary for this encoder."""
+        vector_inputs = {
+            name: {
+                "channels": config["channels"],
+                "kernel_sizes": config["kernel_sizes"],
+                "paddings": config["paddings"],
+                "activation": _module_path(config["activation"]),
+                "activation_kwargs": config["activation_kwargs"],
+                "dropout": config["dropout"],
+                "pooling": config["pooling"],
+            }
+            for name, config in self.vector_inputs.items()
+        }
         return {
-            "degree_channels": self.degree_channels,
-            "interval_channels": self.interval_channels,
-            "degree_kernel_sizes": self.degree_kernel_sizes,
-            "interval_kernel_sizes": self.interval_kernel_sizes,
-            "degree_paddings": self.degree_paddings,
-            "interval_paddings": self.interval_paddings,
+            "vector_inputs": vector_inputs,
             "activation": _module_path(self.activation),
             "activation_kwargs": self.activation_kwargs,
             "dropout": self.dropout,
@@ -416,17 +491,7 @@ class ObservableCNNEncoder(torch.nn.Module, base.Configurable):
     ) -> "ObservableCNNEncoder":
         """Load an ObservableCNNEncoder from a file produced by ``save``."""
         payload = torch.load(path, map_location=device)
-        config = payload["config"]
-
-        if isinstance(config.get("activation"), str):
-            config["activation"] = utils.import_and_get(config["activation"])
-
-        if isinstance(config.get("scalar_activation"), str):
-            config["scalar_activation"] = utils.import_and_get(
-                config["scalar_activation"]
-            )
-
-        model = cls.from_config(config)
+        model = cls.from_config(payload["config"])
         model.load_state_dict(payload["state_dict"], strict=False)
         model.to(device)
         return model
