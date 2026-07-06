@@ -267,6 +267,33 @@ def test_ondisk_dataset_getitem_list(create_data_zarr):
     assert all(isinstance(item, dict) for item in result)
 
 
+def test_ondisk_datset_getitem_slice(create_data_zarr):
+    datadir, datafiles = create_data_zarr
+    dataset = QG.QGDataset(
+        input=datafiles,
+        output=datadir,
+        float_type=torch.float32,
+        int_type=torch.int64,
+        n_processes=1,
+        chunksize=4,
+        transform=lambda x: x,
+    )
+
+    result = dataset[0:12:3]
+
+    assert len(result) == 4
+    assert all(isinstance(item, dict) for item in result)
+
+    result = dataset[::2]
+    assert len(result) == 8
+
+    result = dataset[::3]
+    assert len(result) == 5
+
+    result = dataset[2:6:]
+    assert len(result) == 4
+
+
 def test_ondisk_dataset_default_transform(create_data_zarr):
     """Covers the transform=None branch in __init__ (identity applied implicitly)."""
     datadir, datafiles = create_data_zarr

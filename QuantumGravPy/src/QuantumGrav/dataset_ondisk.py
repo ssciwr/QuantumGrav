@@ -133,11 +133,7 @@ class QGDataset(Dataset):
             transform (Callable[..., Data] | list[Callable[..., Data]] | None, optional): Applied to each sample at read time. If a list of transformations is passed, they are concatenated with torch_geometric.transform.Compose. Defaults to None.
             pre_transform (Callable | None, optional): Applied once before saving processed data. Defaults to None.
             pre_filter (Callable | None, optional): Called before pre_transform; samples that return False are dropped. Defaults to None.
-            reader (Callable | None, optional): ``reader(root, path)`` replaces the default
-                ``zarr_group_to_dict`` when reading raw samples. ``root`` is the zarr root
-                group of a store and ``path`` is the group path string (e.g. ``"cset_1"``).
-                The return value is passed to ``pre_filter`` and ``pre_transform`` unchanged.
-                Defaults to None.
+            reader (Callable | None, optional): ``reader(root, path)`` replaces the default ``zarr_group_to_dict`` when reading raw samples. ``root`` is the zarr root group of a store and ``path`` is the group path string (e.g. ``"cset_1"``). The return value is passed to ``pre_filter`` and ``pre_transform`` unchanged. Defaults to None.
         """
         does_preprocessing = pre_transform is not None or pre_filter is not None
 
@@ -268,8 +264,6 @@ class QGDataset(Dataset):
 
     def process(self) -> None:
         """Process the dataset from the read rawdata into its final form."""
-        if self.pre_filter is None and self.pre_transform is None:
-            return
 
         def chunks(xs, n):
             for i in range(0, len(xs), n):
@@ -385,15 +379,22 @@ class QGDataset(Dataset):
             dfile, idx = self.map_index(idx)
             store, root = self._get_store_group(dfile)
             # since julia Zarr files allow having no root groups, we need to open the store directly
-            datapoint = dict()
-            zarr_group_to_dict(
-                zarr.open_group(
-                    store,
-                    path=f"cset_{idx + 1}",
-                    mode="r",
-                ),
-                datapoint,
-            )
+
+            if self.reader is None:
+                datapoint = dict()
+                zarr_group_to_dict(
+                    zarr.open_group(
+                        store,
+                        path=f"cset_{idx + 1}",
+                        mode="r",
+                    ),
+                    datapoint,
+                )
+            else:
+                datapoint = self.reader(
+                    root,
+                    f"cset_{idx + 1}",
+                )
         datapoint = self.transform(datapoint)
 
         return datapoint
@@ -404,7 +405,10 @@ class QGDataset(Dataset):
         if isinstance(idx, int):
             return self.get(idx)
         elif isinstance(idx, slice):
-            return [self.get(i) for i in range(idx.start, idx.stop, idx.step or 1)]
+            start = idx.start or 0
+            stop = idx.stop or self._num_samples
+            step = idx.step or 1
+            return [self.get(i) for i in range(start, stop, step or 1)]
         else:
             return [self.get(i) for i in idx]
 
