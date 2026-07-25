@@ -154,6 +154,20 @@ class Trainer(base.Configurable):
                 ],
                 "additionalProperties": True,
             },
+            "accelerate": {
+                "type": "object",
+                "description": "huggingface accelerate options for distributed or accelerated training",
+                "properties": {
+                    "grad_accumulate": {
+                        "description": "Enable gradient accumulation",
+                        "type": "boolean",
+                    },
+                    "mixed_precision": {
+                        "description": "Enable mixed precision training",
+                        "type": "boolean",
+                    },
+                },
+            },
             "data": {
                 "type": "object",
                 "description": "Dataset configuration",
