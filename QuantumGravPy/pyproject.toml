@@ -38,12 +38,10 @@ allow-direct-references = true
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "pytest-mock"]
 docs = ["mkdocs", "mkdocstrings[python]", "mkdocs-material", "mkdocs-jupyter"]
+
 [tool.pytest.ini_options]
 addopts = ["-vvv", "-s"]
 
 [tool.coverage.run]
 source = ["src/QuantumGrav"]
-omit = ["*/test/*", "*/tests/*"]
-
-[tool.coverage.report]
 omit = ["*/test/*", "*/tests/*"]
