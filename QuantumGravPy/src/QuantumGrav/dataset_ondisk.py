@@ -381,7 +381,7 @@ class QGDataset(Dataset):
             # since julia Zarr files allow having no root groups, we need to open the store directly
 
             if self.reader is None:
-                datapoint = dict()
+                datapoint = {}
                 zarr_group_to_dict(
                     zarr.open_group(
                         store,
@@ -390,12 +390,14 @@ class QGDataset(Dataset):
                     ),
                     datapoint,
                 )
+                return Data.from_dict(datapoint)
             else:
                 datapoint = self.reader(
                     root,
                     f"cset_{idx + 1}",
                 )
-        datapoint = self.transform(datapoint)
+        if self.transform is not None:
+            datapoint = self.transform(datapoint)
 
         return datapoint
 

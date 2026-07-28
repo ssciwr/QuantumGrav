@@ -118,7 +118,7 @@ def test_ondisk_dataset_creation_processing_no_pre_transform(create_data_zarr):
     assert len(dataset) == 15  # Assuming 15 samples in the datafiles
     assert len(dataset.stores) == 0
     assert Path(dataset.processed_dir).exists() is True  # always will exist
-    assert isinstance(dataset[5], dict)
+    assert isinstance(dataset[5], Data)
 
 
 def test_ondisk_dataset_map_index(create_data_zarr):
@@ -213,7 +213,7 @@ def test_ondisk_dataset_zip_store_get(create_data_zarr_zip, tmp_path):
     assert isinstance(store, ZipStore)
     _ = dataset[6]  # second file
     assert len(dataset.stores) == 2
-    assert isinstance(dataset[13], dict)
+    assert isinstance(dataset[13], Data)
     dataset.close()
     assert len(dataset.stores) == 0
 
@@ -264,7 +264,7 @@ def test_ondisk_dataset_getitem_list(create_data_zarr):
     )
     result = dataset[[0, 3, 7, 12]]
     assert len(result) == 4
-    assert all(isinstance(item, dict) for item in result)
+    assert all(isinstance(item, Data) for item in result)
 
 
 def test_ondisk_datset_getitem_slice(create_data_zarr):
@@ -282,7 +282,7 @@ def test_ondisk_datset_getitem_slice(create_data_zarr):
     result = dataset[0:12:3]
 
     assert len(result) == 4
-    assert all(isinstance(item, dict) for item in result)
+    assert all(isinstance(item, Data) for item in result)
 
     result = dataset[::2]
     assert len(result) == 8
@@ -305,7 +305,7 @@ def test_ondisk_dataset_default_transform(create_data_zarr):
         n_processes=1,
         chunksize=4,
     )
-    assert isinstance(dataset[0], dict)
+    assert isinstance(dataset[0], Data)
 
 
 def test_ondisk_dataset_with_reader(create_data_zarr, tmp_path):
