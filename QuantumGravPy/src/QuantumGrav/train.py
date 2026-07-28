@@ -214,7 +214,7 @@ class Trainer(base.Configurable):
                         },
                     },
                 },
-                "required": ["output", "files", "reader"],
+                "required": ["output", "files"],
                 "additionalProperties": False,
             },
             "model": {
@@ -570,7 +570,6 @@ class Trainer(base.Configurable):
             dataset = dataset_ondisk.QGDataset(
                 cfg["files"],
                 cfg["output"],
-                cfg["reader"],
                 float_type=cfg.get("float_type", torch.float32),
                 int_type=cfg.get("int_type", torch.int32),
                 validate_data=cfg.get("validate_data", True),
@@ -579,6 +578,7 @@ class Trainer(base.Configurable):
                 transform=cfg.get("transform"),
                 pre_transform=cfg.get("pre_transform"),
                 pre_filter=cfg.get("pre_filter"),
+                reader=cfg.get("reader"),
             )
 
             if cfg.get("subset"):

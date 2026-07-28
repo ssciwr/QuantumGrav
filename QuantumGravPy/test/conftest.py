@@ -1,35 +1,20 @@
 import pytest
-from pathlib import Path
 import zarr
 import numpy as np
-from typing import Callable, Type, Dict, Any
 import shutil
-
 import QuantumGrav as QG
-
-
 import torch
-from torch_geometric.data import Data
-from torch_geometric.utils import dense_to_sparse
+import torch.multiprocessing as mp
 from torch_geometric.loader import DataLoader
+from torch_geometric.utils import dense_to_sparse
+from torch_geometric.data import Data
 
-
-@pytest.fixture(scope="session")
-def project_root():
-    """Return the project root directory as a Path object."""
-    test_dir = Path(__file__).parent
-    return test_dir.parent
-
-
-@pytest.fixture(scope="session")
-def test_dir(project_root):
-    """Return the test directory."""
-    return project_root / "test"
+mp.set_start_method("spawn")
 
 
 # data fixtures
 @pytest.fixture(scope="session")
-def create_data_zarr_basic(tmp_path_factory):
+def create_data_zarr(tmp_path_factory):
     tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav", numbered=True)
 
     datafiles = []
@@ -37,13 +22,21 @@ def create_data_zarr_basic(tmp_path_factory):
     for i in range(3):
         data = []
         for _ in range(5):
-            num_nodes = np.random.randint(10, 15)
+            num_nodes = 15
             adjacency_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
             link_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
             max_pathlen_future = np.random.rand(num_nodes).astype("float32")
             max_pathlen_past = np.random.rand(num_nodes).astype("float32")
-            dimension = np.random.randint(2, 10)
-            atomcount = num_nodes
+            dimension = np.array(
+                [
+                    np.random.randint(2, 10),
+                ]
+            )
+            atomcount = np.array(
+                [
+                    num_nodes,
+                ]
+            )
 
             data.append(
                 {
@@ -63,60 +56,15 @@ def create_data_zarr_basic(tmp_path_factory):
             shutil.rmtree(zarr_file)
 
         store = zarr.storage.LocalStore(zarr_file, read_only=False)
-
-        adj = zarr.create_array(
-            store,
-            shape=(len(data), 15, 15),
-            chunks=(1, 15, 15),
-            dtype="float32",
-            name="adjacency_matrix",
-        )
-
-        link = zarr.create_array(
-            store,
-            shape=(len(data), 15, 15),
-            chunks=(1, 15, 15),
-            dtype="float32",
-            name="link_matrix",
-        )
-
-        maxpathlen_future = zarr.create_array(
-            store,
-            shape=(len(data), 15),
-            chunks=(1, 15),
-            name="max_pathlen_future",
-            dtype="float32",
-        )
-
-        max_pathlen_past = zarr.create_array(
-            store,
-            shape=(len(data), 15),
-            chunks=(1, 15),
-            name="max_pathlen_past",
-            dtype="float32",
-        )
-
-        dimension = zarr.create_array(
-            store, shape=(len(data)), chunks=(1,), name="dimension", dtype="int32"
-        )
-
-        atomcount = zarr.create_array(
-            store, shape=(len(data)), chunks=(1,), name="atomcount", dtype="int32"
-        )
-
+        root = zarr.open_group(store, path="", mode="a")
         for j, d in enumerate(data):
-            adjmat = d["adjacency_matrix"]
-            linkmat = d["link_matrix"]
-            max_path_f = d["max_pathlen_future"]
-            max_path_p = d["max_pathlen_past"]
-            adj[j, 0 : adjmat.shape[0], 0 : adjmat.shape[1]] = adjmat
-            link[j, 0 : linkmat.shape[0], 0 : linkmat.shape[1]] = linkmat
-            maxpathlen_future[j, 0 : max_path_f.shape[0]] = max_path_f
-            max_pathlen_past[j, 0 : max_path_p.shape[0]] = max_path_p
-            dimension[j] = d["dimension"]
-            atomcount[j] = d["atomcount"]
+            grp = root.create_group(f"cset_{j + 1}")
+            for k, values in d.items():
+                grp.create_array(k, data=values)
 
         datafiles.append(zarr_file)
+
+        store.close()
 
     yield tmpdir, datafiles
 
@@ -129,61 +77,63 @@ def create_data_zarr_basic(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def create_data_zarr(create_data_zarr_basic):
-    tmpdir, datafiles = create_data_zarr_basic
+def create_data_zarr_zip(tmp_path_factory):
+    tmpdir = tmp_path_factory.mktemp("test_data_quantumgrav_zip", numbered=True)
 
-    for file in datafiles:
-        # Save the data to an zarr file
-        store = zarr.storage.LocalStore(file, read_only=False)
+    datafiles = []
 
-        dims = zarr.open_array(store, path="dimension")
-        if "num_samples" in store.root.iterdir() is False:
-            num_samples = zarr.create_array(
-                store, shape=(1,), chunks=(1,), name="num_samples", dtype="int32"
+    for i in range(3):
+        data = []
+        for _ in range(5):
+            num_nodes = 15
+            adjacency_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
+            link_matrix = np.random.rand(num_nodes, num_nodes).astype("float32")
+            max_pathlen_future = np.random.rand(num_nodes).astype("float32")
+            max_pathlen_past = np.random.rand(num_nodes).astype("float32")
+            dimension = np.array([np.random.randint(2, 10)])
+            atomcount = np.array([num_nodes])
+
+            data.append(
+                {
+                    "adjacency_matrix": adjacency_matrix,
+                    "link_matrix": link_matrix,
+                    "max_pathlen_future": max_pathlen_future,
+                    "max_pathlen_past": max_pathlen_past,
+                    "dimension": dimension,
+                    "atomcount": atomcount,
+                }
             )
-            num_samples[0] = dims.shape[0]
+
+        zarr_file = tmpdir / f"test_data_{i}.zip"
+        store = zarr.storage.ZipStore(zarr_file, mode="w")
+        root = zarr.open_group(store, path="", mode="w")
+        for j, d in enumerate(data):
+            grp = root.create_group(f"cset_{j + 1}")
+            for k, values in d.items():
+                grp.create_array(k, data=values)
+        store.close()
+        datafiles.append(zarr_file)
 
     yield tmpdir, datafiles
 
-
-@pytest.fixture
-def read_data_dict():
-    def reader(
-        f: zarr.Group, idx: int, float_dtype: Type, int_dtype: Type, validate: Callable
-    ) -> Dict[Any, Any]:
-        adj_raw = f["adjacency_matrix"][idx, :, :]
-        adj_matrix = torch.tensor(adj_raw, dtype=float_dtype)
-
-        # Path lengths
-        max_path_future = torch.tensor(
-            f["max_pathlen_future"][idx, :], dtype=float_dtype
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-
-        max_path_past = torch.tensor(
-            f["max_pathlen_past"][idx, :], dtype=float_dtype
-        ).unsqueeze(1)  # make this a (num_nodes, 1) tensor
-
-        return {
-            "adj": adj_matrix,
-            "max_path_future": max_path_future,
-            "max_path_past": max_path_past,
-            "dimension": f["dimension"][idx],
-        }
-
-    return reader
+    for file in datafiles:
+        if file.exists():
+            file.unlink()
+    if tmpdir.exists():
+        shutil.rmtree(tmpdir)
 
 
 @pytest.fixture
-def read_data(read_data_dict):
-    def reader(f: zarr.Group, idx: int, float_dtype, int_dtype, validate) -> Data:
-        datadict = read_data_dict(f, idx, float_dtype, int_dtype, validate)
+def pre_transform():
+    global pre_transform_function
 
-        adj_matrix = datadict["adj"].detach().clone()
+    def _pre_transform_func(datadict: dict) -> Data:
+        adj_matrix = torch.tensor(datadict["adjacency_matrix"])
         edge_index, edge_weight = dense_to_sparse(adj_matrix)
-        node_features = []
-        node_features.extend([datadict["max_path_future"], datadict["max_path_past"]])
+        max_pathlen_future = torch.tensor(datadict["max_pathlen_future"]).unsqueeze(1)
+        max_pathlen_past = torch.tensor(datadict["max_pathlen_past"]).unsqueeze(1)
 
-        x = torch.cat(node_features, dim=1)
+        x = torch.cat((max_pathlen_past, max_pathlen_future), dim=1)
 
         dimension = datadict["dimension"]
 
@@ -204,32 +154,32 @@ def read_data(read_data_dict):
                 [
                     value_list,
                 ],
-                dtype=int_dtype,
+                dtype=torch.int32,
             ),
         )
 
-        if validate and not data.validate():
+        if not data.validate():
             raise ValueError("Data validation failed.")
         return data
 
-    return reader
+    pre_transform_function = _pre_transform_func
+    return pre_transform_function
 
 
 @pytest.fixture
-def make_dataset(create_data_zarr, read_data):
+def make_dataset(create_data_zarr, pre_transform):
     datadir, datafiles = create_data_zarr
-
+    pre_transform_function = pre_transform
     dataset = QG.QGDataset(
         input=datafiles,
         output=datadir,
-        reader=read_data,
         float_type=torch.float32,
         int_type=torch.int64,
         validate_data=True,
         n_processes=1,
         chunksize=4,
         transform=lambda x: x,
-        pre_transform=lambda x: x,
+        pre_transform=pre_transform_function,
         pre_filter=lambda x: True,
     )
     return dataset

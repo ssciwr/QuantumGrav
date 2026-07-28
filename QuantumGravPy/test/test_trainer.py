@@ -86,7 +86,7 @@ def model_config_eval():
 
 
 @pytest.fixture
-def config(model_config_eval, tmppath, create_data_zarr, read_data):
+def config(model_config_eval, tmppath, create_data_zarr, pre_transform):
     datadir, datafiles = create_data_zarr
     cfg = {
         "training": {
@@ -108,10 +108,9 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
             # "prefetch_factor": 2,
         },
         "data": {
-            "pre_transform": lambda x: x,
+            "pre_transform": pre_transform,
             "transform": lambda x: x,
             "pre_filter": lambda x: True,
-            "reader": read_data,
             "files": [str(f) for f in datafiles],
             "output": str(datadir),
             "validate_data": True,
@@ -177,14 +176,13 @@ def config(model_config_eval, tmppath, create_data_zarr, read_data):
 
 
 @pytest.fixture
-def config_with_data(config, create_data_zarr, read_data):
+def config_with_data(config, create_data_zarr, pre_transform):
     datadir, datafiles = create_data_zarr
     cfg = deepcopy(config)
     cfg["data"] = {
-        "pre_transform": lambda x: x,
+        "pre_transform": pre_transform,
         "transform": lambda x: x,
         "pre_filter": lambda x: True,
-        "reader": read_data,
         "files": [str(f) for f in datafiles],
         "output": str(datadir),
         "validate_data": True,
