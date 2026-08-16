@@ -22,7 +22,10 @@ from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader
 import optuna
 
+from warnings import deprecated
 
+
+@deprecated("Will be removed soon. Use AccTrainer instead.")
 class Trainer(base.Configurable):
     """Trainer class for training and evaluating GNN models."""
 
