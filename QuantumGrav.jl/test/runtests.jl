@@ -3,6 +3,7 @@ using TestItemRunner
 using Test
 include("./test_utils.jl")
 include("./test_csetgeneration.jl")
+include("./test_regularized_csetgeneration.jl")
 include("./test_csetgenerationbyconnectivity.jl")
 include("./test_layeredgeneration.jl")
 include("./test_branchedcsetgeneration.jl")
@@ -12,6 +13,8 @@ include("./test_grid_like_causets.jl")
 include("./test_graph_utils.jl")
 include("./test_prepare_dataproduction.jl")
 include("./test_curvature_on_manifold.jl")
+include("./test_regularized_curvature_on_manifold.jl")
+include("./test_boundary_curvature_on_manifold.jl")
 include("./test_save_data.jl")
 
 @run_package_tests

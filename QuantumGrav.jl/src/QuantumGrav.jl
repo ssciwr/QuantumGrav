@@ -13,9 +13,11 @@ import Pkg
 import JSONSchema
 import Distributed
 import ProgressMeter
+import HCubature
 
 include("utils.jl")
 include("csetgeneration.jl")
+include("regularized_csetgeneration.jl")
 include("layeredgeneration.jl")
 include("preparation.jl")
 include("csetgenerationbyconnectivity.jl")
@@ -25,6 +27,8 @@ include("destroy_manifold_like_cset.jl")
 include("grid_like_causets.jl")
 include("graph_utils.jl")
 include("curvature_on_manifold.jl")
+include("regularized_curvature_on_manifold.jl")
+include("boundary_curvature_on_manifold.jl")
 include("cset_factories.jl")
 include("save_data.jl")
 include("spacetime_quasicrystals.jl")
@@ -33,6 +37,8 @@ export make_adj,
     max_pathlen,
     transitive_reduction!,
     make_polynomial_manifold_cset,
+    make_regularized_polynomial_manifold_cset,
+    regularized_polynomial_manifold,
     Ricci_scalar_2D,
     Ricci_scalar_2D_of_sprinkling,
     Kretschmann_scalar_2D,
@@ -41,6 +47,11 @@ export make_adj,
     Weyl_squared_2D,
     Weyl_box_Weyl_2D,
     curvature_invariant_of_sprinkling,
+    integrated_curvature_invariant_2D,
+    boundary_curvature_invariant_2D,
+    ricci_box_ricci_boundary_flux_2D,
+    curvature_action_2D,
+    einstein_hilbert_action_2D,
     sample_bitarray_causet_by_connectivity,
     gaussian_dist_cuts,
     create_random_layered_causet,
