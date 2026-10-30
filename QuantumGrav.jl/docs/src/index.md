@@ -528,6 +528,12 @@ Compute curvature on manifold-like causal sets:
 ```@docs
 Ricci_scalar_2D
 Ricci_scalar_2D_of_sprinkling
+Kretschmann_scalar_2D
+Goroff_Sagnotti_scalar_2D
+Ricci_box_Ricci_2D
+Weyl_squared_2D
+Weyl_box_Weyl_2D
+curvature_invariant_of_sprinkling
 ```
 
 ### Causal Set Factories
